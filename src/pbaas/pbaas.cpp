@@ -58,7 +58,7 @@ uint256 GetChainObjectHash(const CBaseChainObject &bo)
         const CChainObject<CPartialTransactionProof> *pNewTx;
         const CChainObject<CBlockHeaderProof> *pNewHeaderRef;
         const CChainObject<CPriorBlocksCommitment> *pPriors;
-        const CChainObject<uint256> *pNewProofRoot;
+        const CChainObject<CProofRoot> *pNewProofRoot;
         const CChainObject<CReserveTransfer> *pExport;
         const CChainObject<CCrossChainProof> *pCrossChainProof;
         const CChainObject<CCompositeChainObject> *pCompositeChainObject;
@@ -81,7 +81,7 @@ uint256 GetChainObjectHash(const CBaseChainObject &bo)
             return pPriors->GetHash();
 
         case CHAINOBJ_PROOF_ROOT:
-            return pNewProofRoot->object;
+            return ::GetHash(pNewProofRoot->object);
 
         case CHAINOBJ_RESERVETRANSFER:
             return pExport->GetHash();
@@ -1422,7 +1422,7 @@ int8_t ObjTypeCode(const CBlockHeaderProof &obj)
     return CHAINOBJ_HEADER;
 }
 
-int8_t ObjTypeCode(const uint256 &obj)
+int8_t ObjTypeCode(const CProofRoot &obj)
 {
     return CHAINOBJ_PROOF_ROOT;
 }
@@ -1488,79 +1488,6 @@ CScript StoreOpRetArray(const std::vector<CBaseChainObject *> &objPtrs)
 
     std::vector<unsigned char> vch(s.begin(), s.end());
     return error ? CScript() : CScript() << OP_RETURN << vch;
-}
-
-void DeleteOpRetObjects(std::vector<CBaseChainObject *> &ora)
-{
-    for (auto pobj : ora)
-    {
-        switch(pobj->objectType)
-        {
-            case CHAINOBJ_HEADER:
-            {
-                delete (CChainObject<CBlockHeaderAndProof> *)pobj;
-                break;
-            }
-
-            case CHAINOBJ_TRANSACTION_PROOF:
-            {
-                delete (CChainObject<CPartialTransactionProof> *)pobj;
-                break;
-            }
-
-            case CHAINOBJ_PROOF_ROOT:
-            {
-                delete (CChainObject<uint256> *)pobj;
-                break;
-            }
-
-            case CHAINOBJ_HEADER_REF:
-            {
-                delete (CChainObject<CBlockHeaderProof> *)pobj;
-                break;
-            }
-
-            case CHAINOBJ_PRIORBLOCKS:
-            {
-                delete (CChainObject<CPriorBlocksCommitment> *)pobj;
-                break;
-            }
-
-            case CHAINOBJ_RESERVETRANSFER:
-            {
-                delete (CChainObject<CReserveTransfer> *)pobj;
-                break;
-            }
-
-            case CHAINOBJ_CROSSCHAINPROOF:
-            {
-                delete (CChainObject<CCrossChainProof> *)pobj;
-                break;
-            }
-
-            case CHAINOBJ_COMPOSITEOBJECT:
-            {
-                delete (CChainObject<CCompositeChainObject> *)pobj;
-                break;
-            }
-
-            case CHAINOBJ_NOTARYSIGNATURE:
-            {
-                delete (CChainObject<CNotaryEvidence> *)pobj;
-                break;
-            }
-
-            default:
-            {
-                printf("ERROR: invalid object type (%u), likely corrupt pointer %p\n", pobj->objectType, pobj);
-                printf("generate code that won't be optimized away %s\n", CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<CAmount>({200000000})).ToUniValue().write(1,2).c_str());
-                printf("This is here to generate enough code for a good break point system chain name: %s\n", ConnectedChains.ThisChain().name.c_str());
-                
-                delete pobj;
-            }
-        }
-    }
-    ora.clear();
 }
 
 std::vector<CBaseChainObject *> RetrieveOpRetArray(const CScript &opRetScript)
@@ -4567,49 +4494,32 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
             CDataStream ds(SER_DISK, PROTOCOL_VERSION);
+
             // if we need to put the partial transaction proof and follow it with reserve transfers, do it
+            // now, we need to put the launch notarization evidence, followed by the import outputs
+            CCrossChainProof evidenceProof;
+            evidenceProof << oneIT.first.second;
             CNotaryEvidence evidence = CNotaryEvidence(destCurID,
                                                        CUTXORef(confirmedSourceNotarization.hash, confirmedSourceNotarization.n),
-                                                       true,
-                                                       std::map<CIdentityID, CIdentitySignature>(),
-                                                       std::vector<CPartialTransactionProof>({oneIT.first.second}),
-                                                       CNotaryEvidence::TYPE_PARTIAL_TXPROOF);
+                                                       CNotaryEvidence::STATE_CONFIRMED,
+                                                       evidenceProof,
+                                                       CNotaryEvidence::TYPE_NOTARY_EVIDENCE);
 
             int serSize = GetSerializeSize(ds, evidence);
-            std::vector<CPartialTransactionProof> allPartialProofs;
 
             // the value should be considered for reduction
             if (serSize > CScript::MAX_SCRIPT_ELEMENT_SIZE)
             {
-                // remove existing proof and break it into chunks
-                evidence.evidence = allPartialProofs;
-                int minOverhead = GetSerializeSize(ds, evidence);
-                // need enough space to store proof
-
-                if (minOverhead > CScript::MAX_SCRIPT_ELEMENT_SIZE - 128)
-                {
-                    LogPrintf("%s: invalid evidence from system %s - evidence too large\n", __func__, EncodeDestination(CIdentityID(ccx.sourceSystemID)).c_str());
-                    return false;
-                }
-
-                std::vector<CPartialTransactionProof> allPartialProofs = oneIT.first.second.BreakApart(CScript::MAX_SCRIPT_ELEMENT_SIZE - (minOverhead + 128));
-                if (!allPartialProofs.size())
+                auto evidenceVec = evidence.BreakApart(CScript::MAX_SCRIPT_ELEMENT_SIZE - 128);
+                if (!evidenceVec.size())
                 {
                     LogPrintf("%s: failed to package evidence from system %s\n", __func__, EncodeDestination(CIdentityID(ccx.sourceSystemID)).c_str());
                     return false;
                 }
-                bool setBase = false;
-                for (auto &oneProof : allPartialProofs)
+                for (auto &oneProof : evidenceVec)
                 {
-                    evidence.evidence = std::vector<CPartialTransactionProof>({oneProof});
-
                     dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-                    tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence)), 0);
-                    if (!setBase)
-                    {
-                        evidence.signatures.clear();
-                        setBase = true;
-                    }
+                    tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &oneProof)), 0);
                 }
             }
             else

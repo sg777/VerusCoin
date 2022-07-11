@@ -1060,22 +1060,20 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 switch (evidence.type)
                 {
                     // notary signature
-                    case CNotaryEvidence::TYPE_NOTARY_SIGNATURE:
+                    case CNotaryEvidence::TYPE_NOTARY_EVIDENCE:
                     {
-                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(evidence.systemID, 
-                                                                                        CNotaryEvidence::NotarySignatureKey(), 
+                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CNotaryEvidence::NotarySignatureKey(), 
                                                                                         evidence.output.hash, 
                                                                                         evidence.output.n)));
                         break;
                     }
-                    // currency start from another chain, confirming launch and recording correct start block
-                    case CNotaryEvidence::TYPE_CURRENCY_START:
+
+                    // data broken into multiple parts
+                    case CNotaryEvidence::TYPE_MULTIPART_DATA:
                     {
-                        break;
-                    }
-                    // evidence that an export from another system is real
-                    case CNotaryEvidence::TYPE_PARTIAL_TXPROOF:
-                    {
+                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CNotaryEvidence::NotarySignatureKey(), 
+                                                                                        evidence.output.hash, 
+                                                                                        evidence.output.n)));
                         break;
                     }
                 }
@@ -1092,6 +1090,23 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             {
                 // always index a notarization, without regard to its status
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::NotaryNotarizationKey())));
+                if (evalCode == EVAL_EARNEDNOTARIZATION)
+                {
+                    CPBaaSNotarization checkNotarization = notarization;
+                    if (checkNotarization.IsMirror())
+                    {
+                        checkNotarization.SetMirror(false);
+                    }
+                    if (!checkNotarization.IsMirror())
+                    {
+                        CNativeHashWriter hw;
+                        hw << checkNotarization;
+                        uint256 objHash = hw.GetHash();
+                        destinations.insert(CIndexID(
+                            CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::EarnedNotarizationKey(), objHash)
+                        ));
+                    }
+                }
 
                 // index all pre-launch notarizations as pre-launch, then one final index for launchclear of
                 // either launch or refund, finally, we create one last index entry for launchcompletemarker
@@ -1167,6 +1182,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 if (finalization.IsConfirmed())
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizationNotarizationID, CObjectFinalization::ObjectFinalizationConfirmedKey())));
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizationNotarizationID, CObjectFinalization::ObjectFinalizationFinalizedKey(), finalization.output.hash, finalization.output.n)));
                 }
                 else if (finalization.IsPending())
                 {
@@ -1175,6 +1191,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 else if (finalization.IsRejected())
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizationNotarizationID, CObjectFinalization::ObjectFinalizationRejectedKey())));
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizationNotarizationID, CObjectFinalization::ObjectFinalizationFinalizedKey(), finalization.output.hash, finalization.output.n)));
                 }
             }
             break;

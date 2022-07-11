@@ -76,7 +76,7 @@ public:
 
     enum EFinalizationType {
         FINALIZE_INVALID = 0,
-        FINALIZE_NOTARIZATION = 1,      // confirmed when notarization is deemed correct / final
+        FINALIZE_NOTARIZATION = 1,      // confirmed with FINALIZE_CONFIRMED when notarization is deemed correct / final
         FINALIZE_EXPORT = 2,            // confirmed when export has no more work to do
         FINALIZE_PROPOSAL = 4,          // confirmed on approval of a proposed output
         FINALIZE_REJECTED = 0x40,       // flag set when confirmation is rejected and/or proven false
@@ -195,12 +195,12 @@ public:
     bool GetOutputTransaction(const CTransaction &initialTx, CTransaction &tx, uint256 &blockHash) const;
 
     // Sign the output object with an ID or signing authority of the ID from the wallet.
-    CNotaryEvidence SignConfirmed(const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, CCurrencyDefinition::EProofProtocol hashType) const;
-    CNotaryEvidence SignRejected(const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, CCurrencyDefinition::EProofProtocol hashType) const;
+    CNotaryEvidence SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EProofProtocol hashType) const;
+    CNotaryEvidence SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EProofProtocol hashType) const;
 
     // Verify that the output object is signed with an ID or signing authority of the ID from the wallet.
-    CIdentitySignature::ESignatureVerification VerifyOutputSignature(const CTransaction &initialTx, const CNotaryEvidence &signature, const COptCCParams &p, uint32_t height) const;
-    CIdentitySignature::ESignatureVerification VerifyOutputSignature(const CTransaction &initialTx, const CNotaryEvidence &signature, uint32_t height) const;
+    CIdentitySignature::ESignatureVerification VerifyOutputSignature(const CTransaction &initialTx, const std::vector<CNotarySignature> &signatureVec, const COptCCParams &p, uint32_t height) const;
+    CIdentitySignature::ESignatureVerification VerifyOutputSignature(const CTransaction &initialTx, const std::vector<CNotarySignature> &signatureVec, uint32_t height) const;
 
     static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentConfirmedFinalizations(const uint160 &currencyID);
     static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentPendingFinalizations(const uint160 &currencyID);
@@ -242,6 +242,12 @@ public:
         return "vrsc::system.finalization.confirmed";
     }
 
+    // enables easily finding all confirmed finalizations
+    static std::string ObjectFinalizationFinalizedKeyName()
+    {
+        return "vrsc::system.finalization.finalized";
+    }
+
     // enables location of rejected finalizations
     static std::string ObjectFinalizationRejectedKeyName()
     {
@@ -280,6 +286,13 @@ public:
     {
         static uint160 nameSpace;
         static uint160 key = CVDXF::GetDataKey(ObjectFinalizationConfirmedKeyName(), nameSpace);
+        return key;
+    }
+
+    static uint160 ObjectFinalizationFinalizedKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(ObjectFinalizationFinalizedKeyName(), nameSpace);
         return key;
     }
 
@@ -350,6 +363,17 @@ public:
     {
         return lastConfirmed != -1;
     }
+
+    bool CorrelatedFinalizationSpends(const std::vector<std::pair<CTransaction, uint256>> &txes,
+                                      std::vector<std::vector<CInputDescriptor>> &spendsToClose,
+                                      std::vector<CInputDescriptor> &extraSpends,
+                                      std::vector<std::vector<CNotaryEvidence>> *pEvidenceSpends=nullptr) const;
+
+    bool CalculateConfirmation(int confirmingIdx, std::set<int> &confirmedOutputNums, std::set<int> &invalidatedOutputNums) const;
+
+    // returns the best notarization with a minimum of minConfirms confirmations by later earned notarizations
+    // without conflicts in agreement. calls out, so should not be called holding locks. returns -1 if none found.
+    int BestConfirmedNotarization(int minConfirms);
 
     UniValue ToUniValue() const;
 };

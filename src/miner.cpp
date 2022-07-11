@@ -780,12 +780,13 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
             dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
             // now, we need to put the launch notarization evidence, followed by the import outputs
+            CCrossChainProof evidenceProof;
+            evidenceProof << pLaunchProof->second;
             CNotaryEvidence evidence = CNotaryEvidence(ConnectedChains.FirstNotaryChain().chainDefinition.GetID(),
                                                        pLaunchProof->first,
                                                        true,
-                                                       std::map<CIdentityID, CIdentitySignature>(),
-                                                       std::vector<CPartialTransactionProof>({pLaunchProof->second}),
-                                                       CNotaryEvidence::TYPE_PARTIAL_TXPROOF);
+                                                       evidenceProof,
+                                                       CNotaryEvidence::TYPE_NOTARY_EVIDENCE);
             notarizationIdx = outputs.size();
             outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence))));
         }
@@ -985,13 +986,15 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             // add export before other outputs
             cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
             dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+
             // now, we need to put the export evidence, followed by the import outputs
+            CCrossChainProof evidenceProof;
+            evidenceProof << pFirstExport->second;
             CNotaryEvidence evidence = CNotaryEvidence(cci.sourceSystemID,
                                                        CUTXORef(uint256(), notarizationIdx),
                                                        true,
-                                                       std::map<CIdentityID, CIdentitySignature>(),
-                                                       std::vector<CPartialTransactionProof>({pFirstExport->second}),
-                                                       CNotaryEvidence::TYPE_PARTIAL_TXPROOF);
+                                                       evidenceProof,
+                                                       CNotaryEvidence::TYPE_NOTARY_EVIDENCE);
             outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence))));
 
             outputs.insert(outputs.end(), importOutputs.begin(), importOutputs.end());
@@ -1918,12 +1921,13 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                 ChainMerkleMountainView mmv = chainActive.GetMMV();
                 mmrRoot = mmv.GetRoot();
                 int32_t confirmedInput = -1;
-                CTxDestination confirmedDest;
+                                                  CTxDestination confirmedDest;
                 CValidationState state;
                 CPBaaSNotarization earnedNotarization;
 
                 if (CPBaaSNotarization::CreateEarnedNotarization(ConnectedChains.FirstNotaryChain(),
                                                                  DestinationToTransferDestination(proposer),
+                                                                 isStake,
                                                                  state,
                                                                  coinbaseTx.vout,
                                                                  earnedNotarization))

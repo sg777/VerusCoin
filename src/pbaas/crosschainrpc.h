@@ -61,6 +61,8 @@ public:
     static uint160 GetConditionID(const uint160 &cid, uint32_t condition);
     static uint160 GetConditionID(const uint160 &cid, const uint160 &condition);
     static uint160 GetConditionID(const uint160 &cid, const uint160 &condition, const uint256 &txid, int32_t voutNum);
+    static uint160 GetConditionID(const uint160 &cid, const uint256 &txid, int32_t voutNum);
+    static uint160 GetConditionID(const uint160 &cid, const uint160 &condition, const uint256 &txid);
     static uint160 GetConditionID(std::string name, uint32_t condition);
 
     UniValue ToUniValue() const;
@@ -448,9 +450,9 @@ public:
     {
         NOTARIZATION_INVALID = 0,           // notarization protocol must have valid type
         NOTARIZATION_AUTO = 1,              // PBaaS autonotarization
-        NOTARIZATION_NOTARY_CONFIRM = 2,    // autonotarization with confirmation by specified notaries
-        NOTARIZATION_NOTARY_CHAINID = 3,    // chain identity controls notarization and currency supply
-        NOTARIZATION_NOTARY_LAST = 3        // chain identity controls notarization and currency supply
+        NOTARIZATION_NOTARY_CONFIRM = 2,    // confirmation by specified notaries with no auto-protocol requirements
+        NOTARIZATION_NOTARY_CHAINID = 3,    // chain identity controls notarization and imports
+        NOTARIZATION_NOTARY_LAST = 3        // last valid value
     };
 
     enum EProofProtocol
@@ -727,6 +729,35 @@ public:
     {
         uint160 Parent;
         return GetID(Name, Parent);
+    }
+
+    std::set<uint160> GetNotarySet() const
+    {
+        std::set<uint160> notarySet;
+        if (notarizationProtocol == NOTARIZATION_NOTARY_CHAINID)
+        {
+            notarySet.insert(GetID());
+        }
+        else
+        {
+            for (auto &oneSigID : notaries)
+            {
+                notarySet.insert(oneSigID);
+            }
+        }
+        return notarySet;
+    }
+
+    int MinimumNotariesConfirm() const
+    {
+        if (notarizationProtocol == NOTARIZATION_NOTARY_CHAINID)
+        {
+            return 1;
+        }
+        else
+        {
+            return minNotariesConfirm;
+        }
     }
 
     uint160 GatewayConverterID() const
@@ -1103,7 +1134,8 @@ public:
     enum ESignatureVerification {
         SIGNATURE_INVALID = 0,
         SIGNATURE_PARTIAL = 1,
-        SIGNATURE_COMPLETE = 2
+        SIGNATURE_COMPLETE = 2,
+        SIGNATURE_EMPTY = 3
     };
 
     uint8_t version;
@@ -1239,7 +1271,8 @@ public:
                                           const std::vector<uint256> &statements, 
                                           const uint160 systemID, 
                                           const std::string &prefixString, 
-                                          const uint256 &msgHash) const;
+                                          const uint256 &msgHash,
+                                          std::vector<std::vector<unsigned char>> *pDupSigs=nullptr) const;
 
     uint32_t Version()
     {
@@ -1292,7 +1325,7 @@ public:
     uint256 blockHash;                      // combination of block hash, block MMR root, and compact power (or external proxy) for the notarization height
     uint256 compactPower;                   // compact power (or external proxy) of the block height notarization to compare
 
-    CProofRoot() : rootHeight(0) {}
+    CProofRoot(int Type=TYPE_PBAAS, int Version=VERSION_CURRENT) : type(Type), version(Version), rootHeight(0) {}
     CProofRoot(const UniValue &uni);
     CProofRoot(const uint160 &sysID, 
                 uint32_t nHeight, 

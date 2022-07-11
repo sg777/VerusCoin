@@ -2987,6 +2987,7 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
             "\nResult:\n"
             "\"bestindex\"                      (int) index of best proof root not confirmed that is provided, confirmed index, or -1"
             "\"latestproofroot\"                (object) latest valid proof root of chain"
+            "\"lastconfirmedproofroot\"         (object) last proof root of chain that has been confirmed"
             "\"currencystates\"                 (int) currency states of target currency and published bridges"
 
             "\nExamples:\n"
@@ -3006,7 +3007,7 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
     }
 
     int lastConfirmed = uni_get_int(find_value(params[0], "lastconfirmed"), -1);
-    if (lastConfirmed == -1)
+    if (lastConfirmed < 0)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid lastconfirmed");
     }
@@ -3018,6 +3019,42 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid proof root array parameter");
     }
 
+    CProofRoot lastConfirmedRoot, lastConfirmedRootClaim;
+    
+    if (uniProofRoots.size() > lastConfirmed)
+    {
+        lastConfirmedRootClaim = CProofRoot(uniProofRoots[lastConfirmed]);
+    }
+    
+    if (!lastConfirmedRootClaim.IsValid())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid last confirmed proof root");
+    }
+
+    LOCK(cs_main);
+
+    UniValue retVal(UniValue::VOBJ);
+
+    // no notarization can be considered confirmed by another chain or system, if it has not already been first confirmed
+    // by the first notary of this one. any confirmed proof root must map to a confirmed notarization on this chain that is
+    // correct and at least before the last confirmed one on this chain
+    std::vector<std::pair<CTransaction, uint256>> notaryTxVec;
+    CChainNotarizationData notaryCND;
+    if (ConnectedChains.FirstNotaryChain().IsValid())
+    {
+        if (GetNotarizationData(ConnectedChains.FirstNotaryChain().GetID(), notaryCND, &notaryTxVec) &&
+            notaryCND.IsConfirmed() &&
+            notaryCND.vtx[notaryCND.lastConfirmed].second.proofRoots.count(ASSETCHAINS_CHAINID))
+        {
+            lastConfirmedRoot = notaryCND.vtx[notaryCND.lastConfirmed].second.proofRoots[ASSETCHAINS_CHAINID];
+        }
+        else
+        {
+            // if we have a valid first notary, then we should have a valid confirmed notarization, or something is wrong
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid notarization for confirmed proof of current chain");
+        }
+    }
+
     for (int i = 0; i < uniProofRoots.size(); i++)
     {
         CProofRoot oneRoot(uniProofRoots[i]);
@@ -3027,12 +3064,11 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
         }
         if (oneRoot.systemID != ASSETCHAINS_CHAINID)
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("oncorrect systemid in proof root for %s", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
+            throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("incorrect systemid in proof root for %s", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
         }
+        // if we have no notary chain, we could have an invalid last confirmed
         proofRootMap.insert(std::make_pair(oneRoot.rootHeight, std::make_pair(i, oneRoot)));
     }
-
-    LOCK(cs_main);
 
     uint32_t nHeight = chainActive.Height();
 
@@ -3051,7 +3087,11 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
         }
     }
 
-    UniValue retVal(UniValue::VOBJ);
+    if (lastConfirmedRoot.IsValid() &&
+        (!validRoots.count(lastConfirmedRootClaim.rootHeight) || lastConfirmedRootClaim.rootHeight > lastConfirmedRoot.rootHeight))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("incorrect claim of confirmed proof root for height %u, %s", lastConfirmedRoot.rootHeight, EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
+    }
 
     if (validRoots.size())
     {
@@ -3066,11 +3106,17 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
 
     // get the latest proof root and currency states
     retVal.pushKV("latestproofroot", CProofRoot::GetProofRoot(nHeight).ToUniValue());
+    if (lastConfirmedRoot.IsValid() && validRoots.count(lastConfirmedRoot.rootHeight))
+    {
+        retVal.pushKV("lastconfirmedproofroot", lastConfirmedRoot.ToUniValue());
+        retVal.pushKV("lastconfirmedindex", validRoots[lastConfirmedRoot.rootHeight]);
+    }
 
     std::set<uint160> currenciesSet({ASSETCHAINS_CHAINID});
     CCurrencyDefinition targetCur;
     uint160 targetCurID;
     UniValue currencyStatesUni(UniValue::VARR);
+    UniValue confirmedCurrencyStatesUni(UniValue::VARR);
     if ((targetCurID = ValidateCurrencyName(EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)), true, &targetCur)).IsNull())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("invalid currency state request for %s", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
@@ -3086,9 +3132,14 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
         if (!currenciesSet.count(targetCurID))
         {
             currencyStatesUni.push_back(ConnectedChains.GetCurrencyState(targetCur, nHeight).ToUniValue());
+            if (lastConfirmedRoot.IsValid())
+            {
+                confirmedCurrencyStatesUni.push_back(ConnectedChains.GetCurrencyState(targetCur, lastConfirmedRoot.rootHeight).ToUniValue());
+            }
         }
     }
-    retVal.pushKV("currencystates", currencyStatesUni);
+    retVal.pushKV("currencystates", lastConfirmedRoot.IsValid() ? confirmedCurrencyStatesUni : currencyStatesUni);
+    retVal.pushKV("latestcurrencystates", currencyStatesUni);
 
     return retVal;
 }
@@ -3100,7 +3151,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
         throw runtime_error(
             "submitacceptednotarization \"{earnednotarization}\" \"{notaryevidence}\"\n"
             "\nFinishes an almost complete notarization transaction based on the notary chain and the current wallet or pubkey.\n"
-            "\nIf successful in submitting the transaction based on all rules, a transaction ID is returned, otherwise, NULL.\n"
+            "If successful in submitting the transaction based on all rules, a transaction ID is returned, otherwise, NULL.\n"
 
             "\nArguments\n"
             "\"earnednotarization\"             (object, required) notarization earned on the other system, which is the basis for this\n"
@@ -3144,7 +3195,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
     }
 
     if (!(evidence = CNotaryEvidence(params[1])).IsValid() ||
-        !evidence.signatures.size() ||
+        !evidence.GetNotarySignatures().size() ||
         evidence.systemID != pbn.currencyID)
     {
         printf("%s: invalid evidence %s\n", __func__, evidence.ToUniValue().write(1,2).c_str());

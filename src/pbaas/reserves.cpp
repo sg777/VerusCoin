@@ -432,23 +432,24 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
         {
             // next output should be export in evidence output followed by supplemental reserve transfers for the export
             evidenceOutStart = importNotarizationOut + 1;
-            CNotaryEvidence evidence;
+            CNotaryEvidence evidence(importTx, evidenceOutStart, evidenceOutStart);
 
-            if (!(evidenceOutStart >= 0 &&
-                importTx.vout.size() > evidenceOutStart &&
-                importTx.vout[evidenceOutStart].scriptPubKey.IsPayToCryptoCondition(p) &&
-                p.IsValid() &&
-                p.evalCode == EVAL_NOTARY_EVIDENCE &&
-                p.vData.size() &&
-                (evidence = CNotaryEvidence(p.vData[0])).IsValid() &&
-                evidence.IsPartialTxProof() &&
-                evidence.evidence.size()))
+            if (!evidence.IsValid())
             {
                 return state.Error(strprintf("%s: cannot retrieve export evidence for import", __func__));
             }
 
+            std::set<int> validEvidenceTypes;
+            validEvidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
+            CNotaryEvidence transactionProof(sysCCITemp.sourceSystemID, evidence.output, evidence.state, evidence.GetSelectEvidence(validEvidenceTypes), CNotaryEvidence::TYPE_NOTARY_EVIDENCE);
+
+            /*
+            // reconstruct evidence if necessary 
+            if (evidence.IsPartialTxProof() &&
+                evidence.evidence.size())
+
             // reconstruct multipart evidence if necessary
-            if (evidence.IsMultipartTxProof())
+            if (evidence.IsMultipartProof())
             {
                 COptCCParams eP;
                 CNotaryEvidence supplementalEvidence;
@@ -470,17 +471,19 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                 }
                 evidence.evidence = std::vector<CPartialTransactionProof>({CPartialTransactionProof(evidence.evidence)});
             }
+            */
 
             CTransaction exportTx;
             p = COptCCParams();
-            if (!(!evidence.evidence[0].GetPartialTransaction(exportTx).IsNull() &&
-                evidence.evidence[0].TransactionHash() == pBaseImport->exportTxId &&
-                exportTx.vout.size() > pBaseImport->exportTxOutNum &&
-                exportTx.vout[pBaseImport->exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
-                p.IsValid() &&
-                p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
-                p.vData.size() &&
-                (ccx = CCrossChainExport(p.vData[0])).IsValid()))
+            if (!(transactionProof.evidence.chainObjects.size() &&
+                  !((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.GetPartialTransaction(exportTx).IsNull() &&
+                  ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.TransactionHash() == pBaseImport->exportTxId &&
+                  exportTx.vout.size() > pBaseImport->exportTxOutNum &&
+                  exportTx.vout[pBaseImport->exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+                  p.IsValid() &&
+                  p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
+                  p.vData.size() &&
+                  (ccx = CCrossChainExport(p.vData[0])).IsValid()))
             {
                 return state.Error(strprintf("%s: invalid export evidence for import", __func__));
             }
@@ -886,19 +889,19 @@ CCurrencyValueMap CCrossChainImport::GetBestPriorConversions(const CTransaction 
     // prices from that, not the updated prices from the actual import
     if (fromSystem != ASSETCHAINS_CHAINID)
     {
+        std::set<int> validEvidenceTypes;
+        validEvidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
+        validEvidenceTypes.insert(CHAINOBJ_EVIDENCEDATA);
+
         CNotaryEvidence evidence;
         CPBaaSNotarization altNot;
         COptCCParams p, q;
         CTransaction lastNotTx;
         uint256 blockHash;
+        int eOutEndTmp;
         if (eOutStart > 0 &&
-            lastTx.vout[eOutStart].scriptPubKey.IsPayToCryptoCondition(p) &&
-            p.IsValid() &&
-            p.evalCode == EVAL_NOTARY_EVIDENCE &&
-            p.vData.size() &&
-            (evidence = CNotaryEvidence(p.vData[0])).IsValid() &&
-            evidence.IsPartialTxProof() &&
-            evidence.evidence.size() &&
+            (evidence = CNotaryEvidence(lastTx, eOutStart, eOutEndTmp)).IsValid() &&
+            evidence.GetSelectEvidence(validEvidenceTypes).chainObjects.size() &&
             evidence.output.IsValid() &&
             !evidence.output.IsOnSameTransaction() &&
             myGetTransaction(evidence.output.hash, lastNotTx, blockHash) &&
@@ -944,6 +947,10 @@ CCurrencyValueMap CCrossChainImport::GetBestPriorConversions(const CTransaction 
     {
         reserveTransfers.clear();
 
+        std::set<int> validEvidenceTypes;
+        validEvidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
+        validEvidenceTypes.insert(CHAINOBJ_EVIDENCEDATA);
+
         // if this is an import from another system, it doesn't matter unless we only care about this one
         if (fromSystem != ASSETCHAINS_CHAINID)
         {
@@ -951,16 +958,12 @@ CCurrencyValueMap CCrossChainImport::GetBestPriorConversions(const CTransaction 
             CPBaaSNotarization altNot;
             COptCCParams p, q;
             CTransaction lastNotTx;
+            int eOutEndTmp;
             uint256 blockHash;
             if (priorImport.sourceSystemID == fromSystem &&
                 eOutStart > 0 &&
-                lastTx.vout[eOutStart].scriptPubKey.IsPayToCryptoCondition(p) &&
-                p.IsValid() &&
-                p.evalCode == EVAL_NOTARY_EVIDENCE &&
-                p.vData.size() &&
-                (evidence = CNotaryEvidence(p.vData[0])).IsValid() &&
-                evidence.IsPartialTxProof() &&
-                evidence.evidence.size() &&
+                (evidence = CNotaryEvidence(lastTx, eOutStart, eOutEndTmp)).IsValid() &&
+                evidence.GetSelectEvidence(validEvidenceTypes).chainObjects.size() &&
                 evidence.output.IsValid() &&
                 !evidence.output.IsOnSameTransaction() &&
                 myGetTransaction(evidence.output.hash, lastNotTx, blockHash) &&

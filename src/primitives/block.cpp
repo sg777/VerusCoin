@@ -609,3 +609,66 @@ std::string CBlock::ToString() const
     s << "\n";
     return s.str();
 }
+
+// used to span multiple outputs if a cross-chain proof becomes too big for just one
+std::vector<CNotaryEvidence> CNotaryEvidence::BreakApart(int maxChunkSize) const
+{
+    std::vector<CNotaryEvidence> retVal;
+
+    CNotaryEvidence scratchEvidence;
+
+    int baseOverhead = ::AsVector(scratchEvidence).size() + 4;
+    assert(maxChunkSize > baseOverhead);
+
+    // we put our entire self into a multipart proof and return multiple parts that must be reconstructed
+    std::vector<unsigned char> serialized = ::AsVector(*this);
+    size_t fullLength = serialized.size();
+    size_t startOffset = 0;
+    int indexNum = 0;
+
+    while (serialized.size())
+    {
+        int curLength = std::min(maxChunkSize - baseOverhead, (int)serialized.size());
+        CEvidenceData oneDataChunk(std::vector<unsigned char>(&(serialized[0]), &(serialized[0]) + curLength), indexNum++, fullLength, startOffset, CEvidenceData::TYPE_MULTIPART_DATA);
+        serialized.erase(serialized.begin(), serialized.begin() + curLength);
+        startOffset += curLength;
+
+        CCrossChainProof oneChunkProof;
+        oneChunkProof << oneDataChunk;
+        retVal.push_back(CNotaryEvidence(systemID, output, state, oneChunkProof, (int)CNotaryEvidence::TYPE_MULTIPART_DATA));
+    }
+
+    return retVal;
+}
+
+CNotaryEvidence::CNotaryEvidence(const std::vector<CNotaryEvidence> &evidenceVec)
+{
+    if (!evidenceVec.size() ||
+        !evidenceVec[0].IsValid() ||
+        evidenceVec[0].type != TYPE_MULTIPART_DATA ||
+        evidenceVec[0].evidence.chainObjects.size() != 1 ||
+        evidenceVec[0].evidence.chainObjects[0]->objectType != CHAINOBJ_EVIDENCEDATA)
+    {
+        return;
+    }
+    size_t fullLength = ((CChainObject<CEvidenceData> *)(evidenceVec[0].evidence.chainObjects[0]))->object.md.totalLength;
+    std::vector<unsigned char> fullVec;
+    int index = 0;
+    for (auto &onePart : evidenceVec)
+    {
+        if (onePart.type != onePart.TYPE_MULTIPART_DATA ||
+            onePart.evidence.chainObjects.size() != 1 ||
+            onePart.evidence.chainObjects[0]->objectType != CHAINOBJ_EVIDENCEDATA ||
+            ((CChainObject<CEvidenceData> *)(onePart.evidence.chainObjects[0]))->object.type != CEvidenceData::TYPE_MULTIPART_DATA ||
+            ((CChainObject<CEvidenceData> *)(onePart.evidence.chainObjects[0]))->object.md.totalLength != fullLength ||
+            ((CChainObject<CEvidenceData> *)(onePart.evidence.chainObjects[0]))->object.md.index != index++ ||
+            ((CChainObject<CEvidenceData> *)(onePart.evidence.chainObjects[0]))->object.md.start != fullVec.size())
+        {
+            version = VERSION_INVALID;
+            return;
+        }
+        std::vector<unsigned char> &onePartVec = ((CChainObject<CEvidenceData> *)(onePart.evidence.chainObjects[0]))->object.dataVec;
+        fullVec.insert(fullVec.end(), onePartVec.begin(), onePartVec.end());
+    }
+    ::FromVector(fullVec, *this);
+}

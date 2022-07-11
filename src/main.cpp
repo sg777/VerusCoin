@@ -4359,8 +4359,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
                         evidence = CNotaryEvidence(p.vData[0]);
                         if (evidence.IsValid() &&
-                            evidence.evidence.size() &&
-                            !(txProofRoot = (txProof = evidence.evidence[0]).CheckPartialTransaction(nTx)).IsNull())
+                            evidence.evidence.chainObjects.size() &&
+                            evidence.evidence.chainObjects[0]->objectType == CHAINOBJ_TRANSACTION_PROOF &&
+                            !(txProofRoot = (txProof = 
+                                ((CChainObject<CPartialTransactionProof> *)evidence.evidence.chainObjects[0])->object).CheckPartialTransaction(nTx)).IsNull())
                         {
                             COptCCParams notaryP;
                             if (nTx.vout.size() > evidence.output.n &&
