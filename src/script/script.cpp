@@ -1182,7 +1182,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 if (finalization.IsConfirmed())
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizationNotarizationID, CObjectFinalization::ObjectFinalizationConfirmedKey())));
-                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizationNotarizationID, CObjectFinalization::ObjectFinalizationFinalizedKey(), finalization.output.hash, finalization.output.n)));
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CObjectFinalization::ObjectFinalizationFinalizedKey(), finalization.output.hash, finalization.output.n)));
                 }
                 else if (finalization.IsPending())
                 {
@@ -1191,7 +1191,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 else if (finalization.IsRejected())
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizationNotarizationID, CObjectFinalization::ObjectFinalizationRejectedKey())));
-                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizationNotarizationID, CObjectFinalization::ObjectFinalizationFinalizedKey(), finalization.output.hash, finalization.output.n)));
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CObjectFinalization::ObjectFinalizationFinalizedKey(), finalization.output.hash, finalization.output.n)));
                 }
             }
             break;
