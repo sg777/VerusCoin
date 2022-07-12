@@ -597,6 +597,11 @@ CTransactionComponentProof::CTransactionComponentProof(TransactionMMView &txView
         {
             if (txMap.elementHashMap.count(idx) && txView.GetProof(elProof, txMap.elementHashMap.find(idx)->second))
             {
+                // TODO: HARDENING - to enable more advanced cross-chain proofs,
+                // we can calculate and include a transaction signature hash merkle tree in the
+                // transaction merkle tree - consider doing that, which would enable us to include and
+                // prove it here.
+                // 
                 elVchObj = ::AsVector(tx.vin[subIndex]);
             }
             break;

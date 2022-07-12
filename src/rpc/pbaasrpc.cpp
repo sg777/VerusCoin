@@ -8143,8 +8143,6 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency definition. see help.");
     }
 
-    LOCK2(cs_main, pwalletMain->cs_wallet);
-
     CCurrencyDefinition checkDef;
     int32_t defHeight;
     if (GetCurrencyDefinition(newCurrency.GetID(), checkDef, &defHeight, checkMempool) &&
