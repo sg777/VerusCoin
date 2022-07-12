@@ -2157,6 +2157,12 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
 
         if (autoProof.chainObjects.size() < 7)
         {
+            // TODO: HARDENING - enable this error
+            // return state.Error(errorPrefix + "insufficient cross chain proof for notarization");
+            LogPrint("notarization", "%s: insufficient cross chain proof for notarization\n");
+        }
+        else
+        {
             for (auto oneObjRef : autoProof.chainObjects)
             {
                 if (!oneObjRef)
@@ -3321,7 +3327,8 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
         bestFork = cnd.forks[0];
     }
 
-    if (bestFork.size() < 3 || !cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(SystemID))
+    if ((bestFork.size() < (ConnectedChains.ThisChain().notarizationProtocol == CCurrencyDefinition::NOTARIZATION_AUTO) ? 3 : 2) ||
+        !cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(SystemID))
     {
         return state.Error("insufficient validator confirmations");
     }
@@ -3705,11 +3712,9 @@ bool CPBaaSNotarization::FindEarnedNotarization(CAddressIndexDbEntry *pEarnedNot
         return retVal;
     }
 
-    uint160 finalizationNotarizationID = CCrossChainRPCData::GetConditionID(currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey());
-    uint160 finalizedNotarizationKey = CCrossChainRPCData::GetConditionID(finalizationNotarizationID,
-                                                                            CObjectFinalization::ObjectFinalizationFinalizedKey(),
-                                                                            earnedNotarizationIndex.first.txhash,
-                                                                            earnedNotarizationIndex.first.index);
+    uint160 finalizedNotarizationKey = CCrossChainRPCData::GetConditionID(CObjectFinalization::ObjectFinalizationFinalizedKey(),
+                                                                          earnedNotarizationIndex.first.txhash,
+                                                                          earnedNotarizationIndex.first.index);
     addressIndex.clear();
     if (!GetAddressIndex(finalizedNotarizationKey, CScript::P2IDX, addressIndex) ||
         !addressIndex.size())
