@@ -2157,6 +2157,12 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
 
         if (autoProof.chainObjects.size() < 7)
         {
+            // TODO: HARDENING - enable this error
+            // return state.Error(errorPrefix + "insufficient cross chain proof for notarization");
+            LogPrint("notarization", "%s: insufficient cross chain proof for notarization\n");
+        }
+        else
+        {
             for (auto oneObjRef : autoProof.chainObjects)
             {
                 if (!oneObjRef)
