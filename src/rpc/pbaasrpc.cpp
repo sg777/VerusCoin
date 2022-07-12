@@ -8134,7 +8134,7 @@ UniValue getsaplingtree(const UniValue& params, bool fHelp)
 extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
 
 // TODO: HARDENING - add this check to validation in PrecheckCurrencyDefinition
-CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj, uint32_t height, const uint160 systemID, std::map<uint160, std::string> &requiredDefinitions)
+CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj, uint32_t height, const uint160 systemID, std::map<uint160, std::string> &requiredDefinitions, bool checkMempool)
 {
     CCurrencyDefinition newCurrency(uniObj);
 
@@ -8147,7 +8147,10 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
 
     CCurrencyDefinition checkDef;
     int32_t defHeight;
-    if (GetCurrencyDefinition(newCurrency.GetID(), checkDef, &defHeight, true) && !(newCurrency.GetID() == ASSETCHAINS_CHAINID && !defHeight))
+    if (GetCurrencyDefinition(newCurrency.GetID(), checkDef, &defHeight, checkMempool) &&
+        defHeight < height &&
+        !(newCurrency.GetID() == ASSETCHAINS_CHAINID &&
+         !defHeight))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, newCurrency.name + " chain already defined. see help.");
     }

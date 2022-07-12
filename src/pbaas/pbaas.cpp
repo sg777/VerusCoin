@@ -1759,12 +1759,21 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
             LOCK(mempool.cs);
 
             std::map<uint160, std::string> requiredDefinitions;
-            if (!ValidateNewUnivalueCurrencyDefinition(newCurrency.ToUniValue(), height, ASSETCHAINS_CHAINID, requiredDefinitions).IsValid())
+            try
             {
-                LogPrint("currencydefinition", "%s: Currency definition in output violates current definition rules.\n%s\n", __func__, newCurrency.ToUniValue().write(1,2).c_str());
+                if (!ValidateNewUnivalueCurrencyDefinition(newCurrency.ToUniValue(), height, ASSETCHAINS_CHAINID, requiredDefinitions, false).IsValid())
+                {
+                    LogPrint("currencydefinition", "%s: Currency definition in output violates current definition rules.\n%s\n", __func__, newCurrency.ToUniValue().write(1,2).c_str());
+                    return state.Error("Currency definition in output violates current definition rules");
+                }
+            }
+            catch(const UniValue &e)
+            {
+                LogPrint("currencydefinition", "%s: %s\n", __func__, uni_get_str(find_value(e, "message")).c_str());
+                LogPrint("currencydefinition", "%s\n", newCurrency.ToUniValue().write(1,2).c_str());
                 return state.Error("Currency definition in output violates current definition rules");
             }
-
+            
             for (auto &input : spendingTx.vin)
             {
                 COptCCParams p;
