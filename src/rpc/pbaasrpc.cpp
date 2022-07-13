@@ -8153,7 +8153,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         throw JSONRPCError(RPC_INVALID_PARAMETER, newCurrency.name + " chain already defined. see help.");
     }
 
-    bool currentChainDefinition = newCurrency.GetID() == ASSETCHAINS_CHAINID && !defHeight && _IsVerusActive();
+    bool currentChainDefinition = newCurrency.GetID() == ASSETCHAINS_CHAINID && _IsVerusActive();
 
     if (newCurrency.parent.IsNull() && !currentChainDefinition)
     {

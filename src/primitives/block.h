@@ -1255,7 +1255,7 @@ public:
     uint32_t version;
     std::vector<CBaseChainObject *> chainObjects;    // this owns the memory associated with chainObjects and deletes it on destructions
 
-    CCrossChainProof() : version(VERSION_CURRENT) {}
+    CCrossChainProof(uint32_t nVersion=VERSION_CURRENT) : version(nVersion) {}
     CCrossChainProof(const CCrossChainProof &oldObj)
     {
         CDataStream s(SER_NETWORK, PROTOCOL_VERSION);

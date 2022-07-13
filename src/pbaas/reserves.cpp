@@ -426,16 +426,20 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
         }
 
         // TODO: HARDENING - review to ensure that if this is skipped an error is thrown when appropriate
-        if (!isPBaaSDefinitionOrLaunch ||
-            pBaseImport->importCurrencyID == ASSETCHAINS_CHAINID ||
-            (!pBaseImport->importCurrencyID.IsNull() && pBaseImport->importCurrencyID == ConnectedChains.ThisChain().GatewayConverterID()))
+        if (!isPBaaSDefinitionOrLaunch &&
+            (pBaseImport->importCurrencyID == ASSETCHAINS_CHAINID ||
+             (!pBaseImport->importCurrencyID.IsNull() && pBaseImport->importCurrencyID == ConnectedChains.ThisChain().GatewayConverterID())))
         {
             // next output should be export in evidence output followed by supplemental reserve transfers for the export
             evidenceOutStart = importNotarizationOut + 1;
-            CNotaryEvidence evidence(importTx, evidenceOutStart, evidenceOutStart);
+            int afterEvidence;
+            CNotaryEvidence evidence(importTx, evidenceOutStart, afterEvidence);
 
             if (!evidence.IsValid())
             {
+                // TODO: remove the line assigning evidence just below, as it is only for debugging
+                evidence = CNotaryEvidence(importTx, evidenceOutStart, afterEvidence);
+
                 return state.Error(strprintf("%s: cannot retrieve export evidence for import", __func__));
             }
 

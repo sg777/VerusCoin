@@ -801,51 +801,39 @@ CProofRoot CProofRoot::GetProofRoot(uint32_t blockHeight)
                       chainActive[blockHeight]->chainPower.CompactChainPower());
 }
 
-CNotaryEvidence::CNotaryEvidence(const CTransaction &tx, int outputNum, int &afterEvidence)
+CNotaryEvidence::CNotaryEvidence(const CTransaction &tx, int outputNum, int &afterEvidence) :
+    type(CNotaryEvidence::TYPE_NOTARY_EVIDENCE), version(CNotaryEvidence::VERSION_INVALID)
 {
     AssertLockHeld(cs_main);
     afterEvidence = outputNum;
-    for (int i = outputNum; i < tx.vout.size(); i++)
+
+    COptCCParams p;
+
+    if (afterEvidence >= 0 &&
+        tx.vout.size() > afterEvidence &&
+        tx.vout[afterEvidence++].scriptPubKey.IsPayToCryptoCondition(p) &&
+        p.IsValid() &&
+        p.evalCode == EVAL_NOTARY_EVIDENCE &&
+        p.vData.size() &&
+        (*this = CNotaryEvidence(p.vData[0])).IsValid())
     {
-        CNotaryEvidence evidence;
-        COptCCParams p;
-
-        if (!(afterEvidence >= 0 &&
-              tx.vout.size() > afterEvidence &&
-              tx.vout[afterEvidence++].scriptPubKey.IsPayToCryptoCondition(p) &&
-              p.IsValid() &&
-              p.evalCode == EVAL_NOTARY_EVIDENCE &&
-              p.vData.size() &&
-              (evidence = CNotaryEvidence(p.vData[0])).IsValid()))
-        {
-            evidence.evidence = CCrossChainProof();
-            version = VERSION_INVALID;
-            return;
-        }
-
-        if (evidence.IsMultipartProof())
+        if (IsMultipartProof())
         {
             COptCCParams eP;
             CNotaryEvidence supplementalEvidence;
-            std::vector<CNotaryEvidence> partsVector({evidence});
+            std::vector<CNotaryEvidence> partsVector({*this});
             while (tx.vout.size() > afterEvidence &&
-                   tx.vout[afterEvidence++].scriptPubKey.IsPayToCryptoCondition(eP) &&
-                   eP.IsValid() &&
-                   eP.evalCode == EVAL_NOTARY_EVIDENCE &&
-                   eP.vData.size() &&
-                   (supplementalEvidence = CNotaryEvidence(eP.vData[0])).IsValid() &&
-                   supplementalEvidence.IsMultipartProof() &&
-                   supplementalEvidence.evidence.chainObjects.size() == 1)
+                tx.vout[afterEvidence++].scriptPubKey.IsPayToCryptoCondition(eP) &&
+                eP.IsValid() &&
+                eP.evalCode == EVAL_NOTARY_EVIDENCE &&
+                eP.vData.size() &&
+                (supplementalEvidence = CNotaryEvidence(eP.vData[0])).IsValid() &&
+                supplementalEvidence.IsMultipartProof() &&
+                supplementalEvidence.evidence.chainObjects.size() == 1)
             {
                 partsVector.push_back(supplementalEvidence);
             }
-            if (!eP.IsValid())
-            {
-                evidence.evidence = CCrossChainProof();
-                version = VERSION_INVALID;
-                return;
-            }
-            evidence = CNotaryEvidence(partsVector);
+            *this = CNotaryEvidence(partsVector);
         }
     }
 }
@@ -3874,8 +3862,12 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         }
     }
 
+    uint32_t nHeight;
+
     {
         LOCK2(cs_main, mempool.cs);
+
+        nHeight = chainActive.Height();
 
         // check to see if any of the pending notarizations match either our last confirmed
         // or the one before it
@@ -4004,6 +3996,26 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         // now, allEvidence has all signatures that were used to confirm on this chain
         // now add the supporting evidence
         
+    }
+
+    // allEvidence has all signatures that were used to confirm on this chain
+    // now, if we are auto-notarizing, add the supporting evidence
+    if (pNotaryCurrency->notarizationProtocol == pNotaryCurrency->NOTARIZATION_AUTO)
+    {
+        // make sure we have a more recent notarization, after the one we are posting, that is consistent with the other chain/system
+
+        CProofRoot firstProofRoot = CProofRoot::GetProofRoot(nHeight);
+        /*
+        CHAINOBJ_PROOF_ROOT
+        CHAINOBJ_TRANSACTION_PROOF
+        CHAINOBJ_HEADER_REF
+
+        CHAINOBJ_TRANSACTION_PROOF
+        CHAINOBJ_HEADER_REF
+
+        CHAINOBJ_TRANSACTION_PROOF
+        CHAINOBJ_HEADER_REF
+        */
     }
 
     CPBaaSNotarization lastConfirmedNotarization = cnd.vtx[cnd.lastConfirmed].second;
