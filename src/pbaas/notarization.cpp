@@ -27,6 +27,7 @@ extern string VERUS_CHAINNAME;
 extern string PBAAS_HOST;
 extern string PBAAS_USERPASS;
 extern int32_t PBAAS_PORT;
+extern int32_t VERUS_MIN_STAKEAGE;
 
 CNotaryEvidence::CNotaryEvidence(const UniValue &uni)
 {
@@ -2237,7 +2238,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
             priorPower = CChainPower::ExpandCompactPower(priorHeaderProof.GetBlockPower());
             bool thirdIsStake = (priorPower - thisPower).chainStake > arith_uint256(0);
 
-            if (firstIsStake == secondIsStake || secondIsStake == thirdIsStake)
+            if (earnedNotarization.notarizationHeight > VERUS_MIN_STAKEAGE && (firstIsStake == secondIsStake || secondIsStake == thirdIsStake))
             {
                 return state.Error(errorPrefix + "invalid validation alternation for one or more notarizations");
             }
@@ -2715,9 +2716,9 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     // for decentralized notarization, we must alternate between proof of stake and proof of work blocks
     // to confirm a prior earned notarization
     if (blockPeriodNumber <= priorBlockPeriod ||
-        (ConnectedChains.ThisChain().notarizationProtocol == CCurrencyDefinition::NOTARIZATION_AUTO &&
-         ((isStake && mapBlockIt->second->IsVerusPOSBlock()) ||
-         (!isStake && !mapBlockIt->second->IsVerusPOSBlock()))))
+        (height > VERUS_MIN_STAKEAGE &&
+         (ConnectedChains.ThisChain().notarizationProtocol == CCurrencyDefinition::NOTARIZATION_AUTO &&
+         ((isStake && mapBlockIt->second->IsVerusPOSBlock()) || (!isStake && !mapBlockIt->second->IsVerusPOSBlock())))))
     {
         return state.Error("ineligible");
     }
