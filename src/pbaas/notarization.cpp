@@ -1602,7 +1602,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
 
     if (pEvidenceVec)
     {
-        pEvidenceVec->clear();
+        *pEvidenceVec = std::vector<std::vector<CNotaryEvidence>>(vtx.size());
     }
 
     std::map<CUTXORef, int> notarizationOutputMap;
@@ -1964,7 +1964,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
         if (associatedIdx == -1)
         {
             // for finalizations that have no found association, we warn
-            printf("%s: no associated notarization located for confirmed finalization:\n%s\n", __func__, confirmedNotarizationOutput.ToString().c_str());
+            // printf("%s: no associated notarization located for confirmed finalization:\n%s\n", __func__, confirmedNotarizationOutput.ToString().c_str());
             LogPrint("notarization", "%s: no associated notarization located for confirmed finalization:\n%s\n", __func__, confirmedNotarizationOutput.ToString().c_str());
         }
     }
@@ -3874,6 +3874,10 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         // or the one before it
         int confirmingIdx = 0;
 
+        bool isFirstLaunchingNotarization = crosschainCND.vtx[confirmingIdx].second.IsDefinitionNotarization() ||
+                                            crosschainCND.vtx[confirmingIdx].second.IsPreLaunch() ||
+                                            crosschainCND.vtx[confirmingIdx].second.IsBlockOneNotarization();
+
         CAddressIndexDbEntry earnedNotarizationIndexEntry;
 
         if (crosschainCND.IsConfirmed() || crosschainCND.vtx.size() == 1)
@@ -3881,7 +3885,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             // ensure that we at least agree with the last notarization, or we can't submit
             confirmingIdx = crosschainCND.IsConfirmed() ? crosschainCND.lastConfirmed : 0;
 
-            if (!crosschainCND.vtx[confirmingIdx].second.IsDefinitionNotarization() &&
+            if (!isFirstLaunchingNotarization &&
                 !crosschainCND.vtx[confirmingIdx].second.FindEarnedNotarization(&earnedNotarizationIndexEntry))
             {
                 return retVal;
@@ -3889,7 +3893,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         }
 
         // if we have pending notarizations, see which of the possible ones we agree with
-        if (!(crosschainCND.vtx.size() == 1 && crosschainCND.vtx[confirmingIdx].second.IsDefinitionNotarization()))
+        if (!(crosschainCND.vtx.size() == 1 && isFirstLaunchingNotarization))
         {
             // go backwards until we find one to confirm or fail
             for (int i = crosschainCND.vtx.size() - 1; i > 0; i--)
@@ -3933,7 +3937,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             }
         }
 
-        if (crosschainCND.vtx[confirmingIdx].second.IsDefinitionNotarization())
+        if (isFirstLaunchingNotarization)
         {
             // get and prove our block 1 notarization on the coinbase, if this is the definition notarization
             CPBaaSNotarization launchNotarization;
@@ -3941,6 +3945,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                                                     notarizationTxInfo,
                                                     launchNotarization,
                                                     firstProofNotarization);
+
             if (::AsVector(firstProofNotarization) != ::AsVector(cnd.vtx[cnd.lastConfirmed].second))
             {
                 LogPrintf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
@@ -3949,7 +3954,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             }
         }
 
-        if (!(notarizationTxInfo.second.IsValid() && notarizationTxInfo.second.components.size()))
+        if (!isFirstLaunchingNotarization && !(notarizationTxInfo.second.IsValid() && notarizationTxInfo.second.components.size()))
         {
             LogPrintf("Cannot construct notarization proof for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
             printf("Cannot construct notarization proof for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
@@ -3957,7 +3962,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         }
 
         if (!cnd.CorrelatedFinalizationSpends(notarizationTxes, spendsToClose, extraSpends, &evidenceVec) ||
-            !evidenceVec[cnd.lastConfirmed].size())
+            (!evidenceVec[cnd.lastConfirmed].size()))
         {
             LogPrint("notarization", "Cannot correlate adequate proof evidence for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
             return retVal;
