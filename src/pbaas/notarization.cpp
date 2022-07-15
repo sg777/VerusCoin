@@ -2238,7 +2238,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
             priorPower = CChainPower::ExpandCompactPower(priorHeaderProof.GetBlockPower());
             bool thirdIsStake = (priorPower - thisPower).chainStake > arith_uint256(0);
 
-            if (earnedNotarization.notarizationHeight > VERUS_MIN_STAKEAGE && (firstIsStake == secondIsStake || secondIsStake == thirdIsStake))
+            if (lastConfirmedNotarization.notarizationHeight > (VERUS_MIN_STAKEAGE << 1) && (firstIsStake == secondIsStake || secondIsStake == thirdIsStake))
             {
                 return state.Error(errorPrefix + "invalid validation alternation for one or more notarizations");
             }
@@ -2716,7 +2716,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     // for decentralized notarization, we must alternate between proof of stake and proof of work blocks
     // to confirm a prior earned notarization
     if (blockPeriodNumber <= priorBlockPeriod ||
-        (height > VERUS_MIN_STAKEAGE &&
+        (height > (VERUS_MIN_STAKEAGE << 1) &&
          (ConnectedChains.ThisChain().notarizationProtocol == CCurrencyDefinition::NOTARIZATION_AUTO &&
          ((isStake && mapBlockIt->second->IsVerusPOSBlock()) || (!isStake && !mapBlockIt->second->IsVerusPOSBlock())))))
     {
