@@ -8209,10 +8209,10 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Mapped currency definition requires zero initial supply and no possible conversions");
             }
             CCurrencyDefinition systemCurrency = ConnectedChains.GetCachedCurrency(newCurrency.systemID);
-            if (!systemCurrency.IsValid() ||
-                !systemCurrency.IsGateway() ||
-                systemCurrency.launchSystemID != ASSETCHAINS_CHAINID ||
-                systemCurrency.proofProtocol != systemCurrency.PROOF_ETHNOTARIZATION)
+            if (systemCurrency.IsValid() &&
+                (!systemCurrency.IsGateway() ||
+                 systemCurrency.launchSystemID != ASSETCHAINS_CHAINID ||
+                 systemCurrency.proofProtocol != systemCurrency.PROOF_ETHNOTARIZATION))
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Ethereum protocol networks are the only mapped currency type currently supported");
             }
@@ -8292,6 +8292,18 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency " + oneCurName + " in \"currencies\" 1");
             }
+            if (requiredDefinitions.count(oneCurID))
+            {
+                oneCurName = requiredDefinitions[oneCurID];
+            }
+            else
+            {
+                printf("%s: currency not found: name(%s), ID(%s)\nstored names and IDs:\n", __func__, oneCurName.c_str(), EncodeDestination(CIdentityID(oneCurID)).c_str());
+                for (auto &onePair : requiredDefinitions)
+                {
+                    printf("ID(%s), name(%s)\n", EncodeDestination(CIdentityID(onePair.first)).c_str(), onePair.second.c_str());
+                }
+            }
             // if the new currency is a PBaaS or gateway converter, and this is the PBaaS chain or gateway,
             // it will be created in this tx as well
             if (newCurrency.IsGatewayConverter() && oneCurID == newCurrency.parent)
@@ -8306,8 +8318,12 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
 
             uint160 parent;
             std::string cleanName = CleanName(oneCurName + "@", parent);
+            if (cleanName.empty())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot decode currency name " + oneCurName + " in \"currencies\"");
+            }
 
-            // the parent of the currency does not require a new definition
+            // the parent of the currency cannot require a new definition
             if (oneCurID != newCurrency.parent)
             {
                 if (parent != newCurrency.parent || cleanName == "")
@@ -8316,6 +8332,10 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
                 }
                 requiredDefinitions[oneCurID] = oneCurName;
             }
+        }
+        else
+        {
+            requiredDefinitions.erase(oneCurID);
         }
         currencySet.insert(oneCurID);
     }

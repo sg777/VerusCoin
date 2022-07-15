@@ -1754,13 +1754,39 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
 
         // in this case, it must either spend an identity or be on an import transaction
         // that has a reserve transfer which imports the currency
+        std::map<uint160, std::string> newDefinitions;
+        std::string newSystemName;
+        CCurrencyDefinition newSystem;
         if (!isImportDefinition)
         {
+            std::vector<CCurrencyDefinition> currencyDefs = CCurrencyDefinition::GetCurrencyDefinitions(spendingTx);
+
             LOCK(mempool.cs);
 
-            std::map<uint160, std::string> requiredDefinitions;
+            if (currencyDefs.size() > 1)
+            {
+                for (auto &oneCur : currencyDefs)
+                {
+                    if (oneCur.IsPBaaSChain() || oneCur.IsGateway())
+                    {
+                        newSystemName = oneCur.name + "." + ConnectedChains.GetFriendlyCurrencyName(oneCur.parent);
+                        newSystem = oneCur;
+                        newDefinitions.insert(std::make_pair(oneCur.GetID(), newSystemName));
+                    }
+                    else if (!(oneCur.IsPBaaSChain() || oneCur.IsGateway()) && newSystem.IsValid())
+                    {
+                        if (oneCur.parent == newSystem.GetID())
+                        {
+                            newDefinitions.insert(std::make_pair(oneCur.GetID(), oneCur.name + "." + newSystemName));
+                        }
+                    }
+                }
+            }
             try
             {
+                std::map<uint160, std::string> requiredDefinitions = newDefinitions;
+                // TODO: HARDENING - Need to prepare to validate all newly mapped and defined supporting currencies
+                // skips the case where we are defining a new mapped currency, need to cover that
                 if (!ValidateNewUnivalueCurrencyDefinition(newCurrency.ToUniValue(), height, ASSETCHAINS_CHAINID, requiredDefinitions, false).IsValid())
                 {
                     LogPrint("currencydefinition", "%s: Currency definition in output violates current definition rules.\n%s\n", __func__, newCurrency.ToUniValue().write(1,2).c_str());
