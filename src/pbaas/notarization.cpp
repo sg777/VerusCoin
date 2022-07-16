@@ -1676,6 +1676,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
 
             if (existingFinalization.IsValid() && existingFinalization.evidenceOutputs.size())
             {
+                CTransaction finalizationTx;
                 const CTransaction *pEvidenceOutputTx = nullptr;
                 if (existingFinalization.output.IsOnSameTransaction())
                 {
@@ -1685,7 +1686,6 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                 {
                     LOCK(mempool.cs);
                     uint256 hashBlock;
-                    CTransaction finalizationTx;
                     if (myGetTransaction(onePending.second.txIn.prevout.hash, finalizationTx, hashBlock))
                     {
                         pEvidenceOutputTx = &finalizationTx;
@@ -1812,6 +1812,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
 
             if (confirmedFinalization.evidenceOutputs.size() || confirmedFinalization.evidenceInputs.size())
             {
+                CTransaction finalizationTx;
                 const CTransaction *pEvidenceOutputTx = nullptr;
                 if (confirmedFinalization.output.IsOnSameTransaction())
                 {
@@ -1821,7 +1822,6 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                 {
                     LOCK(mempool.cs);
                     uint256 hashBlock;
-                    CTransaction finalizationTx;
                     if (myGetTransaction(oneConfirmed.second.txIn.prevout.hash, finalizationTx, hashBlock))
                     {
                         pEvidenceOutputTx = &finalizationTx;
