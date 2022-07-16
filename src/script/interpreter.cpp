@@ -1199,7 +1199,7 @@ uint256 SignatureHash(
     const CAmount& amount,
     uint32_t consensusBranchId,
     const PrecomputedTransactionData* cache,
-    UniValue *pHashedDataReturn=nullptr)
+    UniValue *pHashedDataReturn)
 {
     if (nIn >= txTo.vin.size() && nIn != NOT_AN_INPUT) {
         //  nIn out of range
