@@ -1995,6 +1995,11 @@ bool DehydrateChainObject(OStream &s, const CBaseChainObject *pobj)
             s << *(CChainObject<CCompositeChainObject> *)pobj;
             return true;
         }
+        case CHAINOBJ_NOTARYSIGNATURE:
+        {
+            s << *(CChainObject<CNotarySignature> *)pobj;
+            return true;
+        }
     }
     return false;
 }

@@ -1518,18 +1518,31 @@ bool CPBaaSNotarization::IsNotarizationRejected(const CPBaaSNotarization &notari
 
 bool CChainNotarizationData::CalculateConfirmation(int confirmingIdx, std::set<int> &confirmedOutputNums, std::set<int> &invalidatedOutputNums) const
 {
-    int forkIdx = -1;
+    int forkIdx = -1, forkPos = -1;
+
     if (confirmingIdx != lastConfirmed)
     {
         // if the third notarization does not equal the last confirmed notarization, it
         // must equal a last pending notarization to confirm. that will always be the
         // first non-confirmed entry in a fork of the notarization data, if it is present
+        int ignoreBelow = -1;
         for (int i = 0; i < forks.size(); i++)
         {
-            if (forks[i].size() > 1 && confirmingIdx == (forks[i])[1])
+            if (forks[i].size() > 1)
             {
-                forkIdx = i;
-                break;
+                for (int j = forks[i].size() - 1; j >= 0; j--)
+                {
+                    if (forks[i][j] == confirmingIdx)
+                    {
+                        forkIdx = i;
+                        forkPos = j;
+                        break;
+                    }
+                }
+                if (forkIdx > -1)
+                {
+                    break;
+                }
             }
         }
         // if it wasn't the confirmed entry and wasn't pending confirmation, it is referring to an
@@ -1543,45 +1556,44 @@ bool CChainNotarizationData::CalculateConfirmation(int confirmingIdx, std::set<i
 
     if (forkIdx > -1)
     {
-
         // if this finalization is either confirmed or invalidated by the new accepted notarization,
         // add a spend here
-        int forkElemIdx;
-        for (forkElemIdx = 0; forkElemIdx < forks[forkIdx].size(); forkElemIdx++)
+        for (int i = 0; i <= forkPos; i++)
         {
-            int vtxIdx = forks[forkIdx][forkElemIdx];
-            if (vtxIdx == confirmingIdx)
-            {
-                break;
-            }
-            confirmedOutputNums.insert(vtxIdx);
-        }
-        if (forkElemIdx == forks[forkIdx].size())
-        {
-            LogPrint("notarization", "%s: invalid prior notarization index or index not found\n", __func__);
-            return false;
+            confirmedOutputNums.insert(forks[forkIdx][i]);
         }
 
         for (int i = 0; i < forks.size(); i++)
         {
+            // already did the fork that is our focus
             if (i == forkIdx)
             {
                 continue;
             }
+            bool failed = false;
+
             int j;
-            for (j = 0; j <= forkElemIdx && j < forks[i].size(); j++)
+            for (j = 0; j < forks[i].size(); j++)
             {
-                if (forks[i][j] != forks[forkIdx][j])
+                // if we reach the end, the rest after are ignored
+                if (forks[i][j] == confirmingIdx)
                 {
                     break;
                 }
-            }
-            if (j <= forkElemIdx && j < forks[i].size())
-            {
-                // invalidate every element from j forward
-                for (; j < forks[i].size(); j++)
+                if (confirmedOutputNums.count(forks[i][j]))
                 {
-                    invalidatedOutputNums.insert(forks[i][j]);
+                    continue;
+                }
+                // it did not derive from the newly confirmed index, so it is invalid and all after this
+                failed = true;
+                break;
+            }
+            // if failed, invalidate all until the end, otherwise, ignore all until the end
+            if (failed)
+            {
+                for (int k = j; k < forks[i].size(); k++)
+                {
+                    invalidatedOutputNums.insert(forks[i][k]);
                 }
             }
         }
@@ -3316,8 +3328,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
         bestFork = cnd.forks[0];
     }
 
-    if ((bestFork.size() < (ConnectedChains.ThisChain().notarizationProtocol == CCurrencyDefinition::NOTARIZATION_AUTO) ? 3 : 2) ||
-        !cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(SystemID))
+    bool isFirstConfirmedCND = cnd.vtx[cnd.lastConfirmed].second.IsBlockOneNotarization() || cnd.vtx[cnd.lastConfirmed].second.IsDefinitionNotarization();
+
+    if ((bestFork.size() < ((ConnectedChains.ThisChain().notarizationProtocol == CCurrencyDefinition::NOTARIZATION_AUTO) ? 3 : 2)) ||
+        (!isFirstConfirmedCND && !cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(SystemID)))
     {
         return state.Error("insufficient validator confirmations");
     }
@@ -3404,11 +3418,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
         return state.Error("no-valid-unconfirmed");
     }
 
-    if (!proofRootArr.isArray() || !proofRootArr.size())
-    {
-        return state.Error("no-valid-unconfirmed");
-    }
-
     bool retVal = false;
     int firstNotarizationIndex = -1;
 
@@ -3421,7 +3430,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
 
         if (proofIt != cnd.vtx[idx].second.proofRoots.end())
         {
-            if (proofIt->second.rootHeight > eligibleHeight)
+            if (firstNotarizationIndex = -1 && proofIt->second.rootHeight > eligibleHeight)
             {
                 firstNotarizationIndex = idx;
                 signingHeight = proofIt->second.rootHeight + 1;
