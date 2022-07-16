@@ -178,23 +178,25 @@ void TxToJSONExpanded(const CTransaction& tx, const uint256 hashBlock, UniValue&
                 uint256 hash; CTransaction txFrom;
                 if (GetTransaction(txin.prevout.hash,txFrom,hash,false))
                 {
-                    /*
-                    // TODO: HARDENING - it would be good to add the signature hash for every input, but we need
-                    // to reliably retrieve the hashtype (ie. SIGHASH_ALL, SIGHASH_SINGLE, etc.) from all transaction input types
-                    COptCCParams p;
-                    if (txFrom.vout[txin.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-                        p.IsValid() &&
-                        p.version == p.VERSION_V3)
+                    if (LogAcceptCategory("signaturehash"))
                     {
-
+                        // TODO: HARDENING - it would be good to add the signature hash for every input, but we need
+                        // to reliably retrieve the hashtype (ie. SIGHASH_ALL, SIGHASH_SINGLE, etc.) from all transaction input types
+                        // for now, this is temporary for debugging
+                        UniValue signatureHashInfo(UniValue::VOBJ);
+                        SignatureHash(txFrom.vout[txin.prevout.n].scriptPubKey, 
+                                      tx, 
+                                      i, 
+                                      SIGHASH_ALL, 
+                                      txFrom.vout[txin.prevout.n].nValue,
+                                      CurrentEpochBranchId(nHeight, Params().GetConsensus()),
+                                      nullptr,
+                                      &signatureHashInfo);
+                        if (signatureHashInfo.getKeys().size())
+                        {
+                            in.pushKV("signaturehashinfo", signatureHashInfo);
+                        }
                     }
-                    SignatureHash(txFrom.vout[txin.prevout.n].scriptPubKey, 
-                                  tx, 
-                                  i, 
-                                  SIGHASH_ALL, 
-                                  txFrom.vout[txin.prevout.n].nValue,
-                                  CurrentEpochBranchId(nHeight, Params().GetConsensus()));
-                    */
 
                     txnouttype typeRet;
                     std::vector<CTxDestination> addressRet;
