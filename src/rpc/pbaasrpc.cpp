@@ -1403,7 +1403,14 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
                 cnd.vtx[cnd.lastConfirmed].second.currencyStates.count(chainID))
             {
                 ret.push_back(Pair("bestheight", (int64_t)cnd.vtx[cnd.lastConfirmed].second.notarizationHeight));
-                ret.push_back(Pair("lastconfirmedheight", (int64_t)cnd.vtx[cnd.lastConfirmed].second.notarizationHeight));
+                if (cnd.vtx[cnd.lastConfirmed].second.IsPreLaunch() && cnd.vtx[cnd.lastConfirmed].second.IsLaunchConfirmed())
+                {
+                    ret.push_back(Pair("lastconfirmedheight", 0));
+                }
+                else
+                {
+                    ret.push_back(Pair("lastconfirmedheight", (int64_t)cnd.vtx[cnd.lastConfirmed].second.notarizationHeight));
+                }
                 ret.push_back(Pair("bestcurrencystate", lastStateUni));
                 ret.push_back(Pair("lastconfirmedcurrencystate", lastStateUni));
             }
@@ -2686,8 +2693,6 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                           pendingFinalizations) &&
         pendingFinalizations.size())
     {
-        uint160 pendingNotarizationKey = CCrossChainRPCData::GetConditionID(finalizeNotarizationKey, CObjectFinalization::ObjectFinalizationPendingKey());
-
         // all pending finalizations must be later than the last confirmed transaction and
         // refer to a previous valid / confirmable, not necessarily confirmed, notarization
         multimap<uint32_t, pair<CUTXORef, CPBaaSNotarization>> sorted;
@@ -2794,6 +2799,12 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                     best = curPower;
                     notarizationData.bestChain = i;
                 }
+            }
+            else if (notarizationData.vtx[notarizationData.forks[i].back()].second.IsLaunchCleared() &&
+                     notarizationData.vtx[notarizationData.forks[i].back()].second.IsPreLaunch() &&
+                     notarizationData.vtx[notarizationData.forks[i].back()].second.IsLaunchConfirmed())
+            {
+                notarizationData.bestChain = i;
             }
             else
             {
@@ -3202,13 +3213,13 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "insufficient notarization evidence");
     }
 
+    // flip back to normal earned notarization as before
+    pbn.SetMirror(false);
+
     // printf("%s: evidence: %s\n", __func__, evidence.ToUniValue().write(1,2).c_str());
 
     // now, make a new notarization based on this earned notarization, mirrored, so it reflects a notarization on this chain, 
     // but can be verified with the cross-chain signatures and evidence
-
-    // flip back to normal earned notarization as before
-    pbn.SetMirror(false);
 
     CValidationState state;
     TransactionBuilder tb(Params().GetConsensus(), nHeight, pwalletMain);

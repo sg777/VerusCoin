@@ -990,7 +990,7 @@ UniValue CNotaryEvidence::ToUniValue() const
 CNotarySignature::CNotarySignature(const UniValue &uniObj) : confirmed(false)
 {
     version = uni_get_int64(find_value(uniObj, "version"), VERSION_CURRENT);
-    uint160 systemID = DecodeCurrencyName(uni_get_str(find_value(uniObj, "systemid")));
+    systemID = DecodeCurrencyName(uni_get_str(find_value(uniObj, "systemid")));
     output = CUTXORef(find_value(uniObj, "output"));
     confirmed = uni_get_bool(find_value(uniObj, "confirmed"));
     UniValue sigsObj = find_value(uniObj, "signatures");

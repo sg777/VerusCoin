@@ -285,6 +285,7 @@ CIdentitySignature::CIdentitySignature(const UniValue &uni)
     try
     {
         version = uni_get_int(find_value(uni, "version"));
+        hashType = uni_get_int(find_value(uni, "hashtype"), CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR);
         blockHeight = uni_get_int64(find_value(uni, "blockheight"));
         UniValue sigs = find_value(uni, "signatures");
         if (sigs.isArray() && sigs.size())
@@ -1280,7 +1281,7 @@ CCrossChainProof::CCrossChainProof(const UniValue &uniObj)
         {
             // each element is an object with a VDXF key and univalue object specific to the VDXF type
             // for any VDXF object that isn't understood, we skip it as a char vector
-            std::string vdxfKey = uni_get_str(find_value(chainObjArr[i], "vdxfkey"));
+            std::string vdxfKey = uni_get_str(find_value(chainObjArr[i], "vdxftype"));
             UniValue obj = find_value(chainObjArr[i], "value");
             CTxDestination keyDest = DecodeDestination(vdxfKey);
             uint160 namespaceID;

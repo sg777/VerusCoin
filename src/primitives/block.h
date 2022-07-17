@@ -2179,7 +2179,7 @@ public:
     EStates CheckSignatureConfirmation(const uint256 &objHash,
                                        const std::set<uint160> &notarySet,
                                        int minConfirming,
-                                       uint32_t signingHeight=0,
+                                       uint32_t checkHeight=0,
                                        uint32_t *pDecisionHeight=nullptr,
                                        std::map<CIdentityID, CIdentitySignature> *pConfirmedAtHeight=nullptr,
                                        std::map<CIdentityID, CIdentitySignature> *pRejectedAtHeight=nullptr) const;

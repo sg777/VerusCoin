@@ -6863,6 +6863,10 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
         try
         {
             result = find_value(RPCCallRoot("getlastimportfrom", params), "result");
+            if (result.isNull())
+            {
+                return exports;
+            }
             pbn = CPBaaSNotarization(find_value(result, "lastconfirmednotarization"));
             found = true;
         } catch (...)
