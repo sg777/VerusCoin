@@ -3264,10 +3264,6 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
     if (buildResult.IsTx())
     {
         newTx = buildResult.GetTxOrThrow();
-
-        UniValue jsonTx(UniValue::VOBJ);
-        TxToUniv(newTx, uint256(), jsonTx);
-        printf("%s: new accepted notarization:\n%s\n", __func__, jsonTx.write(1,2).c_str());
     }
     else
     {
