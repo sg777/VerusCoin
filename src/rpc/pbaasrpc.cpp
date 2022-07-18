@@ -2728,13 +2728,41 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                 continue;
             }
 
+            // if the notarization is a mirror, it's prior notarization is on the alternate chain
+            CUTXORef priorRef = n.prevNotarization;
+            if (p.evalCode == EVAL_ACCEPTEDNOTARIZATION && n.IsMirror())
+            {
+                // we should have another finalization of our prior following the
+                // pending finalization
+                CTransaction finalizationTx;
+                if (f.output.hash.IsNull())
+                {
+                    finalizationTx = nTx;
+                }
+
+                CObjectFinalization priorOF;
+                if (!(myGetTransaction(it->first.txhash, finalizationTx, blkHash) &&
+                        (it->first.index + 1) < finalizationTx.vout.size() &&
+                        finalizationTx.vout[it->first.index + 1].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() &&
+                        p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                        p.vData.size() &&
+                        (priorOF = CObjectFinalization(p.vData[0])).IsValid()))
+                {
+                    LogPrintf("%s: invalid index for finalization %s, output %d\n", __func__, it->first.txhash.GetHex().c_str(), (int)it->first.index);
+                    continue;
+                }
+                // we should have a finalization right after on the same TX, pointing to the prior notarization that we care about
+                priorRef = priorOF.output;
+            }
+
             // if finalization is on same transaction as notarization, set it
             if (f.output.hash.IsNull())
             {
                 f.output.hash = it->first.txhash;
             }
 
-            notarizationReferences.insert(std::make_pair(n.prevNotarization, std::make_pair(f.output, n)));
+            notarizationReferences.insert(std::make_pair(priorRef, std::make_pair(f.output, n)));
             if (optionalTxOut)
             {
                 referencedTxes.insert(std::make_pair(f.output, std::make_pair(nTx, blkHash)));
@@ -3236,6 +3264,10 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
     if (buildResult.IsTx())
     {
         newTx = buildResult.GetTxOrThrow();
+
+        UniValue jsonTx(UniValue::VOBJ);
+        TxToUniv(newTx, uint256(), jsonTx);
+        printf("%s: new accepted notarization:\n%s\n", __func__, jsonTx.write(1,2).c_str());
     }
     else
     {

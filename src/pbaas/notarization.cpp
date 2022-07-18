@@ -1531,7 +1531,6 @@ bool CChainNotarizationData::CalculateConfirmation(int confirmingIdx, std::set<i
         // if the third notarization does not equal the last confirmed notarization, it
         // must equal a last pending notarization to confirm. that will always be the
         // first non-confirmed entry in a fork of the notarization data, if it is present
-        int ignoreBelow = -1;
         for (int i = 0; i < forks.size(); i++)
         {
             if (forks[i].size() > 1)
@@ -2081,8 +2080,10 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         return state.Error(errorPrefix + "insufficient signature evidence confirming notarization");
     }
 
-    int forkIdx = -1;
+    int forkIdx = -1, forkPos = -1;
     int priorNotarizationIdx = -1;
+
+    CPBaaSNotarization thirdNotarization;
 
     // auto notarization protocol requires
     // full quorum of notaries to sign in order to
@@ -2157,18 +2158,17 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         // 
 
         CTransaction fNTx;
-        CPBaaSNotarization thirdNotarization;
 
         if (autoProof.chainObjects.size() < 7)
         {
-            // TODO: HARDENING - enable this error
+            // TODO: HARDENING - enable this error and require the evidence
             // return state.Error(errorPrefix + "insufficient cross chain proof for notarization");
             LogPrint("notarization", "%s: insufficient cross chain proof for notarization\n");
             if (cnd.forks.size() != 1)
             {
                 return state.Error(errorPrefix + "cannot resolve conflict without sufficient evidence");
             }
-            thirdNotarization = cnd.vtx[cnd.forks[0].size() > 1 ? cnd.forks[0][1] : cnd.lastConfirmed].second;
+            thirdNotarization = cnd.vtx[cnd.forks[0].back()].second;
         }
         else
         {
@@ -2247,7 +2247,8 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
                 (tmpP.evalCode != EVAL_EARNEDNOTARIZATION &&
                  !(thirdNotarization.IsDefinitionNotarization() || thirdNotarization.IsBlockOneNotarization())) ||
                 (tmpP.evalCode == EVAL_EARNEDNOTARIZATION &&
-                 (!thirdNotarization.proofRoots.count(SystemID) || !thirdNotarization.SetMirror())) ||
+                 (!(thirdNotarization.proofRoots.count(SystemID) && thirdNotarization.proofRoots.count(ASSETCHAINS_CHAINID)) ||
+                  !thirdNotarization.SetMirror())) ||
                 autoProof.chainObjects[6]->objectType != CHAINOBJ_HEADER_REF)
             {
                 return state.Error(errorPrefix + "invalid cross chain proof for notarization - second notarization");
@@ -2269,16 +2270,28 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         if (serializedVec != ::AsVector(cnd.vtx[cnd.lastConfirmed].second))
         {
             // if the third notarization does not equal the last confirmed notarization, it
-            // must equal a last pending notarization to confirm. that will always be the
-            // first non-confirmed entry in a fork of the notarization data, if it is present
+            // must equal a last pending notarization to confirm. that should always be a
+            // non-confirmed entry in a fork of the notarization data, if it is present
             for (int i = 0; i < cnd.forks.size(); i++)
             {
-                if (cnd.forks[i].size() > 1 && serializedVec == ::AsVector(cnd.vtx[(cnd.forks[i])[1]].second))
+                if (cnd.forks[i].size() > 1)
                 {
-                    forkIdx = i;
-                    break;
+                    for (int j = cnd.forks[i].size() - 1; j >= 0; j--)
+                    {
+                        if (serializedVec == ::AsVector(cnd.vtx[cnd.forks[i][j]].second))
+                        {
+                            forkIdx = i;
+                            forkPos = j;
+                            break;
+                        }
+                    }
+                    if (forkIdx > -1)
+                    {
+                        break;
+                    }
                 }
             }
+
             // if it wasn't the confirmed entry and wasn't pending confirmation, it is referring to an
             // invalid predecessor and is therefore invalid
             if (forkIdx == -1)
@@ -2290,8 +2303,8 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         // if we should confirm a notarization, it will be the first in forkIdx
         if (forkIdx > -1)
         {
-            printf("%s: ready to confirm txhash: %s, notarization:\n%s\n", __func__, txes[cnd.forks[forkIdx][1]].second.GetHex().c_str(), cnd.vtx[cnd.forks[forkIdx][1]].second.ToUniValue().write(1,2).c_str());
-            priorNotarizationIdx = cnd.forks[forkIdx][1];
+            printf("%s: ready to confirm txhash: %s, notarization:\n%s\n", __func__, txes[cnd.forks[forkIdx][forkPos]].second.GetHex().c_str(), cnd.vtx[cnd.forks[forkIdx][forkPos]].second.ToUniValue().write(1,2).c_str());
+            priorNotarizationIdx = cnd.forks[forkIdx][forkPos];
         }
         else
         {
@@ -2301,7 +2314,24 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     }
     else
     {
-        priorNotarizationIdx = cnd.lastConfirmed;
+        if (cnd.forks.size() != 1)
+        {
+            LogPrint("notarization", "%s: insufficient cross chain proof for non-auto notarization\n");
+            return state.Error(errorPrefix + "cannot resolve conflict without sufficient evidence");
+        }
+        priorNotarizationIdx = cnd.forks[0].back();
+        thirdNotarization = cnd.vtx[priorNotarizationIdx].second;
+        thirdNotarization = cnd.vtx[cnd.forks[0].size() > 1 ? cnd.forks[0][1] : cnd.lastConfirmed].second;
+    }
+
+    // all proof roots in a prior, agreed notarization must be present and have moved forward
+    for (auto &oneProofRoot : thirdNotarization.proofRoots)
+    {
+        if (!newNotarization.proofRoots.count(oneProofRoot.first) ||
+            newNotarization.proofRoots[oneProofRoot.first].rootHeight <= oneProofRoot.second.rootHeight)
+        {
+            return state.Error(errorPrefix + "insufficient progress in chain " + EncodeDestination(CIdentityID(oneProofRoot.first)) + " to accept notarization");
+        }
     }
 
     auto mmv = chainActive.GetMMV();
@@ -2406,15 +2436,6 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     if (!lastUnspentNotarization.GetLastUnspentNotarization(SystemID, lastTxId, lastTxOutNum, &lastTx))
     {
         return state.Error(errorPrefix + "invalid prior notarization");
-    }
-
-    // if the last notarization is the last pre-launch notarization, it is automatically confirmed,
-    // and though we need to spend it, doing so will remove it from being a confirmed notarization.
-    // as a result, if this this the case, we need to emit another confirmed finalization output
-    bool finalizeConfirmed = false;
-    if (lastUnspentNotarization.IsLaunchCleared() && lastUnspentNotarization.IsPreLaunch() && lastUnspentNotarization.IsLaunchConfirmed())
-    {
-        finalizeConfirmed = true;
     }
 
     // add prior unspent accepted notarization as our input
@@ -2531,52 +2552,52 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     of.evidenceOutputs = evidenceOuts;
     txBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &of)), 0);
 
-    // if we are confirming a prior notarization, we create a confirmed finalization for it
-    if (finalizeConfirmed || priorNotarizationIdx != cnd.lastConfirmed)
+    // if there are outputs to close for this entry, it will first be
+    // a finalization, then evidence
+    COptCCParams fP;
+
+    for (auto &oneInput : spendsToClose[priorNotarizationIdx])
     {
-        // if there are outputs to close for this entry, it will first be
-        // a finalization, then evidence
-        COptCCParams fP;
-
-        for (auto &oneInput : spendsToClose[priorNotarizationIdx])
-        {
-            txBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
-        }
-
-        if (spendsToClose[priorNotarizationIdx].size() &&
-            spendsToClose[priorNotarizationIdx][0].scriptPubKey.IsPayToCryptoCondition(fP) &&
-            fP.IsValid() &&
-            fP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
-            fP.vData.size() &&
-            (of = CObjectFinalization(fP.vData[0])).IsValid())
-        {
-            // inputs will be finalization followed by evidence
-            of.evidenceInputs.clear();
-            if (spendsToClose[priorNotarizationIdx].size())
-            {
-                for (int evidenceNIn = txBuilder.mtx.vin.size() - spendsToClose[priorNotarizationIdx].size();
-                     evidenceNIn < txBuilder.mtx.vin.size();
-                     evidenceNIn++)
-                {
-                    of.evidenceInputs.push_back(evidenceNIn);
-                }
-            }
-            of.evidenceOutputs.clear();
-            of.minFinalizationHeight = height;
-        }
-        else
-        {
-            // we have no valid finalization to close for this list of spends
-            // spend whatever we have and make an output finalization
-            of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION,
-                                     newNotarization.currencyID,
-                                     cnd.vtx[priorNotarizationIdx].first.hash,
-                                     cnd.vtx[priorNotarizationIdx].first.n,
-                                     height);
-        }
-        of.SetConfirmed(); 
-        txBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &of)), 0);
+        txBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
     }
+
+    if (spendsToClose[priorNotarizationIdx].size() &&
+        spendsToClose[priorNotarizationIdx][0].scriptPubKey.IsPayToCryptoCondition(fP) &&
+        fP.IsValid() &&
+        fP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+        fP.vData.size() &&
+        (of = CObjectFinalization(fP.vData[0])).IsValid())
+    {
+        if (of.output.hash.IsNull())
+        {
+            of.output.hash = spendsToClose[priorNotarizationIdx][0].txIn.prevout.hash;
+        }
+        // inputs will be finalization followed by evidence
+        of.evidenceInputs.clear();
+        if (spendsToClose[priorNotarizationIdx].size())
+        {
+            for (int evidenceNIn = txBuilder.mtx.vin.size() - spendsToClose[priorNotarizationIdx].size();
+                 evidenceNIn < txBuilder.mtx.vin.size();
+                 evidenceNIn++)
+            {
+                of.evidenceInputs.push_back(evidenceNIn);
+            }
+        }
+        of.evidenceOutputs.clear();
+        of.minFinalizationHeight = height;
+    }
+    else
+    {
+        // we have no valid finalization to close for this list of spends
+        // spend whatever we have and make an output finalization
+        of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION,
+                                    newNotarization.currencyID,
+                                    cnd.vtx[priorNotarizationIdx].first.hash,
+                                    cnd.vtx[priorNotarizationIdx].first.n,
+                                    height);
+    }
+    of.SetConfirmed(); 
+    txBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &of)), 0);
 
     return true;
 }
@@ -3872,7 +3893,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     // our latest confirmed is what we may submit.
     // if it is already on that chain, we have nothing to do
     CPBaaSNotarization firstProofNotarization = cnd.vtx[cnd.lastConfirmed].second;
-    auto searchVec = ::AsVector(cnd.vtx[cnd.lastConfirmed]);
+    auto searchVec = ::AsVector(cnd.vtx[cnd.lastConfirmed].second);
 
     for (auto oneNotarization : crosschainCND.vtx)
     {
@@ -3887,6 +3908,16 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         {
             LogPrint("notarization", "No new confirmed notarizations for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
             return retVal;
+        }
+        // all proof roots in a prior, agreed notarization must be present and have moved forward
+        for (auto &oneProofRoot : oneNotarization.second.proofRoots)
+        {
+            if (!cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(oneProofRoot.first) ||
+                cnd.vtx[cnd.lastConfirmed].second.proofRoots[oneProofRoot.first].rootHeight <= oneProofRoot.second.rootHeight)
+            {
+                LogPrint("notarization", "Skip submission - no new confirmed notarizations for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                return retVal;
+            }
         }
     }
 
@@ -4312,6 +4343,46 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
         return eval->Error("Invalid finalization output");
     }
 
+    // if we are spending a confirmed notarization, then as long as we are being spent by
+    // an accepted notarization and have the same confirmation on an output just after a pending output,
+    // it is ok
+    if (oldFinalization.IsConfirmed())
+    {
+        int priorPendingFinalization = -1, notarizationOut = -1;
+        for (int i = 0; i < tx.vout.size(); i++)
+        {
+            auto &oneOut = tx.vout[i];
+
+            COptCCParams p;
+            CObjectFinalization oneOF;
+
+            if (priorPendingFinalization == -1 &&
+                oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                p.vData.size() &&
+                (oneOF = CObjectFinalization(p.vData[0])).IsValid() &&
+                oneOF.currencyID == oldFinalization.currencyID &&
+                oneOF.IsPending())
+            {
+                priorPendingFinalization = i;
+                continue;
+            }
+            else if (priorPendingFinalization != -1 &&
+                     oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                     p.IsValid() &&
+                     p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                     p.vData.size() &&
+                     (oneOF = CObjectFinalization(p.vData[0])).IsValid() &&
+                     oneOF.IsNotarizationFinalization() &&
+                     oneOF.currencyID == oldFinalization.currencyID &&
+                     oneOF.IsConfirmed())
+            {
+                return true;
+            }
+        }
+    }
+
     // get currency to determine system and notarization method
     CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(oldFinalization.currencyID);
     if (!curDef.IsValid())
@@ -4382,7 +4453,11 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
                 p.vData.size() &&
                 (newFinalization = CObjectFinalization(p.vData[0])).IsValid())
             {
-                if (foundFinalization)
+                if (newFinalization.output != oldFinalization.output)
+                {
+                    continue;
+                }
+                else if (foundFinalization)
                 {
                     return eval->Error("duplicate-finalization");
                 }
