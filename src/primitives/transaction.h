@@ -900,12 +900,13 @@ public:
     enum {
         TX_FULL = 0,
         TX_HEADER = 1,
-        TX_PREVOUTSEQ = 2,      // prev out and sequence
-        TX_SIGNATURE = 3,
+        TX_PREVOUTSEQ = 2,          // prev out and sequence
+        TX_SIGNATURE = 3,           // TODO: should include transaction hash but does not yet
         TX_OUTPUT = 4,
         TX_SHIELDEDSPEND = 5,
         TX_SHIELDEDOUTPUT = 6,
-        TX_ETH_OBJECT = 7
+        TX_ETH_OBJECT = 7,
+        TX_BLOCK_PREHEADER = 8      // virtual transaction added after others to prove block data without VerusHash
     };
 
     uint256 txHash;
@@ -1129,6 +1130,18 @@ public:
                 return CheckFullTxProof(tx);
             }
 
+            case CTransactionHeader::TX_BLOCK_PREHEADER:
+            {
+                CPBaaSPreHeader preHeader;
+                if (Rehydrate(preHeader))
+                {
+                    auto hw = CDefaultMMRNode::GetHashWriter();
+                    hw << preHeader;
+                    return elProof.CheckProof(hw.GetHash());
+                }
+                break;
+            }
+
             case CTransactionHeader::TX_HEADER:
             {
                 CTransactionHeader txPart;
@@ -1145,6 +1158,7 @@ public:
                     hw << txPart.nSequence;
                     return elProof.CheckProof(hw.GetHash());
                 }
+                break;
             }
 
             case CTransactionHeader::TX_SIGNATURE:
@@ -1172,6 +1186,7 @@ public:
                     hw << txPart.zkproof;
                     return elProof.CheckProof(hw.GetHash());
                 }
+                break;
             }
 
             case CTransactionHeader::TX_SHIELDEDOUTPUT:
@@ -1186,6 +1201,10 @@ public:
     static uint16_t ElementType(const CTransaction &tx)
     {
         return CTransactionHeader::TX_FULL;
+    }
+    static uint16_t ElementType(const CPBaaSPreHeader &preHeader)
+    {
+        return CTransactionHeader::TX_BLOCK_PREHEADER;
     }
     static uint16_t ElementType(const CTransactionHeader &txHeader)
     {
@@ -1262,6 +1281,11 @@ public:
     CPartialTransactionProof(const CMMRProof &txRootProof, const CTransaction &tx) : 
         version(VERSION_CURRENT), type(TYPE_FULLTX), txProof(txRootProof), components({CTransactionComponentProof(tx, 0, CMMRProof())}) { }
 
+    // This creates a proof for the pre-header of a block, which enables proof of sapling txes and other things in a block header
+    // without requiring an implementation of VerusHash
+    CPartialTransactionProof(const CMMRProof &txRootProof, const CPBaaSPreHeader &preHeader) : 
+        version(VERSION_CURRENT), type(TYPE_PBAAS), txProof(txRootProof), components({CTransactionComponentProof(preHeader, 0, CMMRProof())}) { }
+
     CPartialTransactionProof(const std::vector<CPartialTransactionProof> &parts)
     {
         std::vector<CMMRProof> chunkVec;
@@ -1301,6 +1325,7 @@ public:
             CTransaction outTx;
             CTransactionHeader txh;
             CVDXF_Data vdxfObj;
+            CPBaaSPreHeader preHeader;
             if (components[0].elType == CTransactionHeader::TX_HEADER && components[0].Rehydrate(txh))
             {
                 return txh.txHash;
@@ -1308,6 +1333,12 @@ public:
             else if (components[0].elType == CTransactionHeader::TX_FULL && components[0].Rehydrate(outTx))
             {
                 return outTx.GetHash();
+            }
+            else if (components[0].elType == CTransactionHeader::TX_BLOCK_PREHEADER && components[0].Rehydrate(preHeader))
+            {
+                auto hw2 = CDefaultMMRNode::GetHashWriter();
+                hw2 << preHeader;
+                return hw2.GetHash();
             }
             else if (components[0].elType == CTransactionHeader::TX_ETH_OBJECT && components[0].Rehydrate(vdxfObj))
             {
@@ -1331,7 +1362,6 @@ public:
                 hw2 << prevtxid;
                 
                 return hw2.GetHash();
-                
             }
         }
         return uint256();
@@ -1344,6 +1374,24 @@ public:
     // this validates that all parts of a transaction match and either returns a full transaction
     // and its hash, a partially filled transaction and its MMR root, or NULL
     uint256 CheckPartialTransaction(CTransaction &outTx, bool *pIsPartial=nullptr) const;
+
+    bool IsBlockPreHeader() const
+    {
+        return components[0].elType == CTransactionHeader::TX_BLOCK_PREHEADER;
+    }
+
+    CPBaaSPreHeader GetBlockPreHeader() const
+    {
+        CPBaaSPreHeader preHeader;
+        if (components[0].elType == CTransactionHeader::TX_BLOCK_PREHEADER && components[0].Rehydrate(preHeader))
+        {
+            return preHeader;
+        }
+        return CPBaaSPreHeader();
+    }
+
+    // this validates that a preheader is correct
+    uint256 CheckBlockPreHeader(CPBaaSPreHeader &outPreHeader) const;
 
     // for PBaaS chain proofs, we can determine the hash, block height, and power, depending on if we are block specific or
     // proven at the blockchain level

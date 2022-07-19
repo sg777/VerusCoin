@@ -460,10 +460,14 @@ public:
     BlockMMRange BuildBlockMMRTree() const;
     BlockMMRange GetBlockMMRTree() const;
 
+    // returns the preheader for this block with nTime substituted for hashBlockMMRRoot
+    CPBaaSPreHeader GetSubstitutedPreHeader() const;
+
     // get transaction node from the block
     CDefaultMMRNode GetMMRNode(int index) const;
 
     CPartialTransactionProof GetPartialTransactionProof(const CTransaction &tx, int txIndex, const std::vector<std::pair<int16_t, int16_t>> &partIndexes) const;
+    CPartialTransactionProof GetPreHeaderProof() const;
 
     std::vector<uint256> GetMerkleBranch(int nIndex) const;
     static uint256 CheckMerkleBranch(uint256 hash, const std::vector<uint256>& vMerkleBranch, int nIndex);

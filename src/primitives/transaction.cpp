@@ -807,3 +807,15 @@ uint256 CPartialTransactionProof::CheckPartialTransaction(CTransaction &outTx, b
 {
     return txProof.CheckProof(GetPartialTransaction(outTx, pIsPartial));
 }
+
+uint256 CPartialTransactionProof::CheckBlockPreHeader(CPBaaSPreHeader &outPreHeader) const
+{
+    CPBaaSPreHeader preHeader = GetBlockPreHeader();
+    if (preHeader.IsValid())
+    {
+        auto hw = CDefaultMMRNode::GetHashWriter();
+        return txProof.CheckProof((hw << preHeader).GetHash());
+    }
+    return uint256();
+}
+

@@ -77,7 +77,7 @@ ChainMMRNode CBlockHeader::GetBlockMMRNode() const
 {
     uint256 blockHash = GetHash();
 
-    uint256 preHash = ChainMMRNode::HashObj(hashMerkleRoot, blockHash);
+    uint256 preHash = ChainMMRNode::HashObj(GetBlockMMRRoot(), blockHash);
     uint256 power = ArithToUint256(GetCompactPower(nNonce, nBits, nVersion));
 
     return ChainMMRNode(ChainMMRNode::HashObj(preHash, power), power);
@@ -488,6 +488,14 @@ CDefaultMMRNode CBlock::GetMMRNode(int index) const
 }
 
 
+CPBaaSPreHeader CBlock::GetSubstitutedPreHeader() const
+{
+    CPBaaSPreHeader substitutedPreHeader(*this);
+    substitutedPreHeader.hashBlockMMRRoot = ArithToUint256(arith_uint256((uint64_t)nTime));
+    return substitutedPreHeader;
+}
+
+
 // This creates the MMR tree for the block, which replaces the merkle tree used today
 // while enabling a proof of the transaction hash as well as parts of the transaction
 // such as inputs, outputs, shielded spends and outputs, transaction header info, etc.
@@ -504,6 +512,18 @@ BlockMMRange CBlock::BuildBlockMMRTree() const
     {
         mmRange.Add(tx.GetDefaultMMRNode());
     }
+
+    // add one additional object to the block MMR that contains
+    // a hash of the entire CPBaaSPreHeader for this block, except
+    // the hashBlockMMRRoot, which is dependent on the rest
+    // this enables a blockhash-algorithm-independent proof of
+    // sapling transactions, nonces, nBits, and nTime of a block,
+    // which is stored in the pre header in place of hashBlockMMRRoot
+    // before hashing.
+    auto hw = CDefaultMMRNode::GetHashWriter();
+    hw << GetSubstitutedPreHeader();
+    mmRange.Add(CDefaultMMRNode(hw.GetHash()));
+
     return mmRange;
 }
 
@@ -513,6 +533,32 @@ BlockMMRange CBlock::GetBlockMMRTree() const
     return BuildBlockMMRTree();
 }
 
+CPartialTransactionProof CBlock::GetPreHeaderProof() const
+{
+    if (IsPBaaS() != 0)
+    {
+        // make a partial transaction proof for the export opret only
+        BlockMMRange blockMMR(GetBlockMMRTree());
+        BlockMMView blockMMV(blockMMR);
+        CMMRProof txProof;
+
+        if (!blockMMV.GetProof(txProof, vtx.size()))
+        {
+            LogPrintf("%s: Cannot make pre header proof in block\n", __func__);
+            printf("%s: Cannot make pre header in block\n", __func__);
+            return CPartialTransactionProof();
+        }
+        return CPartialTransactionProof(txProof, CPBaaSPreHeader(*this));
+    }
+    else
+    {
+        // make a proof of the whole transaction
+        CPartialTransactionProof errorProof;
+        errorProof.version = errorProof.VERSION_INVALID;
+        return errorProof;
+    }
+}
+
 CPartialTransactionProof CBlock::GetPartialTransactionProof(const CTransaction &tx, int txIndex, const std::vector<std::pair<int16_t, int16_t>> &partIndexes) const
 {
     std::vector<CTransactionComponentProof> components;
@@ -520,7 +566,7 @@ CPartialTransactionProof CBlock::GetPartialTransactionProof(const CTransaction &
     if (IsPBaaS() != 0)
     {
         // make a partial transaction proof for the export opret only
-        BlockMMRange blockMMR(BuildBlockMMRTree());
+        BlockMMRange blockMMR(GetBlockMMRTree());
         BlockMMView blockMMV(blockMMR);
         CMMRProof txProof;
 
