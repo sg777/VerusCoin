@@ -518,16 +518,19 @@ BlockMMRange CBlock::BuildBlockMMRTree() const
         mmRange.Add(tx.GetDefaultMMRNode());
     }
 
-    // add one additional object to the block MMR that contains
-    // a hash of the entire CPBaaSPreHeader for this block, except
-    // the hashBlockMMRRoot, which is dependent on the rest
-    // this enables a blockhash-algorithm-independent proof of
-    // sapling transactions, nonces, nBits, and nTime of a block,
-    // which is stored in the pre header in place of hashBlockMMRRoot
-    // before hashing.
-    auto hw = CDefaultMMRNode::GetHashWriter();
-    hw << GetSubstitutedPreHeader();
-    mmRange.Add(CDefaultMMRNode(hw.GetHash()));
+    if (IsPBaaS() != 0)
+    {
+        // add one additional object to the block MMR that contains
+        // a hash of the entire CPBaaSPreHeader for this block, except
+        // the hashBlockMMRRoot, which is dependent on the rest
+        // this enables a blockhash-algorithm-independent proof of
+        // sapling transactions, nonces, nBits, and nTime of a block,
+        // which is stored in the pre header in place of hashBlockMMRRoot
+        // before hashing.
+        auto hw = CDefaultMMRNode::GetHashWriter();
+        hw << GetSubstitutedPreHeader();
+        mmRange.Add(CDefaultMMRNode(hw.GetHash()));
+    }
 
     return mmRange;
 }
@@ -557,7 +560,7 @@ CPartialTransactionProof CBlock::GetPreHeaderProof() const
     }
     else
     {
-        // make a proof of the whole transaction
+        // invalid proof
         CPartialTransactionProof errorProof;
         errorProof.version = errorProof.VERSION_INVALID;
         return errorProof;
