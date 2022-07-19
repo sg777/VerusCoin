@@ -7007,13 +7007,16 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
                     proofRootIt->second.stateRoot == txProof.CheckPartialTransaction(exportTx) &&
                     exportTx.vout.size() > exportTxOutNum))
             {
-                /* printf("%s: proofRoot: %s, checkPartialRoot: %s, proofheight: %u, ischainproof: %s, blockhash: %s\n", 
+                LogPrint("notarization", "%s: proofRoot: %s,\nGetPartialTransaction: %s, checkPartialTransaction: %s, TransactionHash: %s, exportTxId: %s,\nproofheight: %u,\nischainproof: %s,\nblockhash: %s\n", 
                     __func__,
                     proofRootIt->second.ToUniValue().write(1,2).c_str(),
+                    txProof.GetPartialTransaction(exportTx).GetHex().c_str(),
                     txProof.CheckPartialTransaction(exportTx).GetHex().c_str(),
+                    txProof.TransactionHash().GetHex().c_str(),
+                    exportTxId.GetHex().c_str(),
                     txProof.GetProofHeight(),
                     txProof.IsChainProof() ? "true" : "false",
-                    txProof.GetBlockHash().GetHex().c_str()); */
+                    txProof.GetBlockHash().GetHex().c_str()); //*/
                 printf("Invalid export for %s\n", uni_get_str(params[0]).c_str());
                 return exports;
             }

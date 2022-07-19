@@ -3734,7 +3734,7 @@ bool CPBaaSNotarization::FindEarnedNotarization(CAddressIndexDbEntry *pEarnedNot
     CNativeHashWriter hw;
     hw << checkNotarization;
     uint256 objHash = hw.GetHash();
-    uint160 notarizationIdxKey = CCrossChainRPCData::GetConditionID(currencyID, CPBaaSNotarization::EarnedNotarizationKey(), objHash);
+    uint160 notarizationIdxKey = CCrossChainRPCData::GetConditionID(checkNotarization.currencyID, CPBaaSNotarization::EarnedNotarizationKey(), objHash);
 
     std::vector<CAddressIndexDbEntry> addressIndex;
     if (!GetAddressIndex(notarizationIdxKey, CScript::P2IDX, addressIndex) || !addressIndex.size())
