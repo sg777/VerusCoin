@@ -1781,6 +1781,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
         if (oneConfirmed.second.scriptPubKey.IsPayToCryptoCondition(p) &&
             p.IsValid())
         {
+            CPBaaSNotarization confirmedNotarization;
             if (p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
                 p.vData.size() &&
                 (confirmedFinalization = CObjectFinalization(p.vData[0])).IsValid())
@@ -1793,6 +1794,17 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                 {
                     confirmedNotarizationOutput = confirmedFinalization.output;
                 }
+            }
+            else if ((p.evalCode == EVAL_EARNEDNOTARIZATION || p.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
+                     p.vData.size() &&
+                     (confirmedNotarization = CPBaaSNotarization(p.vData[0])).IsValid() &&
+                     (confirmedNotarization.IsDefinitionNotarization() || confirmedNotarization.IsBlockOneNotarization()))
+            {
+                confirmedFinalization = CObjectFinalization(CObjectFinalization::FINALIZE_CONFIRMED + CObjectFinalization::FINALIZE_NOTARIZATION,
+                                                            confirmedNotarization.currencyID,
+                                                            oneConfirmed.second.txIn.prevout.hash,
+                                                            oneConfirmed.second.txIn.prevout.n);
+                confirmedNotarizationOutput = confirmedFinalization.output;
             }
         }
         else
@@ -4356,27 +4368,14 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
             COptCCParams p;
             CObjectFinalization oneOF;
 
-            if (priorPendingFinalization == -1 &&
-                oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+            if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.IsValid() &&
                 p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
                 p.vData.size() &&
                 (oneOF = CObjectFinalization(p.vData[0])).IsValid() &&
+                oneOF.IsNotarizationFinalization() &&
                 oneOF.currencyID == oldFinalization.currencyID &&
-                oneOF.IsPending())
-            {
-                priorPendingFinalization = i;
-                continue;
-            }
-            else if (priorPendingFinalization != -1 &&
-                     oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
-                     p.IsValid() &&
-                     p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
-                     p.vData.size() &&
-                     (oneOF = CObjectFinalization(p.vData[0])).IsValid() &&
-                     oneOF.IsNotarizationFinalization() &&
-                     oneOF.currencyID == oldFinalization.currencyID &&
-                     oneOF.IsConfirmed())
+                oneOF.IsConfirmed())
             {
                 return true;
             }
@@ -4451,13 +4450,11 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
                 p.IsValid() &&
                 p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
                 p.vData.size() &&
-                (newFinalization = CObjectFinalization(p.vData[0])).IsValid())
+                (newFinalization = CObjectFinalization(p.vData[0])).IsValid() &&
+                newFinalization.currencyID == oldFinalization.currencyID &&
+                newFinalization.IsConfirmed())
             {
-                if (newFinalization.output != oldFinalization.output)
-                {
-                    continue;
-                }
-                else if (foundFinalization)
+                if (foundFinalization)
                 {
                     return eval->Error("duplicate-finalization");
                 }

@@ -92,7 +92,7 @@ public:
     std::vector<int32_t> evidenceInputs; // indexes into vin that are evidence to support the current state
     std::vector<int32_t> evidenceOutputs; // tx output indexes that are evidence to support the current state    
 
-    CObjectFinalization() : version(VERSION_INVALID), finalizationType(FINALIZE_INVALID) {}
+    CObjectFinalization() : version(VERSION_INVALID), finalizationType(FINALIZE_INVALID), minFinalizationHeight(0) {}
     CObjectFinalization(uint8_t fType, const uint160 &curID, const uint256 &TxId, uint32_t outNum, uint32_t minFinalHeight=0) : 
         version(VERSION_CURRENT), finalizationType(fType), minFinalizationHeight(minFinalHeight), currencyID(curID), output(TxId, outNum) {}
     CObjectFinalization(const std::vector<unsigned char> &vch)
