@@ -491,7 +491,12 @@ CDefaultMMRNode CBlock::GetMMRNode(int index) const
 CPBaaSPreHeader CBlock::GetSubstitutedPreHeader() const
 {
     CPBaaSPreHeader substitutedPreHeader(*this);
-    substitutedPreHeader.hashBlockMMRRoot = ArithToUint256(arith_uint256((uint64_t)nTime));
+    auto solutionCopy = nSolution;
+    arith_uint256 extraData = (arith_uint256((uint64_t)CVerusSolutionVector(solutionCopy).Version()) << 64) +
+                              (arith_uint256((uint64_t)((uint32_t)nVersion)) << 32) +
+                              arith_uint256((uint64_t)nTime);
+
+    substitutedPreHeader.hashBlockMMRRoot = ArithToUint256(extraData);
     return substitutedPreHeader;
 }
 
