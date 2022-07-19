@@ -280,8 +280,8 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
                                                                                         "", 
                                                                                         objHash);
         
-        if (sigResult != CIdentitySignature::ESignatureVerification::SIGNATURE_EMPTY &&
-            sigResult != CIdentitySignature::ESignatureVerification::SIGNATURE_INVALID)
+        if (sigResult == CIdentitySignature::ESignatureVerification::SIGNATURE_EMPTY ||
+            sigResult == CIdentitySignature::ESignatureVerification::SIGNATURE_INVALID)
         {
             LogPrintf("%s: Error signing confirmed with ID: %s\n", __func__, sigIdentity.ToUniValue().write(1,2).c_str());
             return sigResult;
@@ -429,8 +429,8 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
                                                                                         "", 
                                                                                         objHash);
         
-        if (sigResult != CIdentitySignature::ESignatureVerification::SIGNATURE_EMPTY &&
-            sigResult != CIdentitySignature::ESignatureVerification::SIGNATURE_INVALID)
+        if (sigResult == CIdentitySignature::ESignatureVerification::SIGNATURE_EMPTY ||
+            sigResult == CIdentitySignature::ESignatureVerification::SIGNATURE_INVALID)
         {
             LogPrintf("%s: Error signing rejected with ID: %s\n", __func__, sigIdentity.ToUniValue().write(1,2).c_str());
             return sigResult;

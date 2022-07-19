@@ -1889,10 +1889,13 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                     {
                         notarizationTx = buildResult.GetTxOrThrow();
 
-                        UniValue jsonNotaryConfirmations(UniValue::VOBJ);
-                        TxToUniv(notarizationTx, uint256(), jsonNotaryConfirmations);
-                        //printf("%s: (PII) Submitting notarization confirmations:\n%s\n", __func__, jsonNotaryConfirmations.write(1,2).c_str());
-                        LogPrintf("%s: (PII) Submitting notarization confirmations:\n%s\n", __func__, jsonNotaryConfirmations.write(1,2).c_str());
+                        if (LogAcceptCategory("notarization"))
+                        {
+                            UniValue jsonNotaryConfirmations(UniValue::VOBJ);
+                            TxToUniv(notarizationTx, uint256(), jsonNotaryConfirmations);
+                            //printf("%s: (PII) Submitting notarization confirmations:\n%s\n", __func__, jsonNotaryConfirmations.write(1,2).c_str());
+                            LogPrint("notarization", "%s: (PII) Submitting notarization confirmations:\n%s\n", __func__, jsonNotaryConfirmations.write(1,2).c_str());
+                        }
 
                         // add to mem pool and relay
                         if (myAddtomempool(notarizationTx))
@@ -1903,7 +1906,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                     else
                     {
                         printf("%s: (PII) error adding notary evidence: %s\n", __func__, buildResult.GetError().c_str());
-                        LogPrintf("%s: (PII) error adding notary evidence: %s\n", __func__, buildResult.GetError().c_str());
+                        LogPrint("notarization", "%s: (PII) error adding notary evidence: %s\n", __func__, buildResult.GetError().c_str());
                     }
                 }
             }
