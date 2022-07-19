@@ -626,7 +626,7 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
     if (retVal != EStates::STATE_CONFIRMED && retVal != EStates::STATE_REJECTED)
     {
         if (lastHeight == checkHeight &&
-            notarySetConfirms.size() > notarySetRejects.size())
+            notarySetConfirms.size() >= notarySetRejects.size())
         {
             retVal = EStates::STATE_CONFIRMING;
         }
