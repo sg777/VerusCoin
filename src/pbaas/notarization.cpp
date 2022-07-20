@@ -2743,7 +2743,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         result = NullUniValue;
     }
 
-    int32_t notaryIdx = isGatewayFirstContact ? 0 : uni_get_int(find_value(result, "bestindex"), -1);
+    int32_t notaryIdx = uni_get_int(find_value(result, "bestindex"), isGatewayFirstContact ? 0 : -1);
 
     UniValue lastConfirmedUni = find_value(result, "lastconfirmedproofroot");
     CProofRoot lastConfirmedProofRoot;
