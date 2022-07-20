@@ -176,11 +176,11 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
 
     // write the object to the hash writer without a vector length prefix
     auto hw = CNativeHashWriter(hashType);
-    std::map<CIdentityID, CIdentitySignature> confirmedAtHeight;
-    std::map<CIdentityID, CIdentitySignature> rejectedAtHeight;
     uint256 objHash = hw.write((const char *)&(p.vData[0][0]), p.vData[0].size()).GetHash();
 
     uint32_t decisionHeight;
+    std::map<CIdentityID, CIdentitySignature> confirmedAtHeight;
+    std::map<CIdentityID, CIdentitySignature> rejectedAtHeight;
 
     CNotaryEvidence::EStates sigCheckResult = CheckSignatureConfirmation(objHash,
                                                                          notarySet,
@@ -220,13 +220,15 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
             return CIdentitySignature::SIGNATURE_COMPLETE;
         }
 
-        uint256 signatureHash = confirmedAtHeight[signWithID].IdentitySignatureHash(std::vector<uint160>({NotaryConfirmedKey()}), 
-                                                                                    std::vector<uint256>(), 
-                                                                                    systemID,
-                                                                                    height,
-                                                                                    signWithID,
-                                                                                    "", 
-                                                                                    objHash);
+        CIdentitySignature idSignature(height, std::set<std::vector<unsigned char>>(), hashType);
+
+        uint256 signatureHash = idSignature.IdentitySignatureHash(std::vector<uint160>({NotaryConfirmedKey()}), 
+                                                                  std::vector<uint256>(), 
+                                                                  systemID,
+                                                                  height,
+                                                                  signWithID,
+                                                                  "", 
+                                                                  objHash);
 
         std::set<CTxDestination> validKeys;
 
@@ -252,8 +254,6 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
             }
         }
 
-        CIdentitySignature idSignature(height, std::set<std::vector<unsigned char>>(), hashType);
-
         // as long as we can continue to make new signatures, we do
         for (auto keyIT = validKeys.begin(); sigsNeeded > 0 && keyIT != validKeys.end(); keyIT++)
         {
@@ -268,8 +268,6 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
 
         if (idSignature.signatures.size())
         {
-            CNotarySignature newSig(ASSETCHAINS_CHAINID, output, false);
-            newSig.signatures[signWithID] = idSignature;
             AddToSignatures(notarySet, signWithID, idSignature, STATE_CONFIRMING);
         }
 
@@ -369,13 +367,15 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
             return CIdentitySignature::SIGNATURE_COMPLETE;
         }
 
-        uint256 signatureHash = rejectedAtHeight[signWithID].IdentitySignatureHash(std::vector<uint160>({NotaryRejectedKey()}), 
-                                                                                    std::vector<uint256>(), 
-                                                                                    systemID,
-                                                                                    height,
-                                                                                    signWithID,
-                                                                                    "", 
-                                                                                    objHash);
+        CIdentitySignature idSignature(height, std::set<std::vector<unsigned char>>(), hashType);
+
+        uint256 signatureHash = idSignature.IdentitySignatureHash(std::vector<uint160>({NotaryRejectedKey()}), 
+                                                                  std::vector<uint256>(), 
+                                                                  systemID,
+                                                                  height,
+                                                                  signWithID,
+                                                                  "", 
+                                                                  objHash);
 
         std::set<CTxDestination> validKeys;
 
@@ -401,8 +401,6 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
             }
         }
 
-        CIdentitySignature idSignature(height, std::set<std::vector<unsigned char>>(), hashType);
-
         // as long as we can continue to make new signatures, we do
         for (auto keyIT = validKeys.begin(); sigsNeeded > 0 && keyIT != validKeys.end(); keyIT++)
         {
@@ -417,8 +415,6 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
 
         if (idSignature.signatures.size())
         {
-            CNotarySignature newSig(ASSETCHAINS_CHAINID, output, false);
-            newSig.signatures[signWithID] = idSignature;
             AddToSignatures(notarySet, signWithID, idSignature, STATE_REJECTING);
         }
 
