@@ -2711,6 +2711,12 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         {
             proofRootsUni.push_back(rootIt->second.ToUniValue());
         }
+        else
+        {
+            auto oneProofRoot = CProofRoot();
+            oneProofRoot.rootHeight = 1;
+            proofRootsUni.push_back(oneProofRoot.ToUniValue());
+        }
     }
 
     if (!proofRootsUni.size() && !isGatewayFirstContact)
