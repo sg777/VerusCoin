@@ -199,7 +199,7 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
         return CIdentitySignature::ESignatureVerification::SIGNATURE_INVALID;
     }
 
-    // sign for anything we can that is not already in the rejectedAtHeight signature block if decisionHeight is our height
+    // sign for anything we can that is not already in the confirmedAtHeight signature block if decisionHeight is our height
     int currentNumSigs = (decisionHeight == height && confirmedAtHeight.count(signWithID)) ? confirmedAtHeight[signWithID].signatures.size() : 0;
 
     // all signatures present for this ID are correct, so we recover all pub keys and IDs,
@@ -220,7 +220,7 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
             return CIdentitySignature::SIGNATURE_COMPLETE;
         }
 
-        uint256 signatureHash = rejectedAtHeight[signWithID].IdentitySignatureHash(std::vector<uint160>({NotaryConfirmedKey()}), 
+        uint256 signatureHash = confirmedAtHeight[signWithID].IdentitySignatureHash(std::vector<uint160>({NotaryConfirmedKey()}), 
                                                                                     std::vector<uint256>(), 
                                                                                     systemID,
                                                                                     height,
@@ -279,7 +279,7 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
                                                                                         systemID, 
                                                                                         "", 
                                                                                         objHash);
-        
+
         if (sigResult == CIdentitySignature::ESignatureVerification::SIGNATURE_EMPTY ||
             sigResult == CIdentitySignature::ESignatureVerification::SIGNATURE_INVALID)
         {
