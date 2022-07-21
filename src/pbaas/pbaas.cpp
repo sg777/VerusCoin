@@ -4538,7 +4538,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                                                        CUTXORef(confirmedSourceNotarization.hash, confirmedSourceNotarization.n),
                                                        CNotaryEvidence::STATE_CONFIRMED,
                                                        evidenceProof,
-                                                       CNotaryEvidence::TYPE_NOTARY_EVIDENCE);
+                                                       CNotaryEvidence::TYPE_IMPORT_PROOF);
 
             int serSize = GetSerializeSize(ds, evidence);
 
@@ -4850,7 +4850,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             tb.SetReserveFee(reserveFees);
         }
 
-        /* UniValue jsonTx(UniValue::VOBJ);
+        UniValue jsonTx(UniValue::VOBJ);
         uint256 hashBlk;
         TxToUniv(tb.mtx, hashBlk, jsonTx);
         printf("%s\n", jsonTx.write(1,2).c_str()); //*/
@@ -5143,6 +5143,96 @@ bool CConnectedChains::GetLaunchNotarization(const CCurrencyDefinition &curDef,
             {
                 CChainNotarizationData cnd;
                 if ((launchNotarization = CPBaaSNotarization(notarizationTx.vout[idx.first.index].scriptPubKey)).IsValid() &&
+                     GetNotarizationData(ASSETCHAINS_CHAINID, cnd) &&
+                     cnd.IsConfirmed() &&
+                     (notaryNotarization = cnd.vtx[cnd.lastConfirmed].second).IsValid())
+                {
+                    auto blockIt = mapBlockIndex.find(blkHash);
+                    if (blockIt != mapBlockIndex.end() &&
+                        chainActive.Contains(blockIt->second))
+                    {
+                        notarizationRef.first = CInputDescriptor(notarizationTx.vout[idx.first.index].scriptPubKey,
+                                                                 notarizationTx.vout[idx.first.index].nValue,
+                                                                 CTxIn(idx.first.txhash, idx.first.index));
+                        notarizationRef.second = CPartialTransactionProof(notarizationTx,
+                                                                          std::vector<int>(),
+                                                                          std::vector<int>({(int)idx.first.index}),
+                                                                          blockIt->second,
+                                                                          blockIt->second->GetHeight());
+                        notaryNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(blockIt->second->GetHeight());
+                        retVal = true;
+                    }
+                }
+            }
+        }
+    }
+    return retVal;
+}
+
+// get the exports to a specific system from this chain, starting from a specific height up to a specific height
+// export proofs are all returned as null
+bool CConnectedChains::GetDefinitionNotarization(const CCurrencyDefinition &curDef,
+                                                 CInputDescriptor &notarizationRef,
+                                                 CPBaaSNotarization &definitionNotarization)
+{
+    std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
+    uint160 currencyID = curDef.GetID();
+    bool retVal = false;
+
+    // get all export transactions including and since this one up to the confirmed cross-notarization
+    if (GetAddressIndex(CCrossChainRPCData::GetConditionID(currencyID, CPBaaSNotarization::DefinitionNotarizationKey()), 
+                        CScript::P2IDX, 
+                        addressIndex))
+    {
+        for (auto &idx : addressIndex)
+        {
+            uint256 blkHash;
+            CTransaction notarizationTx;
+            if (!idx.first.spending && myGetTransaction(idx.first.txhash, notarizationTx, blkHash))
+            {
+                CChainNotarizationData cnd;
+                if ((definitionNotarization = CPBaaSNotarization(notarizationTx.vout[idx.first.index].scriptPubKey)).IsValid())
+                {
+                    auto blockIt = mapBlockIndex.find(blkHash);
+                    if (blockIt != mapBlockIndex.end() &&
+                        chainActive.Contains(blockIt->second))
+                    {
+                        notarizationRef = CInputDescriptor(notarizationTx.vout[idx.first.index].scriptPubKey,
+                                                                 notarizationTx.vout[idx.first.index].nValue,
+                                                                 CTxIn(idx.first.txhash, idx.first.index));
+                        retVal = true;
+                    }
+                }
+            }
+        }
+    }
+    return retVal;
+}
+
+// get the exports to a specific system from this chain, starting from a specific height up to a specific height
+// export proofs are all returned as null
+bool CConnectedChains::GetDefinitionNotarization(const CCurrencyDefinition &curDef,
+                                                 std::pair<CInputDescriptor, CPartialTransactionProof> &notarizationRef,
+                                                 CPBaaSNotarization &definitionNotarization,
+                                                 CPBaaSNotarization &notaryNotarization)
+{
+    std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
+    uint160 currencyID = curDef.GetID();
+    bool retVal = false;
+
+    // get all export transactions including and since this one up to the confirmed cross-notarization
+    if (GetAddressIndex(CCrossChainRPCData::GetConditionID(currencyID, CPBaaSNotarization::DefinitionNotarizationKey()), 
+                        CScript::P2IDX, 
+                        addressIndex))
+    {
+        for (auto &idx : addressIndex)
+        {
+            uint256 blkHash;
+            CTransaction notarizationTx;
+            if (!idx.first.spending && myGetTransaction(idx.first.txhash, notarizationTx, blkHash))
+            {
+                CChainNotarizationData cnd;
+                if ((definitionNotarization = CPBaaSNotarization(notarizationTx.vout[idx.first.index].scriptPubKey)).IsValid() &&
                      GetNotarizationData(ASSETCHAINS_CHAINID, cnd) &&
                      cnd.IsConfirmed() &&
                      (notaryNotarization = cnd.vtx[cnd.lastConfirmed].second).IsValid())

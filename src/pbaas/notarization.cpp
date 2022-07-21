@@ -804,8 +804,8 @@ CProofRoot CProofRoot::GetProofRoot(uint32_t blockHeight)
                       chainActive[blockHeight]->chainPower.CompactChainPower());
 }
 
-CNotaryEvidence::CNotaryEvidence(const CTransaction &tx, int outputNum, int &afterEvidence) :
-    type(CNotaryEvidence::TYPE_NOTARY_EVIDENCE), version(CNotaryEvidence::VERSION_INVALID)
+CNotaryEvidence::CNotaryEvidence(const CTransaction &tx, int outputNum, int &afterEvidence, uint8_t EvidenceType) :
+    type(EvidenceType), version(CNotaryEvidence::VERSION_INVALID)
 {
     AssertLockHeld(cs_main);
     afterEvidence = outputNum;
@@ -1662,7 +1662,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
             continue;
         }
 
-        // if this is a finalization, add the spends to close it that include the finalization and
+        // if this is a finalization with some evidence, add the spends to close it that include the finalization and
         // its evidence outputs
         int associatedIdx = -1;
         if (pendingNotarizationOutput.IsValid() && !pendingNotarizationOutput.hash.IsNull())
@@ -1675,6 +1675,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                 associatedIdx = notarizationOutputMap[pendingNotarizationOutput];
             }
 
+            // if there is a finalization, we need to add it and its evidence,
             if (existingFinalization.IsValid() && existingFinalization.evidenceOutputs.size())
             {
                 CTransaction finalizationTx;
@@ -1727,6 +1728,8 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                 }
             }
 
+            // if we are asssociated with a known node,
+            // get additional associated evidence as well
             if (associatedIdx != -1)
             {
                 // unspent evidence is specific to the target notarization
@@ -1749,7 +1752,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                             (*pEvidenceVec)[associatedIdx].push_back(oneEvidenceObj);
                         }
 
-                        spendsToClose[associatedIdx].insert(spendsToClose[associatedIdx].end(), associatedSpends.begin(), associatedSpends.end());
+                        associatedSpends.push_back(oneEvidenceSpend.second);
                     }
                 }
 
@@ -1972,8 +1975,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                             (*pEvidenceVec)[associatedIdx].push_back(oneEvidenceObj);
                         }
 
-                        associatedSpends.push_back(
-                            CInputDescriptor(oneEvidenceSpend.second.scriptPubKey, oneEvidenceSpend.second.nValue, oneEvidenceSpend.second.txIn));
+                        associatedSpends.push_back(oneEvidenceSpend.second);
                     }
                 }
 
@@ -3611,7 +3613,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                                 if (signResult == CIdentitySignature::SIGNATURE_PARTIAL || signResult == CIdentitySignature::SIGNATURE_COMPLETE)
                                 {
                                     sigSet.insert(oneID);
-                                    retVal = true;
 
                                     // if our signatures altogether have provided a complete validation, we can early out
                                     // check to see if this notarization now qualifies with signatures
@@ -3897,11 +3898,47 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     CChainNotarizationData crosschainCND;
     if (result.isNull() ||
         !(crosschainCND = CChainNotarizationData(result)).IsValid() ||
-        !crosschainCND.vtx.size())
+        (!externalSystem.chainDefinition.IsGateway() && !crosschainCND.IsConfirmed()))
     {
         LogPrintf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
         printf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
         return retVal;
+    }
+
+    // if the returned data is not confirmed, then it is a gateway that has not yet confirmed its first transaction
+    // it may still have unconfirmed notarizations
+    // if it is a gateway that is unconfirmed on the other side, we will insert its definition notarization as confirmed,
+    // until it is confirmed on its side.
+    if (!crosschainCND.IsConfirmed())
+    {
+        CInputDescriptor notarizationRef;
+        CPBaaSNotarization definitionNotarization;
+        if (!ConnectedChains.GetDefinitionNotarization(externalSystem.chainDefinition, notarizationRef, definitionNotarization))
+        {
+            LogPrintf("Unable to get definition notarization for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+            printf("Unable to get definition notarization for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+            return retVal;
+        }
+        crosschainCND.lastConfirmed = 0;
+        crosschainCND.vtx.insert(crosschainCND.vtx.begin(), std::make_pair(CUTXORef(notarizationRef.txIn.prevout), definitionNotarization));
+
+        if (crosschainCND.vtx.size() == 1)
+        {
+            crosschainCND.bestChain = 0;
+            crosschainCND.forks = std::vector<std::vector<int>>({std::vector<int>({0})});
+        }
+        else
+        {
+            // loop through the forks, insert 0, and increment all following indices
+            for (auto &oneFork : crosschainCND.forks)
+            {
+                for (auto &oneIndex : oneFork)
+                {
+                    oneIndex++;
+                }
+                oneFork.insert(oneFork.begin(), 0);
+            }
+        }
     }
 
     // our latest confirmed is what we may submit.
@@ -4505,7 +4542,7 @@ bool CObjectFinalization::GetOutputTransaction(const CTransaction &initialTx, CT
 // Sign the output object with an ID or signing authority of the ID from the wallet.
 CNotaryEvidence CObjectFinalization::SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EProofProtocol hashType) const
 {
-    CNotaryEvidence retVal = CNotaryEvidence(ASSETCHAINS_CHAINID, output);
+    CNotaryEvidence retVal = CNotaryEvidence(ASSETCHAINS_CHAINID, output, CNotaryEvidence::STATE_CONFIRMING);
 
     AssertLockHeld(cs_main);
 
@@ -4520,7 +4557,7 @@ CNotaryEvidence CObjectFinalization::SignConfirmed(const std::set<uint160> &nota
 
 CNotaryEvidence CObjectFinalization::SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EProofProtocol hashType) const
 {
-    CNotaryEvidence retVal = CNotaryEvidence(ASSETCHAINS_CHAINID, output);
+    CNotaryEvidence retVal = CNotaryEvidence(ASSETCHAINS_CHAINID, output, CNotaryEvidence::STATE_REJECTING);
 
     AssertLockHeld(cs_main);
 

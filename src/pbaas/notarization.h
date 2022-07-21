@@ -355,8 +355,7 @@ public:
 
     bool IsValid() const
     {
-        // this needs an actual check
-        return version != 0;
+        return version != 0 && ((!vtx.size() && lastConfirmed == -1 && !forks.size()) || (vtx.size() && forks.size()));
     }
 
     bool IsConfirmed() const

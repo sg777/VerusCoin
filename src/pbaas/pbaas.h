@@ -369,6 +369,11 @@ public:
         return "vrsc::system.notarization.notarization";
     }
 
+    static std::string DefinitionNotarizationKeyName()
+    {
+        return "vrsc::system.notarization.definitionnotarization";
+    }
+
     static std::string EarnedNotarizationKeyName()
     {
         return "vrsc::system.notarization.earnednotarization";
@@ -409,6 +414,13 @@ public:
         static uint160 nameSpace;
         static uint160 notaryNotarizationKey = CVDXF::GetDataKey(NotaryNotarizationKeyName(), nameSpace);
         return notaryNotarizationKey;
+    }
+
+    static uint160 DefinitionNotarizationKey()
+    {
+        static uint160 nameSpace;
+        static uint160 definitionNotarizationKey = CVDXF::GetDataKey(DefinitionNotarizationKeyName(), nameSpace);
+        return definitionNotarizationKey;
     }
 
     static uint160 EarnedNotarizationKey()
@@ -835,6 +847,17 @@ public:
                                std::pair<CInputDescriptor, CPartialTransactionProof> &notarizationTx,
                                CPBaaSNotarization &launchNotarization,
                                CPBaaSNotarization &notaryNotarization);
+
+    // gets the definition notarization if it was defined on this system
+    bool GetDefinitionNotarization(const CCurrencyDefinition &curDef,
+                                   CInputDescriptor &notarizationRef,
+                                   CPBaaSNotarization &definitionNotarization);
+
+    // gets the definition notarization if it was defined on this system
+    bool GetDefinitionNotarization(const CCurrencyDefinition &curDef,
+                                   std::pair<CInputDescriptor, CPartialTransactionProof> &notarizationTx,
+                                   CPBaaSNotarization &definitionNotarization,
+                                   CPBaaSNotarization &notaryNotarization);
 
     // get the exports to a specific system on this chain from a specific height up to a specific height
     bool GetCurrencyExports(const uint160 &currencyID,                             // transactions exported to system

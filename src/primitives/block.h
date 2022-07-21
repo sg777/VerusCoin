@@ -2057,6 +2057,7 @@ public:
         TYPE_INVALID = 0,
         TYPE_NOTARY_EVIDENCE = 1,           // this is notary evidence, including signatures and other types of proofs
         TYPE_MULTIPART_DATA = 2,            // this is used to combine multiple outputs that can be used to reconstruct one evidence set
+        TYPE_IMPORT_PROOF = 3,              // this is notary evidence, including signatures and other types of proofs
     };
 
     enum EStates {
@@ -2100,7 +2101,7 @@ public:
     CNotaryEvidence(const UniValue &uni);
 
     CNotaryEvidence(const std::vector<CNotaryEvidence> &evidenceVec);
-    CNotaryEvidence(const CTransaction &tx, int outputNum, int &afterEvidence);
+    CNotaryEvidence(const CTransaction &tx, int outputNum, int &afterEvidence, uint8_t EvidenceType=TYPE_NOTARY_EVIDENCE);
 
     // used to span multiple outputs if a cross-chain proof becomes too big for just one
     std::vector<CNotaryEvidence> BreakApart(int maxChunkSize=CScript::MAX_SCRIPT_ELEMENT_SIZE) const;
