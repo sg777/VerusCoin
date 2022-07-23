@@ -433,7 +433,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             // next output should be export in evidence output followed by supplemental reserve transfers for the export
             evidenceOutStart = importNotarizationOut + 1;
             int afterEvidence;
-            CNotaryEvidence evidence(importTx, evidenceOutStart, afterEvidence);
+            CNotaryEvidence evidence(importTx, evidenceOutStart, afterEvidence, CNotaryEvidence::TYPE_IMPORT_PROOF);
 
             if (!evidence.IsValid())
             {
@@ -445,7 +445,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
 
             std::set<int> validEvidenceTypes;
             validEvidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
-            CNotaryEvidence transactionProof(sysCCITemp.sourceSystemID, evidence.output, evidence.state, evidence.GetSelectEvidence(validEvidenceTypes), CNotaryEvidence::TYPE_NOTARY_EVIDENCE);
+            CNotaryEvidence transactionProof(sysCCITemp.sourceSystemID, evidence.output, evidence.state, evidence.GetSelectEvidence(validEvidenceTypes), CNotaryEvidence::TYPE_IMPORT_PROOF);
 
             /*
             // reconstruct evidence if necessary 

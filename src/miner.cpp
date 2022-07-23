@@ -786,7 +786,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                                                        pLaunchProof->first,
                                                        true,
                                                        evidenceProof,
-                                                       CNotaryEvidence::TYPE_NOTARY_EVIDENCE);
+                                                       CNotaryEvidence::TYPE_IMPORT_PROOF);
             notarizationIdx = outputs.size();
             outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence))));
         }
@@ -994,7 +994,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                                                        CUTXORef(uint256(), notarizationIdx),
                                                        true,
                                                        evidenceProof,
-                                                       CNotaryEvidence::TYPE_NOTARY_EVIDENCE);
+                                                       CNotaryEvidence::TYPE_IMPORT_PROOF);
             outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence))));
 
             outputs.insert(outputs.end(), importOutputs.begin(), importOutputs.end());

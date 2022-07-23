@@ -1068,6 +1068,12 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                         break;
                     }
 
+                    // import proof
+                    case CNotaryEvidence::TYPE_IMPORT_PROOF:
+                    {
+                        break;
+                    }
+
                     // data broken into multiple parts
                     case CNotaryEvidence::TYPE_MULTIPART_DATA:
                     {
@@ -1112,6 +1118,10 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 // either launch or refund, finally, we create one last index entry for launchcompletemarker
 
                 // if this is the first launch clear notarization, index as confirmed or refunding
+                if (notarization.IsDefinitionNotarization())
+                {
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::DefinitionNotarizationKey())));
+                }
                 if (notarization.IsPreLaunch())
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchPrelaunchKey())));
