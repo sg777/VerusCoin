@@ -1419,12 +1419,17 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
 
                 int32_t confirmedHeight = -1, bestHeight = -1;
 
+                std::set<std::string> nodeAddressSet;
                 if (goodNodes.size())
                 {
                     UniValue nodeArr(UniValue::VARR);
                     for (auto &oneNode : goodNodes)
                     {
-                        nodeArr.push_back(oneNode.ToUniValue());
+                        if (!nodeAddressSet.count(oneNode.networkAddress))
+                        {
+                            nodeAddressSet.insert(oneNode.networkAddress);
+                            nodeArr.push_back(oneNode.ToUniValue());
+                        }
                     }
                     ret.push_back(Pair("nodes", nodeArr));
                 }

@@ -1112,7 +1112,15 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase)
     }
     else
     {
-        destinations.insert(fromtaddr_);
+        // public key must match pkh as an address, so store as phk if we see pk and check pkh
+        if (fromtaddr_.which() == COptCCParams::ADDRTYPE_PK)
+        {
+            destinations.insert(CKeyID(GetDestinationID(fromtaddr_)));
+        }
+        else
+        {
+            destinations.insert(fromtaddr_);
+        }
     }
 
     vector<COutput> vecOutputs;
@@ -1198,6 +1206,11 @@ bool AsyncRPCOperation_sendmany::find_utxos(bool fAcceptProtectedCoinbase)
         std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
         for (auto &address : addresses)
         {
+            // we check as hash, not key
+            if (address.which() == COptCCParams::ADDRTYPE_PK)
+            {
+                address = CTxDestination(CKeyID(GetDestinationID(address)));
+            }
             if (isFromSpecificID)
             {
                 if (address == fromtaddr_)
