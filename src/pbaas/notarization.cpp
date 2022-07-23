@@ -3796,7 +3796,7 @@ bool CPBaaSNotarization::FindEarnedNotarization(CAddressIndexDbEntry *pEarnedNot
     uint256 blkHash;
     COptCCParams fP;
     if (!myGetTransaction(finalizationIndex.first.txhash, finalizationTx, blkHash) ||
-        finalizationTx.vout.size() >= finalizationIndex.first.index ||
+        finalizationIndex.first.index >= finalizationTx.vout.size() ||
         !(finalizationTx.vout[finalizationIndex.first.index].scriptPubKey.IsPayToCryptoCondition(fP) &&
             fP.IsValid() &&
             fP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
