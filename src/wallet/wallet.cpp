@@ -2411,7 +2411,11 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
             else
             {
                 // this should never happen
-                assert(false);
+                UniValue txUniv(UniValue::VOBJ);
+                TxToUniv(tx, pblock->GetHash(), txUniv);
+                LogPrintf("%s: UNEXPECTED ERROR: block (%s) for transaction %s:\n%s\nnot found\n", __func__, pblock->GetHash().GetHex().c_str(), txHash.GetHex().c_str(), txUniv.write(1,2).c_str());
+                printf("%s: UNEXPECTED ERROR: block (%s) for transaction %s:\n%s\nnot found\n", __func__, pblock->GetHash().GetHex().c_str(), txHash.GetHex().c_str(), txUniv.write(1,2).c_str());
+                return false;
             }
         }
 
