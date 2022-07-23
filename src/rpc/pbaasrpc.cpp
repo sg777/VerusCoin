@@ -1388,8 +1388,7 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
 
         UniValue lastStateUni = ConnectedChains.GetCurrencyState(chainDef, height + 1, defHeight).ToUniValue();
 
-        if ((chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID) || 
-            (chainDef.launchSystemID == ASSETCHAINS_CHAINID && height < chainDef.startBlock))
+        if (chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID)
         {
             ret.push_back(Pair("bestheight", chainActive.Height()));
             ret.push_back(Pair("lastconfirmedheight", chainActive.Height()));
