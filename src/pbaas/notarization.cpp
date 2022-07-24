@@ -2593,7 +2593,6 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
                 of.evidenceInputs.push_back(evidenceNIn);
             }
         }
-        of.evidenceOutputs.clear();
         of.minFinalizationHeight = height;
     }
     else
