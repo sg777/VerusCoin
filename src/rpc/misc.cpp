@@ -20,6 +20,7 @@
 #include "wallet/wallet.h"
 #include "wallet/walletdb.h"
 #endif
+#include "tls/utiltls.h"
 
 #include <stdint.h>
 
@@ -46,6 +47,7 @@ using namespace std;
  * Or alternatively, create a specific query method for the information.
  **/
 
+extern void CopyNodeStats(std::vector<CNodeStats>& vstats);
 int32_t Jumblr_depositaddradd(char *depositaddr);
 int32_t Jumblr_secretaddradd(char *secretaddr);
 uint64_t komodo_interestsum();
@@ -83,6 +85,8 @@ UniValue getinfo(const UniValue& params, bool fHelp)
             "  \"blocks\": xxxxxx,           (numeric) the current number of blocks processed in the server\n"
             "  \"timeoffset\": xxxxx,        (numeric) the time offset\n"
             "  \"connections\": xxxxx,       (numeric) the number of connections\n"
+            "  \"tls_established\": xxxxx,   (numeric) the number of TLS connections established\n"
+            "  \"tls_verified\": xxxxx,      (numeric) the number of TLS connection with validated certificates\n"
             "  \"proxy\": \"host:port\",     (string, optional) the proxy used by the server\n"
             "  \"difficulty\": xxxxxx,       (numeric) the current difficulty\n"
             "  \"testnet\": true|false,      (boolean) if the server is using testnet or not\n"
@@ -151,6 +155,22 @@ UniValue getinfo(const UniValue& params, bool fHelp)
         obj.push_back(Pair("unlocked_until", nWalletUnlockTime));
     obj.push_back(Pair("paytxfee",      ValueFromAmount(payTxFee.GetFeePerK())));
 #endif
+
+    //Add TLS stats to getinfo
+    vector<CNodeStats> vstats;
+    CopyNodeStats(vstats);
+    int tlsEstablished = 0;
+    int tlsVerified = 0;
+    BOOST_FOREACH(const CNodeStats& stats, vstats) {
+        if (stats.fTLSEstablished)
+          tlsEstablished++;
+
+        if (stats.fTLSVerified)
+          tlsVerified++;
+    }
+    obj.push_back(Pair("tls_established",   tlsEstablished));
+    obj.push_back(Pair("tls_verified",   tlsVerified));
+
     obj.push_back(Pair("relayfee",      ValueFromAmount(::minRelayTxFee.GetFeePerK())));
     obj.push_back(Pair("errors",        GetWarnings("statusbar")));
     {
