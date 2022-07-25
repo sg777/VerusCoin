@@ -3655,7 +3655,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                     {
                         COptCCParams tP;
                         if (oneEvidenceSpend.scriptPubKey.IsPayToCryptoCondition(tP) &&
-                            tP.evalCode == EVAL_NOTARY_EVIDENCE)
+                            tP.evalCode == EVAL_NOTARY_EVIDENCE || tP.evalCode == EVAL_FINALIZE_NOTARIZATION)
                         {
                             of.evidenceInputs.push_back(txBuilder.mtx.vin.size());
                             txBuilder.AddTransparentInput(oneEvidenceSpend.txIn.prevout, oneEvidenceSpend.scriptPubKey, oneEvidenceSpend.nValue);
