@@ -3333,8 +3333,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
     //
     // if we are auto-notarizing, the following conditions must be true to qualify for us to confirm a notarization:
     // 1) the notarization must be agreed to by 2 or greater valid earned notarizations since the next longest fork.
-    // 2) if two forks less than 2 apart are longer than 10 earned notarizations each, either MAY be confirmed but
-    //    neither MUST be.
     //
     std::vector<int> bestFork;
     if (cnd.forks.size() > 1)
@@ -3343,7 +3341,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
         // no conflict for the past 3 earned notarizations,
         // we are good to confirm, otherwise after 10 blocks, the one
         // that ends up > 2 longer can be notarized/finalized.
-        std::multimap<int, std::pair<int, int>> forkAndIndexByBlock;
+        std::multimap<uint32_t, std::pair<int, int>> forkAndIndexByBlock;
         for (int i = 0; i < cnd.forks.size(); i++)
         {
             auto &oneFork = cnd.forks[i];
@@ -3358,6 +3356,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
 
         int forkNum = -1;
         int elemCount = 0;
+        int disagreements = 0;
         for (auto firstIt = forkAndIndexByBlock.rbegin(); firstIt != forkAndIndexByBlock.rend(); firstIt++)
         {
             if (forkNum == -1 || forkNum == firstIt->second.first)
@@ -3367,7 +3366,24 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
             }
             else
             {
-                break;
+                // this is an element that does not agree with the fork being processed
+                // before we fail as a result, ensure that the associated earned notarization is a PoS block's
+                // notarization to prevent successful periodic mining/notarization DoS attacks, where the cost is
+                // 1/5th the actual mining power to effectively block cross-chain notarization. PoS is much harder
+                // to periodically attack without having statistical holes, enabling notarizations to get confirmed
+                // and defeating the attack, without attackers having much >50% network staking power to continuously deny
+                // notary confirmation.
+                uint256 blockHash = txes[firstIt->second.second].second;
+
+                // if inexplicable error or PoS block disagrees, abort
+                if (blockHash.IsNull() ||
+                    !mapBlockIndex.count(blockHash) ||
+                    mapBlockIndex[blockHash]->IsVerusPOSBlock())
+                {
+                    break;
+                }
+                // PoW disagreements do not veto, or DoS attacks on the cross-chain protocols become too easy
+                continue;
             }
         }
         if (elemCount >= 2)
