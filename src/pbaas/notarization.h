@@ -193,6 +193,7 @@ public:
     }
 
     bool GetOutputTransaction(const CTransaction &initialTx, CTransaction &tx, uint256 &blockHash) const;
+    std::vector<CNotaryEvidence> GetFinalizationEvidence(const CTransaction &thisTx, CValidationState &state, CTransaction *pOutputTx=nullptr) const;
 
     // Sign the output object with an ID or signing authority of the ID from the wallet.
     CNotaryEvidence SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EProofProtocol hashType) const;
@@ -383,6 +384,7 @@ bool IsEarnedNotarizationInput(const CScript &scriptSig);
 bool ValidateAcceptedNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsAcceptedNotarizationInput(const CScript &scriptSig);
 bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
+bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height);
 bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsFinalizeNotarizationInput(const CScript &scriptSig);
 bool IsNotaryEvidenceInput(const CScript &scriptSig);

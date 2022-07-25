@@ -4289,7 +4289,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             // verify that the current export from the source system spends the prior export from the source system
 
-            // TODO: HARDENING - ensure that we enforce in order export and in order import of exports
+            // TODO: HARDENING - ensure that we enforce in order export and in order import of exports, should be covered, but ensure it is
 
             if (useProofs &&
                 !(ccx.IsChainDefinition() ||
@@ -5881,7 +5881,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
     bool forcedRefunding = false;
 
-    // TODO: HARDENING - after v0.9.1 release, we should see if we can remove this block, as its function
+    // TODO: HARDENING - see if we can remove this block, as its function
     // has been moved to NextNotarizationInfo
     // now, if we are clearing launch, determine if we should refund or launch and set notarization appropriately
     if (isClearLaunchExport)

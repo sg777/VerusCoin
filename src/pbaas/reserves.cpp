@@ -821,8 +821,6 @@ CCrossChainImport CCrossChainImport::GetPriorImportFromSystem(const CTransaction
                                                               int32_t *ppriorOutNum,
                                                               uint256 *ppriorTxBlockHash) const
 {
-    // TODO: HARDENING search using import from system key
-
     // get the prior import
     CCrossChainImport cci;
     for (auto &oneIn : tx.vin)
@@ -3036,7 +3034,6 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 return false;
             }
 
-            // TODO: HARDENING - don't define if currency is already registered
             CCurrencyDefinition preExistingCur;
             int32_t curHeight;
 
@@ -3362,14 +3359,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                  (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()) ||
                  (exportObjects[i].IsConversion() && !exportObjects[i].IsPreConversion() && !importCurrencyState.IsLaunchCompleteMarker()))
         {
-            // TODO: HARDENING - this check is only for debugging because transfers have been made on testnet without appropriate fees
-            // it should be removed. we should also consider rejecting every invalid combination of flags as an explicit part of the
+            // TODO: HARDENING - ensure that we reject every invalid combination of flags as an explicit part of the
             // protocol, so that a bridge with such a failure would block until it was fixed.
-            if (!importCurrencyState.IsRefunding())
-            {
-                //printf("%s: refunding without conversion\npre-refund transfer: %s\n", __func__, exportObjects[i].ToUniValue().write().c_str());
-                LogPrint("crosschain", "%s: refunding without conversion\npre-refund transfer: %s\n", __func__, exportObjects[i].ToUniValue().write().c_str());
-            }
             curTransfer = exportObjects[i].GetRefundTransfer(!(systemSourceID != systemDestID && exportObjects[i].IsCrossSystem()));
         }
         else

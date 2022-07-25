@@ -1015,10 +1015,8 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
             }
         }
 
-        // TODO: HARDENING - enable this check before mainnet and ensure that PBaaS undergoes the same referral
-        // enforcement
         // only validate referrers before PBaaS
-        /* if (referrers.size() != checkReferrers.size())
+        if (referrers.size() != checkReferrers.size())
         {
             return state.Error("Invalid identity registration - incorrect referral payments");
         }
@@ -1030,7 +1028,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
             {
                 return state.Error("Invalid identity registration - incorrect referral payments");
             }
-        } */
+        }
 
         // CHECK #6 - ensure that the transaction pays the correct mining and referral fees
         if (feePaid < (idReferredRegistrationFee - (referrers.size() * idReferralFee)))
@@ -1147,7 +1145,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
             {
                 // TODO: HARDENING - ensure that we properly check payment for fractional or centralized IDs
                 // here or elsewhere - this should only get here on centralized currencies and fix may be as easy as
-                // allowing it to run in the block above that is currently conditions on fractional
+                // allowing it to run in the block above that is currently conditioned on fractional
             }
         }
         else
@@ -1777,7 +1775,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                     }
 
                     // twice through makes it invalid
-                    // TODO: HARDENING TESTNET - need to ensure that cross-chain imports only import IDs
+                    // TODO: HARDENING TESTNET - need to confirm that we enforce cross-chain imports only import IDs
                     // under the control of the importing currency
                     if (!advancedIdentity && validIdentity)
                     {

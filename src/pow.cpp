@@ -256,14 +256,9 @@ uint32_t lwmaGetNextPOSRequired(const CBlockIndex* pindexLast, const Consensus::
         supplyDivisor = ((supplyDivisor >> 2) == 0) ? 1 : supplyDivisor >> 2;
         nProofOfStakeDefault = ((arith_uint256)(fiftyPercentPerSatoshi / supplyDivisor)).GetCompact();
 
-        // TODO: HARDENING - testnet reset replace the >> 8 below with this
         // the lowest 50% equilibrium we can achieve is if one millionth of expected max supply is staking,
         // set that as the lower difficulty limit
-        //supplyDivisor = ((supplyDivisor >> 16) == 0) ? 1 : supplyDivisor >> 16;
-
-        // the lowest 50% equilibrium we can achieve on this testnet is if one 1024th of expected max supply is staking,
-        // set that as the lower difficulty limit. replace this with line above at next reset for 1/millionth
-        supplyDivisor = ((supplyDivisor >> 8) == 0) ? 1 : supplyDivisor >> 8;
+        supplyDivisor = ((supplyDivisor >> 16) == 0) ? 1 : supplyDivisor >> 16;
         bnLimit = fiftyPercentPerSatoshi / supplyDivisor;
     }
     else if (_IsVerusMainnetActive() && pindexLast && pindexLast->GetHeight() >= 1567999)
@@ -338,7 +333,7 @@ uint32_t lwmaGetNextPOSRequired(const CBlockIndex* pindexLast, const Consensus::
         if (x)
         {
             idx[i].consecutive = false;
-            if (!memcmp(ASSETCHAINS_SYMBOL, "VRSC", 4) && nHeight < 67680)
+            if (_IsVerusMainnetActive() && nHeight < 67680)
             {
                 idx[i].solveTime = VERUS_BLOCK_POSUNITS * (x + 1);
             }

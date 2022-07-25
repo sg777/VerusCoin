@@ -2155,8 +2155,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         std::set<std::pair<uint160, uint160>> idDestAndExport;
         std::set<std::pair<uint160, uint160>> currencyDestAndExport;
 
-        // TODO: HARDENING enforce the numeric limits on transactions in precheck, then we don't have to
-        // combine, but could do these additively, these get cleared and used only as needed
+        // we enforce the numeric limits on transactions in precheck exports
         std::map<uint160, int32_t> tmpExportTransfers;
         std::map<uint160, int32_t> tmpCurrencyExportTransfers;
         std::map<uint160, int32_t> tmpIdentityExportTransfers;

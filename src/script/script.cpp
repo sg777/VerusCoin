@@ -592,6 +592,10 @@ bool CScript::IsInstantSpend() const
     bool isInstantSpend = false;
 
     // TODO: HARDENING - this must run on the Verus chain, but should have a version check and parameter
+    //
+    // before we remove the exclusion for mainnet, make sure that all smart transaction types below cannot
+    // release value from the protocol until at least the finalization of this chain's notarizations
+    // 
     if (!_IsVerusMainnetActive() && IsPayToCryptoCondition(p) && p.IsValid())
     {
         // instant spends must be to expected instant spend crypto conditions and to the right address as well
