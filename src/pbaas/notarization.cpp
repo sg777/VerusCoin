@@ -3610,7 +3610,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
 
                                     for (auto &oneKeySig : oneIDSig.second.signatures)
                                     {
-                                        // TODO: RESUME
+                                        // TODO: HARDENING - for efficiency, not security, remove destinations already signed
                                     }
                                 }
                             }
@@ -4338,9 +4338,17 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
         }
 
         // earned notarizations are only supported for 
-        if (p.evalCode == EVAL_EARNEDNOTARIZATION && !currentNotarization.proofRoots.count(currentNotarization.currencyID))
+        if (p.evalCode == EVAL_EARNEDNOTARIZATION &&
+            !currentNotarization.IsBlockOneNotarization() &&
+            !currentNotarization.proofRoots.count(currentNotarization.currencyID))
         {
-            return state.Error("Earned notarization must contain proof root system being notarized");
+            return state.Error("Earned notarization besides PBaaS block one must contain proof root of system being notarized");
+        }
+        else if (p.evalCode == EVAL_EARNEDNOTARIZATION &&
+            currentNotarization.IsBlockOneNotarization() &&
+            currentNotarization.proofRoots.count(currentNotarization.currencyID))
+        {
+            return state.Error("Block one earned notarization must not contain proof root of system being notarized");
         }
     }
     else if (p.evalCode == EVAL_EARNEDNOTARIZATION)

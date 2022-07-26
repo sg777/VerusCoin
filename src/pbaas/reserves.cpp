@@ -3292,7 +3292,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     // currency in all other currencies, or increase the reserve ratio of all currencies by some amount.
     CAmount burnedChangePrice = 0;
     CAmount burnedChangeWeight = 0;
-    CAmount secondaryBurned = 0;
 
     // this is cached here, but only used for pre-conversions
     CCurrencyValueMap preConvertedOutput;
