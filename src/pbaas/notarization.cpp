@@ -4437,7 +4437,7 @@ std::vector<CNotaryEvidence> CObjectFinalization::GetFinalizationEvidence(const 
     if (!GetOutputTransaction(thisTx, finalizedTx, outputTxBlockHash))
     {
         state.Error(std::string(__func__) + ": cannot retrieve output transaction for finalization");
-        LogPrint("notarization", "%s: Cannot retrieve output transaction for finalization\n", __func__);
+        LogPrint("notarization", "%s: cannot retrieve output transaction for finalization\n", __func__);
         return std::vector<CNotaryEvidence>();
     }
 
@@ -4534,8 +4534,8 @@ std::vector<CNotaryEvidence> CObjectFinalization::GetFinalizationEvidence(const 
             }
             else if (inP.IsValid() &&
                      inP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
-                     p.vData.size() &&
-                     (priorFinalization = CObjectFinalization(p.vData[0])).IsValid())
+                     inP.vData.size() &&
+                     (priorFinalization = CObjectFinalization(inP.vData[0])).IsValid())
             {
                 // cleanup any pending multipart
                 if (evidenceInVec.size())
