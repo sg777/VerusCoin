@@ -4606,7 +4606,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
     std::vector<CNotaryEvidence> evidenceVec;
 
     currentFinalization.GetOutputTransaction(tx, finalizedTx, txBlockHash);
-    if (!(finalizedTx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+    if (!(finalizedTx.vout[currentFinalization.output.n].scriptPubKey.IsPayToCryptoCondition(p) &&
           p.IsValid() &&
           (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
           p.vData.size() &&
