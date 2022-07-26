@@ -110,11 +110,8 @@ public:
         READWRITE(finalizationType);
         READWRITE(currencyID);
         READWRITE(output);
-        if (IsConfirmed() || IsRejected())
-        {
-            READWRITE(evidenceInputs);
-            READWRITE(evidenceOutputs);
-        }
+        READWRITE(evidenceInputs);
+        READWRITE(evidenceOutputs);
     }
 
     bool IsValid() const
