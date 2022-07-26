@@ -4345,7 +4345,8 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             return state.Error("Earned notarization besides PBaaS block one must contain proof root of system being notarized");
         }
     }
-    else if (p.evalCode == EVAL_EARNEDNOTARIZATION)
+    else if (p.evalCode == EVAL_EARNEDNOTARIZATION &&
+             !currentNotarization.IsBlockOneNotarization())
     {
         return state.Error("Earned notarization must contain proof root of current chain");
     }
