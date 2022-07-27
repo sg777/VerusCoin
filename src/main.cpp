@@ -3636,8 +3636,17 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     if (pindex->pprev != NULL)
     {
         int32_t prevMoMheight; uint256 notarizedhash, txid;
-        komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
         CBlockIndex *pNotarizedIndex = nullptr;
+
+        CProofRoot confirmedRoot = ConnectedChains.FinalizedChainRoot();
+        if (confirmedRoot.IsValid())
+        {
+            notarizedhash = confirmedRoot.blockHash;
+        }
+        else
+        {
+            komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
+        }
         if (mapBlockIndex.count(notarizedhash))
         {
             pNotarizedIndex = mapBlockIndex[notarizedhash];
@@ -4983,7 +4992,17 @@ bool static DisconnectTip(CValidationState &state, const CChainParams& chainpara
     // do not disconnect a notarized tip
     {
         int32_t prevMoMheight; uint256 notarizedhash,txid;
-        komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
+
+        CProofRoot confirmedRoot = ConnectedChains.FinalizedChainRoot();
+        if (confirmedRoot.IsValid())
+        {
+            notarizedhash = confirmedRoot.blockHash;
+        }
+        else
+        {
+            komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
+        }
+
         if ( block.GetHash() == notarizedhash )
         {
             fprintf(stderr,"DisconnectTip trying to disconnect notarized block at ht.%d\n",(int32_t)pindexDelete->GetHeight());
@@ -5264,7 +5283,18 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
     // stop trying to reorg if the reorged chain is before last notarized height. 
     // stay on the same chain tip!
     int32_t notarizedht,prevMoMheight; uint256 notarizedhash,txid;
-    notarizedht = komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
+
+    CProofRoot confirmedRoot = ConnectedChains.FinalizedChainRoot();
+    if (confirmedRoot.IsValid())
+    {
+        notarizedhash = confirmedRoot.blockHash;
+        notarizedht = confirmedRoot.rootHeight;
+    }
+    else
+    {
+        notarizedht = komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
+    }
+
     auto blkIt = mapBlockIndex.find(notarizedhash);
     if ( pindexFork != 0 && 
          pindexOldTip->GetHeight() > notarizedht && 

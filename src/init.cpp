@@ -1798,6 +1798,24 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                     }
                 }
 
+                CChainNotarizationData cnd;
+                {
+                    uint160 notaryChainID = ConnectedChains.FirstNotaryChain().GetID();
+                    CNotarySystemInfo &notarySystem = ConnectedChains.notarySystems[notaryChainID];
+                    LOCK(cs_main);
+                    if (GetNotarizationData(notaryChainID, cnd) &&
+                        cnd.IsConfirmed() &&
+                        cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(notaryChainID) &&
+                        (!notarySystem.lastConfirmedNotarization.IsValid() ||
+                         !notarySystem.lastConfirmedNotarization.proofRoots.count(notaryChainID) ||
+                         notarySystem.lastConfirmedNotarization.proofRoots[notaryChainID].rootHeight <
+                            cnd.vtx[cnd.lastConfirmed].second.proofRoots[notaryChainID].rootHeight))
+                    {
+
+                        ConnectedChains.notarySystems[ConnectedChains.FirstNotaryChain().GetID()].lastConfirmedNotarization = cnd.vtx[cnd.lastConfirmed].second;
+                    }
+                }
+
                 uiInterface.InitMessage(_("Verifying blocks..."));
                 if (fHavePruned && GetArg("-checkblocks", 288) > MIN_BLOCKS_TO_KEEP) {
                     LogPrintf("Prune: pruned datadir may not have more than %d blocks; -checkblocks=%d may fail\n",

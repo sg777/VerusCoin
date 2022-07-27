@@ -3196,7 +3196,41 @@ bool CConnectedChains::CheckVerusPBaaSAvailable(UniValue &chainInfoUni, UniValue
 uint32_t CConnectedChains::NotaryChainHeight()
 {
     LOCK(cs_mergemining);
-    return notarySystems.size() ? notarySystems.begin()->second.height : 0;
+    if (!notarySystems.size())
+    {
+        return 0;
+    }
+    return notarySystems.begin()->second.height;
+}
+
+CProofRoot CConnectedChains::ConfirmedNotaryChainRoot()
+{
+    CProofRoot invalidRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+
+    LOCK(cs_mergemining);
+    if (!notarySystems.size())
+    {
+        return invalidRoot;
+    }
+    uint160 notaryChainID = notarySystems.begin()->second.notaryChain.GetID();
+    return notarySystems.begin()->second.lastConfirmedNotarization.proofRoots.count(notaryChainID) ?
+                notarySystems.begin()->second.lastConfirmedNotarization.proofRoots[notaryChainID] :
+                invalidRoot;
+}
+
+CProofRoot CConnectedChains::FinalizedChainRoot()
+{
+    CProofRoot invalidRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+
+    LOCK(cs_mergemining);
+    if (!notarySystems.size())
+    {
+        return invalidRoot;
+    }
+    uint160 notaryChainID = notarySystems.begin()->second.notaryChain.GetID();
+    return notarySystems.begin()->second.lastConfirmedNotarization.proofRoots.count(ASSETCHAINS_CHAINID) ?
+                notarySystems.begin()->second.lastConfirmedNotarization.proofRoots[ASSETCHAINS_CHAINID] :
+                invalidRoot;
 }
 
 bool CConnectedChains::CheckVerusPBaaSAvailable()
@@ -3314,10 +3348,10 @@ bool CConnectedChains::ConfigureEthBridge()
 
             notarySystems.insert(std::make_pair(gatewayID, 
                                                 CNotarySystemInfo(cnd.IsConfirmed() ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : 0, 
-                                                    vethNotaryChain,
-                                                    cnd.vtx.size() ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second : CPBaaSNotarization(),
-                                                    CNotarySystemInfo::TYPE_ETH,
-                                                    CNotarySystemInfo::VERSION_CURRENT)));
+                                                vethNotaryChain,
+                                                cnd.vtx.size() ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second : CPBaaSNotarization(),
+                                                CNotarySystemInfo::TYPE_ETH,
+                                                CNotarySystemInfo::VERSION_CURRENT)));
             return IsNotaryAvailable(true);
         }
     }

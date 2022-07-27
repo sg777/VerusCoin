@@ -4619,6 +4619,12 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         return state.Error("Invalid notarization output for finalization");
     }
 
+    if (p.evalCode == EVAL_EARNEDNOTARIZATION &&
+        !ConnectedChains.notarySystems.count(notarization.currencyID))
+    {
+        return state.Error("Earned notarizations are only valid for notary systems");
+    }
+
     CCurrencyDefinition notaryCurrencyDef = ConnectedChains.GetCachedCurrency(notarization.currencyID);
     if (!notaryCurrencyDef.IsValid())
     {
@@ -4709,6 +4715,9 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             // to now and ensure that we have sufficient earned notarization confirmation
 
             // ensure that we meet all counter-evidence requirements
+
+            // if we get here, store the verified proof root of this chain as notarized
+            ConnectedChains.notarySystems[notarization.currencyID].lastConfirmedNotarization = notarization;
         }
         else
         {
@@ -4722,13 +4731,21 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             //      iii) proof of a more powerful, provably mined/staked chain since the last notarization that is different than
             //           the accepted notarization.
 
-            /* if (!evidenceMap.count(notarization.currencyID))
+            if (notarization.currencyID != ASSETCHAINS_CHAINID &&
+                notaryCurrencyDef.IsPBaaSChain() || notaryCurrencyDef.IsGateway() &&
+                !notarization.IsPreLaunch() &&
+                (notaryCurrencyDef.launchSystemID != ASSETCHAINS_CHAINID ||
+                 !evidenceMap.count(notarization.currencyID) ||
+                 evidenceMap[notarization.currencyID].CheckSignatureConfirmation(objHash,
+                                                                                 notarySet,
+                                                                                 pNotaryCurrency->minNotariesConfirm,
+                                                                                 height) != CNotaryEvidence::STATE_CONFIRMED))
             {
                 return state.Error("insufficient evidence from notary system to accept finalization");
-            } */ //
+            }
         }
     }
-    else
+    else if (currentFinalization.IsRejected())
     {
         evidenceVec = currentFinalization.GetFinalizationEvidence(tx, state, &notarizationTx);
         if (state.IsError())
@@ -4755,6 +4772,13 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             //     the accepted notarization.
         }
     }
+    else
+    {
+        // TODO: HARDENING - finalization is pending, ensure that it makes sense as a pending finalization, generally,
+        // most often, such a finalization is on the same transaction as the notarization it sets as pending
+        // then evidence for that notarization is posted, which could be aggregated by a pending finalization,
+        // then, when there is enough evidence to pass, it is finalized.
+    }
 
     return true;
 }
@@ -4766,27 +4790,14 @@ bool IsAcceptedNotarizationInput(const CScript &scriptSig)
 }
 
 
-/*
- * Ensures that a spend in an earned notarization of either an OpRet support transaction or summary notarization
- * are valid with respect to this chain. Any transaction that spends from an opret trasaction is either disconnected,
- * or contains the correct hashes of each object and transaction data except for the opret, which can be validated by
- * reconstructing the opret from the hashes on the other chain and verifying that it hashes to the same input value. This
- * enables full validation without copying redundant data back to its original chain.
- * 
- * In addition, each earned notarization must reference the last earned notarization with which it agrees and prove the last
- * accepted notarization on the alternate chain with the latest MMR. The earned notarization will not be accepted if there is
- * a later notarization that agrees with it already present in the alternate chain when it is submitted. 
- * 
- */
+// earned notarizations can be spent when finalized as either confirmed or invalidated due to a disagreeing,
+// confirmed notarization
 bool ValidateEarnedNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
-    // this needs to validate that the block is mined or staked, that the notarization is properly formed,
-    // cryptographically correct, and that it spends the proper finalization outputs
-    // if the notarization causes a fork, it must include additional proof of blocks and their
-    // power based on random block hash bits
-    //printf("ValidateEarnedNotarization\n");
+    // TODO: HARDENING ensure that earned notarization UTXOs are spent appropriately
     return true;
 }
+
 bool IsEarnedNotarizationInput(const CScript &scriptSig)
 {
     // this is an output check, and is incorrect. need to change to input

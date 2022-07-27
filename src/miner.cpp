@@ -1603,6 +1603,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         // if this is not for mining, first determine if we have a right to make a block
         if (isStake)
         {
+            LOCK(pwalletMain->cs_wallet);
             uint64_t txfees, utxovalue;
             uint32_t txtime;
             uint256 utxotxid;
@@ -1611,14 +1612,11 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
 
             txStaked = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
 
-            if (ASSETCHAINS_LWMAPOS != 0)
-            {
-                uint32_t nBitsPOS;
-                arith_uint256 posHash;
+            uint32_t nBitsPOS;
+            arith_uint256 posHash;
 
-                siglen = verus_staked(pblock, txStaked, nBitsPOS, posHash, utxosig, firstDestination);
-                blocktime = GetAdjustedTime();
-            }
+            siglen = verus_staked(pblock, txStaked, nBitsPOS, posHash, utxosig, firstDestination);
+            blocktime = GetAdjustedTime();
 
             if (siglen <= 0)
             {

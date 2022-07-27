@@ -728,7 +728,7 @@ public:
     CRPCChainData notaryChain;                  // notary chain information and connectivity for PBaaS protocol
     CPBaaSNotarization lastConfirmedNotarization;
 
-    CNotarySystemInfo() : notarySystemVersion(VERSION_INVALID), height(0) {}
+    CNotarySystemInfo(uint32_t NotarySystemType=TYPE_PBAAS, uint32_t NotaryVersion=VERSION_INVALID) : notarySystemVersion(NotaryVersion), notarySystemType(NotarySystemType), height(0) {}
 
     CNotarySystemInfo(uint32_t Height, 
                       const CRPCChainData &NotaryChain, 
@@ -941,6 +941,8 @@ public:
         return notarySystems;
     }
 
+    CProofRoot ConfirmedNotaryChainRoot();
+    CProofRoot FinalizedChainRoot();
     uint32_t NotaryChainHeight();
 
     CCurrencyDefinition &ThisChain()
