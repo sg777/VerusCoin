@@ -817,7 +817,7 @@ public:
     void AggregateChainTransfers(const CTransferDestination &feeRecipient, uint32_t nHeight);
     CCurrencyDefinition GetCachedCurrency(const uint160 &currencyID);
     std::string GetFriendlyCurrencyName(const uint160 &currencyID);
-    CCurrencyDefinition UpdateCachedCurrency(const uint160 &currencyID, uint32_t height);
+    CCurrencyDefinition UpdateCachedCurrency(const CCurrencyDefinition &currentCurrency, uint32_t height);
 
     bool GetLastImport(const uint160 &currencyID, 
                        CTransaction &lastImport, 

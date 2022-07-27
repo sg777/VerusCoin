@@ -1787,6 +1787,17 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                     }
                 }
 
+                if (!IsVerusActive() &&
+                    chainActive.Height() > 1)
+                {
+                    // get currency definition from the coinbase in block 1
+                    CCurrencyDefinition loadedDefinition;
+                    if (GetCurrencyDefinition(ConnectedChains.ThisChain().GetID(), loadedDefinition))
+                    {
+                        ConnectedChains.UpdateCachedCurrency(loadedDefinition, chainActive.Height());
+                    }
+                }
+
                 uiInterface.InitMessage(_("Verifying blocks..."));
                 if (fHavePruned && GetArg("-checkblocks", 288) > MIN_BLOCKS_TO_KEEP) {
                     LogPrintf("Prune: pruned datadir may not have more than %d blocks; -checkblocks=%d may fail\n",

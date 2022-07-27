@@ -3797,6 +3797,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     std::set<std::pair<uint160, uint160>> idDestAndExport;
     std::set<std::pair<uint160, uint160>> currencyDestAndExport;
 
+    CCurrencyDefinition newThisChain;
+
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
         const CTransaction &tx = block.vtx[i];
@@ -3818,7 +3820,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             return state.DoS(100, error(strprintf("%s: Invalid reserve transaction", __func__).c_str()), REJECT_INVALID, "bad-txns-invalid-reserve");
         }
 
-        if (isPBaaS && (rtxd.flags & (rtxd.IS_IMPORT | rtxd.IS_RESERVETRANSFER | rtxd.IS_EXPORT | rtxd.IS_IDENTITY_DEFINITION)))
+        if (isPBaaS && (rtxd.flags & (rtxd.IS_IMPORT | rtxd.IS_RESERVETRANSFER | rtxd.IS_EXPORT | rtxd.IS_IDENTITY_DEFINITION | rtxd.IS_CURRENCY_DEFINITION)))
         {
             // go through all outputs and record all currency and identity definitions, either import-based definitions or
             // identity reservations to check for collision, which is disallowed
@@ -3864,6 +3866,19 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             else
                             {
                                 return state.DoS(10, error("%s: attempt to submit block with invalid or duplicate identity", __func__), REJECT_INVALID, "bad-txns-dup-id");
+                            }
+                            break;
+                        }
+
+                        case EVAL_CURRENCY_DEFINITION:
+                        {
+                            // if this is a straight up currency definition of our native currency, record it
+                            CCurrencyDefinition curDef;
+                            if (!(rtxd.flags & rtxd.IS_IMPORT) &&
+                                (curDef = CCurrencyDefinition(p.vData[0])).IsValid() &&
+                                curDef.GetID() == ASSETCHAINS_CHAINID)
+                            {
+                                newThisChain = curDef;
                             }
                             break;
                         }
@@ -4754,6 +4769,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             return AbortNode(state, "Failed to write blockhash index");
     }
     // END insightexplorer
+
+    if (newThisChain.IsValid())
+    {
+        ConnectedChains.UpdateCachedCurrency(newThisChain, nHeight + 1);
+    }
 
     SetMaxScriptElementSize(nHeight + 1);
 

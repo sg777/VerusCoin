@@ -3609,16 +3609,21 @@ CCurrencyDefinition CConnectedChains::GetCachedCurrency(const uint160 &currencyI
     return currencyDefCache[currencyID];
 }
 
-CCurrencyDefinition CConnectedChains::UpdateCachedCurrency(const uint160 &currencyID, uint32_t height)
+CCurrencyDefinition CConnectedChains::UpdateCachedCurrency(const CCurrencyDefinition &currencyDef, uint32_t height)
 {
     // due to the main lock being taken on the thread that waits for transaction checks,
     // low level functions like this must be called either from a thread that holds LOCK(cs_main),
     // or script validation, where it is held either by this thread or one waiting for it.
     // in the long run, the daemon synchonrization model should be improved
-    CCurrencyDefinition currencyDef = GetCachedCurrency(currencyID);
-    CCoinbaseCurrencyState curState = GetCurrencyState(currencyDef, height);
-    currencyDefCache[currencyID] = currencyDef;
-    return currencyDef;
+    uint160 currencyID = currencyDef.GetID();
+    CCurrencyDefinition retVal = currencyDef;
+    CCoinbaseCurrencyState curState = GetCurrencyState(retVal, height);
+    currencyDefCache[currencyID] = retVal;
+    if (currencyID == ASSETCHAINS_CHAINID)
+    {
+        ThisChain() = retVal;
+    }
+    return retVal;
 }
 
 // this must be protected with main lock

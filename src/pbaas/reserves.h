@@ -1695,7 +1695,8 @@ public:
         IS_EXPORT=0x100,                        // If set, this is an expired fill or kill in a valid tx
         IS_IDENTITY=0x200,                      // If set, this is an identity definition or update
         IS_IDENTITY_DEFINITION=0x400,           // If set, this is an identity definition
-        IS_HIGH_FEE=0x800                       // If set, this may have "absurdly high fees"
+        IS_HIGH_FEE=0x800,                      // If set, this may have "absurdly high fees"
+        IS_CURRENCY_DEFINITION=0x1000           // If set, this is a currency definition
     };
 
     enum ESubIndexCodes {
