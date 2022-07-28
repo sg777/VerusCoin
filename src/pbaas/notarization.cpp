@@ -2313,7 +2313,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         // if we should confirm a notarization, it will be the first in forkIdx
         if (forkIdx > -1)
         {
-            printf("%s: ready to confirm txhash: %s, notarization:\n%s\n", __func__, txes[cnd.forks[forkIdx][forkPos]].second.GetHex().c_str(), cnd.vtx[cnd.forks[forkIdx][forkPos]].second.ToUniValue().write(1,2).c_str());
+            printf("ready to confirm notarization tx: %s\n", txes[cnd.forks[forkIdx][forkPos]].second.GetHex().c_str());
             priorNotarizationIdx = cnd.forks[forkIdx][forkPos];
         }
         else
