@@ -3290,7 +3290,7 @@ bool CConnectedChains::IsNotaryAvailable(bool callToCheck)
     if (!callToCheck)
     {
         // if we aren't checking, we consider unavailable no contact in the last two minutes
-        return (GetTime() - FirstNotaryChain().LastConnectionTime() < (120000));
+        return FirstNotaryChain().IsValid() && (GetTime() - FirstNotaryChain().LastConnectionTime() < (120000));
     }
     return !(FirstNotaryChain().rpcHost.empty() || FirstNotaryChain().rpcPort == 0 || FirstNotaryChain().rpcUserPass.empty()) &&
            CheckVerusPBaaSAvailable();
