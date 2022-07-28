@@ -4732,7 +4732,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             //           the accepted notarization.
 
             if (notarization.currencyID != ASSETCHAINS_CHAINID &&
-                notaryCurrencyDef.IsPBaaSChain() || notaryCurrencyDef.IsGateway() &&
+                (notaryCurrencyDef.IsPBaaSChain() || notaryCurrencyDef.IsGateway()) &&
                 !notarization.IsPreLaunch() &&
                 (notaryCurrencyDef.launchSystemID != ASSETCHAINS_CHAINID ||
                  !evidenceMap.count(notarization.currencyID) ||
