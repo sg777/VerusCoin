@@ -4593,6 +4593,12 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
     // after we precheck and confirm a notarization finalization for a notary chain of this chain, we record it
     // as the last notarized checkpoint and prevent any unwind of the blockchain from that point
 
+    auto upgradeVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
+    if (upgradeVersion < CActivationHeight::ACTIVATE_VERUSVAULT)
+    {
+        return true;
+    }
+
     // ensure that we never accept an invalid proofroot for this chain in a notarization
     COptCCParams p;
     CObjectFinalization currentFinalization;
