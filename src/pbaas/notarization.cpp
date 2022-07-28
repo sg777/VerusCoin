@@ -3475,7 +3475,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
     }
 
     // take the lock again, now that we're back from calling out
-    LOCK2(cs_main, mempool.cs);
+    LOCK(cs_main);
 
     // if height changed, we need to fail and possibly try again later
     if (height != chainActive.Height())

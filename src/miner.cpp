@@ -1899,7 +1899,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
 
                         bool relayTx = false;
                         {
-                            LOCK(mempool.cs);
+                            LOCK2(cs_main, mempool.cs);
                             relayTx = myAddtomempool(notarizationTx);
                         }
                         if (relayTx)

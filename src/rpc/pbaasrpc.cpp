@@ -6319,8 +6319,8 @@ UniValue closeoffers(const UniValue& params, bool fHelp)
     std::map<std::pair<bool, uint256>, OfferInfo> myOffers;
     uint32_t height;
     {
-        LOCK2(cs_main, mempool.cs);
-        LOCK(pwalletMain->cs_wallet);
+        LOCK2(cs_main, pwalletMain->cs_wallet);
+        LOCK(mempool.cs);
         height = chainActive.Height();
         GetMyOffers(myOffers, height, txIds.size() != 0, true);
     }
