@@ -807,7 +807,6 @@ CProofRoot CProofRoot::GetProofRoot(uint32_t blockHeight)
 CNotaryEvidence::CNotaryEvidence(const CTransaction &tx, int outputNum, int &afterEvidence, uint8_t EvidenceType) :
     type(EvidenceType), version(CNotaryEvidence::VERSION_INVALID)
 {
-    AssertLockHeld(cs_main);
     afterEvidence = outputNum;
 
     COptCCParams p;
