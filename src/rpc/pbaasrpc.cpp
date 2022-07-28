@@ -6488,8 +6488,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     std::vector<CRecipient> outputs;
     std::set<libzcash::PaymentAddress> zaddrDestSet;
 
-    LOCK2(cs_main, mempool.cs);
-    LOCK(pwalletMain->cs_wallet);
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+    LOCK(mempool.cs);
 
     libzcash::PaymentAddress zaddress;
     bool hasZSource = !wildCardAddress && pwalletMain->GetAndValidateSaplingZAddress(sourceAddress, zaddress);

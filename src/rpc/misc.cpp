@@ -148,6 +148,7 @@ UniValue getinfo(const UniValue& params, bool fHelp)
     obj.push_back(Pair("testnet",       PBAAS_TESTMODE));
 #ifdef ENABLE_WALLET
     if (pwalletMain) {
+        LOCK(pwalletMain->cs_wallet);
         obj.push_back(Pair("keypoololdest", pwalletMain->GetOldestKeyPoolTime()));
         obj.push_back(Pair("keypoolsize",   (int)pwalletMain->GetKeyPoolSize()));
     }

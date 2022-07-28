@@ -1603,7 +1603,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         // if this is not for mining, first determine if we have a right to make a block
         if (isStake)
         {
-            LOCK(pwalletMain->cs_wallet);
             uint64_t txfees, utxovalue;
             uint32_t txtime;
             uint256 utxotxid;
@@ -1881,11 +1880,14 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
 
                 if (notarizationBuilder.mtx.vin.size())
                 {
-                    LOCK2(cs_main, mempool.cs);
-                    TransactionBuilderResult buildResult = notarizationBuilder.Build();
-                    if (buildResult.IsTx())
+                    std::vector<TransactionBuilderResult> buildResultVec;
                     {
-                        notarizationTx = buildResult.GetTxOrThrow();
+                        LOCK2(cs_main, pwalletMain->cs_wallet);
+                        buildResultVec.push_back(notarizationBuilder.Build());
+                    }
+                    if (buildResultVec[0].IsTx())
+                    {
+                        notarizationTx = buildResultVec[0].GetTxOrThrow();
 
                         if (LogAcceptCategory("notarization"))
                         {
@@ -1895,16 +1897,20 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                             LogPrint("notarization", "%s: (PII) Submitting notarization confirmations:\n%s\n", __func__, jsonNotaryConfirmations.write(1,2).c_str());
                         }
 
-                        // add to mem pool and relay
-                        if (myAddtomempool(notarizationTx))
+                        bool relayTx = false;
+                        {
+                            LOCK(mempool.cs);
+                            relayTx = myAddtomempool(notarizationTx);
+                        }
+                        if (relayTx)
                         {
                             RelayTransaction(notarizationTx);
                         }
                     }
                     else
                     {
-                        printf("%s: (PII) error adding notary evidence: %s\n", __func__, buildResult.GetError().c_str());
-                        LogPrint("notarization", "%s: (PII) error adding notary evidence: %s\n", __func__, buildResult.GetError().c_str());
+                        printf("%s: (PII) error adding notary evidence: %s\n", __func__, buildResultVec[0].GetError().c_str());
+                        LogPrint("notarization", "%s: (PII) error adding notary evidence: %s\n", __func__, buildResultVec[0].GetError().c_str());
                     }
                 }
             }
