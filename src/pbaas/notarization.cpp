@@ -2610,9 +2610,10 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     of.SetConfirmed(); 
     txBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &of)), 0);
 
-    UniValue univTx(UniValue::VOBJ);
+    /* UniValue univTx(UniValue::VOBJ);
     TxToUniv(txBuilder.mtx, uint256(), univTx);
     printf("%s: txBuilder returning:\n%s\n", __func__, univTx.write(1,2).c_str());
+    // */
 
     return true;
 }
