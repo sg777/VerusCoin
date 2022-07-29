@@ -10050,10 +10050,12 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     // must be present and in a mined block
     {
-        LOCK(mempool.cs);
-        if (!myGetTransaction(txid, txOut, hashBlk) || hashBlk.IsNull())
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or unconfirmed commitment transaction id");
+            LOCK(mempool.cs);
+            if (!myGetTransaction(txid, txOut, hashBlk) || hashBlk.IsNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or unconfirmed commitment transaction id");
+            }
         }
 
         auto indexIt = mapBlockIndex.find(hashBlk);
