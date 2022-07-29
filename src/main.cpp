@@ -9237,18 +9237,21 @@ bool SendMessages(CNode* pto, bool fSendTrickle)
         static int64_t nLastRebroadcast;
         if (!IsInitialBlockDownload(chainParams) && (GetTime() - nLastRebroadcast > 24 * 60 * 60))
         {
-            LOCK(cs_vNodes);
-            BOOST_FOREACH(CNode* pnode, vNodes)
+            TRY_LOCK(cs_vNodes, lockNodes);
+            if (lockNodes)
             {
-                // Periodically clear addrKnown to allow refresh broadcasts
-                if (nLastRebroadcast)
-                    pnode->addrKnown.reset();
-                
-                // Rebroadcast our address
-                AdvertizeLocal(pnode);
+                BOOST_FOREACH(CNode* pnode, vNodes)
+                {
+                    // Periodically clear addrKnown to allow refresh broadcasts
+                    if (nLastRebroadcast)
+                        pnode->addrKnown.reset();
+
+                    // Rebroadcast our address
+                    AdvertizeLocal(pnode);
+                }
+                if (!vNodes.empty())
+                    nLastRebroadcast = GetTime();
             }
-            if (!vNodes.empty())
-                nLastRebroadcast = GetTime();
         }
         
         //
