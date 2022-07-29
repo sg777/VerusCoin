@@ -4597,6 +4597,10 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
     {
         return true;
     }
+    else if (upgradeVersion < CActivationHeight::ACTIVATE_PBAAS)
+    {
+        return false;
+    }
 
     // ensure that we never accept an invalid proofroot for this chain in a notarization
     COptCCParams p;

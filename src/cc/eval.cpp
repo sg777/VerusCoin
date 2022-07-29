@@ -56,6 +56,15 @@ bool RunCCEval(const CC *cond, const CTransaction &tx, unsigned int nIn, bool fu
 bool DefaultCCContextualPreCheck(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
     // make sure that if the destinations include identities that those identities are valid on this blockchain
+    auto upgradeVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
+    if (upgradeVersion < CActivationHeight::ACTIVATE_VERUSVAULT)
+    {
+        return true;
+    }
+    else if (upgradeVersion < CActivationHeight::ACTIVATE_PBAAS)
+    {
+        return false;
+    }
     return true;
 }
 
