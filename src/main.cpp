@@ -1392,7 +1392,7 @@ bool ContextualCheckTransaction(
             }
             if (p.evalCode == EVAL_NONE)
             {
-                if (!DefaultCCContextualPreCheck(tx, i, state, nHeight))
+                if (!EvalNoneContextualPreCheck(tx, i, state, nHeight))
                 {
                     return state.DoS(10, error(state.GetRejectReason().c_str()), REJECT_INVALID, "bad-txns-failed-precheck");
                 }

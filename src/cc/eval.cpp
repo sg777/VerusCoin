@@ -68,6 +68,11 @@ bool DefaultCCContextualPreCheck(const CTransaction &tx, int32_t outNum, CValida
     return true;
 }
 
+bool EvalNoneContextualPreCheck(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    return true;
+}
+
 /*
  * Test the validity of an Eval node
  */
