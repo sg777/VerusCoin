@@ -3293,6 +3293,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     // currency in all other currencies, or increase the reserve ratio of all currencies by some amount.
     CAmount burnedChangePrice = 0;
     CAmount burnedChangeWeight = 0;
+    CCurrencyValueMap burnedReserves;
 
     // this is cached here, but only used for pre-conversions
     CCurrencyValueMap preConvertedOutput;
@@ -4454,18 +4455,23 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         LogPrintf("%s: Attempting to burn %s, which is either not a token or fractional currency or not the import currency %s\n", __func__, sourceCurrency.name.c_str(), importCurrencyDef.name.c_str());
                         return false;
                     }
-                    if (curTransfer.flags & curTransfer.IsBurnChangeWeight())
-                    {
-                        printf("%s: burning %s to change weight is not supported\n", __func__, importCurrencyDef.name.c_str());
-                        LogPrintf("%s: burning %s to change weight is not supported\n", __func__, importCurrencyDef.name.c_str());
-                        return false;
-                    }
                     // if this is burning the import currency, reduce supply, otherwise, the currency has been entered, and we
                     // simply leave it in the reserves
                     if (curTransfer.FirstCurrency() == importCurrencyID)
                     {
                         AddNativeOutConverted(curTransfer.FirstCurrency(), -curTransfer.FirstValue());
-                        burnedChangePrice += curTransfer.FirstValue();
+                        if (curTransfer.IsBurnChangeWeight())
+                        {
+                            burnedChangeWeight += curTransfer.FirstValue();
+                        }
+                        else
+                        {
+                            burnedChangePrice += curTransfer.FirstValue();
+                        }
+                    }
+                    else
+                    {
+                        burnedReserves.valueMap[curTransfer.FirstCurrency()] += curTransfer.FirstValue();
                     }
                 }
                 else if (!curTransfer.IsMint() && systemDestID == curTransfer.FirstCurrency())
@@ -4571,22 +4577,36 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     // remove burned currency from supply
     //
-    // check to see if liquidity fees include currency to burn and burn if so
+    // check to see if liquidity fees include currency that was burned and remove from output if so
     if (liquidityFees.valueMap.count(importCurrencyID))
     {
         CAmount primaryLiquidityFees = liquidityFees.valueMap[importCurrencyID];
         newCurrencyState.primaryCurrencyOut -= primaryLiquidityFees;
         liquidityFees.valueMap.erase(importCurrencyID);
     }
-    if (burnedChangePrice > 0)
+
+    // burn both change price and weight
+    if (burnedChangePrice > 0 || burnedChangeWeight > 0)
     {
-        if (!(burnedChangePrice <= newCurrencyState.supply))
+        if ((burnedChangePrice + burnedChangeWeight) > newCurrencyState.supply)
         {
-            printf("%s: Invalid burn amount %ld\n", __func__, burnedChangePrice);
-            LogPrintf("%s: Invalid burn amount %ld\n", __func__, burnedChangePrice);
+            printf("%s: Invalid burn amount %ld\n", __func__, burnedChangePrice + burnedChangeWeight);
+            LogPrintf("%s: Invalid burn amount %ld\n", __func__, burnedChangePrice + burnedChangeWeight);
             return false;
         }
-        newCurrencyState.supply -= burnedChangePrice;
+
+        // TODO: HARDENING - if we remove the supply entirely, we need to output any remaining reserves
+
+        if (burnedChangePrice > 0)
+        {
+            newCurrencyState.supply -= burnedChangePrice;
+        }
+
+        // if we burn to change the weight, update weights
+        if (burnedChangeWeight > 0)
+        {
+            newCurrencyState.UpdateWithEmission(-burnedChangeWeight);
+        }
     }
 
     CCurrencyValueMap adjustedReserveConverted = reserveConverted - preConvertedReserves;
@@ -4598,6 +4618,16 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     if (isFractional && importCurrencyState.IsLaunchConfirmed())
     {
         CCoinbaseCurrencyState scratchCurrencyState = importCurrencyState;
+
+        if (burnedChangePrice > 0)
+        {
+            newCurrencyState.supply -= burnedChangePrice;
+        }
+        // if we burned to change the weight, update weights
+        if (burnedChangeWeight > 0)
+        {
+            newCurrencyState.UpdateWithEmission(-burnedChangeWeight);
+        }
 
         if (scratchCurrencyState.IsPrelaunch() && preConvertedReserves > CCurrencyValueMap())
         {
@@ -5268,11 +5298,15 @@ CCoinbaseCurrencyState &CCoinbaseCurrencyState::UpdateWithEmission(CAmount toEmi
         // to balance rounding with truncation, we statistically add a satoshi to the initial ratio
         static arith_uint256 bigSatoshi(SATOSHIDEN);
         arith_uint256 bigInitial(InitialRatio);
-        arith_uint256 bigEmission(toEmit);
+        arith_uint256 bigEmission(std::abs(toEmit));
         arith_uint256 bigSupply(supply);
 
-        arith_uint256 bigScratch = (bigInitial * bigSupply * bigSatoshi) / (bigSupply + bigEmission);
+        arith_uint256 bigScratch = std::abs(toEmit) >= supply ?
+                                    arith_uint256(SATOSHIDEN) * arith_uint256(SATOSHIDEN) :
+                                    (bigInitial * bigSupply * bigSatoshi) / (toEmit < 0 ? (bigSupply - bigEmission) : (bigSupply + bigEmission));
+
         arith_uint256 bigRatio = bigScratch / bigSatoshi;
+
         // cap ratio at 1
         if (bigRatio >= bigSatoshi)
         {
@@ -5290,7 +5324,7 @@ CCoinbaseCurrencyState &CCoinbaseCurrencyState::UpdateWithEmission(CAmount toEmi
 
         // now, we must update all weights accordingly, based on the new, total ratio, by dividing the total among all the
         // weights, according to their current relative weight. because this also can be a source of rounding error, we will
-        // distribute any modulus excess randomly among the currencies
+        // distribute any modulus excess deterministically pseudorandomly among the currencies
         std::vector<CAmount> extraWeight(currencies.size());
         arith_uint256 bigRatioDelta(InitialRatio - newRatio);
 
