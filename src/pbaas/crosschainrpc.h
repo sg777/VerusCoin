@@ -406,6 +406,7 @@ public:
 
     enum ELimitsDefaults
     {
+        // TODO: HARDENING - reconcile all core fees, including for z-transactions, imports, identities, etc.
         TRANSACTION_CROSSCHAIN_FEE = 2000000, // 0.02 destination currency per cross chain transfer total, chain's accept notary currency or have converter
         TRANSACTION_TRANSFER_FEE = 20000,   // 0.0002 per same chain transfer total, chain's accept notary currency or have converter
         CURRENCY_REGISTRATION_FEE = 20000000000, // default 100 to register a currency

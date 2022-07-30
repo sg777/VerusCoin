@@ -152,6 +152,7 @@ uint64_t komodo_commission(const CBlock *block);
 int32_t komodo_staked(CMutableTransaction &txNew,uint32_t nBits,uint32_t *blocktimep,uint32_t *txtimep,uint256 *utxotxidp,int32_t *utxovoutp,uint64_t *utxovaluep,uint8_t *utxosig);
 int32_t verus_staked(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &nBits, arith_uint256 &hashResult, std::vector<unsigned char> &utxosig, CTxDestination &rewardDest);
 int32_t komodo_notaryvin(CMutableTransaction &txNew,uint8_t *notarypub33);
+UniValue getminingdistribution(const UniValue& params, bool fHelp);
 
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &nExtraNonce, bool buildMerkle, uint32_t *pSaveBits)
 {
@@ -2799,6 +2800,30 @@ CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, 
     int32_t i;
     boost::shared_ptr<CReserveScript> coinbaseScript;
  
+    UniValue miningDistributionUni;
+    if (!GetArg("-miningdistribution", "").empty() &&
+        (miningDistributionUni = getminingdistribution(UniValue(UniValue::VARR), false)).isArray() &&
+        miningDistributionUni.size())
+    {
+        std::vector<CTxOut> minerOutputs;
+        auto rewardAddresses = miningDistributionUni.getKeys();
+        for (int i = 0; i < rewardAddresses.size(); i++)
+        {
+            CTxDestination oneDest = DecodeDestination(rewardAddresses[i]);
+            CAmount relVal = 0;
+            if (oneDest.which() == COptCCParams::ADDRTYPE_INVALID ||
+                !(relVal = AmountFromValue(find_value(miningDistributionUni, rewardAddresses[i]))))
+            {
+                continue;
+            }
+            minerOutputs.push_back(CTxOut(relVal, GetScriptForDestination(oneDest)));
+        }
+        if (minerOutputs.size())
+        {
+            return CreateNewBlock(Params(), minerOutputs, false);
+        }
+        LogPrintf("%s: invalid -miningdistrbution parameter\n", __func__);
+    }
     if ( nHeight == 1 && ASSETCHAINS_OVERRIDE_PUBKEY33[0] != 0 )
     {
         scriptPubKey = CScript() << ParseHex(ASSETCHAINS_OVERRIDE_PUBKEY) << OP_CHECKSIG;
@@ -3278,7 +3303,9 @@ void static BitcoinMiner_noeq()
             unique_ptr<CBlockTemplate> pblocktemplate(new CBlockTemplate);
 
             boost::shared_ptr<CReserveScript> tmpScript;
-            if ((USE_EXTERNAL_PUBKEY != 0 || (!GetArg("-mineraddress", "").empty() && (GetScriptForMinerAddress(tmpScript), tmpScript->reserveScript.size()))) &&
+            if ((USE_EXTERNAL_PUBKEY != 0 ||
+                 (!GetArg("-mineraddress", "").empty() && (GetScriptForMinerAddress(tmpScript), tmpScript->reserveScript.size())) ||
+                 !GetArg("-miningdistribution", "").empty()) &&
                 pblocktemplate.get() &&
                 ConnectedChains.GetLastBlock(pblocktemplate->block, Mining_height))
             {

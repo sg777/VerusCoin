@@ -3448,18 +3448,23 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
 
             "\nArguments\n"
             "1. {\n"
-            "      \"currency\": \"name\"   (string, required) Name of the source currency to send in this output, defaults to native of chain\n"
-            "      \"amount\":amount        (numeric, required) The numeric amount of currency, denominated in source currency\n"
-            "      \"feecurrency\": \"name\" (string, required) Name of the currency to use for paying fees, defaults to native of destination chain\n"
-            "      \"convertto\":\"name\",  (string, optional) Valid currency to convert to, either a reserve of a fractional, or fractional\n"
-            "      \"preconvert\":\"false\", (bool,  optional) Convert to currency at market price (default=false), only works if transaction is mined before start of currency\n"
-            "      \"exportto\":\"systemid\" (string, optional) Valid system name or i-addresss to export to another blockchain or gateway"
-            "      \"via\":\"name\",        (string, optional) If source and destination currency are reserves, via is a common fractional to convert through\n"
+            "      \"currency\": \"name\"       (string, required)  Name of the source currency to send in this output, defaults to\n"
+            "                                                       native of chain\n"
+            "      \"amount\":amount            (numeric, required) The numeric amount of currency, denominated in source currency\n"
+            "      \"convertto\":\"name\",      (string, optional)  Valid currency to convert to, either a reserve of a fractional, or fractional\n"
+            "      \"preconvert\":\"false\",    (bool,  optional)   Convert to currency at market price (default=false), only works if\n"
+            "                                                       transaction is mined before start of currency\n"
+            "      \"via\":\"name\",            (string, optional)  If source and destination currency are reserves, via is a common fractional\n"
+            "                                                       to convert through\n"
             "   }\n"
 
             "\nResult:\n"
-            "   \"txid\" : \"transactionid\" (string) The transaction id if (returntx) is false\n"
-            "   \"hextx\" : \"hex\"         (string) The hexadecimal, serialized transaction if (returntx) is true\n"
+            "   {\n"
+            "      \"estimatereceived\": (value),                   Estimated amount of converted currency after conversion\n"
+            "      \"estimatedslippage\": (value),                  Estimated percent slippage from conversion\n"
+            "      \"transactionsperblock100\": (value),            Transactions per block over last 100 blocks\n"
+            "      \"transactionsperblock10\": (value),             Transactions per block over last 10 blocks\n"
+            "   }\n"
 
             "\nExamples:\n"
             + HelpExampleCli("estimateconversion", "'{\"currency\":\"name\",\"convertto\":\"name\",\"amount\":n}'")
@@ -3478,7 +3483,6 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
     auto currencyStr = TrimSpaces(uni_get_str(find_value(params[0], "currency")));
     CAmount sourceAmount = AmountFromValue(find_value(params[0], "amount"));
     auto convertToStr = TrimSpaces(uni_get_str(find_value(params[0], "convertto")));
-    auto exportToStr = TrimSpaces(uni_get_str(find_value(params[0], "exportto")));
     auto viaStr = TrimSpaces(uni_get_str(find_value(params[0], "via")));
     bool preConvert = uni_get_bool(find_value(params[0], "preconvert"));
 
@@ -3604,8 +3608,12 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
                                                 *((int32_t *)&lastUnspentUTXO.n),
                                                 &lastUnspentTx);
     }
-    else if (pFractionalCurrency->systemID != ASSETCHAINS_CHAINID)
+    else
     {
+        if (preConvert && !(pFractionalCurrency->IsGatewayConverter() && pFractionalCurrency->launchSystemID == ASSETCHAINS_CHAINID))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Can only preconvert to currencies launching on the current chain");
+        }
         CChainNotarizationData cnd;
         if (!GetNotarizationData(fractionalCurrencyID, cnd))
         {
@@ -3618,6 +3626,7 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_TRANSACTION_ERROR, "Cannot find valid notarization for " + pFractionalCurrency->name);
     }
 
+    UniValue retVal(UniValue::VOBJ);
     if (preConvert)
     {
         // estimate preconversion

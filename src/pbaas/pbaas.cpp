@@ -3251,6 +3251,15 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
 
                 if (!chainDef.isNull() && CheckVerusPBaaSAvailable(chainInfo, chainDef))
                 {
+                    if (GetBoolArg("-miningdistributionpassthrough", false))
+                    {
+                        UniValue miningDistributionUni = find_value(RPCCallRoot("getminingdistribution", params), "result");
+                        if (miningDistributionUni.isArray() && miningDistributionUni.size())
+                        {
+                            mapArgs["-miningdistribution"] = miningDistributionUni.write();
+                        }
+                    }
+
                     // if we have not passed block 1 yet, store the best known update of our current state
                     if ((!chainActive.LastTip() || !chainActive.LastTip()->GetHeight()))
                     {

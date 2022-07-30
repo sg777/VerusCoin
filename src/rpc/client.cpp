@@ -1581,6 +1581,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "listaccounts", 0 },
     { "listaccounts", 1 },
     { "walletpassphrase", 1 },
+    { "setminingdistribution", 0 },
     { "getblocktemplate", 0 },
     { "listsinceblock", 1 },
     { "listsinceblock", 2 },
