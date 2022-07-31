@@ -5528,6 +5528,7 @@ UniValue z_shieldcoinbase(const UniValue& params, bool fHelp)
     if (fHelp || params.size() < 2 || params.size() > 4)
         throw runtime_error(
             "z_shieldcoinbase \"fromaddress\" \"tozaddress\" ( fee ) ( limit )\n"
+            "\nTHIS API IS DEPRECATED AND NON NECESSARY TO USE ON VERUS OR STANDARD PBAAS NETWORKS"
             "\nShield transparent coinbase funds by sending to a shielded zaddr.  This is an asynchronous operation and utxos"
             "\nselected for shielding will be locked.  If there is an error, they are unlocked.  The RPC call `listlockunspent`"
             "\ncan be used to return a list of locked utxos.  The number of coinbase utxos selected for shielding can be limited"
@@ -5556,6 +5557,7 @@ UniValue z_shieldcoinbase(const UniValue& params, bool fHelp)
             + HelpExampleRpc("z_shieldcoinbase", "\"RD6GgnrMpPaTSMn8vai6yiGA7mN4QGPV\", \"ztfaW34Gj9FrnGUEf833ywDVL62NWXBM81u6EQnM6VR45eYnXhwztecW1SjxA7JrmAXKJhxhj3vDNEpVCQoSvVoSpmbhtjf\"")
         );
 
+    printf("Shielding coinbases in Verus or standard PBaaS bockchain networks is unnecessary and %s is a deprecated function\n", __func__);
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
     // Validate the from address
@@ -5570,9 +5572,10 @@ UniValue z_shieldcoinbase(const UniValue& params, bool fHelp)
     }
 
     // Validate the destination address
-    auto destaddress = params[1].get_str();
-    if (!IsValidPaymentAddressString(destaddress, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()))) {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, string("Invalid parameter, unknown address format: ") + destaddress );
+    libzcash::PaymentAddress zaddress;
+    if (!pwalletMain->GetAndValidateSaplingZAddress(params[1].get_str(), zaddress))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, string("Invalid parameter, unknown address format: ") + params[1].get_str() );
     }
 
     // Convert fee from currency format to zatoshis
@@ -5596,19 +5599,6 @@ UniValue z_shieldcoinbase(const UniValue& params, bool fHelp)
     int nextBlockHeight = chainActive.Height() + 1;
     bool overwinterActive = Params().GetConsensus().NetworkUpgradeActive(nextBlockHeight, Consensus::UPGRADE_OVERWINTER);
     unsigned int max_tx_size = MAX_TX_SIZE_AFTER_SAPLING;
-    if (!Params().GetConsensus().NetworkUpgradeActive(nextBlockHeight, Consensus::UPGRADE_SAPLING)) {
-        max_tx_size = MAX_TX_SIZE_BEFORE_SAPLING;
-        auto res = DecodePaymentAddress(destaddress);
-        // If Sapling is not active, do not allow sending to a Sapling address.
-        if (IsValidPaymentAddress(res)) {
-            bool toSapling = boost::get<libzcash::SaplingPaymentAddress>(&res) != nullptr;
-            if (toSapling) {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, Sapling has not activated");
-            }
-        } else {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, string("Invalid parameter, unknown address format: ") + destaddress );
-        }
-    }
 
     // Prepare to get coinbase utxos
     std::vector<ShieldCoinbaseUTXO> inputs;
@@ -5701,9 +5691,10 @@ UniValue z_shieldcoinbase(const UniValue& params, bool fHelp)
     }
 
     // Keep record of parameters in context object
+    std::string destaddress = EncodePaymentAddress(zaddress);
     UniValue contextInfo(UniValue::VOBJ);
     contextInfo.push_back(Pair("fromaddress", params[0]));
-    contextInfo.push_back(Pair("toaddress", params[1]));
+    contextInfo.push_back(Pair("toaddress", destaddress));
     contextInfo.push_back(Pair("fee", ValueFromAmount(nFee)));
 
     // Builder (used if Sapling addresses are involved)
@@ -5889,7 +5880,7 @@ UniValue z_mergetoaddress(const UniValue& params, bool fHelp)
             if (IsValidPaymentAddress(res)) {
                 isToSaplingZaddr = boost::get<libzcash::SaplingPaymentAddress>(&res) != nullptr;
             } else {
-                isToSproutZaddr = true;
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Legacy Sprout address not supported as destination. Use a transparent or Sapling compatible address");
             }
         } else {
             throw JSONRPCError(RPC_INVALID_PARAMETER, string("Invalid parameter, unknown address format: ") + destaddress );
