@@ -1180,7 +1180,9 @@ bool ContextualCheckTransaction(
     bool saplingActive = chainparams.GetConsensus().NetworkUpgradeActive(nHeight, Consensus::UPGRADE_SAPLING);
     bool isSprout = !overwinterActive;
 
-    bool isVerusVault = CVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_VERUSVAULT;
+    uint32_t verusVersion = CVerusSolutionVector::GetVersionByHeight(nHeight);
+    bool isVerusVault = verusVersion >= CActivationHeight::ACTIVATE_VERUSVAULT;
+    // bool isPBaaS = isPBaaS >= CActivationHeight::ACTIVATE_PBAAS;
 
     // If Sprout rules apply, reject transactions which are intended for Overwinter and beyond
     if (isSprout && tx.fOverwintered) {
@@ -3639,14 +3641,17 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         CBlockIndex *pNotarizedIndex = nullptr;
 
         CProofRoot confirmedRoot = ConnectedChains.FinalizedChainRoot();
+        uint32_t kNotHeight = komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
         if (confirmedRoot.IsValid())
         {
-            notarizedhash = confirmedRoot.blockHash;
+            if (kNotHeight <= confirmedRoot.rootHeight ||
+                !mapBlockIndex.count(notarizedhash) ||
+                mapBlockIndex[notarizedhash]->GetAncestor(confirmedRoot.rootHeight)->GetBlockHash() != confirmedRoot.blockHash)
+            {
+                notarizedhash = confirmedRoot.blockHash;
+            }
         }
-        else
-        {
-            komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
-        }
+
         if (mapBlockIndex.count(notarizedhash))
         {
             pNotarizedIndex = mapBlockIndex[notarizedhash];
@@ -4994,13 +4999,15 @@ bool static DisconnectTip(CValidationState &state, const CChainParams& chainpara
         int32_t prevMoMheight; uint256 notarizedhash,txid;
 
         CProofRoot confirmedRoot = ConnectedChains.FinalizedChainRoot();
+        uint32_t kNotHeight = komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
         if (confirmedRoot.IsValid())
         {
-            notarizedhash = confirmedRoot.blockHash;
-        }
-        else
-        {
-            komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
+            if (kNotHeight <= confirmedRoot.rootHeight ||
+                !mapBlockIndex.count(notarizedhash) ||
+                mapBlockIndex[notarizedhash]->GetAncestor(confirmedRoot.rootHeight)->GetBlockHash() != confirmedRoot.blockHash)
+            {
+                notarizedhash = confirmedRoot.blockHash;
+            }
         }
 
         if ( block.GetHash() == notarizedhash )
@@ -5282,17 +5289,19 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
 
     // stop trying to reorg if the reorged chain is before last notarized height. 
     // stay on the same chain tip!
-    int32_t notarizedht,prevMoMheight; uint256 notarizedhash,txid;
+    int32_t prevMoMheight; uint256 notarizedhash,txid;
 
     CProofRoot confirmedRoot = ConnectedChains.FinalizedChainRoot();
+    uint32_t notarizedht = komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
     if (confirmedRoot.IsValid())
     {
-        notarizedhash = confirmedRoot.blockHash;
-        notarizedht = confirmedRoot.rootHeight;
-    }
-    else
-    {
-        notarizedht = komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
+        if (notarizedht <= confirmedRoot.rootHeight ||
+            !mapBlockIndex.count(notarizedhash) ||
+            mapBlockIndex[notarizedhash]->GetAncestor(confirmedRoot.rootHeight)->GetBlockHash() != confirmedRoot.blockHash)
+        {
+            notarizedht = confirmedRoot.rootHeight;
+            notarizedhash = confirmedRoot.blockHash;
+        }
     }
 
     auto blkIt = mapBlockIndex.find(notarizedhash);
