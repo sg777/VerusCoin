@@ -4698,7 +4698,10 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
 
         if (p.evalCode == EVAL_EARNEDNOTARIZATION)
         {
-
+            if (!ConnectedChains.notarySystems.count(notarization.currencyID))
+            {
+                return state.Error("insufficient foundation for proof of notary chain");
+            }
 
             // 1) for earned notarizations:
             //  a) Notarization being confirmed must be agreed to by 2 subsequent consecutive notarizations for auto-notarization and

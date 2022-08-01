@@ -8570,7 +8570,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     }
 
     CCurrencyDefinition parentCurrency;
-    
+
     if (!newChain.parent.IsNull())
     {
         parentCurrency = ConnectedChains.GetCachedCurrency(newChain.parent);
