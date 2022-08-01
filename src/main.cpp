@@ -6684,6 +6684,11 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
 
     SetMaxScriptElementSize(nHeight + 1);
 
+    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_PBAAS)
+    {
+        ConnectedChains.ConfigureEthBridge();
+    }
+
     RemoveCoinbaseFromMemPool(*pblock);
     return true;
 }
