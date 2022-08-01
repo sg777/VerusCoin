@@ -5113,13 +5113,6 @@ static int64_t nTimeFlush = 0;
 static int64_t nTimeChainState = 0;
 static int64_t nTimePostConnect = 0;
 
-void RemoveCoinbaseFromMemPool(const CBlock& block)
-{
-    // remove coinbase and anything that depended on it sooner, rather than later, if failure
-    LOCK2(cs_main, mempool.cs);
-    myRemovefrommempool(block.vtx[0]);
-}
-
 /**
  * Connect a new block to chainActive. pblock is either NULL or a pointer to a CBlock
  * corresponding to pindexNew, to bypass loading it again from disk.
@@ -5150,7 +5143,6 @@ bool static ConnectTip(CValidationState& state, const CChainParams& chainparams,
     {
         CCoinsViewCache view(pcoinsTip);
         bool rv = ConnectBlock(*pblock, state, pindexNew, view, chainparams, false, true);
-        RemoveCoinbaseFromMemPool(*pblock);
         KOMODO_CONNECTING = -1;
         GetMainSignals().BlockChecked(*pblock, state);
         if (!rv) {
@@ -6650,7 +6642,6 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
             {
                 Misbehaving(pfrom->GetId(), 1);
             }
-            RemoveCoinbaseFromMemPool(*pblock);
             return error("%s: CheckBlock FAILED", __func__);
         }
         // Store to disk
@@ -6664,7 +6655,6 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
 
         if (!ret && futureblock == 0)
         {
-            RemoveCoinbaseFromMemPool(*pblock);
             return error("%s: AcceptBlock FAILED", __func__);
         }
         //else fprintf(stderr,"added block %s %p\n",pindex->GetBlockHash().ToString().c_str(),pindex->pprev);
@@ -6672,7 +6662,6 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
     
     if (futureblock == 0 && !ActivateBestChain(state, chainparams, pblock))
     {
-        RemoveCoinbaseFromMemPool(*pblock);
         return error("%s: ActivateBestChain failed", __func__);
     }
     //fprintf(stderr,"finished ProcessBlock %d\n",(int32_t)chainActive.LastTip()->GetHeight());
@@ -6689,7 +6678,6 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
         ConnectedChains.ConfigureEthBridge();
     }
 
-    RemoveCoinbaseFromMemPool(*pblock);
     return true;
 }
 
@@ -6718,7 +6706,6 @@ bool TestBlockValidity(CValidationState& state, const CChainParams& chainparams,
     }
     //assert(state.IsValid());
 
-    RemoveCoinbaseFromMemPool(block);
     return success;
 }
 
@@ -7203,10 +7190,8 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
                 return error("VerifyDB(): *** ReadBlockFromDisk failed at %d, hash=%s", pindex->GetHeight(), pindex->GetBlockHash().ToString());
             if (!ConnectBlock(block, state, pindex, coins, chainparams, false, true))
             {
-                RemoveCoinbaseFromMemPool(block);
                 return error("VerifyDB(): *** Error (%s) found unconnectable block at %d, hash=%s", state.GetRejectReason().c_str(), pindex->GetHeight(), pindex->GetBlockHash().ToString());
             }
-            RemoveCoinbaseFromMemPool(block);
         }
     }
     
