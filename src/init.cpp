@@ -1799,6 +1799,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                 }
 
                 CChainNotarizationData cnd;
+                if (ConnectedChains.FirstNotaryChain().IsValid())
                 {
                     uint160 notaryChainID = ConnectedChains.FirstNotaryChain().GetID();
                     CNotarySystemInfo &notarySystem = ConnectedChains.notarySystems[notaryChainID];
@@ -1807,8 +1808,8 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                         cnd.IsConfirmed() &&
                         cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(notaryChainID) &&
                         (!notarySystem.lastConfirmedNotarization.IsValid() ||
-                         !notarySystem.lastConfirmedNotarization.proofRoots.count(notaryChainID) ||
-                         notarySystem.lastConfirmedNotarization.proofRoots[notaryChainID].rootHeight <
+                        !notarySystem.lastConfirmedNotarization.proofRoots.count(notaryChainID) ||
+                        notarySystem.lastConfirmedNotarization.proofRoots[notaryChainID].rootHeight <
                             cnd.vtx[cnd.lastConfirmed].second.proofRoots[notaryChainID].rootHeight))
                     {
 
