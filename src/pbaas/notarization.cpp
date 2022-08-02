@@ -3932,6 +3932,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     // until it is confirmed on its side.
     if (!crosschainCND.IsConfirmed())
     {
+        LOCK(cs_main);
         CInputDescriptor notarizationRef;
         CPBaaSNotarization definitionNotarization;
         if (!ConnectedChains.GetDefinitionNotarization(externalSystem.chainDefinition, notarizationRef, definitionNotarization))

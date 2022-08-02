@@ -1940,7 +1940,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                 ChainMerkleMountainView mmv = chainActive.GetMMV();
                 mmrRoot = mmv.GetRoot();
                 int32_t confirmedInput = -1;
-                                                  CTxDestination confirmedDest;
                 CValidationState state;
                 CPBaaSNotarization earnedNotarization;
 
