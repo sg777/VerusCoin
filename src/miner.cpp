@@ -328,6 +328,13 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
     CCurrencyDefinition sourceChain;
     CChainNotarizationData cnd;
 
+    CTransaction lastImportTx;
+
+    // we need to find the last unspent import transaction
+    std::vector<CAddressUnspentDbEntry> unspentOutputs;
+
+    bool processIndex = false;
+
     {
         LOCK(cs_main);
         sourceChain = ConnectedChains.GetCachedCurrency(sourceChainID);
@@ -342,184 +349,174 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
             printf("Cannot get notarization data for currency %s\n", sourceChain.name.c_str());
             return;
         }
-    }
-    {
+
         lastConfirmedUTXO = cnd.vtx[cnd.lastConfirmed].first;
         lastConfirmed = cnd.vtx[cnd.lastConfirmed].second;
 
-        CTransaction lastImportTx;
+        processIndex = (!isSameChain &&
+            lastConfirmed.proofRoots.count(sourceChainID) &&
+            GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, CCrossChainImport::CurrencySystemImportKey())), CScript::P2IDX, unspentOutputs));
 
-        // we need to find the last unspent import transaction
-        std::vector<CAddressUnspentDbEntry> unspentOutputs;
+    }
 
-        bool processIndex = false;
+    bool found = false;
+    CAddressUnspentDbEntry foundEntry;
+    CCrossChainImport lastCCI;
+    std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>> exports;
 
+    if (processIndex)
+    {
+        // if one spends the prior one, get the one that is not spent
+        for (auto &txidx : unspentOutputs)
         {
-            LOCK(cs_main);
-            processIndex = (!isSameChain &&
-                lastConfirmed.proofRoots.count(sourceChainID) &&
-                GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, CCrossChainImport::CurrencySystemImportKey())), CScript::P2IDX, unspentOutputs));
+            COptCCParams p;
+            if (txidx.second.script.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                p.vData.size() &&
+                (lastCCI = CCrossChainImport(p.vData[0])).IsValid())
+            {
+                found = true;
+                foundEntry = txidx;
+                break;
+            }
         }
 
-        bool found = false;
-        CAddressUnspentDbEntry foundEntry;
-        CCrossChainImport lastCCI;
-        std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>> exports;
-
-        if (processIndex)
+        if (found && 
+            lastCCI.sourceSystemHeight < lastConfirmed.notarizationHeight)
         {
-            // if one spends the prior one, get the one that is not spent
-            for (auto &txidx : unspentOutputs)
+            UniValue params(UniValue::VARR);
+
+            params.push_back(EncodeDestination(CIdentityID(thisChainID)));
+            params.push_back((int64_t)lastCCI.sourceSystemHeight);
+            params.push_back((int64_t)lastConfirmed.proofRoots[sourceChainID].rootHeight);
+
+            UniValue result = NullUniValue;
+            try
             {
-                COptCCParams p;
-                if (txidx.second.script.IsPayToCryptoCondition(p) &&
-                    p.IsValid() &&
-                    p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
-                    p.vData.size() &&
-                    (lastCCI = CCrossChainImport(p.vData[0])).IsValid())
+                if (sourceChainID == thisChain.GetID())
                 {
-                    found = true;
-                    foundEntry = txidx;
-                    break;
+                    UniValue getexports(const UniValue& params, bool fHelp);
+                    result = getexports(params, false);
                 }
+                else if (ConnectedChains.IsNotaryAvailable())
+                {
+                    result = find_value(RPCCallRoot("getexports", params), "result");
+                }
+            } catch (exception e)
+            {
+                LogPrint("notarization", "Could not get latest export from external chain %s for %s\n", EncodeDestination(CIdentityID(sourceChainID)).c_str(), uni_get_str(params[0]).c_str());
+                return;
             }
 
-            if (found && 
-                lastCCI.sourceSystemHeight < lastConfirmed.notarizationHeight)
+            // now, we should have a list of exports to import in order
+            if (!result.isArray() || !result.size())
             {
-                UniValue params(UniValue::VARR);
-
-                params.push_back(EncodeDestination(CIdentityID(thisChainID)));
-                params.push_back((int64_t)lastCCI.sourceSystemHeight);
-                params.push_back((int64_t)lastConfirmed.proofRoots[sourceChainID].rootHeight);
-
-                UniValue result = NullUniValue;
-                try
+                return;
+            }
+            bool foundCurrent = false;
+            for (int i = 0; i < result.size(); i++)
+            {
+                uint256 exportTxId = uint256S(uni_get_str(find_value(result[i], "txid")));
+                if (!foundCurrent && !lastCCI.exportTxId.IsNull())
                 {
-                    if (sourceChainID == thisChain.GetID())
+                    // when we find our export, take the next
+                    if (exportTxId == lastCCI.exportTxId)
                     {
-                        UniValue getexports(const UniValue& params, bool fHelp);
-                        result = getexports(params, false);
+                        foundCurrent = true;
                     }
-                    else if (ConnectedChains.IsNotaryAvailable())
-                    {
-                        result = find_value(RPCCallRoot("getexports", params), "result");
-                    }
-                } catch (exception e)
+                    continue;
+                }
+
+                // create one import at a time
+                uint32_t notarizationHeight = uni_get_int64(find_value(result[i], "height"));
+                int32_t exportTxOutNum = uni_get_int(find_value(result[i], "txoutnum"));
+                CPartialTransactionProof txProof = CPartialTransactionProof(find_value(result[i], "partialtransactionproof"));
+                UniValue transferArrUni = find_value(result[i], "transfers");
+                if (!notarizationHeight || 
+                    exportTxId.IsNull() || 
+                    exportTxOutNum == -1 ||
+                    !transferArrUni.isArray())
                 {
-                    LogPrint("notarization", "Could not get latest export from external chain %s for %s\n", EncodeDestination(CIdentityID(sourceChainID)).c_str(), uni_get_str(params[0]).c_str());
+                    printf("Invalid export from %s\n", uni_get_str(params[0]).c_str());
                     return;
                 }
 
-                // now, we should have a list of exports to import in order
-                if (!result.isArray() || !result.size())
+                CTransaction exportTx;
+                uint256 blkHash;
+                auto proofRootIt = lastConfirmed.proofRoots.find(sourceChainID);
+                if (!isSameChain &&
+                    !(txProof.IsValid() &&
+                        !txProof.GetPartialTransaction(exportTx).IsNull() &&
+                        txProof.TransactionHash() == exportTxId &&
+                        proofRootIt != lastConfirmed.proofRoots.end() &&
+                        proofRootIt->second.stateRoot == txProof.CheckPartialTransaction(exportTx) &&
+                        exportTx.vout.size() > exportTxOutNum))
                 {
+                    /* printf("%s: proofRoot: %s, checkPartialRoot: %s, proofheight: %u, ischainproof: %s, blockhash: %s\n", 
+                        __func__,
+                        proofRootIt->second.ToUniValue().write(1,2).c_str(),
+                        txProof.CheckPartialTransaction(exportTx).GetHex().c_str(),
+                        txProof.GetProofHeight(),
+                        txProof.IsChainProof() ? "true" : "false",
+                        txProof.GetBlockHash().GetHex().c_str()); */
+                    printf("Invalid export for %s\n", uni_get_str(params[0]).c_str());
                     return;
                 }
-                bool foundCurrent = false;
-                for (int i = 0; i < result.size(); i++)
                 {
-                    uint256 exportTxId = uint256S(uni_get_str(find_value(result[i], "txid")));
-                    if (!foundCurrent && !lastCCI.exportTxId.IsNull())
+                    LOCK(cs_main);
+                    if (isSameChain &&
+                        !(myGetTransaction(exportTxId, exportTx, blkHash) &&
+                            exportTx.vout.size() > exportTxOutNum))
                     {
-                        // when we find our export, take the next
-                        if (exportTxId == lastCCI.exportTxId)
-                        {
-                            foundCurrent = true;
-                        }
+                        printf("Invalid export msg2 from %s\n", uni_get_str(params[0]).c_str());
+                        return;
+                    }
+                }
+                if (!foundCurrent)
+                {
+                    CCrossChainExport ccx(exportTx.vout[exportTxOutNum].scriptPubKey);
+                    if (!ccx.IsValid())
+                    {
+                        printf("Invalid export msg3 from %s\n", uni_get_str(params[0]).c_str());
+                        return;
+                    }
+                    if (ccx.IsChainDefinition())
+                    {
                         continue;
                     }
-
-                    // create one import at a time
-                    uint32_t notarizationHeight = uni_get_int64(find_value(result[i], "height"));
-                    int32_t exportTxOutNum = uni_get_int(find_value(result[i], "txoutnum"));
-                    CPartialTransactionProof txProof = CPartialTransactionProof(find_value(result[i], "partialtransactionproof"));
-                    UniValue transferArrUni = find_value(result[i], "transfers");
-                    if (!notarizationHeight || 
-                        exportTxId.IsNull() || 
-                        exportTxOutNum == -1 ||
-                        !transferArrUni.isArray())
-                    {
-                        printf("Invalid export from %s\n", uni_get_str(params[0]).c_str());
-                        return;
-                    }
-
-                    CTransaction exportTx;
-                    uint256 blkHash;
-                    auto proofRootIt = lastConfirmed.proofRoots.find(sourceChainID);
-                    if (!isSameChain &&
-                        !(txProof.IsValid() &&
-                          !txProof.GetPartialTransaction(exportTx).IsNull() &&
-                          txProof.TransactionHash() == exportTxId &&
-                          proofRootIt != lastConfirmed.proofRoots.end() &&
-                          proofRootIt->second.stateRoot == txProof.CheckPartialTransaction(exportTx) &&
-                          exportTx.vout.size() > exportTxOutNum))
-                    {
-                        /* printf("%s: proofRoot: %s, checkPartialRoot: %s, proofheight: %u, ischainproof: %s, blockhash: %s\n", 
-                            __func__,
-                            proofRootIt->second.ToUniValue().write(1,2).c_str(),
-                            txProof.CheckPartialTransaction(exportTx).GetHex().c_str(),
-                            txProof.GetProofHeight(),
-                            txProof.IsChainProof() ? "true" : "false",
-                            txProof.GetBlockHash().GetHex().c_str()); */
-                        printf("Invalid export for %s\n", uni_get_str(params[0]).c_str());
-                        return;
-                    }
-                    {
-                        LOCK(cs_main);
-                        if (isSameChain &&
-                            !(myGetTransaction(exportTxId, exportTx, blkHash) &&
-                              exportTx.vout.size() > exportTxOutNum))
-                        {
-                            printf("Invalid export msg2 from %s\n", uni_get_str(params[0]).c_str());
-                            return;
-                        }
-                    }
-                    if (!foundCurrent)
-                    {
-                        CCrossChainExport ccx(exportTx.vout[exportTxOutNum].scriptPubKey);
-                        if (!ccx.IsValid())
-                        {
-                            printf("Invalid export msg3 from %s\n", uni_get_str(params[0]).c_str());
-                            return;
-                        }
-                        if (ccx.IsChainDefinition())
-                        {
-                            continue;
-                        }
-                    }
-                    std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>> oneExport =
-                        std::make_pair(std::make_pair(CInputDescriptor(exportTx.vout[exportTxOutNum].scriptPubKey, 
-                                                        exportTx.vout[exportTxOutNum].nValue, 
-                                                        CTxIn(exportTxId, exportTxOutNum)),
-                                                        txProof),
-                                        std::vector<CReserveTransfer>());
-                    for (int j = 0; j < transferArrUni.size(); j++)
-                    {
-                        //printf("%s: onetransfer: %s\n", __func__, transferArrUni[j].write(1,2).c_str());
-                        oneExport.second.push_back(CReserveTransfer(transferArrUni[j]));
-                        if (!oneExport.second.back().IsValid())
-                        {
-                            printf("Invalid reserve transfers in export from %s\n", sourceChain.name.c_str());
-                            return;
-                        }
-                    }
-                    exports.push_back(oneExport);
                 }
+                std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>> oneExport =
+                    std::make_pair(std::make_pair(CInputDescriptor(exportTx.vout[exportTxOutNum].scriptPubKey, 
+                                                    exportTx.vout[exportTxOutNum].nValue, 
+                                                    CTxIn(exportTxId, exportTxOutNum)),
+                                                    txProof),
+                                    std::vector<CReserveTransfer>());
+                for (int j = 0; j < transferArrUni.size(); j++)
+                {
+                    //printf("%s: onetransfer: %s\n", __func__, transferArrUni[j].write(1,2).c_str());
+                    oneExport.second.push_back(CReserveTransfer(transferArrUni[j]));
+                    if (!oneExport.second.back().IsValid())
+                    {
+                        printf("Invalid reserve transfers in export from %s\n", sourceChain.name.c_str());
+                        return;
+                    }
+                }
+                exports.push_back(oneExport);
             }
-            std::map<uint160, std::vector<std::pair<int, CTransaction>>> newImports;
-            ConnectedChains.CreateLatestImports(sourceChain, lastConfirmedUTXO, exports, newImports);
         }
-        else if (isSameChain)
-        {
-            ConnectedChains.ProcessLocalImports();
-            return;
-        }
-        else
-        {
-            LogPrint("crosschain", "Could not get prior import for currency %s\n", sourceChain.name.c_str());
-            return;
-        }
+        std::map<uint160, std::vector<std::pair<int, CTransaction>>> newImports;
+        ConnectedChains.CreateLatestImports(sourceChain, lastConfirmedUTXO, exports, newImports);
+    }
+    else if (isSameChain)
+    {
+        ConnectedChains.ProcessLocalImports();
+        return;
+    }
+    else
+    {
+        LogPrint("crosschain", "Could not get prior import for currency %s\n", sourceChain.name.c_str());
+        return;
     }
 }
 
