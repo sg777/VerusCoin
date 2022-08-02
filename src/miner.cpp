@@ -323,43 +323,50 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
     // get any pending imports from the source chain. if the source chain is this chain, we don't need notarization
     CCurrencyDefinition thisChain = ConnectedChains.ThisChain();
     uint160 thisChainID = thisChain.GetID();
-    CCurrencyDefinition sourceChain = ConnectedChains.GetCachedCurrency(sourceChainID);
-    if (!sourceChain.IsValid())
-    {
-        printf("Unrecognized source chain %s\n", EncodeDestination(CIdentityID(sourceChainID)).c_str());
-        return;
-    }
+    bool isSameChain = thisChainID == sourceChainID;
 
-    // printf("%s: processing imports for %s\n", __func__, sourceChain.name.c_str());
-
-    bool isSameChain = thisChain.GetID() == sourceChainID;
-
+    CCurrencyDefinition sourceChain;
     CChainNotarizationData cnd;
-    if (!(GetNotarizationData(sourceChainID, cnd) && cnd.IsConfirmed()))
-    {
-        printf("Cannot get notarization data for currency %s\n", sourceChain.name.c_str());
-        return;
-    }
-
-    lastConfirmedUTXO = cnd.vtx[cnd.lastConfirmed].first;
-    lastConfirmed = cnd.vtx[cnd.lastConfirmed].second;
-
-    CTransaction lastImportTx;
-
-    // we need to find the last unspent import transaction
-    std::vector<CAddressUnspentDbEntry> unspentOutputs;
-
-    bool found = false;
-    CAddressUnspentDbEntry foundEntry;
-    CCrossChainImport lastCCI;
-    std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>> exports;
 
     {
         LOCK(cs_main);
+        sourceChain = ConnectedChains.GetCachedCurrency(sourceChainID);
+        if (!sourceChain.IsValid())
+        {
+            printf("Unrecognized source chain %s\n", EncodeDestination(CIdentityID(sourceChainID)).c_str());
+            return;
+        }
 
-        if (!isSameChain &&
-            lastConfirmed.proofRoots.count(sourceChainID) &&
-            GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, CCrossChainImport::CurrencySystemImportKey())), CScript::P2IDX, unspentOutputs))
+        if (!(GetNotarizationData(sourceChainID, cnd) && cnd.IsConfirmed()))
+        {
+            printf("Cannot get notarization data for currency %s\n", sourceChain.name.c_str());
+            return;
+        }
+    }
+    {
+        lastConfirmedUTXO = cnd.vtx[cnd.lastConfirmed].first;
+        lastConfirmed = cnd.vtx[cnd.lastConfirmed].second;
+
+        CTransaction lastImportTx;
+
+        // we need to find the last unspent import transaction
+        std::vector<CAddressUnspentDbEntry> unspentOutputs;
+
+        bool processIndex = false;
+
+        {
+            LOCK(cs_main);
+            processIndex = (!isSameChain &&
+                lastConfirmed.proofRoots.count(sourceChainID) &&
+                GetAddressUnspent(CKeyID(CCrossChainRPCData::GetConditionID(sourceChainID, CCrossChainImport::CurrencySystemImportKey())), CScript::P2IDX, unspentOutputs));
+        }
+
+        bool found = false;
+        CAddressUnspentDbEntry foundEntry;
+        CCrossChainImport lastCCI;
+        std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>> exports;
+
+        if (processIndex)
         {
             // if one spends the prior one, get the one that is not spent
             for (auto &txidx : unspentOutputs)
@@ -458,12 +465,15 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
                         printf("Invalid export for %s\n", uni_get_str(params[0]).c_str());
                         return;
                     }
-                    else if (isSameChain &&
-                            !(myGetTransaction(exportTxId, exportTx, blkHash) &&
-                            exportTx.vout.size() > exportTxOutNum))
                     {
-                        printf("Invalid export msg2 from %s\n", uni_get_str(params[0]).c_str());
-                        return;
+                        LOCK(cs_main);
+                        if (isSameChain &&
+                            !(myGetTransaction(exportTxId, exportTx, blkHash) &&
+                              exportTx.vout.size() > exportTxOutNum))
+                        {
+                            printf("Invalid export msg2 from %s\n", uni_get_str(params[0]).c_str());
+                            return;
+                        }
                     }
                     if (!foundCurrent)
                     {
@@ -1810,6 +1820,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         // if we are a notary, notarize
         if (nHeight > CPBaaSNotarization::MIN_BLOCKS_BEFORE_NOTARY_FINALIZED && !VERUS_NOTARYID.IsNull())
         {
+
             CValidationState state;
             TransactionBuilder notarizationBuilder = TransactionBuilder(consensusParams, nHeight, pwalletMain);
             bool finalized;

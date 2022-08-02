@@ -1568,6 +1568,12 @@ CWallet::TxItems CWallet::OrderedTxItems(std::list<CAccountingEntry>& acentries,
     return txOrdered;
 }
 
+bool CWallet::IsMineLock(const CTxDestination &destination) const
+{
+    LOCK(pwalletMain->cs_wallet);
+    return ::IsMine(*this, destination);
+}
+
 // looks through all wallet UTXOs and checks to see if any qualify to stake the block at the current height. it always returns the qualified
 // UTXO with the smallest coin age if there is more than one, as larger coin age will win more often and is worth saving
 // each attempt consists of taking a VerusHash of the following values:
@@ -1706,7 +1712,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 ((txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) && 
                   extendedStake && 
                   canSpend) ||
-                (!p.IsValid() && (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH) && ::IsMine(*this, destinations[0]))))
+                (!p.IsValid() && (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH) && IsMineLock(destinations[0]))))
             {
                 uint256 txHash = txout.tx->GetHash();
                 checkStakeTx.vin.push_back(CTxIn(COutPoint(txHash, txout.i)));
@@ -1749,6 +1755,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
 
             if (solutionVersion >= CActivationHeight::ACTIVATE_STAKEHEADER)
             {
+                LOCK(cs_main);
                 CDataStream headerStream = CDataStream(SER_NETWORK, PROTOCOL_VERSION);
 
                 // store:
@@ -6560,7 +6567,6 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                 // Check mempooltxinputlimit to avoid creating a transaction which the local mempool rejects
                 size_t limit = (size_t)GetArg("-mempooltxinputlimit", 0);
                 {
-                    LOCK(cs_main);
                     if (Params().GetConsensus().NetworkUpgradeActive(chainActive.Height() + 1, Consensus::UPGRADE_OVERWINTER)) {
                         limit = 0;
                     }

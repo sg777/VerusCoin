@@ -4217,7 +4217,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     if (pNotaryCurrency->notarizationProtocol == pNotaryCurrency->NOTARIZATION_AUTO)
     {
         // make sure we have a more recent notarization, after the one we are posting, that is consistent with the other chain/system
-
+        LOCK(cs_main);
         CProofRoot firstProofRoot = CProofRoot::GetProofRoot(nHeight);
 
 
