@@ -3593,28 +3593,31 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     auto disabledVerifier = libzcash::ProofVerifier::Disabled();
     int32_t futureblock;
 
-    // remove any potential conflicts for inputs in the mempool from auto-created transactions,
-    // such as imports or exports to prevent us from accepting the block
-    for (auto &oneTx : block.vtx)
     {
-        std::list<CTransaction> removedTxes;
-        if (!oneTx.IsCoinBase())
+        LOCK(mempool.cs);
+        // remove any potential conflicts for inputs in the mempool from auto-created transactions,
+        // such as imports or exports to prevent us from accepting the block
+        for (auto &oneTx : block.vtx)
         {
-            mempool.removeConflicts(oneTx, removedTxes);
+            std::list<CTransaction> removedTxes;
+            if (!oneTx.IsCoinBase())
+            {
+                mempool.removeConflicts(oneTx, removedTxes);
+            }
         }
-    }
 
-    // Check it again to verify JoinSplit proofs, and in case a previous version let a bad block in
-    if (!CheckBlock(&futureblock, pindex->GetHeight(), pindex, block, state, chainparams, fExpensiveChecks ? verifier : disabledVerifier, fCheckPOW, !fJustCheck, !fJustCheck) || futureblock != 0 )
-    {
-        if (futureblock)
+        // Check it again to verify JoinSplit proofs, and in case a previous version let a bad block in
+        if (!CheckBlock(&futureblock, pindex->GetHeight(), pindex, block, state, chainparams, fExpensiveChecks ? verifier : disabledVerifier, fCheckPOW, !fJustCheck, !fJustCheck) || futureblock != 0 )
         {
-            // if this is a future block, don't invalidate it
-            LogPrint("net", "%s: checkblock failure in connectblock futureblock.%d\n", __func__,futureblock);
-            return false;
+            if (futureblock)
+            {
+                // if this is a future block, don't invalidate it
+                LogPrint("net", "%s: checkblock failure in connectblock futureblock.%d\n", __func__,futureblock);
+                return false;
+            }
+            return state.DoS(100, error("%s: checkblock failure in connectblock futureblock.%d\n", __func__,futureblock),
+                            REJECT_INVALID, "invalid-block");
         }
-        return state.DoS(100, error("%s: checkblock failure in connectblock futureblock.%d\n", __func__,futureblock),
-                         REJECT_INVALID, "invalid-block");
     }
 
     if (block.IsVerusPOSBlock() && !verusCheckPOSBlock(true, &block, nHeight))
@@ -3739,6 +3742,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             sleep(1);
         }
     }
+
     CCheckQueueControl<CScriptCheck> control(fExpensiveChecks && nScriptCheckThreads ? &scriptcheckqueue : NULL);
     
     int64_t nTimeStart = GetTimeMicros();
@@ -5163,12 +5167,14 @@ bool static ConnectTip(CValidationState& state, const CChainParams& chainparams,
     int64_t nTime5 = GetTimeMicros(); nTimeChainState += nTime5 - nTime4;
     LogPrint("bench", "  - Writing chainstate: %.2fms [%.2fs]\n", (nTime5 - nTime4) * 0.001, nTimeChainState * 0.000001);
 
-    // Remove conflicting transactions from the mempool.
     list<CTransaction> txConflicted;
-    mempool.removeForBlock(pblock->vtx, pindexNew->GetHeight(), txConflicted, !IsInitialBlockDownload(chainparams));
-
-    // Remove transactions that expire at new block height from mempool
-    mempool.removeExpired(pindexNew->GetHeight());
+    {
+        LOCK(mempool.cs);
+        // Remove conflicting transactions from the mempool.
+        mempool.removeForBlock(pblock->vtx, pindexNew->GetHeight(), txConflicted, !IsInitialBlockDownload(chainparams));
+        // Remove transactions that expire at new block height from mempool
+        mempool.removeExpired(pindexNew->GetHeight());
+    }
     
     // Update chainActive & related variables.
     UpdateTip(pindexNew, chainparams);
@@ -5277,7 +5283,7 @@ static void PruneBlockIndexCandidates() {
 static bool ActivateBestChainStep(CValidationState& state, const CChainParams& chainparams, CBlockIndex* pindexMostWork, const CBlock* pblock)
 {
     AssertLockHeld(cs_main);
-    LOCK(mempool.cs);
+
     bool fInvalidFound = false;
     const CBlockIndex *pindexOldTip = chainActive.Tip();
     const CBlockIndex *pindexFork = chainActive.FindFork(pindexMostWork);
@@ -5435,11 +5441,14 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
         }
     }
     
-    if (fBlocksDisconnected) {
-        mempool.removeForReorg(pcoinsTip, chainActive.Tip()->GetHeight() + 1, STANDARD_LOCKTIME_VERIFY_FLAGS);
+    {
+        LOCK(mempool.cs);
+        if (fBlocksDisconnected) {
+            mempool.removeForReorg(pcoinsTip, chainActive.Tip()->GetHeight() + 1, STANDARD_LOCKTIME_VERIFY_FLAGS);
+        }
+        mempool.removeWithoutBranchId(CurrentEpochBranchId(chainActive.Tip()->GetHeight() + 1, chainparams.GetConsensus()));
+        mempool.check(pcoinsTip);
     }
-    mempool.removeWithoutBranchId(CurrentEpochBranchId(chainActive.Tip()->GetHeight() + 1, chainparams.GetConsensus()));
-    mempool.check(pcoinsTip);
     
     // Callbacks/notifications for a new best chain.
     if (fInvalidFound)
