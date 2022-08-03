@@ -5162,6 +5162,7 @@ bool static ConnectTip(CValidationState& state, const CChainParams& chainparams,
         return false;
     int64_t nTime5 = GetTimeMicros(); nTimeChainState += nTime5 - nTime4;
     LogPrint("bench", "  - Writing chainstate: %.2fms [%.2fs]\n", (nTime5 - nTime4) * 0.001, nTimeChainState * 0.000001);
+
     // Remove conflicting transactions from the mempool.
     list<CTransaction> txConflicted;
     mempool.removeForBlock(pblock->vtx, pindexNew->GetHeight(), txConflicted, !IsInitialBlockDownload(chainparams));
@@ -5181,6 +5182,7 @@ bool static ConnectTip(CValidationState& state, const CChainParams& chainparams,
     BOOST_FOREACH(const CTransaction &tx, pblock->vtx) {
         SyncWithWallets(tx, pblock);
     }
+
     // Update cached incremental witnesses
     GetMainSignals().ChainTip(pindexNew, pblock, oldSproutTree, oldSaplingTree, true);
 
@@ -5275,6 +5277,7 @@ static void PruneBlockIndexCandidates() {
 static bool ActivateBestChainStep(CValidationState& state, const CChainParams& chainparams, CBlockIndex* pindexMostWork, const CBlock* pblock)
 {
     AssertLockHeld(cs_main);
+    LOCK(mempool.cs);
     bool fInvalidFound = false;
     const CBlockIndex *pindexOldTip = chainActive.Tip();
     const CBlockIndex *pindexFork = chainActive.FindFork(pindexMostWork);
@@ -5459,9 +5462,11 @@ bool ActivateBestChain(CValidationState& state, const CChainParams& chainparams,
     do {
         boost::this_thread::interruption_point();
         
+        uint32_t chainHeight;
         bool fInitialDownload;
         {
             LOCK(cs_main);
+            chainHeight = chainActive.Height();
             pindexMostWork = FindMostWorkChain();
             
             // Whether we have anything to do at all.
@@ -5486,7 +5491,7 @@ bool ActivateBestChain(CValidationState& state, const CChainParams& chainparams,
             {
                 LOCK(cs_vNodes);
                 BOOST_FOREACH(CNode* pnode, vNodes)
-                if (chainActive.Height() > (pnode->nStartingHeight != -1 ? pnode->nStartingHeight - 2000 : nBlockEstimate))
+                if (chainHeight > (pnode->nStartingHeight != -1 ? pnode->nStartingHeight - 2000 : nBlockEstimate))
                     pnode->PushInventory(CInv(MSG_BLOCK, hashNewTip));
             }
             // Notify external listeners about the new tip.
