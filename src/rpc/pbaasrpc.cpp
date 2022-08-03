@@ -4012,8 +4012,8 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
 
     std::vector<CRecipient> outputs;
 
-    LOCK2(cs_main, mempool.cs);
-    LOCK(pwalletMain->cs_wallet);
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+    LOCK(mempool.cs);
 
     libzcash::PaymentAddress zaddressSource;
     libzcash::SaplingExpandedSpendingKey expsk;
@@ -5091,8 +5091,8 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
 
     int firstFundingInput = 0;
     {
-        LOCK2(cs_main, mempool.cs);
-        LOCK(pwalletMain->cs_wallet);
+        LOCK2(cs_main, pwalletMain->cs_wallet);
+        LOCK(mempool.cs);
 
         if (deliver.isStr())
         {
@@ -6400,8 +6400,8 @@ UniValue listopenoffers(const UniValue& params, bool fHelp)
 
     std::map<std::pair<bool, uint256>, OfferInfo> myOffers;
 
-    LOCK2(cs_main, mempool.cs);
-    LOCK(pwalletMain->cs_wallet);
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+    LOCK(mempool.cs);
 
     uint32_t height = chainActive.Height();
 
