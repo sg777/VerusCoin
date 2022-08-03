@@ -1707,38 +1707,41 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
             int nRequired = 0;
             bool canSign = false, canSpend = false;
 
-            if (UintToArith256(txout.tx->GetVerusPOSHash(&(pBlock->nNonce), txout.i, nHeight, pastHash)) <= target &&
-                ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey, whichType, destinations, nRequired, this, &canSign, &canSpend) &&
-                ((txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) && 
-                  extendedStake && 
-                  canSpend) ||
-                (!p.IsValid() && (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH) && IsMineLock(destinations[0]))))
+            if (UintToArith256(txout.tx->GetVerusPOSHash(&(pBlock->nNonce), txout.i, nHeight, pastHash)) <= target)
             {
-                uint256 txHash = txout.tx->GetHash();
-                checkStakeTx.vin.push_back(CTxIn(COutPoint(txHash, txout.i)));
-
                 LOCK2(cs_main, cs_wallet);
 
-                if ((!pwinner || UintToArith256(curNonce) < UintToArith256(pBlock->nNonce)) &&
-                    !cheatList.IsUTXOInList(COutPoint(txHash, txout.i), nHeight <= 100 ? 1 : nHeight-100))
+                if (ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey, whichType, destinations, nRequired, this, &canSign, &canSpend) &&
+                    ((txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) && 
+                    extendedStake && 
+                    canSpend) ||
+                    (!p.IsValid() && (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH) && ::IsMine(this, destinations[0]))))
                 {
-                    if (view.HaveCoins(txHash) && Consensus::CheckTxInputs(checkStakeTx, state, view, nHeight, consensusParams))
-                    {
-                        //printf("Found PoS block\nnNonce:    %s\n", pBlock->nNonce.GetHex().c_str());
-                        pwinner = &txout;
-                        curNonce = pBlock->nNonce;
-                        srcIndex = nHeight - txout.nDepth;
-                    }
-                    else
-                    {
-                        LogPrintf("Transaction %s failed to stake due to %s\n", txout.tx->GetHash().GetHex().c_str(), 
-                                                                                view.HaveCoins(txHash) ? "bad inputs" : "unavailable coins");
-                    }
-                }
+                    uint256 txHash = txout.tx->GetHash();
+                    checkStakeTx.vin.push_back(CTxIn(COutPoint(txHash, txout.i)));
 
-                checkStakeTx.vin.pop_back();
+                    if ((!pwinner || UintToArith256(curNonce) < UintToArith256(pBlock->nNonce)) &&
+                        !cheatList.IsUTXOInList(COutPoint(txHash, txout.i), nHeight <= 100 ? 1 : nHeight-100))
+                    {
+                        if (view.HaveCoins(txHash) && Consensus::CheckTxInputs(checkStakeTx, state, view, nHeight, consensusParams))
+                        {
+                            //printf("Found PoS block\nnNonce:    %s\n", pBlock->nNonce.GetHex().c_str());
+                            pwinner = &txout;
+                            curNonce = pBlock->nNonce;
+                            srcIndex = nHeight - txout.nDepth;
+                        }
+                        else
+                        {
+                            LogPrintf("Transaction %s failed to stake due to %s\n", txout.tx->GetHash().GetHex().c_str(), 
+                                                                                    view.HaveCoins(txHash) ? "bad inputs" : "unavailable coins");
+                        }
+                    }
+
+                    checkStakeTx.vin.pop_back();
+                }
             }
         }
+
         if (pwinner)
         {
             stakeSource = static_cast<CTransaction>(*pwinner->tx);
