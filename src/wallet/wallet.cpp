@@ -1715,7 +1715,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                     ((txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) && 
                     extendedStake && 
                     canSpend) ||
-                    (!p.IsValid() && (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH) && ::IsMine(this, destinations[0]))))
+                    (!p.IsValid() && (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH) && ::IsMine(*this, destinations[0]))))
                 {
                     uint256 txHash = txout.tx->GetHash();
                     checkStakeTx.vin.push_back(CTxIn(COutPoint(txHash, txout.i)));
