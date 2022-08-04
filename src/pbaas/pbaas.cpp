@@ -7009,12 +7009,16 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
             found = true;
         } catch (...)
         {
-            LogPrintf("%s: Could not get last import from external chain %s\n", __func__, uni_get_str(params[0]).c_str());
+            LogPrint("notarization", "%s: Could not get last import from external chain %s\n", __func__, uni_get_str(params[0]).c_str());
             return exports;
         }
         if (!pbn.IsValid())
         {
-            LogPrintf("%s: Invalid notarization from external chain %s\n", __func__, uni_get_str(params[0]).c_str());
+            LogPrint("notarization", "%s: Invalid notarization from external chain %s\n", __func__, uni_get_str(params[0]).c_str());
+            return exports;
+        }
+        if (pbn.IsDefinitionNotarization())
+        {
             return exports;
         }
         lastCCI = CCrossChainImport(find_value(result, "lastimport"));
