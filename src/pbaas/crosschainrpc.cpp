@@ -325,7 +325,7 @@ uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vd
     }
     else
     {
-        auto ss = CNativeHashWriter((CCurrencyDefinition::EProofProtocol)hashType);
+        CNativeHashWriter ss((CCurrencyDefinition::EProofProtocol)hashType);
 
         bool crossChainLogging = LogAcceptCategory("notarysignatures");
         if (crossChainLogging)

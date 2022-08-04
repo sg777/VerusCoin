@@ -771,7 +771,7 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
 
                 if (ccx.IsValid() && checkOK)
                 {
-                    auto hw2 = CNativeHashWriter(CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
+                    CNativeHashWriter hw2(CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
                     hw2 << ccx;
                     hw2 << prevtxid;
 

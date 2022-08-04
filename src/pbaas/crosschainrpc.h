@@ -1448,6 +1448,12 @@ public:
         return (*this);
     }
 
+    // disallow copy/move until we implement these constructors and operators
+    CNativeHashWriter(CNativeHashWriter const&) = delete;             // Copy construct
+    CNativeHashWriter(CNativeHashWriter&&) = delete;                  // Move construct
+    CNativeHashWriter& operator=(CNativeHashWriter const&) = delete;  // Copy assign
+    CNativeHashWriter& operator=(CNativeHashWriter &&) = delete;      // Move assign
+
     CNativeHashWriter& write(const char *pch, size_t size)
     {
         switch (nativeHashType)

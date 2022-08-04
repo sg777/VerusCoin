@@ -547,8 +547,8 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             return state.Error(strprintf("%s: export and import hash mismatch without valid arbitrage transfer",__func__));
         }
         reserveTransfers.push_back(arbitrageTransfer);
-        CNativeHashWriter nhw1 = CNativeHashWriter(hashType);
-        CNativeHashWriter nhw2 = CNativeHashWriter(hashType);
+        CNativeHashWriter nhw1(hashType);
+        CNativeHashWriter nhw2(hashType);
         for (int i = 0; i < reserveTransfers.size(); i++)
         {
             nhw1 << reserveTransfers[i];

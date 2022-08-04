@@ -318,16 +318,16 @@ public:
         if (ser_action.ForRead())
         {
             READWRITE(vecCurrencyStates);
-            for (auto &oneRoot : vecCurrencyStates)
+            for (auto &oneState : vecCurrencyStates)
             {
-                currencyStates.insert(oneRoot);
+                currencyStates.insert(oneState);
             }
         }
         else
         {
-            for (auto &oneRoot : currencyStates)
+            for (auto &oneState : currencyStates)
             {
-                vecCurrencyStates.push_back(oneRoot);
+                vecCurrencyStates.push_back(oneState);
             }
             READWRITE(vecCurrencyStates);
         }

@@ -175,7 +175,7 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
     }
 
     // write the object to the hash writer without a vector length prefix
-    auto hw = CNativeHashWriter(hashType);
+    CNativeHashWriter hw(hashType);
     uint256 objHash = hw.write((const char *)&(p.vData[0][0]), p.vData[0].size()).GetHash();
 
     uint32_t decisionHeight;
@@ -321,7 +321,7 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
     }
 
     // write the object to the hash writer without a vector length prefix
-    auto hw = CNativeHashWriter(hashType);
+    CNativeHashWriter hw(hashType);
     std::map<CIdentityID, CIdentitySignature> confirmedAtHeight;
     std::map<CIdentityID, CIdentitySignature> rejectedAtHeight;
     uint256 objHash = hw.write((const char *)&(p.vData[0][0]), p.vData[0].size()).GetHash();
@@ -2078,7 +2078,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
 
     // all notarization protocols in Verus do the heavy lifting on the Verus side
     // as a result, the hash is currently assumed to be the default
-    auto hw = CNativeHashWriter();
+    CNativeHashWriter hw;
 
     std::vector<unsigned char> notarizationVec = ::AsVector(earnedNotarization);
     uint256 objHash = hw.write((const char *)&(notarizationVec[0]), notarizationVec.size()).GetHash();
@@ -3566,7 +3566,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                 {
                     return state.Error(errorPrefix + "invalid output for notarization");
                 }
-                auto hw = CNativeHashWriter(hashType);
+                CNativeHashWriter hw(hashType);
                 uint256 objHash = hw.write((const char *)&(p.vData[0][0]), p.vData[0].size()).GetHash();
 
                 // combine signatures and evidence
@@ -4649,23 +4649,23 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
     }
     else
     {
-        pNotaryCurrency = &ConnectedChains.ThisChain();
+        pNotaryCurrency = &ConnectedChains.thisChain;
     }
 
-    CNativeHashWriter hw(pNotaryCurrency->PROOF_PBAASMMR);
-    if (pNotaryCurrency->IsGateway() &&
+    CNativeHashWriter hw(
+        (pNotaryCurrency->IsGateway() &&
         pNotaryCurrency->launchSystemID == ASSETCHAINS_CHAINID &&
-        pNotaryCurrency->proofProtocol == pNotaryCurrency->PROOF_ETHNOTARIZATION)
-    {
-        hw = CNativeHashWriter(notaryCurrencyDef.PROOF_ETHNOTARIZATION);
-    }
+        pNotaryCurrency->proofProtocol == pNotaryCurrency->PROOF_ETHNOTARIZATION) ? 
+            notaryCurrencyDef.PROOF_ETHNOTARIZATION : 
+            pNotaryCurrency->PROOF_PBAASMMR);
 
     if (!notarization.SetMirror(false))
     {
         return state.Error("Cannot prepare notarization to validate finalization");
     }
 
-    uint256 objHash = (hw << notarization).GetHash();
+    hw << notarization;
+    uint256 objHash = hw.GetHash();
 
     CTransaction notarizationTx;
 
