@@ -105,7 +105,7 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
                         return true;
                     }
                 }
-                else if (!IsLocked())
+                else
                 {
                     // only revocation can change unlock after time, and we don't allow re-lock to an earlier time until unlock either, 
                     // which can change the new unlock time
@@ -116,7 +116,8 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
                             return true;
                         }
                     }
-                    else if (newIdentity.unlockAfter != unlockAfter)
+                    else if ((nSolVersion < CActivationHeight::ACTIVATE_PBAAS && newIdentity.unlockAfter != unlockAfter) ||
+                             (nSolVersion >= CActivationHeight::ACTIVATE_PBAAS && newIdentity.unlockAfter < unlockAfter))
                     {
                         return true;
                     }

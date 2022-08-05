@@ -7083,6 +7083,9 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
         params = UniValue(UniValue::VARR);
         params.push_back(EncodeDestination(CIdentityID(destChainID)));
         params.push_back((int64_t)lastCCI.sourceSystemHeight);
+
+        // TODO: HARDENING - decide if we want to confirm that the lastConfirmed notarization matches
+        // the lastConfirmedUTXO on our chain
         params.push_back((int64_t)lastConfirmed.proofRoots[sourceChainID].rootHeight);
 
         UniValue result = NullUniValue;
