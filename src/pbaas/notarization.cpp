@@ -1744,7 +1744,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                         COptCCParams tP;
                         CNotaryEvidence oneEvidenceObj;
                         if (pEvidenceVec &&
-                            onePending.second.scriptPubKey.IsPayToCryptoCondition(tP) &&
+                            oneEvidenceSpend.second.scriptPubKey.IsPayToCryptoCondition(tP) &&
                             tP.IsValid() &&
                             tP.vData.size() &&
                             tP.evalCode == EVAL_NOTARY_EVIDENCE &&
@@ -1967,7 +1967,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                         CNotaryEvidence oneEvidenceObj;
                         int afterEvidence;
                         if (pEvidenceVec &&
-                            oneConfirmed.second.scriptPubKey.IsPayToCryptoCondition(tP) &&
+                            oneEvidenceSpend..second.scriptPubKey.IsPayToCryptoCondition(tP) &&
                             tP.IsValid() &&
                             tP.vData.size() &&
                             tP.evalCode == EVAL_NOTARY_EVIDENCE &&
