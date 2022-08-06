@@ -274,7 +274,22 @@ CTxDestination TransferDestinationToDestination(const CTransferDestination &tran
             CCcontract_info CC;
             CCcontract_info *cp;
 
-            // make a currency definition
+            // return first valid auxilliary address for this chain
+            int auxDestCount = transferDest.AuxDestCount();
+            for (int i=0; i < auxDestCount; i++)
+            {
+                CTransferDestination auxDest = transferDest.GetAuxDest(i);
+                switch (auxDest.TypeNoFlags())
+                {
+                    case CTransferDestination::DEST_ID:
+                    case CTransferDestination::DEST_PK:
+                    case CTransferDestination::DEST_PKH:
+                    case CTransferDestination::DEST_ETH:
+                    case CTransferDestination::DEST_SH:
+                        return TransferDestinationToDestination(auxDest);
+                }
+            }
+            // no address found, send it to the public key of the currency definition type
             cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
             retDest = CTxDestination(CPubKey(ParseHex(CC.CChexstr)));
             break;
