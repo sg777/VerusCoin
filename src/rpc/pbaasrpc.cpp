@@ -3117,16 +3117,16 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
 
     std::map<uint32_t, int32_t> validRoots;       // height, index (only return the first valid at each height)
 
-    for (auto &oneRoot : proofRootMap)
+    for (auto it = proofRootMap.rbegin(); it != proofRootMap.rend(); it ++)
     {
         // ignore potential dups
-        if (validRoots.count(oneRoot.second.second.rootHeight))
+        if (validRoots.count(it->second.second.rootHeight))
         {
             continue;
         }
-        if (oneRoot.second.second == oneRoot.second.second.GetProofRoot(oneRoot.second.second.rootHeight))
+        if (it->second.second == it->second.second.GetProofRoot(it->second.second.rootHeight))
         {
-            validRoots.insert(std::make_pair(oneRoot.second.second.rootHeight, oneRoot.second.first));
+            validRoots.insert(std::make_pair(it->second.second.rootHeight, it->second.first));
         }
     }
 

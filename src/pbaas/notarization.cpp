@@ -1746,7 +1746,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                             tP.IsValid() &&
                             tP.vData.size() &&
                             tP.evalCode == EVAL_NOTARY_EVIDENCE &&
-                            (oneEvidenceObj = CNotaryEvidence(p.vData[0])).IsValid())
+                            (oneEvidenceObj = CNotaryEvidence(tP.vData[0])).IsValid())
                         {
                             (*pEvidenceVec)[associatedIdx].push_back(oneEvidenceObj);
                         }
@@ -1969,7 +1969,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                             tP.IsValid() &&
                             tP.vData.size() &&
                             tP.evalCode == EVAL_NOTARY_EVIDENCE &&
-                            (oneEvidenceObj = CNotaryEvidence(p.vData[0])).IsValid())
+                            (oneEvidenceObj = CNotaryEvidence(tP.vData[0])).IsValid())
                         {
                             (*pEvidenceVec)[associatedIdx].push_back(oneEvidenceObj);
                         }

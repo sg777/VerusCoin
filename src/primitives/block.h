@@ -2058,6 +2058,7 @@ public:
         TYPE_NOTARY_EVIDENCE = 1,           // this is notary evidence, including signatures and other types of proofs
         TYPE_MULTIPART_DATA = 2,            // this is used to combine multiple outputs that can be used to reconstruct one evidence set
         TYPE_IMPORT_PROOF = 3,              // this is notary evidence, including signatures and other types of proofs
+        TYPE_SIGNATUREHASHES = 4,           // vector of signature hash commitments for the transaction referenced in the evidence output
     };
 
     enum EStates {
