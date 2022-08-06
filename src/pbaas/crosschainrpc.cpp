@@ -1163,7 +1163,7 @@ const std::map<uint160, int> &CCrossChainProof::KnownVDXFKeys()
         knownVDXFKeys.insert(std::make_pair(HeaderAndProofKey(), CHAINOBJ_HEADER));
         knownVDXFKeys.insert(std::make_pair(HeaderProofKey(), CHAINOBJ_HEADER_REF));
         knownVDXFKeys.insert(std::make_pair(NotarySignatureKey(), CHAINOBJ_NOTARYSIGNATURE));
-        knownVDXFKeys.insert(std::make_pair(PriorBlockHashesKey(), CHAINOBJ_PRIORBLOCKS));
+        knownVDXFKeys.insert(std::make_pair(HashCommitmentsKey(), CHAINOBJ_COMMITMENTDATA));
         knownVDXFKeys.insert(std::make_pair(ProofRootKey(), CHAINOBJ_PROOF_ROOT));
         knownVDXFKeys.insert(std::make_pair(TransactionProofKey(), CHAINOBJ_TRANSACTION_PROOF));
         knownVDXFKeys.insert(std::make_pair(ReserveTransferKey(), CHAINOBJ_RESERVETRANSFER));
@@ -1184,7 +1184,7 @@ const std::map<int, uint160> &CCrossChainProof::KnownVDXFIndices()
         knownVDXFIndices.insert(std::make_pair(CHAINOBJ_HEADER, HeaderAndProofKey()));
         knownVDXFIndices.insert(std::make_pair(CHAINOBJ_HEADER_REF, HeaderProofKey()));
         knownVDXFIndices.insert(std::make_pair(CHAINOBJ_NOTARYSIGNATURE, NotarySignatureKey()));
-        knownVDXFIndices.insert(std::make_pair(CHAINOBJ_PRIORBLOCKS, PriorBlockHashesKey()));
+        knownVDXFIndices.insert(std::make_pair(CHAINOBJ_COMMITMENTDATA, HashCommitmentsKey()));
         knownVDXFIndices.insert(std::make_pair(CHAINOBJ_PROOF_ROOT, ProofRootKey()));
         knownVDXFIndices.insert(std::make_pair(CHAINOBJ_TRANSACTION_PROOF, TransactionProofKey()));
         knownVDXFIndices.insert(std::make_pair(CHAINOBJ_RESERVETRANSFER, ReserveTransferKey()));
@@ -1229,9 +1229,9 @@ void DeleteOpRetObjects(std::vector<CBaseChainObject *> &ora)
                 break;
             }
 
-            case CHAINOBJ_PRIORBLOCKS:
+            case CHAINOBJ_COMMITMENTDATA:
             {
-                delete (CChainObject<CPriorBlocksCommitment> *)pobj;
+                delete (CChainObject<CHashCommitments> *)pobj;
                 break;
             }
 
@@ -1331,9 +1331,9 @@ CCrossChainProof::CCrossChainProof(const UniValue &uniObj)
                         break;
                     }
 
-                    case CHAINOBJ_PRIORBLOCKS:
+                    case CHAINOBJ_COMMITMENTDATA:
                     {
-                        chainObjects.push_back(new CChainObject<CPriorBlocksCommitment>(CHAINOBJ_PRIORBLOCKS, CPriorBlocksCommitment(obj)));
+                        chainObjects.push_back(new CChainObject<CHashCommitments>(CHAINOBJ_COMMITMENTDATA, CHashCommitments(obj)));
                         break;
                     }
 
@@ -1384,7 +1384,7 @@ UniValue CCrossChainProof::ToUniValue() const
                 CChainObject<CPartialTransactionProof> *pNewTx;
                 CChainObject<CProofRoot> *pNewProof;
                 CChainObject<CBlockHeaderProof> *pNewHeaderRef;
-                CChainObject<CPriorBlocksCommitment> *pPriors;
+                CChainObject<CHashCommitments> *pPriors;
                 CChainObject<CReserveTransfer> *pExport;
                 CChainObject<CCrossChainProof> *pCrossChainProof;
                 CChainObject<CNotarySignature> *pNotarySignature;
@@ -1433,10 +1433,10 @@ UniValue CCrossChainProof::ToUniValue() const
                         break;
                     }
 
-                    case CHAINOBJ_PRIORBLOCKS:
+                    case CHAINOBJ_COMMITMENTDATA:
                     {
                         UniValue priorBlocksUni(UniValue::VOBJ);
-                        priorBlocksUni.pushKV("vdxftype", EncodeDestination(CIdentityID(CCrossChainProof::PriorBlockHashesKey())));
+                        priorBlocksUni.pushKV("vdxftype", EncodeDestination(CIdentityID(CCrossChainProof::HashCommitmentsKey())));
                         priorBlocksUni.pushKV("value", pPriors->object.ToUniValue());
                         chainObjArr.push_back(priorBlocksUni);
                         break;

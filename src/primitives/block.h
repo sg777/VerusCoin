@@ -788,7 +788,7 @@ enum CHAIN_OBJECT_TYPES
     CHAINOBJ_HEADER_REF = 2,        // equivalent to header, but only includes non-canonical data
     CHAINOBJ_TRANSACTION_PROOF = 3, // serialized transaction or partial transaction with proof
     CHAINOBJ_PROOF_ROOT = 4,        // merkle proof of preceding block or transaction
-    CHAINOBJ_PRIORBLOCKS = 5,       // prior block commitments to ensure recognition of overlapping notarizations
+    CHAINOBJ_COMMITMENTDATA = 5,    // prior block commitments to ensure recognition of overlapping notarizations
     CHAINOBJ_RESERVETRANSFER = 6,   // serialized transaction, sometimes without an opret, which will be reconstructed
     CHAINOBJ_COMPOSITEOBJECT = 7,   // can hold and index a variety and multiplicity of objects
     CHAINOBJ_CROSSCHAINPROOF = 8,   // specific composite object, which is a single or multi-proof
@@ -853,7 +853,7 @@ public:
     uint256 GetHash() { return hash; }
 };
 
-class CPriorBlocksCommitment
+class CHashCommitments
 {
 public:
     enum {
@@ -863,14 +863,14 @@ public:
         VERSION_LAST = 0,
     };
     uint32_t version;
-    std::vector<uint256> priorBlocks;       // prior block commitments, which are node hashes that include merkle root, block hash, and compact power
-    uint256 pastBlockType;                  // 1 = POS, 0 = POW indicators for past blocks, enabling selective, pseudorandom proofs of past blocks by type
+    std::vector<uint256> hashCommitments;       // prior block commitments, which are node hashes that include merkle root, block hash, and compact power
+    uint256 commitmentTypes;                    // context dependent flags for commitments
 
-    CPriorBlocksCommitment(uint32_t nVersion=VERSION_INVALID) :  version(nVersion) {}
-    CPriorBlocksCommitment(const std::vector<uint256> &priors, const uint256 &pastTypes, uint32_t nVersion=VERSION_INVALID) : 
-        priorBlocks(priors), pastBlockType(pastTypes), version(nVersion) {}
+    CHashCommitments(uint32_t nVersion=VERSION_INVALID) :  version(nVersion) {}
+    CHashCommitments(const std::vector<uint256> &priors, const uint256 &pastTypes, uint32_t nVersion=VERSION_INVALID) : 
+        hashCommitments(priors), commitmentTypes(pastTypes), version(nVersion) {}
 
-    CPriorBlocksCommitment(const UniValue &uniObj)
+    CHashCommitments(const UniValue &uniObj)
     {
         try
         {
@@ -894,8 +894,8 @@ public:
         READWRITE(VARINT(version));
         if (version >= VERSION_FIRST && version <= VERSION_LAST)
         {
-            READWRITE(priorBlocks);
-            READWRITE(pastBlockType);
+            READWRITE(hashCommitments);
+            READWRITE(commitmentTypes);
         }
     }
 
@@ -1306,7 +1306,7 @@ public:
                         CChainObject<CPartialTransactionProof> *pNewTx;
                         CChainObject<CProofRoot> *pNewProof;
                         CChainObject<CBlockHeaderProof> *pNewHeaderRef;
-                        CChainObject<CPriorBlocksCommitment> *pPriors;
+                        CChainObject<CHashCommitments> *pPriors;
                         CChainObject<CReserveTransfer> *pExport;
                         CChainObject<CCrossChainProof> *pCrossChainProof;
                         CChainObject<CNotarySignature> *pNotarySignature;
@@ -1370,11 +1370,11 @@ public:
                             break;
                         }
 
-                        case CHAINOBJ_PRIORBLOCKS:
+                        case CHAINOBJ_COMMITMENTDATA:
                         {
-                            CPriorBlocksCommitment obj;
+                            CHashCommitments obj;
                             READWRITE(obj);
-                            pPriors = new CChainObject<CPriorBlocksCommitment>();
+                            pPriors = new CChainObject<CHashCommitments>();
                             if (pPriors)
                             {
                                 pPriors->objectType = objType;
@@ -1533,9 +1533,9 @@ public:
         return *this;
     }
 
-    const CCrossChainProof &operator<<(const CPriorBlocksCommitment &priorBlocks)
+    const CCrossChainProof &operator<<(const CHashCommitments &hashCommitments)
     {
-        chainObjects.push_back(static_cast<CBaseChainObject *>(new CChainObject<CPriorBlocksCommitment>(CHAINOBJ_PRIORBLOCKS, priorBlocks)));
+        chainObjects.push_back(static_cast<CBaseChainObject *>(new CChainObject<CHashCommitments>(CHAINOBJ_COMMITMENTDATA, hashCommitments)));
         return *this;
     }
 
@@ -1587,9 +1587,9 @@ public:
         return *this;
     }
 
-    const CCrossChainProof &insert(int position, const CPriorBlocksCommitment &priorBlocks)
+    const CCrossChainProof &insert(int position, const CHashCommitments &hashCommitments)
     {
-        chainObjects.insert(chainObjects.begin() + position, static_cast<CBaseChainObject *>(new CChainObject<CPriorBlocksCommitment>(CHAINOBJ_PRIORBLOCKS, priorBlocks)));
+        chainObjects.insert(chainObjects.begin() + position, static_cast<CBaseChainObject *>(new CChainObject<CHashCommitments>(CHAINOBJ_COMMITMENTDATA, hashCommitments)));
         return *this;
     }
 
@@ -1651,9 +1651,9 @@ public:
                 break;
             }
 
-            case CHAINOBJ_PRIORBLOCKS:
+            case CHAINOBJ_COMMITMENTDATA:
             {
-                *this << ((CChainObject<CPriorBlocksCommitment> *)baseObj)->object;
+                *this << ((CChainObject<CHashCommitments> *)baseObj)->object;
                 break;
             }
 
@@ -1737,15 +1737,15 @@ public:
         return headerProofKey;
     }
 
-    static std::string PriorBlockHashesKeyName()
+    static std::string HashCommitmentsKeyName()
     {
-        return "vrsc::system.crosschain.priorblockhashes";
+        return "vrsc::system.crosschain.hashcommitments";
     }
 
-    static uint160 PriorBlockHashesKey()
+    static uint160 HashCommitmentsKey()
     {
         static uint160 nameSpace;
-        static uint160 priorBlocksKey = CVDXF::GetDataKey(PriorBlockHashesKeyName(), nameSpace);
+        static uint160 priorBlocksKey = CVDXF::GetDataKey(HashCommitmentsKeyName(), nameSpace);
         return priorBlocksKey;
     }
 
@@ -1850,7 +1850,7 @@ CBaseChainObject *RehydrateChainObject(OStream &s)
         CChainObject<CPartialTransactionProof> *pNewTx;
         CChainObject<CProofRoot> *pNewProof;
         CChainObject<CBlockHeaderProof> *pNewHeaderRef;
-        CChainObject<CPriorBlocksCommitment> *pPriors;
+        CChainObject<CHashCommitments> *pPriors;
         CChainObject<CReserveTransfer> *pExport;
         CChainObject<CCrossChainProof> *pCrossChainProof;
         CChainObject<CCompositeChainObject> *pCompositeChainObject;
@@ -1894,8 +1894,8 @@ CBaseChainObject *RehydrateChainObject(OStream &s)
                 pNewHeaderRef->objectType = objType;
             }
             break;
-        case CHAINOBJ_PRIORBLOCKS:
-            pPriors = new CChainObject<CPriorBlocksCommitment>();
+        case CHAINOBJ_COMMITMENTDATA:
+            pPriors = new CChainObject<CHashCommitments>();
             if (pPriors)
             {
                 s >> pPriors->object;
@@ -1978,9 +1978,9 @@ bool DehydrateChainObject(OStream &s, const CBaseChainObject *pobj)
             return true;
         }
 
-        case CHAINOBJ_PRIORBLOCKS:
+        case CHAINOBJ_COMMITMENTDATA:
         {
-            s << *(CChainObject<CPriorBlocksCommitment> *)pobj;
+            s << *(CChainObject<CHashCommitments> *)pobj;
             return true;
         }
 
@@ -2014,7 +2014,7 @@ int8_t ObjTypeCode(const CPartialTransactionProof &obj);
 
 int8_t ObjTypeCode(const CBlockHeaderProof &obj);
 
-int8_t ObjTypeCode(const CPriorBlocksCommitment &obj);
+int8_t ObjTypeCode(const CHashCommitments &obj);
 
 int8_t ObjTypeCode(const CReserveTransfer &obj);
 

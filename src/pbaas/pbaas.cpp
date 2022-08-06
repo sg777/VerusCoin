@@ -57,7 +57,7 @@ uint256 GetChainObjectHash(const CBaseChainObject &bo)
         const CChainObject<CBlockHeaderAndProof> *pNewHeader;
         const CChainObject<CPartialTransactionProof> *pNewTx;
         const CChainObject<CBlockHeaderProof> *pNewHeaderRef;
-        const CChainObject<CPriorBlocksCommitment> *pPriors;
+        const CChainObject<CHashCommitments> *pPriors;
         const CChainObject<CProofRoot> *pNewProofRoot;
         const CChainObject<CReserveTransfer> *pExport;
         const CChainObject<CCrossChainProof> *pCrossChainProof;
@@ -77,7 +77,7 @@ uint256 GetChainObjectHash(const CBaseChainObject &bo)
         case CHAINOBJ_HEADER_REF:
             return pNewHeaderRef->GetHash();
 
-        case CHAINOBJ_PRIORBLOCKS:
+        case CHAINOBJ_COMMITMENTDATA:
             return pPriors->GetHash();
 
         case CHAINOBJ_PROOF_ROOT:
@@ -1437,9 +1437,9 @@ int8_t ObjTypeCode(const CBlockHeaderAndProof &obj)
     return CHAINOBJ_HEADER_REF;
 }
 
-int8_t ObjTypeCode(const CPriorBlocksCommitment &obj)
+int8_t ObjTypeCode(const CHashCommitments &obj)
 {
-    return CHAINOBJ_PRIORBLOCKS;
+    return CHAINOBJ_COMMITMENTDATA;
 }
 
 int8_t ObjTypeCode(const CReserveTransfer &obj)
