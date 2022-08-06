@@ -1399,7 +1399,9 @@ CObjectFinalization::CObjectFinalization(const CScript &script) : version(VERSIO
     }
 }
 
-CObjectFinalization::CObjectFinalization(const CTransaction &tx, uint32_t *pEcode, int32_t *pFinalizationOutNum)
+CObjectFinalization::CObjectFinalization(const CTransaction &tx, uint32_t *pEcode, int32_t *pFinalizationOutNum, uint32_t minFinalHeight, uint8_t Version) :
+    minFinalizationHeight(minFinalHeight),
+    version(Version)
 {
     uint32_t _ecode;
     uint32_t &ecode = pEcode ? *pEcode : _ecode;
@@ -1415,7 +1417,7 @@ CObjectFinalization::CObjectFinalization(const CTransaction &tx, uint32_t *pEcod
             {
                 if (finalizeOutNum != -1)
                 {
-                    this->version = VERSION_INVALID;
+                    version = VERSION_INVALID;
                     finalizeOutNum = -1;
                     break;
                 }

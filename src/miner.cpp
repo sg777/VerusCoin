@@ -1830,7 +1830,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                 {
                     bool success = false;
                     CCurrencyValueMap reserveValueOut;
-                    CAmount nativeValueOut;
+                    CAmount nativeValueOut = 0;
                     // get a native currency input capable of paying a fee, and make our notary ID the change address
                     std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
                     {
@@ -1838,6 +1838,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                         std::vector<COutput> vCoins;
                         if (IsVerusActive())
                         {
+                            nativeValueOut = CPBaaSNotarization::DEFAULT_NOTARIZATION_FEE;
                             pwalletMain->AvailableCoins(vCoins,
                                                         false,
                                                         nullptr,
@@ -1872,15 +1873,35 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                                                             setCoinsRet,
                                                                             reserveValueOut,
                                                                             nativeValueOut);
+                            
+                            // if we don't have vrsctest
+                            if (!success)
+                            {
+                                nativeValueOut = totalTxFees.valueMap[ConnectedChains.FirstNotaryChain().chainDefinition.GetID()];
+                                totalTxFees.valueMap.erase(ConnectedChains.FirstNotaryChain().chainDefinition.GetID());
+                                notarizationBuilder.SetReserveFee(CCurrencyValueMap());
+                                notarizationBuilder.SetFee(nativeValueOut);
+                                success = pwalletMain->SelectReserveCoinsMinConf(totalTxFees,
+                                                                                nativeValueOut,
+                                                                                0,
+                                                                                1,
+                                                                                vCoins,
+                                                                                setCoinsRet,
+                                                                                reserveValueOut,
+                                                                                nativeValueOut);
+                            }
                         }
                     }
-                    for (auto &oneInput : setCoinsRet)
+                    if (success)
                     {
-                        notarizationBuilder.AddTransparentInput(COutPoint(oneInput.first->GetHash(), oneInput.second), 
-                                                                oneInput.first->vout[oneInput.second].scriptPubKey,
-                                                                oneInput.first->vout[oneInput.second].nValue);
+                        for (auto &oneInput : setCoinsRet)
+                        {
+                            notarizationBuilder.AddTransparentInput(COutPoint(oneInput.first->GetHash(), oneInput.second), 
+                                                                    oneInput.first->vout[oneInput.second].scriptPubKey,
+                                                                    oneInput.first->vout[oneInput.second].nValue);
+                        }
+                        notarizationBuilder.SendChangeTo(CTxDestination(VERUS_NOTARYID));
                     }
-                    notarizationBuilder.SendChangeTo(CTxDestination(VERUS_NOTARYID));
                 }
                 else
                 {
