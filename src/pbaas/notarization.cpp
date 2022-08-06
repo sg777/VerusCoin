@@ -1967,7 +1967,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                         CNotaryEvidence oneEvidenceObj;
                         int afterEvidence;
                         if (pEvidenceVec &&
-                            oneEvidenceSpend..second.scriptPubKey.IsPayToCryptoCondition(tP) &&
+                            oneEvidenceSpend.second.scriptPubKey.IsPayToCryptoCondition(tP) &&
                             tP.IsValid() &&
                             tP.vData.size() &&
                             tP.evalCode == EVAL_NOTARY_EVIDENCE &&
