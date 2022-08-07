@@ -3030,6 +3030,7 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
             "\nResult:\n"
             "\"bestindex\"                      (int) index of best proof root not confirmed that is provided, confirmed index, or -1"
             "\"latestproofroot\"                (object) latest valid proof root of chain"
+            "\"laststableproofroot\"            (object) either tip-BLOCK_MATURITY or last notarized/witnessed tip"
             "\"lastconfirmedproofroot\"         (object) last proof root of chain that has been confirmed"
             "\"currencystates\"                 (int) currency states of target currency and published bridges"
 
@@ -3157,7 +3158,7 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
     }
     else
     {
-        retVal.pushKV("laststableproofroot", CProofRoot::GetProofRoot((nHeight - 100) > 0 ? (nHeight - 100) : 1).ToUniValue());
+        retVal.pushKV("laststableproofroot", CProofRoot::GetProofRoot((nHeight - COINBASE_MATURITY) > 0 ? (nHeight - COINBASE_MATURITY) : 1).ToUniValue());
     }
 
     std::set<uint160> currenciesSet({ASSETCHAINS_CHAINID});
