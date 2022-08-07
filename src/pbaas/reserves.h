@@ -1696,7 +1696,8 @@ public:
         IS_IDENTITY=0x200,                      // If set, this is an identity definition or update
         IS_IDENTITY_DEFINITION=0x400,           // If set, this is an identity definition
         IS_HIGH_FEE=0x800,                      // If set, this may have "absurdly high fees"
-        IS_CURRENCY_DEFINITION=0x1000           // If set, this is a currency definition
+        IS_CURRENCY_DEFINITION=0x1000,          // If set, this is a currency definition
+        IS_CHAIN_NOTARIZATION=0x2000            // If set, this is to do with primary chain notarization and connection
     };
 
     enum ESubIndexCodes {
@@ -1735,6 +1736,8 @@ public:
     bool IsFillOrKill() const { return flags & IS_FILLORKILL; }
     bool IsFillOrKillFail() const { return flags & IS_FILLORKILLFAIL; }
     bool IsIdentity() const { return flags & IS_IDENTITY; }
+    bool IsCurrencyDefinition() const { return flags & IS_CURRENCY_DEFINITION; }
+    bool IsNotaryPrioritized() const { return flags & IS_CHAIN_NOTARIZATION; }
     bool IsIdentityDefinition() const { return flags & IS_IDENTITY_DEFINITION; }
     bool IsHighFee() const { return flags & IS_HIGH_FEE; }
 

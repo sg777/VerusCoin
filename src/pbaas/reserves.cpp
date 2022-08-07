@@ -2641,7 +2641,28 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 }
                 break;
 
+                case EVAL_FINALIZE_NOTARIZATION:
+                {
+                    CObjectFinalization of;
+                    if (!p.vData.size() ||
+                        !(of = CObjectFinalization(p.vData[0])).IsValid())
+                    {
+                        flags &= ~IS_VALID;
+                        flags |= IS_REJECT;
+                        return;
+                    }
+                    if (ConnectedChains.notarySystems.count(of.currencyID))
+                    {
+                        flags |= IS_CHAIN_NOTARIZATION;
+                    }
+                }
+                break;
+
                 case EVAL_EARNEDNOTARIZATION:
+                {
+                    // this is only used on the chain earning notarizations
+                    flags |= IS_CHAIN_NOTARIZATION;
+                }
                 case EVAL_ACCEPTEDNOTARIZATION:
                 {
                     CPBaaSNotarization onePBN;
@@ -2652,7 +2673,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         flags |= IS_REJECT;
                         return;
                     }
-
                     // verify
                     // if this is the notaries that can finalize this chain, store notarization
                 }

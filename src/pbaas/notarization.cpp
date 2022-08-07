@@ -3255,12 +3255,15 @@ int CChainNotarizationData::BestConfirmedNotarization(int minConfirms)
 
 // this is called by notaries to locate any notarizations of a specific system that they can notarize, to determine if we
 // agree with the notarization in question, and to confirm or reject the notarization
-bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
+bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                                                       const CRPCChainData &externalSystem,
                                                       CValidationState &state,
-                                                      TransactionBuilder &txBuilder,
+                                                      std::vector<TransactionBuilder> &txBuilders,
+                                                      uint32_t nHeight,
                                                       bool &finalized)
 {
+    auto txBuilder = TransactionBuilder(Params().GetConsensus(), nHeight, pWallet);
+
     std::string errorPrefix(strprintf("%s: ", __func__));
 
     finalized = false;
@@ -3324,7 +3327,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
     {
         return state.Error(errorPrefix + "too early");
     }
-
+    // TODO: HARDENING - make sure we can spend all outputs we need to, even if there gets to be too many for 1 tx
     // rules to confirm or reject an earned notarization
     // 1) Notaries may confirm an earned notarization if and only if the following is true:
     //   a) There is no previous, valid notarization in the same eligible period with which the notarization agrees and should confirm
@@ -3674,6 +3677,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                 // if we have enough to finalize, do so as a combination of pre-existing evidence and this
                 if (confirmationResult == CNotaryEvidence::EStates::STATE_CONFIRMED)
                 {
+                    std::set<COutPoint> inputSet;
                     std::vector<CInputDescriptor> nonEvidenceSpends;
                     for (auto &oneEvidenceSpend : spendsToClose[idx])
                     {
@@ -3682,7 +3686,16 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                             tP.evalCode == EVAL_NOTARY_EVIDENCE || tP.evalCode == EVAL_FINALIZE_NOTARIZATION)
                         {
                             of.evidenceInputs.push_back(txBuilder.mtx.vin.size());
-                            txBuilder.AddTransparentInput(oneEvidenceSpend.txIn.prevout, oneEvidenceSpend.scriptPubKey, oneEvidenceSpend.nValue);
+                            if (!inputSet.count(oneEvidenceSpend.txIn.prevout))
+                            {
+                                inputSet.insert(oneEvidenceSpend.txIn.prevout);
+                                txBuilder.AddTransparentInput(oneEvidenceSpend.txIn.prevout, oneEvidenceSpend.scriptPubKey, oneEvidenceSpend.nValue);
+                            }
+                            else if (LogAcceptCategory("notarization"))
+                            {
+                                printf("%s: duplicate input: %s\n", __func__, oneEvidenceSpend.txIn.prevout.ToString().c_str());
+                                LogPrintf("%s: duplicate input: %s\n", __func__, oneEvidenceSpend.txIn.prevout.ToString().c_str());
+                            }
                         }
                         else
                         {
@@ -3691,7 +3704,16 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                     }
                     for (auto &oneSpend : nonEvidenceSpends)
                     {
-                        txBuilder.AddTransparentInput(oneSpend.txIn.prevout, oneSpend.scriptPubKey, oneSpend.nValue);
+                        if (!inputSet.count(oneSpend.txIn.prevout))
+                        {
+                            inputSet.insert(oneSpend.txIn.prevout);
+                            txBuilder.AddTransparentInput(oneSpend.txIn.prevout, oneSpend.scriptPubKey, oneSpend.nValue);
+                        }
+                        else if (LogAcceptCategory("notarization"))
+                        {
+                            printf("%s: duplicate input: %s\n", __func__, oneSpend.txIn.prevout.ToString().c_str());
+                            LogPrintf("%s: duplicate input: %s\n", __func__, oneSpend.txIn.prevout.ToString().c_str());
+                        }
                     }
 
                     int sigCount = 0;
@@ -3699,23 +3721,88 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
                     of.SetConfirmed();
 
                     // any fork that does not match the confirmed fork up to the same index will be
-                    // considered invalid from all of its entries to its end
+                    // considered invalid from all of its entries to its end.
+                    //
+                    bool makeInputTxes = confirmedOutputNums.size() > 3;
                     for (auto oneConfirmedIdx : confirmedOutputNums)
                     {
+                        bool makeInputTx = (makeInputTxes && spendsToClose[oneConfirmedIdx].size() > 2);
+                        // if we are confirming more
+                        // than 2 additional pending notarizations (3 total), we break the spends up into one
+                        // transaction to close out each pending transaction into a pending finalization, which
+                        // then is spent into the main transaction
+                        auto newTxBuilder = TransactionBuilder(Params().GetConsensus(), nHeight, pWallet);
+                        TransactionBuilder &oneConfirmedBuilder = makeInputTx ? newTxBuilder : txBuilder;
+
                         if (oneConfirmedIdx != idx)
                         {
                             for (auto &oneInput : spendsToClose[oneConfirmedIdx])
                             {
-                                txBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
+                                if (!inputSet.count(oneInput.txIn.prevout))
+                                {
+                                    inputSet.insert(oneInput.txIn.prevout);
+                                    oneConfirmedBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
+                                }
+                                else if (LogAcceptCategory("notarization"))
+                                {
+                                    printf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
+                                    LogPrintf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
+                                }
                             }
+                        }
+
+                        if (makeInputTx)
+                        {
+                            CObjectFinalization oneConfirmedFinalization = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION,
+                                                                                               SystemID,
+                                                                                               cnd.vtx[oneConfirmedIdx].first.hash,
+                                                                                               cnd.vtx[oneConfirmedIdx].first.n,
+                                                                                               height);
+
+                            cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
+                            dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+
+                            CScript finalizeScript = MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &oneConfirmedFinalization));
+                            oneConfirmedBuilder.AddTransparentOutput(finalizeScript, 0);
+                            txBuilders.push_back(oneConfirmedBuilder);
                         }
                     }
 
+                    makeInputTxes = invalidatedOutputNums.size() > 3;
                     for (auto oneInvalidatedIdx : invalidatedOutputNums)
                     {
+                        bool makeInputTx = (makeInputTxes && spendsToClose[oneInvalidatedIdx].size() > 2);
+                        auto newTxBuilder = TransactionBuilder(Params().GetConsensus(), nHeight, pWallet);
+                        TransactionBuilder &oneInvalidatedBuilder = makeInputTx ? newTxBuilder : txBuilder;
+
                         for (auto &oneInput : spendsToClose[oneInvalidatedIdx])
                         {
-                            txBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
+                            if (!inputSet.count(oneInput.txIn.prevout))
+                            {
+                                inputSet.insert(oneInput.txIn.prevout);
+                                oneInvalidatedBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
+                            }
+                            else if (LogAcceptCategory("notarization"))
+                            {
+                                printf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
+                                LogPrintf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
+                            }
+                        }
+
+                        if (makeInputTx)
+                        {
+                            CObjectFinalization oneConfirmedFinalization = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION,
+                                                                                               SystemID,
+                                                                                               cnd.vtx[oneInvalidatedIdx].first.hash,
+                                                                                               cnd.vtx[oneInvalidatedIdx].first.n,
+                                                                                               height);
+
+                            cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
+                            dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+
+                            CScript finalizeScript = MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &oneConfirmedFinalization));
+                            oneInvalidatedBuilder.AddTransparentOutput(finalizeScript, 0);
+                            txBuilders.push_back(oneInvalidatedBuilder);
                         }
                     }
 
@@ -3726,6 +3813,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(const CWallet *pWallet,
 
                     CScript finalizeScript = MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &of));
                     txBuilder.AddTransparentOutput(finalizeScript, 0);
+                    txBuilders.push_back(txBuilder);
                 }
                 break;
             }
@@ -4971,7 +5059,7 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
                 p.vData.size() &&
                 (newFinalization = CObjectFinalization(p.vData[0])).IsValid() &&
                 newFinalization.currencyID == oldFinalization.currencyID &&
-                newFinalization.IsConfirmed())
+                (newFinalization.IsConfirmed() || newFinalization.output == oldFinalization.output))
             {
                 if (foundFinalization)
                 {

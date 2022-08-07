@@ -518,10 +518,11 @@ public:
                                            CValidationState &state,
                                            TransactionBuilder &txBuilder);
 
-    static bool ConfirmOrRejectNotarizations(const CWallet *pWallet,
+    static bool ConfirmOrRejectNotarizations(CWallet *pWallet,
                                              const CRPCChainData &externalSystem,
                                              CValidationState &state,
-                                             TransactionBuilder &txBuilder,
+                                             std::vector<TransactionBuilder> &txBuilders,
+                                             uint32_t nHeight,
                                              bool &finalized);
 
     bool IsNotarizationConfirmed(const CPBaaSNotarization &notarization,

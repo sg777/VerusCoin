@@ -1651,8 +1651,11 @@ bool CheckTransactionWithoutProofVerification(const CTransaction& tx, CValidatio
     BOOST_FOREACH(const CTxIn& txin, tx.vin)
     {
         if (vInOutPoints.count(txin.prevout))
+        {
+            LogPrintf("%s: duplicated input: %s\n", __func__, txin.prevout.ToString().c_str());
             return state.DoS(100, error("CheckTransaction(): duplicate inputs"),
                              REJECT_INVALID, "bad-txns-inputs-duplicate");
+        }
         vInOutPoints.insert(txin.prevout);
     }
     
