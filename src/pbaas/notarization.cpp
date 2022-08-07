@@ -3510,7 +3510,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
         if (proofIt != cnd.vtx[idx].second.proofRoots.end())
         {
-            if (firstNotarizationIndex = -1 && proofIt->second.rootHeight > eligibleHeight)
+            if (firstNotarizationIndex == -1 && proofIt->second.rootHeight > eligibleHeight)
             {
                 firstNotarizationIndex = idx;
                 signingHeight = proofIt->second.rootHeight + 1;
