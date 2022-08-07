@@ -99,6 +99,7 @@ int32_t VERUS_MIN_STAKEAGE = 150;       // 1/2 this should also be a cap on the 
 int32_t VERUS_CONSECUTIVE_POS_THRESHOLD = 7; // this gives us 8 in a row
 int32_t VERUS_PBAAS_CONSECUTIVE_POS_THRESHOLD = 2; // reduce to max 4 in a row
 int32_t VERUS_NOPOS_THRESHHOLD = 150;   // if we have no POS blocks in this many blocks, reset difficulty
+int32_t VERUS_PBAAS_NOPOS_THRESHHOLD = 150; // extend for PBaaS to enable more variability in staking supply
 int32_t PBAAS_STARTBLOCK = 0;           // the parent blockchain must be notarized at this value in block 1 for it to be accepted
 int32_t PBAAS_ENDBLOCK = 0;             // end of life block for the PBaaS blockchain
 

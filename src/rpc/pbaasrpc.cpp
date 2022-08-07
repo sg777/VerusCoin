@@ -3152,7 +3152,12 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
     if (lastConfirmedRoot.IsValid() && validRoots.count(lastConfirmedRoot.rootHeight))
     {
         retVal.pushKV("lastconfirmedproofroot", lastConfirmedRoot.ToUniValue());
+        retVal.pushKV("laststableproofroot", lastConfirmedRoot.ToUniValue());
         retVal.pushKV("lastconfirmedindex", validRoots[lastConfirmedRoot.rootHeight]);
+    }
+    else
+    {
+        retVal.pushKV("laststableproofroot", CProofRoot::GetProofRoot((nHeight - 100) > 0 ? (nHeight - 100) : 1).ToUniValue());
     }
 
     std::set<uint160> currenciesSet({ASSETCHAINS_CHAINID});
