@@ -28,14 +28,17 @@
 
 Eval* EVAL_TEST = 0;
 struct CCcontract_info CCinfos[0x100];
-extern pthread_mutex_t KOMODO_CC_mutex;
+extern CCriticalSection smartTransactionCS;
 
 bool RunCCEval(const CC *cond, const CTransaction &tx, unsigned int nIn, bool fulfilled)
 {
     EvalRef eval;
-    pthread_mutex_lock(&KOMODO_CC_mutex);
-    bool out = eval->Dispatch(cond, tx, nIn, fulfilled);
-    pthread_mutex_unlock(&KOMODO_CC_mutex);
+    bool out;
+    {
+        LOCK(smartTransactionCS);
+        out = eval->Dispatch(cond, tx, nIn, fulfilled);
+    }
+
     //fprintf(stderr,"out %d vs %d isValid\n",(int32_t)out,(int32_t)eval->state.IsValid());
     assert(eval->state.IsValid() == out);
 

@@ -1504,4 +1504,3 @@ CAmount AmountFromValue(const UniValue& value)
         throw JSONRPCError(RPC_TYPE_ERROR, "Amount out of range");
     return amount;
 }
-

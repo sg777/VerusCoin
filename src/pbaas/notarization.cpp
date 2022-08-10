@@ -2955,6 +2955,32 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
             __func__, 
             EncodeDestination(CIdentityID(indexKey)).c_str(),
             indexKey.GetHex().c_str()); */
+        std::vector<int> toRemove;
+        std::map<COutPoint, int> outputMap;
+        for (int i = 0; i < mempoolUnspent.size(); i++)
+        {
+            if (mempoolUnspent[i].first.spending)
+            {
+                auto it = outputMap.find(COutPoint(mempoolUnspent[i].second.prevhash, mempoolUnspent[i].second.prevout));
+                if (it != outputMap.end())
+                {
+                    it->second < i ? toRemove.push_back(it->second) : toRemove.push_back(i);
+                    it->second < i ? toRemove.push_back(i) : toRemove.push_back(it->second);
+                }
+                else
+                {
+                    toRemove.push_back(i);
+                }
+            }
+            else
+            {
+                outputMap.insert(std::make_pair(COutPoint(mempoolUnspent[i].first.txhash, mempoolUnspent[i].first.index), i));
+            }
+        }
+        for (auto it = toRemove.rbegin(); it != toRemove.rend(); it++)
+        {
+            mempoolUnspent.erase(mempoolUnspent.begin() + *it);
+        }
 
         for (auto &oneConfirmed : indexUnspent)
         {
@@ -3019,6 +3045,33 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
             EncodeDestination(CIdentityID(indexKey)).c_str(),
             indexKey.GetHex().c_str()); */
 
+        std::vector<int> toRemove;
+        std::map<COutPoint, int> outputMap;
+        for (int i = 0; i < mempoolUnspent.size(); i++)
+        {
+            if (mempoolUnspent[i].first.spending)
+            {
+                auto it = outputMap.find(COutPoint(mempoolUnspent[i].second.prevhash, mempoolUnspent[i].second.prevout));
+                if (it != outputMap.end())
+                {
+                    it->second < i ? toRemove.push_back(it->second) : toRemove.push_back(i);
+                    it->second < i ? toRemove.push_back(i) : toRemove.push_back(it->second);
+                }
+                else
+                {
+                    toRemove.push_back(i);
+                }
+            }
+            else
+            {
+                outputMap.insert(std::make_pair(COutPoint(mempoolUnspent[i].first.txhash, mempoolUnspent[i].first.index), i));
+            }
+        }
+        for (auto it = toRemove.rbegin(); it != toRemove.rend(); it++)
+        {
+            mempoolUnspent.erase(mempoolUnspent.begin() + *it);
+        }
+
         for (auto &oneConfirmed : indexUnspent)
         {
             //printf("%s: txid: %s, vout: %lu, blockheight: %d\n", __func__, oneConfirmed.first.txhash.GetHex().c_str(), oneConfirmed.first.index, oneConfirmed.second.blockHeight);
@@ -3080,6 +3133,33 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
             __func__, 
             EncodeDestination(CIdentityID(indexKey)).c_str(),
             indexKey.GetHex().c_str()); */
+
+        std::vector<int> toRemove;
+        std::map<COutPoint, int> outputMap;
+        for (int i = 0; i < mempoolUnspent.size(); i++)
+        {
+            if (mempoolUnspent[i].first.spending)
+            {
+                auto it = outputMap.find(COutPoint(mempoolUnspent[i].second.prevhash, mempoolUnspent[i].second.prevout));
+                if (it != outputMap.end())
+                {
+                    it->second < i ? toRemove.push_back(it->second) : toRemove.push_back(i);
+                    it->second < i ? toRemove.push_back(i) : toRemove.push_back(it->second);
+                }
+                else
+                {
+                    toRemove.push_back(i);
+                }
+            }
+            else
+            {
+                outputMap.insert(std::make_pair(COutPoint(mempoolUnspent[i].first.txhash, mempoolUnspent[i].first.index), i));
+            }
+        }
+        for (auto it = toRemove.rbegin(); it != toRemove.rend(); it++)
+        {
+            mempoolUnspent.erase(mempoolUnspent.begin() + *it);
+        }
 
         for (auto &oneConfirmed : indexUnspent)
         {
@@ -3553,10 +3633,86 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                 std::set<int> confirmedOutputNums;
                 std::set<int> invalidatedOutputNums;
 
+                std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> mempoolUnspent;
+                if (mempool.getAddressIndex(
+                        std::vector<std::pair<uint160, int32_t>>({
+                            {CCrossChainRPCData::GetConditionID(CObjectFinalization::ObjectFinalizationFinalizedKey(),
+                                                                cnd.vtx[idx].first.hash,
+                                                                cnd.vtx[idx].first.n), 
+                             CScript::P2IDX}}), 
+                        mempoolUnspent) &&
+                    mempoolUnspent.size())
+                {
+                    /* printf("%s: confirmedNotarizationKey: %s / 0x%s\nconfirmed finalizations\n",
+                        __func__, 
+                        EncodeDestination(CIdentityID(indexKey)).c_str(),
+                        indexKey.GetHex().c_str()); */
+                    std::vector<int> toRemove;
+                    std::map<COutPoint, int> outputMap;
+                    for (int i = 0; i < mempoolUnspent.size(); i++)
+                    {
+                        if (mempoolUnspent[i].first.spending)
+                        {
+                            auto it = outputMap.find(COutPoint(mempoolUnspent[i].second.prevhash, mempoolUnspent[i].second.prevout));
+                            if (it != outputMap.end())
+                            {
+                                it->second < i ? toRemove.push_back(it->second) : toRemove.push_back(i);
+                                it->second < i ? toRemove.push_back(i) : toRemove.push_back(it->second);
+                            }
+                            else
+                            {
+                                toRemove.push_back(i);
+                            }
+                        }
+                        else
+                        {
+                            outputMap.insert(std::make_pair(COutPoint(mempoolUnspent[i].first.txhash, mempoolUnspent[i].first.index), i));
+                        }
+                    }
+                    for (auto it = toRemove.rbegin(); it != toRemove.rend(); it++)
+                    {
+                        mempoolUnspent.erase(mempoolUnspent.begin() + *it);
+                    }
+                    for (auto &oneUnspent : mempoolUnspent)
+                    {
+                        // if we have a confirmed, valid entry in the mempool already, we don't have something to do
+                        CTransaction oneTx;
+                        COptCCParams optP;
+                        CObjectFinalization checkOf;
+                        if (mempool.lookup(oneUnspent.first.txhash, oneTx) &&
+                            oneTx.vout.size() > oneUnspent.first.index &&
+                            oneTx.vout[oneUnspent.first.index].scriptPubKey.IsPayToCryptoCondition(optP) &&
+                            optP.IsValid() &&
+                            optP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                            optP.vData.size() &&
+                            (checkOf = CObjectFinalization(optP.vData[0])).IsValid() &&
+                            checkOf.currencyID == SystemID &&
+                            checkOf.IsConfirmed())
+                        {
+                            return state.Error("notarization confirmed in mempool");
+                        }
+                    }
+                }
+
                 if (!cnd.CorrelatedFinalizationSpends(txes, spendsToClose, extraSpends, &evidenceVec) ||
                     !cnd.CalculateConfirmation(idx, confirmedOutputNums, invalidatedOutputNums))
                 {
                     return state.Error("invalid-correlated-spends");
+                }
+
+                if (LogAcceptCategory("notarization"))
+                {
+                    for (int j = 0; j < spendsToClose.size(); j++)
+                    {
+                        auto &oneEntrySpends = spendsToClose[j];
+                        LogPrintf("%s: index #%d - %s\n", __func__, j, confirmedOutputNums.count(j) ? "confirmed" : invalidatedOutputNums.count(j) ? "rejected" : "pending");
+                        for (auto &oneSpend : oneEntrySpends)
+                        {
+                            UniValue scriptUni(UniValue::VOBJ);
+                            ScriptPubKeyToUniv(oneSpend.scriptPubKey, scriptUni, false, false);
+                            LogPrintf("txid: %s:%d, nValue: %ld\n", oneSpend.txIn.prevout.hash.GetHex().c_str(), oneSpend.txIn.prevout.n, oneSpend.nValue);
+                        }
+                    }
                 }
 
                 CNotaryEvidence ne(ASSETCHAINS_CHAINID, cnd.vtx[idx].first, CNotaryEvidence::STATE_CONFIRMING);
@@ -3566,8 +3722,8 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
                 COptCCParams p;
                 if (!(txes[idx].first.vout[ne.output.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-                        p.IsValid() &&
-                        p.evalCode != EVAL_NONE))
+                      p.IsValid() &&
+                      p.evalCode != EVAL_NONE))
                 {
                     return state.Error(errorPrefix + "invalid output for notarization");
                 }
@@ -3726,21 +3882,23 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                     bool makeInputTxes = confirmedOutputNums.size() > 3;
                     for (auto oneConfirmedIdx : confirmedOutputNums)
                     {
-                        bool makeInputTx = (makeInputTxes && spendsToClose[oneConfirmedIdx].size() > 2);
-                        // if we are confirming more
-                        // than 2 additional pending notarizations (3 total), we break the spends up into one
-                        // transaction to close out each pending transaction into a pending finalization, which
-                        // then is spent into the main transaction
-                        auto newTxBuilder = TransactionBuilder(Params().GetConsensus(), nHeight, pWallet);
-                        TransactionBuilder &oneConfirmedBuilder = makeInputTx ? newTxBuilder : txBuilder;
-
                         if (oneConfirmedIdx != idx)
                         {
+                            bool makeInputTx = (makeInputTxes && spendsToClose[oneConfirmedIdx].size() > 2);
+                            // if we are confirming more
+                            // than 2 additional pending notarizations (3 total), we break the spends up into one
+                            // transaction to close out each pending transaction into a pending finalization, which
+                            // then is spent into the main transaction
+                            std::vector<int> evidenceInputs;
+                            auto newTxBuilder = TransactionBuilder(Params().GetConsensus(), nHeight, pWallet);
+                            TransactionBuilder &oneConfirmedBuilder = makeInputTx ? newTxBuilder : txBuilder;
+
                             for (auto &oneInput : spendsToClose[oneConfirmedIdx])
                             {
                                 if (!inputSet.count(oneInput.txIn.prevout))
                                 {
                                     inputSet.insert(oneInput.txIn.prevout);
+                                    evidenceInputs.push_back(oneConfirmedBuilder.mtx.vin.size());
                                     oneConfirmedBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
                                 }
                                 else if (LogAcceptCategory("notarization"))
@@ -3749,22 +3907,23 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                                     LogPrintf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
                                 }
                             }
-                        }
 
-                        if (makeInputTx)
-                        {
-                            CObjectFinalization oneConfirmedFinalization = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION,
-                                                                                               SystemID,
-                                                                                               cnd.vtx[oneConfirmedIdx].first.hash,
-                                                                                               cnd.vtx[oneConfirmedIdx].first.n,
-                                                                                               height);
+                            if (makeInputTx)
+                            {
+                                CObjectFinalization oneConfirmedFinalization = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION,
+                                                                                                SystemID,
+                                                                                                cnd.vtx[oneConfirmedIdx].first.hash,
+                                                                                                cnd.vtx[oneConfirmedIdx].first.n,
+                                                                                                height);
+                                //oneConfirmedFinalization.evidenceInputs = evidenceInputs;
 
-                            cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
-                            dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+                                cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
+                                dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
-                            CScript finalizeScript = MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &oneConfirmedFinalization));
-                            oneConfirmedBuilder.AddTransparentOutput(finalizeScript, 0);
-                            txBuilders.push_back(oneConfirmedBuilder);
+                                CScript finalizeScript = MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &oneConfirmedFinalization));
+                                oneConfirmedBuilder.AddTransparentOutput(finalizeScript, 0);
+                                txBuilders.push_back(oneConfirmedBuilder);
+                            }
                         }
                     }
 
@@ -3772,6 +3931,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                     for (auto oneInvalidatedIdx : invalidatedOutputNums)
                     {
                         bool makeInputTx = (makeInputTxes && spendsToClose[oneInvalidatedIdx].size() > 2);
+
                         auto newTxBuilder = TransactionBuilder(Params().GetConsensus(), nHeight, pWallet);
                         TransactionBuilder &oneInvalidatedBuilder = makeInputTx ? newTxBuilder : txBuilder;
 
@@ -4589,8 +4749,8 @@ std::vector<CNotaryEvidence> CObjectFinalization::GetFinalizationEvidence(const 
             if (priorOutputTx.GetHash() != thisTx.vin[oneIn].prevout.hash &&
                 !myGetTransaction(thisTx.vin[oneIn].prevout.hash, priorOutputTx, hashBlock))
             {
-                state.Error(std::string(__func__) + ": cannot access transaction for notarization evidence");
-                LogPrint("notarization", "%s: cannot access transaction for notarization evidence\n", __func__);
+                state.Error(std::string(__func__) + ": cannot access transaction " + thisTx.vin[oneIn].prevout.hash.GetHex() + " for notarization evidence");
+                LogPrint("notarization", "%s: cannot access transaction %s for notarization evidence\n", __func__, thisTx.vin[oneIn].prevout.hash.GetHex().c_str());
                 return std::vector<CNotaryEvidence>();
             }
 

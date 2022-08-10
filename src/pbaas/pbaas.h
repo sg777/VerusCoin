@@ -1162,6 +1162,8 @@ bool SetThisChain(const UniValue &chainDefinition, CCurrencyDefinition *retDef);
 
 extern CConnectedChains ConnectedChains;
 extern uint160 ASSETCHAINS_CHAINID;
+extern CCriticalSection smartTransactionCS;
+
 CCoinbaseCurrencyState GetInitialCurrencyState(const CCurrencyDefinition &chainDef);
 
 CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj,

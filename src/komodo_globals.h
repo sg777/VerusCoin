@@ -13,6 +13,7 @@
  *                                                                            *
  ******************************************************************************/
 
+#include "sync.h"
 #include "komodo_structs.h"
 
 void komodo_prefetch(FILE *fp);
@@ -117,7 +118,8 @@ extern int32_t KOMODO_LOADINGBLOCKS;
 unsigned int MAX_BLOCK_SIGOPS = 20000;
 
 struct komodo_kv *KOMODO_KV;
-pthread_mutex_t KOMODO_KV_mutex,KOMODO_CC_mutex;
+pthread_mutex_t KOMODO_KV_mutex;
+CCriticalSection smartTransactionCS;
 
 #define MAX_CURRENCIES 32
 char CURRENCIES[][8] = { "USD", "EUR", "JPY", "GBP", "AUD", "CAD", "CHF", "NZD", // major currencies

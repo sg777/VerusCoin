@@ -3217,8 +3217,6 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
 
     CheckPBaaSAPIsValid();
 
-    LOCK2(cs_main, mempool.cs);
-
     uint32_t nHeight = chainActive.Height();
 
     // decode the transaction and ensure that it is formatted as expected
@@ -3234,42 +3232,52 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
     checkPbn.SetMirror(false);
     printf("%s: checknotarization after:\n%s\n", __func__, checkPbn.ToUniValue().write(1,2).c_str()); */
 
-    if (!(pbn = CPBaaSNotarization(params[0])).IsValid() ||
-        !pbn.SetMirror() ||
-        !GetCurrencyDefinition(pbn.currencyID, chainDef, &chainDefHeight) ||
-        chainDef.systemID == ASSETCHAINS_CHAINID ||
-        !(chainDef.IsPBaaSChain() || chainDef.IsGateway()))
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid earned notarization");
-    }
-
-    if (!(evidence = CNotaryEvidence(params[1])).IsValid() ||
-        !evidence.GetNotarySignatures().size() ||
-        evidence.systemID != pbn.currencyID)
-    {
-        printf("%s: invalid evidence %s\n", __func__, evidence.ToUniValue().write(1,2).c_str());
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "insufficient notarization evidence");
-    }
-
-    // flip back to normal earned notarization as before
-    pbn.SetMirror(false);
-
-    // printf("%s: evidence: %s\n", __func__, evidence.ToUniValue().write(1,2).c_str());
-
-    // now, make a new notarization based on this earned notarization, mirrored, so it reflects a notarization on this chain, 
-    // but can be verified with the cross-chain signatures and evidence
-
-    CValidationState state;
     TransactionBuilder tb(Params().GetConsensus(), nHeight, pwalletMain);
-    if (!pbn.CreateAcceptedNotarization(chainDef, pbn, evidence, state, tb))
+
     {
-        //printf("%s: unable to create accepted notarization: %s\n", __func__, state.GetRejectReason().c_str());
-        throw JSONRPCError(RPC_INVALID_PARAMETER, state.GetRejectReason());
+        LOCK2(cs_main, mempool.cs);
+        if (!(pbn = CPBaaSNotarization(params[0])).IsValid() ||
+            !pbn.SetMirror() ||
+            !GetCurrencyDefinition(pbn.currencyID, chainDef, &chainDefHeight) ||
+            chainDef.systemID == ASSETCHAINS_CHAINID ||
+            !(chainDef.IsPBaaSChain() || chainDef.IsGateway()))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid earned notarization");
+        }
+
+        if (!(evidence = CNotaryEvidence(params[1])).IsValid() ||
+            !evidence.GetNotarySignatures().size() ||
+            evidence.systemID != pbn.currencyID)
+        {
+            printf("%s: invalid evidence %s\n", __func__, evidence.ToUniValue().write(1,2).c_str());
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "insufficient notarization evidence");
+        }
+
+        // flip back to normal earned notarization as before
+        pbn.SetMirror(false);
+
+        // printf("%s: evidence: %s\n", __func__, evidence.ToUniValue().write(1,2).c_str());
+
+        // now, make a new notarization based on this earned notarization, mirrored, so it reflects a notarization on this chain, 
+        // but can be verified with the cross-chain signatures and evidence
+
+        CValidationState state;
+        if (!pbn.CreateAcceptedNotarization(chainDef, pbn, evidence, state, tb))
+        {
+            //printf("%s: unable to create accepted notarization: %s\n", __func__, state.GetRejectReason().c_str());
+            throw JSONRPCError(RPC_INVALID_PARAMETER, state.GetRejectReason());
+        }
     }
 
     // get the new notarization transaction
     tb.SetFee(0);
-    auto buildResult = tb.Build();
+    std::vector<TransactionBuilderResult> buildResultVec;
+
+    {
+        LOCK2(cs_main, pwalletMain->cs_wallet);
+        buildResultVec.push_back(tb.Build());
+    }
+    auto buildResult = buildResultVec[0];
     CTransaction newTx;
     if (buildResult.IsTx())
     {
@@ -3279,12 +3287,20 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, buildResult.GetError());
     }
-    
-    std::list<CTransaction> removed;
-    mempool.removeConflicts(newTx, removed);
+
+    bool relayTx;
+    {
+        LOCK(cs_main);
+        LOCK2(smartTransactionCS, mempool.cs);
+        std::list<CTransaction> removed;
+        mempool.removeConflicts(newTx, removed);
+
+        // add to mem pool and relay
+        relayTx = myAddtomempool(newTx);
+    }
 
     // add to mem pool and relay
-    if (myAddtomempool(newTx))
+    if (relayTx)
     {
         RelayTransaction(newTx);
         return newTx.GetHash().GetHex();
@@ -4019,7 +4035,6 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
     std::vector<CRecipient> outputs;
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
-    LOCK(mempool.cs);
 
     libzcash::PaymentAddress zaddressSource;
     libzcash::SaplingExpandedSpendingKey expsk;
@@ -4381,9 +4396,17 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             TransactionBuilderResult preResult = tb.Build();
             preTx = preResult.GetTxOrThrow();
 
-            // add to mem pool and relay
+            LOCK2(smartTransactionCS, mempool.cs);
+
+            bool relayTx;
             CValidationState state;
-            if (!myAddtomempool(preTx, &state))
+            {
+                LOCK2(smartTransactionCS, mempool.cs);
+                relayTx = myAddtomempool(preTx, &state);
+            }
+
+            // add to mem pool and relay
+            if (!relayTx)
             {
                 throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Unable to prepare offer tx: " + state.GetRejectReason());
             }
@@ -4485,9 +4508,14 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                 TransactionBuilderResult preResult = tb.Build();
                 preTx = preResult.GetTxOrThrow();
 
-                // add to mem pool and relay
+                bool relayTx;
                 CValidationState state;
-                if (!myAddtomempool(preTx, &state))
+                {
+                    LOCK2(smartTransactionCS, mempool.cs);
+                    relayTx = myAddtomempool(preTx, &state);
+                }
+
+                if (!relayTx)
                 {
                     throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Unable to prepare offer tx for identity: " + state.GetRejectReason());
                 }
@@ -4814,9 +4842,14 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             TransactionBuilderResult result = tb.Build();
             CTransaction offerPostTx = result.GetTxOrThrow();
 
-            // add to mem pool and relay
+            bool relayTx;
             CValidationState state;
-            if (!myAddtomempool(offerPostTx, &state))
+            {
+                LOCK2(smartTransactionCS, mempool.cs);
+                relayTx = myAddtomempool(offerPostTx, &state);
+            }
+
+            if (!relayTx)
             {
                 throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Failed to add offer transaction to mempool");
             }
@@ -5554,9 +5587,15 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
     {
         CValidationState state;
         CTransaction finalTx = mtx;
-        LOCK2(cs_main, mempool.cs);
-        // add to mem pool and relay
-        if (!myAddtomempool(finalTx, &state))
+        LOCK(cs_main);
+
+        bool relayTx;
+        {
+            LOCK2(smartTransactionCS, mempool.cs);
+            relayTx = myAddtomempool(finalTx, &state);
+        }
+
+        if (!relayTx)
         {
             throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Could not commit transaction - rejected");
         }
@@ -6358,9 +6397,16 @@ UniValue closeoffers(const UniValue& params, bool fHelp)
             TransactionBuilderResult buildResult = tb.Build();
             oneTx = buildResult.GetTxOrThrow();
         }
+        LOCK(cs_main);
+
+        bool relayTx;
         CValidationState state;
-        LOCK2(cs_main, mempool.cs);
-        if (!myAddtomempool(oneTx, &state))
+        {
+            LOCK2(smartTransactionCS, mempool.cs);
+            relayTx = myAddtomempool(oneTx, &state);
+        }
+
+        if (!relayTx)
         {
             throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Close offer transaction rejected: " + state.GetRejectReason());
         }
@@ -9709,8 +9755,16 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     CTransaction commitTx = preResult.GetTxOrThrow();
 
     // add to mem pool and relay
+    LOCK(cs_main);
+
+    bool relayTx;
     CValidationState state;
-    if (!myAddtomempool(commitTx, &state))
+    {
+        LOCK2(smartTransactionCS, mempool.cs);
+        relayTx = myAddtomempool(commitTx, &state);
+    }
+
+    if (!relayTx)
     {
         throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Unable to prepare offer tx: " + state.GetRejectReason());
     }
@@ -10540,8 +10594,17 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     else
     {
         // add to mem pool and relay
+        LOCK(cs_main);
+
+        bool relayTx;
         CValidationState state;
-        if (!myAddtomempool(commitTx, &state))
+        {
+            LOCK2(smartTransactionCS, mempool.cs);
+            relayTx = myAddtomempool(commitTx, &state);
+        }
+
+        // add to mem pool and relay
+        if (!relayTx)
         {
             throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Unable to commit identity registration transaction: " + state.GetRejectReason());
         }

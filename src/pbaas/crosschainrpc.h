@@ -1119,6 +1119,8 @@ public:
 class CIdentitySignature
 {
 public:
+    // TODO HARDENING - move all instances post PBaaS to
+    // VERSION_ETHBRIDGE
     enum EVersions {
         VERSION_INVALID = 0,
         VERSION_VERUSID = 1,

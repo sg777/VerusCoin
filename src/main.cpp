@@ -3597,15 +3597,17 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     int32_t futureblock;
 
     {
-        LOCK(mempool.cs);
-        // remove any potential conflicts for inputs in the mempool from auto-created transactions,
-        // such as imports or exports to prevent us from accepting the block
-        for (auto &oneTx : block.vtx)
         {
-            std::list<CTransaction> removedTxes;
-            if (!oneTx.IsCoinBase())
+            LOCK(mempool.cs);
+            // remove any potential conflicts for inputs in the mempool from auto-created transactions,
+            // such as imports or exports to prevent us from accepting the block
+            for (auto &oneTx : block.vtx)
             {
-                mempool.removeConflicts(oneTx, removedTxes);
+                std::list<CTransaction> removedTxes;
+                if (!oneTx.IsCoinBase())
+                {
+                    mempool.removeConflicts(oneTx, removedTxes);
+                }
             }
         }
 
@@ -6018,7 +6020,8 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
         int32_t i,j,rejects=0,lastrejects=0;
 
         // we need this lock to prevent accepting transactions we shouldn't
-        LOCK2(cs_main, mempool.cs);
+        LOCK(cs_main);
+        LOCK2(smartTransactionCS, mempool.cs);
 
         SetMaxScriptElementSize(height);
 
