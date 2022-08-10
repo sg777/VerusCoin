@@ -6266,11 +6266,10 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
             CCoins coins;
             CCoinsView dummy;
             CCoinsViewCache view(&dummy);
-            {
-                LOCK(mempool.cs);
-                CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
-                view.SetBackend(viewMemPool);
-            }
+
+            LOCK2(smartTransactionCS, mempool.cs);
+            CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
+            view.SetBackend(viewMemPool);
 
             auto outputIt = transferOutputs.begin();
             bool checkLaunchCurrencies = false;
@@ -6656,8 +6655,6 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                             /* uni = UniValue(UniValue::VOBJ);
                             TxToUniv(tx, uint256(), uni);
                             printf("%s: successfully built tx:\n%s\n", __func__, uni.write(1,2).c_str()); */
-
-                            LOCK2(smartTransactionCS, mempool.cs);
 
                             static int lastHeight = 0;
                             // remove conflicts, so that we get in
