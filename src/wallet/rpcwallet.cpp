@@ -902,6 +902,19 @@ std::string SignMessageHash(const CIdentity &identity, const uint256 &_msgHash, 
 
     uint256 msgHash = ss.GetHash();
 
+    if (LogAcceptCategory("signaturehash"))
+    {
+        std::vector<unsigned char> vch;
+        LogPrintf("%s: Signing hash with all additional metadata:\nsignatureprefix: %s\nsystemid: %s\nblockheight: %s\nidentityid: %s\nmsghash: %s\nfinalhash: %s\n",
+                  __func__,
+                  HexBytes(&((vch = ::AsVector(verusDataSignaturePrefix), vch)[0]), vch.size()).c_str(),
+                  HexBytes(&((vch = ::AsVector(ConnectedChains.ThisChain().GetID()), vch)[0]), vch.size()).c_str(),
+                  HexBytes(&((vch = ::AsVector(blockHeight), vch)[0]), vch.size()).c_str(),
+                  HexBytes(&((vch = ::AsVector(identity.GetID()), vch)[0]), vch.size()).c_str(),
+                  _msgHash.GetHex().c_str(),
+                  msgHash.GetHex().c_str());
+    }
+
     // get the signature, a hex string, which is deserialized into an instance of the ID signature class
     std::vector<unsigned char> sigVec;
     try
