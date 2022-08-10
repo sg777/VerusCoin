@@ -4641,12 +4641,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
         if (burnedChangePrice > 0)
         {
-            newCurrencyState.supply -= burnedChangePrice;
+            scratchCurrencyState.supply -= burnedChangePrice;
         }
+
         // if we burned to change the weight, update weights
         if (burnedChangeWeight > 0)
         {
-            newCurrencyState.UpdateWithEmission(-burnedChangeWeight);
+            scratchCurrencyState.UpdateWithEmission(-burnedChangeWeight);
         }
 
         if (scratchCurrencyState.IsPrelaunch() && preConvertedReserves > CCurrencyValueMap())
