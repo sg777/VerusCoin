@@ -1676,63 +1676,63 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                 associatedIdx = notarizationOutputMap[pendingNotarizationOutput];
             }
 
-            // if there is a finalization, we need to add it and its evidence,
-            if (existingFinalization.IsValid() && existingFinalization.evidenceOutputs.size())
-            {
-                CTransaction finalizationTx;
-                const CTransaction *pEvidenceOutputTx = nullptr;
-                if (existingFinalization.output.IsOnSameTransaction())
-                {
-                    pEvidenceOutputTx = &(txes[associatedIdx].first);
-                }
-                else
-                {
-                    LOCK(mempool.cs);
-                    uint256 hashBlock;
-                    if (myGetTransaction(onePending.second.txIn.prevout.hash, finalizationTx, hashBlock))
-                    {
-                        pEvidenceOutputTx = &finalizationTx;
-                    }
-                    else
-                    {
-                        LogPrint("notarization", "%s: cannot access transaction required as input for notarization\n", __func__);
-                        return false;
-                    }
-                }
-
-                // add evidence outs as spends to close this entry as well
-                int afterMultiPart = existingFinalization.evidenceOutputs.size() ? existingFinalization.evidenceOutputs[0] : 0;
-                for (auto oneEvidenceOutN : existingFinalization.evidenceOutputs)
-                {
-                    if (pEvidenceOutputTx->vout.size() <= oneEvidenceOutN)
-                    {
-                        LogPrint("notarization", "%s: indexing error for notarization evidence\n", __func__);
-                        return false;
-                    }
-
-                    if (pEvidenceVec &&
-                        oneEvidenceOutN >= afterMultiPart &&
-                        associatedIdx != -1)
-                    {
-                        CNotaryEvidence oneEvidenceObj(*pEvidenceOutputTx, oneEvidenceOutN, afterMultiPart);
-                        if (oneEvidenceObj.IsValid())
-                        {
-                            (*pEvidenceVec)[associatedIdx].push_back(oneEvidenceObj);
-                        }
-                    }
-
-                    associatedSpends.push_back(
-                        CInputDescriptor(pEvidenceOutputTx->vout[oneEvidenceOutN].scriptPubKey,
-                                            pEvidenceOutputTx->vout[oneEvidenceOutN].nValue,
-                                            CTxIn(pEvidenceOutputTx->GetHash(), oneEvidenceOutN)));
-                    evidenceOutputSet.insert(associatedSpends.back().txIn.prevout);
-                }
-            }
-
             // if we are asssociated with a known node,
             // get additional associated evidence as well
             if (associatedIdx != -1)
             {
+                // if there is a finalization, we need to add it and its evidence,
+                if (existingFinalization.IsValid() && existingFinalization.evidenceOutputs.size())
+                {
+                    CTransaction finalizationTx;
+                    const CTransaction *pEvidenceOutputTx = nullptr;
+                    if (existingFinalization.output.IsOnSameTransaction())
+                    {
+                        pEvidenceOutputTx = &(txes[associatedIdx].first);
+                    }
+                    else
+                    {
+                        LOCK(mempool.cs);
+                        uint256 hashBlock;
+                        if (myGetTransaction(onePending.second.txIn.prevout.hash, finalizationTx, hashBlock))
+                        {
+                            pEvidenceOutputTx = &finalizationTx;
+                        }
+                        else
+                        {
+                            LogPrint("notarization", "%s: cannot access transaction required as input for notarization\n", __func__);
+                            return false;
+                        }
+                    }
+
+                    // add evidence outs as spends to close this entry as well
+                    int afterMultiPart = existingFinalization.evidenceOutputs.size() ? existingFinalization.evidenceOutputs[0] : 0;
+                    for (auto oneEvidenceOutN : existingFinalization.evidenceOutputs)
+                    {
+                        if (pEvidenceOutputTx->vout.size() <= oneEvidenceOutN)
+                        {
+                            LogPrint("notarization", "%s: indexing error for notarization evidence\n", __func__);
+                            return false;
+                        }
+
+                        if (pEvidenceVec &&
+                            oneEvidenceOutN >= afterMultiPart &&
+                            associatedIdx != -1)
+                        {
+                            CNotaryEvidence oneEvidenceObj(*pEvidenceOutputTx, oneEvidenceOutN, afterMultiPart);
+                            if (oneEvidenceObj.IsValid())
+                            {
+                                (*pEvidenceVec)[associatedIdx].push_back(oneEvidenceObj);
+                            }
+                        }
+
+                        associatedSpends.push_back(
+                            CInputDescriptor(pEvidenceOutputTx->vout[oneEvidenceOutN].scriptPubKey,
+                                                pEvidenceOutputTx->vout[oneEvidenceOutN].nValue,
+                                                CTxIn(pEvidenceOutputTx->GetHash(), oneEvidenceOutN)));
+                        evidenceOutputSet.insert(associatedSpends.back().txIn.prevout);
+                    }
+                }
+
                 // unspent evidence is specific to the target notarization
                 std::vector<std::pair<uint32_t, CInputDescriptor>> unspentEvidence =
                     CObjectFinalization::GetUnspentEvidence(currencyID, vtx[associatedIdx].first.hash, vtx[associatedIdx].first.n);
@@ -1827,133 +1827,133 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                 associatedIdx = notarizationOutputMap[confirmedNotarizationOutput];
             }
 
-            if (confirmedFinalization.evidenceOutputs.size() || confirmedFinalization.evidenceInputs.size())
+            if (associatedIdx != -1)
             {
-                CTransaction finalizationTx;
-                const CTransaction *pEvidenceOutputTx = nullptr;
-                if (confirmedFinalization.output.IsOnSameTransaction())
+                if (confirmedFinalization.evidenceOutputs.size() || confirmedFinalization.evidenceInputs.size())
                 {
-                    pEvidenceOutputTx = &(txes[associatedIdx].first);
-                }
-                else
-                {
-                    LOCK(mempool.cs);
-                    uint256 hashBlock;
-                    if (myGetTransaction(oneConfirmed.second.txIn.prevout.hash, finalizationTx, hashBlock))
+                    CTransaction finalizationTx;
+                    const CTransaction *pEvidenceOutputTx = nullptr;
+                    if (confirmedFinalization.output.IsOnSameTransaction())
                     {
-                        pEvidenceOutputTx = &finalizationTx;
+                        pEvidenceOutputTx = &(txes[associatedIdx].first);
                     }
                     else
                     {
-                        LogPrint("notarization", "%s: cannot access transaction required as input for notarization\n", __func__);
-                        return false;
-                    }
-                }
-
-                // add evidence outs as spends to close this entry as well
-                int afterMultiPart = confirmedFinalization.evidenceOutputs.size() ? confirmedFinalization.evidenceOutputs[0] : 0;
-                for (auto oneEvidenceOutN : confirmedFinalization.evidenceOutputs)
-                {
-                    if (pEvidenceOutputTx->vout.size() <= oneEvidenceOutN)
-                    {
-                        LogPrint("notarization", "%s: indexing error for notarization evidence\n", __func__);
-                        return false;
-                    }
-
-                    if (pEvidenceVec &&
-                        oneEvidenceOutN >= afterMultiPart &&
-                        associatedIdx != -1)
-                    {
-                        CNotaryEvidence oneEvidenceObj(*pEvidenceOutputTx, oneEvidenceOutN, afterMultiPart);
-                        if (oneEvidenceObj.IsValid())
-                        {
-                            (*pEvidenceVec)[associatedIdx].push_back(oneEvidenceObj);
-                        }
-                    }
-
-                    associatedSpends.push_back(
-                        CInputDescriptor(pEvidenceOutputTx->vout[oneEvidenceOutN].scriptPubKey,
-                                            pEvidenceOutputTx->vout[oneEvidenceOutN].nValue,
-                                            CTxIn(pEvidenceOutputTx->GetHash(), oneEvidenceOutN)));
-                    evidenceOutputSet.insert(associatedSpends.back().txIn.prevout);
-                }
-
-                if (pEvidenceVec &&
-                    associatedIdx != -1)
-                {
-                    // on a confirmed notarization, get input evidence as well, even though it doesn't need to be cleaned up
-                    CTransaction priorOutputTx;
-                    CNotaryEvidence oneEvidenceObj;
-                    std::vector<CNotaryEvidence> evidenceInVec;
-                    for (auto oneIn : confirmedFinalization.evidenceInputs)
-                    {
+                        LOCK(mempool.cs);
                         uint256 hashBlock;
-                        if (priorOutputTx.GetHash() != pEvidenceOutputTx->vin[oneIn].prevout.hash &&
-                            !myGetTransaction(pEvidenceOutputTx->vin[oneIn].prevout.hash, priorOutputTx, hashBlock))
+                        if (myGetTransaction(oneConfirmed.second.txIn.prevout.hash, finalizationTx, hashBlock))
                         {
-                            printf("%s: cannot access transaction for notarization evidence\n", __func__);
-                            LogPrint("%s: cannot access transaction for notarization evidence\n", __func__);
-                            return false;
-                        }
-
-                        COptCCParams inP;
-                        if (priorOutputTx.vout[pEvidenceOutputTx->vin[oneIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(inP) &&
-                            inP.IsValid() &&
-                            inP.evalCode == EVAL_NOTARY_EVIDENCE &&
-                            inP.vData.size() &&
-                            (oneEvidenceObj = CNotaryEvidence(inP.vData[0])).IsValid() &&
-                            oneEvidenceObj.evidence.chainObjects.size())
-                        {
-                            // there is no spend to store, as it has already been spent, but we
-                            // still want to get its evidence
-
-                            // if we are starting a new object, finish the old one
-                            if (!oneEvidenceObj.IsMultipartProof() ||
-                                ((CChainObject<CEvidenceData> *)oneEvidenceObj.evidence.chainObjects[0])->object.md.index == 0)
-                            {
-                                // if we have a composite evidence object, store it and clear the vector
-                                if (evidenceInVec.size())
-                                {
-                                    CNotaryEvidence multiPartEvidence(evidenceInVec);
-                                    if (multiPartEvidence.IsValid())
-                                    {
-                                        (*pEvidenceVec)[associatedIdx].push_back(multiPartEvidence);
-                                    }
-                                    evidenceInVec.clear();
-                                }
-                            }
-
-                            if (!oneEvidenceObj.IsMultipartProof())
-                            {
-                                (*pEvidenceVec)[associatedIdx].push_back(oneEvidenceObj);
-                            }
-                            else
-                            {
-                                evidenceInVec.push_back(oneEvidenceObj);
-                            }
-                        }
-                    }
-
-                    // if we have a composite evidence object, store it and clear the vector
-                    if (evidenceInVec.size())
-                    {
-                        CNotaryEvidence multiPartEvidence(evidenceInVec);
-                        if (multiPartEvidence.IsValid())
-                        {
-                            (*pEvidenceVec)[associatedIdx].push_back(multiPartEvidence);
+                            pEvidenceOutputTx = &finalizationTx;
                         }
                         else
                         {
-                            printf("%s: invalid multipart evidence on input\n", __func__);
-                            LogPrint("%s: invalid multipart evidence on input\n", __func__);
+                            LogPrint("notarization", "%s: cannot access transaction required as input for notarization\n", __func__);
                             return false;
                         }
                     }
-                }
-            }
 
-            if (associatedIdx != -1)
-            {
+                    // add evidence outs as spends to close this entry as well
+                    int afterMultiPart = confirmedFinalization.evidenceOutputs.size() ? confirmedFinalization.evidenceOutputs[0] : 0;
+                    for (auto oneEvidenceOutN : confirmedFinalization.evidenceOutputs)
+                    {
+                        if (pEvidenceOutputTx->vout.size() <= oneEvidenceOutN)
+                        {
+                            LogPrint("notarization", "%s: indexing error for notarization evidence\n", __func__);
+                            return false;
+                        }
+
+                        if (pEvidenceVec &&
+                            oneEvidenceOutN >= afterMultiPart &&
+                            associatedIdx != -1)
+                        {
+                            CNotaryEvidence oneEvidenceObj(*pEvidenceOutputTx, oneEvidenceOutN, afterMultiPart);
+                            if (oneEvidenceObj.IsValid())
+                            {
+                                (*pEvidenceVec)[associatedIdx].push_back(oneEvidenceObj);
+                            }
+                        }
+
+                        associatedSpends.push_back(
+                            CInputDescriptor(pEvidenceOutputTx->vout[oneEvidenceOutN].scriptPubKey,
+                                                pEvidenceOutputTx->vout[oneEvidenceOutN].nValue,
+                                                CTxIn(pEvidenceOutputTx->GetHash(), oneEvidenceOutN)));
+                        evidenceOutputSet.insert(associatedSpends.back().txIn.prevout);
+                    }
+
+                    if (pEvidenceVec &&
+                        associatedIdx != -1)
+                    {
+                        // on a confirmed notarization, get input evidence as well, even though it doesn't need to be cleaned up
+                        CTransaction priorOutputTx;
+                        CNotaryEvidence oneEvidenceObj;
+                        std::vector<CNotaryEvidence> evidenceInVec;
+                        for (auto oneIn : confirmedFinalization.evidenceInputs)
+                        {
+                            uint256 hashBlock;
+                            if (priorOutputTx.GetHash() != pEvidenceOutputTx->vin[oneIn].prevout.hash &&
+                                !myGetTransaction(pEvidenceOutputTx->vin[oneIn].prevout.hash, priorOutputTx, hashBlock))
+                            {
+                                printf("%s: cannot access transaction for notarization evidence\n", __func__);
+                                LogPrint("%s: cannot access transaction for notarization evidence\n", __func__);
+                                return false;
+                            }
+
+                            COptCCParams inP;
+                            if (priorOutputTx.vout[pEvidenceOutputTx->vin[oneIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(inP) &&
+                                inP.IsValid() &&
+                                inP.evalCode == EVAL_NOTARY_EVIDENCE &&
+                                inP.vData.size() &&
+                                (oneEvidenceObj = CNotaryEvidence(inP.vData[0])).IsValid() &&
+                                oneEvidenceObj.evidence.chainObjects.size())
+                            {
+                                // there is no spend to store, as it has already been spent, but we
+                                // still want to get its evidence
+
+                                // if we are starting a new object, finish the old one
+                                if (!oneEvidenceObj.IsMultipartProof() ||
+                                    ((CChainObject<CEvidenceData> *)oneEvidenceObj.evidence.chainObjects[0])->object.md.index == 0)
+                                {
+                                    // if we have a composite evidence object, store it and clear the vector
+                                    if (evidenceInVec.size())
+                                    {
+                                        CNotaryEvidence multiPartEvidence(evidenceInVec);
+                                        if (multiPartEvidence.IsValid())
+                                        {
+                                            (*pEvidenceVec)[associatedIdx].push_back(multiPartEvidence);
+                                        }
+                                        evidenceInVec.clear();
+                                    }
+                                }
+
+                                if (!oneEvidenceObj.IsMultipartProof())
+                                {
+                                    (*pEvidenceVec)[associatedIdx].push_back(oneEvidenceObj);
+                                }
+                                else
+                                {
+                                    evidenceInVec.push_back(oneEvidenceObj);
+                                }
+                            }
+                        }
+
+                        // if we have a composite evidence object, store it and clear the vector
+                        if (evidenceInVec.size())
+                        {
+                            CNotaryEvidence multiPartEvidence(evidenceInVec);
+                            if (multiPartEvidence.IsValid())
+                            {
+                                (*pEvidenceVec)[associatedIdx].push_back(multiPartEvidence);
+                            }
+                            else
+                            {
+                                printf("%s: invalid multipart evidence on input\n", __func__);
+                                LogPrint("%s: invalid multipart evidence on input\n", __func__);
+                                return false;
+                            }
+                        }
+                    }
+                }
+
                 // unspent evidence is specific to the target notarization
                 std::vector<std::pair<uint32_t, CInputDescriptor>> unspentEvidence =
                     CObjectFinalization::GetUnspentEvidence(currencyID, vtx[associatedIdx].first.hash, vtx[associatedIdx].first.n);

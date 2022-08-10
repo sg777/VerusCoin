@@ -1821,6 +1821,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         {
             CValidationState state;
             std::vector<TransactionBuilder> notarizationBuilders;
+            std::vector<CTransaction> notarizations;
             bool finalized;
             CTransaction notarizationTx;
             const CRPCChainData &notaryChain = ConnectedChains.FirstNotaryChain();
@@ -1987,10 +1988,10 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                             }
                             if (relayTx)
                             {
-                                txCount++;
-                                RelayTransaction(notarizationTx);
-                                // if this is not the last transaction we make, then we will spend the 0th output,
-                                // which is a rolled up finalization of prior evidence
+                                notarizations.push_back(notarizationTx);
+
+                                // if this is not the last transaction we make, then we add a spend of the 0th output,
+                                // which is a rolled up finalization of prior evidence to the last tx
                                 if ((i + 1) < notarizationBuilders.size())
                                 {
                                     notarizationBuilders.back().AddTransparentInput(COutPoint(notarizationTx.GetHash(), 0),
@@ -2012,11 +2013,25 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                         }
                     }
 
-                    if (txCount)
+                    if (notarizations.size() == notarizationBuilders.size())
                     {
                         if (LogAcceptCategory("notarization"))
                         {
                             LogPrintf("%s: Committed %d notarization transactions to mempool\n", __func__, txCount);
+                        }
+                        for (auto &oneTx : notarizations)
+                        {
+                            RelayTransaction(oneTx);
+                        }
+                    }
+                    else
+                    {
+                        LOCK(mempool.cs);
+                        // we failed to put them in
+                        for (auto &oneTx : notarizations)
+                        {
+                            std::list<CTransaction> removed;
+                            mempool.remove(oneTx, removed, true);
                         }
                     }
                 }
@@ -2254,7 +2269,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         //
         // estimate number of conversions, staking transaction size, and additional coinbase outputs that will be required
 
-        int32_t maxPreLimitOrderBlockSize = nBlockMaxSize - std::min(nBlockMaxSize >> 2, reserveExchangeLimitSize);
+        int32_t maxNormalTXBlockSize = nBlockMaxSize - autoTxSize;
 
         int64_t interest;
         bool fSortedByFee = (nBlockPrioritySize <= 0);
@@ -2298,12 +2313,12 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             
             // Size limits
             unsigned int nTxSize = ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
-            if (nBlockSize + nTxSize >= maxPreLimitOrderBlockSize - autoTxSize) // room for extra autotx
+            if (nBlockSize + nTxSize >= maxNormalTXBlockSize) // room for extra autotx
             {
-                //fprintf(stderr,"nBlockSize %d + %d nTxSize >= %d maxPreLimitOrderBlockSize\n",(int32_t)nBlockSize,(int32_t)nTxSize,(int32_t)maxPreLimitOrderBlockSize);
+                LogPrint("mining","nBlockSize %d + %d nTxSize >= %d maxNormalTXBlockSize\n",(int32_t)nBlockSize,(int32_t)nTxSize,(int32_t)maxNormalTXBlockSize);
                 continue;
             }
-            
+
             // Legacy limits on sigOps:
             unsigned int nTxSigOps = GetLegacySigOpCount(tx);
             if (nBlockSigOps + nTxSigOps >= MAX_BLOCK_SIGOPS-1)
