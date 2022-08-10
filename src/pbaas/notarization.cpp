@@ -3975,6 +3975,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                     txBuilder.AddTransparentOutput(finalizeScript, 0);
                     txBuilders.push_back(txBuilder);
                 }
+                else if (txBuilder.mtx.vout.size())
+                {
+                    txBuilders.push_back(txBuilder);
+                }
                 break;
             }
         }
