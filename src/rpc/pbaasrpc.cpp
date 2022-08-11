@@ -11086,6 +11086,7 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
     }
 
     newID.flags &= ~CIdentity::FLAG_REVOKED;
+    newID.systemID = oldID.systemID;
     newID.UpgradeVersion(nHeight + 1);
 
     // create the identity definition transaction
