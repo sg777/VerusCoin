@@ -4899,10 +4899,14 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             tb.SetReserveFee(reserveFees);
         }
 
-        UniValue jsonTx(UniValue::VOBJ);
-        uint256 hashBlk;
-        TxToUniv(tb.mtx, hashBlk, jsonTx);
-        printf("%s\n", jsonTx.write(1,2).c_str()); //*/
+        if (LogAcceptCategory("imports"))
+        {
+            UniValue jsonTx(UniValue::VOBJ);
+            uint256 hashBlk;
+            TxToUniv(tb.mtx, hashBlk, jsonTx);
+            LogPrintf("%s: building:\n%s\n", __func__, jsonTx.write(1,2).c_str()); //*/
+            printf("%s: building:\n%s\n", __func__, jsonTx.write(1,2).c_str()); //*/
+        }
 
         TransactionBuilderResult result = tb.Build();
         if (result.IsError())
