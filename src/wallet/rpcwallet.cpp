@@ -2153,7 +2153,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
     bool bIsStake = false;
     bool bIsCoinbase = false;
     bool bIsMint = false;
-    bool bIsReserve = ConnectedChains.ThisChain().IsFractional();
+    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) > CActivationHeight::ACTIVATE_PBAAS;
     CReserveTransactionDescriptor rtxd;
     CCoinsViewCache view(pcoinsTip);
     uint32_t nHeight = chainActive.Height();
@@ -2165,13 +2165,17 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
     else
     {
         bIsCoinbase = wtx.IsCoinBase();
-        bIsMint = bIsCoinbase && wtx.vout.size() > 0 && wtx.vout[0].scriptPubKey.IsPayToCryptoCondition();
+        CBlockIndex *pIndex = mapBlockIndex.count(wtx.hashBlock) ? mapBlockIndex[wtx.hashBlock] : nullptr;
+        bIsMint = pIndex && pIndex->IsVerusPOSBlock();
     }
 
-    if (bIsReserve && (rtxd = CReserveTransactionDescriptor(wtx, view, nHeight)).IsReserve())
+    if (isPBaaS)
     {
-        ret.push_back(Pair("isreserve", true));
-        ret.push_back(Pair("isreservetransfer", rtxd.IsReserveTransfer()));
+        if (rtxd.IsReserveTransfer()) ret.push_back(Pair("isreservetransfer", true));
+        if (rtxd.flags & rtxd.IS_IMPORT) ret.push_back(Pair("isimport", true));
+        if (rtxd.flags & rtxd.IS_IDENTITY) ret.push_back(Pair("isidentity", true));
+        if (rtxd.flags & rtxd.IS_CURRENCY_DEFINITION) ret.push_back(Pair("iscurrencydefinition", true));
+        if (rtxd.flags & rtxd.IS_CHAIN_NOTARIZATION) ret.push_back(Pair("isnotarization", true));
         ret.push_back(Pair("nativefees", rtxd.NativeFees()));
         ret.push_back(Pair("reservefees", rtxd.ReserveFees().ToUniValue()));
         if (rtxd.nativeConversionFees || (rtxd.ReserveConversionFeesMap() > CCurrencyValueMap()))
@@ -2179,10 +2183,6 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
             ret.push_back(Pair("nativeconversionfees", rtxd.nativeConversionFees));
             ret.push_back(Pair("reserveconversionfees", rtxd.ReserveConversionFeesMap().ToUniValue()));
         }
-    }
-    else
-    {
-        ret.push_back(Pair("isreserve", false));
     }
 
     wtx.GetAmounts(listReceived, listSent, nFee, strSentAccount, bIsStake ? ISMINE_ALLANDCHANGE : filter);
@@ -2261,18 +2261,14 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
                 }
                 
                 COptCCParams p;
-                if (rtxd.IsValid() && wtx.vout[r.vout].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
+                if (wtx.vout[r.vout].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
                 {
                     UniValue ccUni;
                     ScriptPubKeyToJSON(wtx.vout[r.vout].scriptPubKey, ccUni, false, false);
-                    entry.push_back(Pair("cryptocondition", ccUni));
+                    entry.push_back(Pair("smartoutput", ccUni));
                 }
 
                 entry.push_back(Pair("amount", ValueFromAmount(r.amount)));
-                if (wtx.vout.size() > r.vout && rtxd.IsReserve())
-                {
-                    entry.push_back(Pair("reserveamount", wtx.vout[r.vout].scriptPubKey.ReserveOutValue().ToUniValue()));
-                }
                 entry.push_back(Pair("vout", r.vout));
                 if (fLong)
                     WalletTxToJSON(wtx, entry);
