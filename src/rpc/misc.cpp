@@ -1719,7 +1719,7 @@ UniValue getaddressutxos(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid address");
     }
 
-    LOCK2(cs_main);
+    LOCK(cs_main);
 
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs;
 
