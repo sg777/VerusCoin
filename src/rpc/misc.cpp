@@ -1571,37 +1571,78 @@ bool timestampSort(std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta> a,
 }
 
 
-void CurrencyValuesAndNames(const CScript &script, CAmount satoshis, bool friendlyNames=false);
+void CurrencyValuesAndNames(UniValue &output, bool spending, const CScript &script, CAmount satoshis, bool friendlyNames=false);
 void CurrencyValuesAndNames(UniValue &output, bool spending, const CScript &script, CAmount satoshis, bool friendlyNames)
 {
-    CCurrencyValueMap reserves = script.ReserveOutValue();
-    if (spending)
+    if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) >= CActivationHeight::ACTIVATE_PBAAS)
     {
-        reserves = reserves * -1;
-    }
-    if (satoshis)
-    {
-        reserves.valueMap[ASSETCHAINS_CHAINID] = satoshis;
-    }
-    if (reserves.valueMap.size())
-    {
-        UniValue currencyBal(UniValue::VOBJ);
-        UniValue currencyNames(UniValue::VOBJ);
-        for (auto &oneBalance : reserves.valueMap)
+        CCurrencyValueMap reserves = script.ReserveOutValue();
+        if (spending)
         {
-            std::string name = EncodeDestination(CIdentityID(oneBalance.first));
-            currencyBal.push_back(make_pair(name, ValueFromAmount(oneBalance.second)));
+            reserves = reserves * -1;
+        }
+        if (satoshis)
+        {
+            reserves.valueMap[ASSETCHAINS_CHAINID] = satoshis;
+        }
+        if (reserves.valueMap.size())
+        {
+            UniValue currencyBal(UniValue::VOBJ);
+            UniValue currencyNames(UniValue::VOBJ);
+            for (auto &oneBalance : reserves.valueMap)
+            {
+                std::string name = EncodeDestination(CIdentityID(oneBalance.first));
+                currencyBal.push_back(make_pair(name, ValueFromAmount(oneBalance.second)));
+                if (friendlyNames)
+                {
+                    currencyNames.push_back(make_pair(name, ConnectedChains.GetFriendlyCurrencyName(oneBalance.first)));
+                }
+            }
+            output.pushKV("currencyvalues", currencyBal);
             if (friendlyNames)
             {
-                currencyNames.push_back(make_pair(name, ConnectedChains.GetFriendlyCurrencyName(oneBalance.first)));
+                output.pushKV("currencynames", currencyNames);
             }
         }
-        output.pushKV("currencyvalues", currencyBal);
-        if (friendlyNames)
-        {
-            output.pushKV("currencynames", currencyNames);
-        }
     }
+}
+
+UniValue AddressMemPoolUni(const std::vector<std::pair<uint160, int>> &addresses, bool friendlyNames)
+{
+    CTransaction curTx;
+
+    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta> > indexes;
+
+    if (!mempool.getAddressIndex(addresses, indexes)) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
+    }
+
+    std::sort(indexes.begin(), indexes.end(), timestampSort);
+
+    UniValue result(UniValue::VARR);
+
+    for (std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta> >::iterator it = indexes.begin();
+        it != indexes.end(); it++) {
+
+        std::string address;
+        if (!getAddressFromIndex(it->first.type, it->first.addressBytes, address)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Unknown address type");
+        }
+
+        UniValue delta(UniValue::VOBJ);
+        delta.push_back(Pair("address", address));
+        delta.push_back(Pair("txid", it->first.txhash.GetHex()));
+        delta.push_back(Pair("index", (int)it->first.index));
+        delta.push_back(Pair("satoshis", it->second.amount));
+        CurrencyValuesAndNames(delta, it->first.spending, curTx.vout[it->first.index].scriptPubKey, it->second.amount, friendlyNames);
+        delta.push_back(Pair("timestamp", it->second.time));
+        if (it->second.amount < 0) {
+            delta.push_back(Pair("prevtxid", it->second.prevhash.GetHex()));
+            delta.push_back(Pair("prevout", (int)it->second.prevout));
+        }
+        result.push_back(delta);
+    }
+    return result;
 }
 
 UniValue getaddressmempool(const UniValue& params, bool fHelp)
@@ -1617,6 +1658,7 @@ UniValue getaddressmempool(const UniValue& params, bool fHelp)
             "      \"address\"  (string) The base58check encoded address\n"
             "      ,...\n"
             "    ]\n"
+            "  \"friendlynames\" (boolean) Include additional array of friendly names keyed by currency i-addresses\n"
             "}\n"
             "\nResult:\n"
             "[\n"
@@ -1636,45 +1678,22 @@ UniValue getaddressmempool(const UniValue& params, bool fHelp)
         );
 
     std::vector<std::pair<uint160, int> > addresses;
+    UniValue result(UniValue::VARR);
 
     if (!getAddressesFromParams(params, addresses)) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid address");
     }
-
-    LOCK(mempool.cs);
-    CTransaction curTx;
-
-    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta> > indexes;
-
-    if (!mempool.getAddressIndex(addresses, indexes)) {
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
+    
+    if (uni_get_bool(find_value(params[0].get_obj(), "friendlynames")))
+    {
+        LOCK2(cs_main, mempool.cs);
+        result = AddressMemPoolUni(addresses, true);
     }
-
-    std::sort(indexes.begin(), indexes.end(), timestampSort);
-
-    UniValue result(UniValue::VARR);
-
-    for (std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta> >::iterator it = indexes.begin();
-         it != indexes.end(); it++) {
-
-        std::string address;
-        if (!getAddressFromIndex(it->first.type, it->first.addressBytes, address)) {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Unknown address type");
-        }
-
-        UniValue delta(UniValue::VOBJ);
-        delta.push_back(Pair("address", address));
-        delta.push_back(Pair("txid", it->first.txhash.GetHex()));
-        delta.push_back(Pair("index", (int)it->first.index));
-        delta.push_back(Pair("satoshis", it->second.amount));
-        delta.push_back(Pair("timestamp", it->second.time));
-        if (it->second.amount < 0) {
-            delta.push_back(Pair("prevtxid", it->second.prevhash.GetHex()));
-            delta.push_back(Pair("prevout", (int)it->second.prevout));
-        }
-        result.push_back(delta);
+    else
+    {
+        LOCK(mempool.cs);
+        result = AddressMemPoolUni(addresses, false);
     }
-
     return result;
 }
 
