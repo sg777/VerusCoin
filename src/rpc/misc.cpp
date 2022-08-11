@@ -1867,12 +1867,11 @@ UniValue getaddressdeltas(const UniValue& params, bool fHelp)
         }
     }
 
+    UniValue deltas(UniValue::VARR);
     {
         LOCK2(cs_main, mempool.cs);
 
         CTransaction curTx;
-
-        UniValue deltas(UniValue::VARR);
 
         for (std::vector<std::pair<CAddressIndexKey, CAmount> >::const_iterator it=addressIndex.begin(); it!=addressIndex.end(); it++) {
             std::string address;
