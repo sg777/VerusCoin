@@ -1801,6 +1801,8 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         return error("AcceptToMemoryPool: CheckTransaction failed");
     }
 
+    LOCK2(smartTransactionCS, pool.cs);
+
     // DoS level set to 10 to be more forgiving.
     // Check transaction contextually against the set of consensus rules which apply in the next block to be mined.
     if (!ContextualCheckTransaction(tx, state, chainParams, nextBlockHeight, (dosLevel == -1) ? 10 : dosLevel))
@@ -1859,10 +1861,9 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
     bool iscoinbase = tx.IsCoinBase();
 
     // Check for conflicts with in-memory transactions
-    // TODO: including conflicts in chain definition and notarizations
+    // TODO: HARDENING including conflicts in chain definition and notarizations
     if(!iscoinbase)
     {
-        LOCK(pool.cs); // protect pool.mapNextTx
         for (unsigned int i = 0; i < tx.vin.size(); i++)
         {
             COutPoint outpoint = tx.vin[i].prevout;
@@ -1894,7 +1895,6 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         int64_t interest;
         CAmount nValueIn = 0;
         {
-            LOCK(pool.cs);
             CCoinsViewMemPool viewMemPool(pcoinsTip, pool);
             view.SetBackend(viewMemPool);
             
@@ -1978,7 +1978,6 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         bool isVerusActive = IsVerusActive();
 
         {
-            LOCK(mempool.cs);
             // if we don't recognize it, process and check
             CCurrencyState currencyState = ConnectedChains.GetCurrencyState(nextBlockHeight > chainActive.Height() ? chainActive.Height() : nextBlockHeight);
             if (!mempool.IsKnownReserveTransaction(hash, txDesc))
@@ -2217,18 +2216,6 @@ bool GetAddressUnspent(const uint160& addressHash, int type,
 
     return true;
 }
-
-/*uint64_t myGettxout(uint256 hash,int32_t n)
-{
-    CCoins coins;
-    LOCK2(cs_main,mempool.cs);
-    CCoinsViewMemPool view(pcoinsTip, mempool);
-    if (!view.GetCoins(hash, coins))
-        return(0);
-    if ( n < 0 || (unsigned int)n >= coins.vout.size() || coins.vout[n].IsNull() )
-        return(0);
-    else return(coins.vout[n].nValue);
-}*/
 
 bool myAddtomempool(CTransaction &tx, CValidationState *pstate, int32_t simHeight, bool *missinginputs)
 {

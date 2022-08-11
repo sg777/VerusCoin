@@ -4386,7 +4386,6 @@ void CWallet::ReacceptWalletTransactions()
     {
         CWalletTx& wtx = *(item.second);
 
-        LOCK(mempool.cs);
         CValidationState state;
         // attempt to add them, but don't set any DOS level
         if (!::AcceptToMemoryPool(mempool, state, wtx, false, NULL, true, 0))
