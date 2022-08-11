@@ -5322,7 +5322,7 @@ CCoinbaseCurrencyState &CCoinbaseCurrencyState::UpdateWithEmission(CAmount toEmi
         arith_uint256 bigEmission(std::abs(toEmit));
         arith_uint256 bigSupply(supply);
 
-        arith_uint256 bigScratch = std::abs(toEmit) >= supply ?
+        arith_uint256 bigScratch = (toEmit < 0) && (supply + toEmit) <= 0 ?
                                     arith_uint256(SATOSHIDEN) * arith_uint256(SATOSHIDEN) :
                                     (bigInitial * bigSupply * bigSatoshi) / (toEmit < 0 ? (bigSupply - bigEmission) : (bigSupply + bigEmission));
 
