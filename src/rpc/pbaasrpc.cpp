@@ -8257,6 +8257,10 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
     }
 
     bool currentChainDefinition = newCurrency.GetID() == ASSETCHAINS_CHAINID && _IsVerusActive();
+    if (currentChainDefinition)
+    {
+        newCurrency = checkDef;
+    }
 
     if (newCurrency.parent.IsNull() && !currentChainDefinition)
     {
@@ -8265,11 +8269,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
 
     for (auto &oneID : newCurrency.preAllocation)
     {
-        if (currentChainDefinition)
-        {
-            newCurrency = checkDef;
-        }
-        else if (!CIdentity::LookupIdentity(CIdentityID(oneID.first)).IsValid())
+        if (!CIdentity::LookupIdentity(CIdentityID(oneID.first)).IsValid())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "attempting to pre-allocate currency to a non-existent ID.");
         }
@@ -8288,18 +8288,20 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             throw JSONRPCError(RPC_INVALID_PARAMETER, "currency cannot be both a token and also specify a mining and staking rewards schedule.");
         }
 
-        if (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH &&
-            !newCurrency.IsGateway())
+        if ((newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH || newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT))
         {
-            if (newCurrency.IsFractional())
+            if (newCurrency.IsGateway() ||
+                newCurrency.IsPBaaSChain() ||
+                !newCurrency.IsToken() ||
+                newCurrency.IsFractional())
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "currency cannot be both a mapped currency and fractional");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "mapped currency must be a token with no initial supply and cannot be otherwise functional");
             }
             if (newCurrency.proofProtocol != newCurrency.PROOF_ETHNOTARIZATION)
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Ethereum mapped currency must have \"proofprotocol\":%d", (int)newCurrency.PROOF_ETHNOTARIZATION));
             }
-            bool nonZeroSupply = newCurrency.conversions.size() && !newCurrency.maxPreconvert.size();
+            bool nonZeroSupply = (newCurrency.conversions.size() && !newCurrency.maxPreconvert.size()) || newCurrency.GetTotalPreallocation();
             for (auto oneVal : newCurrency.maxPreconvert)
             {
                 if (oneVal)
@@ -8307,7 +8309,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
                     nonZeroSupply = true;
                 }
             }
-            if (nonZeroSupply || newCurrency.GetTotalPreallocation())
+            if (nonZeroSupply)
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Mapped currency definition requires zero initial supply and no possible conversions");
             }
@@ -8632,12 +8634,17 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         parentCurrency = ConnectedChains.ThisChain();
     }
 
+    bool invalidUnlessNFT = false;
     if (newChain.parent != thisChainID &&
         !(isVerusActive && newChain.GetID() == ASSETCHAINS_CHAINID && newChain.parent.IsNull()) &&
         !(parentCurrency.IsGateway() && !parentCurrency.IsNameController() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID))
     {
-        // parent chain must be current chain or be VRSC or VRSCTEST registered by the owner of the associated ID
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Attempting to define a currency relative to a parent that is not a valid gateway or the current chain.");
+        invalidUnlessNFT = true;
+        if (!newChain.IsNFTToken() )
+        {
+            // parent chain must be current chain or be VRSC or VRSCTEST registered by the owner of the associated ID
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Attempting to define a currency relative to a parent that is not a valid gateway or the current chain.");
+        }
     }
 
     uint160 newChainID = newChain.GetID();
@@ -8663,6 +8670,11 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     if (!(launchIdentity = CIdentity::LookupIdentity(newChainID, 0, &idHeight, &idTxIn)).IsValidUnrevoked() || launchIdentity.HasActiveCurrency())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID " + newChain.name + " not found, is revoked, or already has an active currency defined");
+    }
+
+    if (launchIdentity.systemID != ASSETCHAINS_CHAINID)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot launch any currency or tokenized ID control unless the root identity is rooted on this system");
     }
 
     CTransaction idTx;
@@ -8924,6 +8936,10 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     // first, we need the identity output with currency activated
     launchIdentity.UpgradeVersion(height);
     launchIdentity.ActivateCurrency();
+    if (newChain.IsNFTToken())
+    {
+        launchIdentity.ActivateTokenizedControl();
+    }
     tb.AddTransparentOutput(launchIdentity.IdentityUpdateOutputScript(height + 1), 0);
 
     // now, create the currency definition output

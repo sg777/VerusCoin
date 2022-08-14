@@ -1856,11 +1856,40 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                 {
                     return state.Error("Parent currency invalid to issue identities on this chain");
                 }
+
+                // any ID with a gateway as its system ID can issue an NFT mapped currency with 0
+                // satoshi supply as its currency for the cost of an ID import, not a currency import
+                CCurrencyDefinition systemDef = newSystem;
+                if (newCurrency.systemID != ASSETCHAINS_CHAINID &&
+                    newCurrency.launchSystemID == ASSETCHAINS_CHAINID &&
+                    newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT &&
+                    !systemDef.IsValid())
+                {
+                    systemDef = ConnectedChains.GetCachedCurrency(newCurrency.systemID);
+                }
+
+                bool isNFTMappedCurrency = systemDef.IsValid() &&
+                                           systemDef.IsGateway() &&
+                                           systemDef.proofProtocol == systemDef.PROOF_ETHNOTARIZATION &&
+                                           newCurrency.maxPreconvert.size() == 1 &&
+                                           newCurrency.maxPreconvert[0] == 0 &&
+                                           newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT &&
+                                           !(newCurrency.options &
+                                                newCurrency.OPTION_FRACTIONAL +
+                                                newCurrency.OPTION_ID_ISSUANCE +
+                                                newCurrency.OPTION_GATEWAY +
+                                                newCurrency.OPTION_PBAAS +
+                                                newCurrency.OPTION_GATEWAY_CONVERTER) &&
+                                           newCurrency.IsToken() &&
+                                           !newCurrency.GetTotalPreallocation();
+
                 if (newIdentity.parent != ASSETCHAINS_CHAINID &&
+                    !isNFTMappedCurrency &&
                     !(parentCurrency.IsGateway() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID && !parentCurrency.IsNameController()))
                 {
-                    return state.Error("Only gateway and PBaaS identities may create currencies");
+                    return state.Error("Only gateway and PBaaS identities may create non-NFT currencies");
                 }
+
                 if (newIdentity.parent != ASSETCHAINS_CHAINID)
                 {
                     if (!(parentCurrency.proofProtocol == parentCurrency.PROOF_ETHNOTARIZATION &&
@@ -1870,8 +1899,10 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                           !newCurrency.IsGateway() &&
                           newCurrency.IsToken() &&
                           newCurrency.systemID == newIdentity.parent &&
+                          !newCurrency.GetTotalPreallocation() &&
                           newCurrency.maxPreconvert.size() == 1 &&
-                          newCurrency.maxPreconvert[0] == 0))
+                          newCurrency.maxPreconvert[0] == 0) &&
+                        !isNFTMappedCurrency)
                     {
                         return state.Error("Gateway currencies must me mapped currencies via the gateway");
                     }
@@ -6476,6 +6507,21 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                         CInputDescriptor(notarizationTxes[cnd.lastConfirmed].first.vout[cnd.vtx[cnd.lastConfirmed].first.n].scriptPubKey,
                                          notarizationTxes[cnd.lastConfirmed].first.vout[cnd.vtx[cnd.lastConfirmed].first.n].nValue,
                                          CTxIn(cnd.vtx[cnd.lastConfirmed].first));
+
+                    if (destDef.systemID != ASSETCHAINS_CHAINID &&
+                        cnd.vtx[cnd.lastConfirmed].second.IsLaunchConfirmed())
+                    {
+                        CChainNotarizationData systemCND;
+                        if (GetNotarizationData(destDef.systemID, systemCND) &&
+                            systemCND.lastConfirmed != -1 &&
+                            systemCND.vtx[systemCND.lastConfirmed].second.currencyStates.count(lastChain) &&
+                            systemCND.vtx[systemCND.lastConfirmed].second.currencyStates[lastChain].IsLaunchCompleteMarker())
+                        {
+                            lastNotarization.currencyState = systemCND.vtx[systemCND.lastConfirmed].second.currencyStates[lastChain];
+                            lastNotarization.flags = systemCND.vtx[systemCND.lastConfirmed].second.flags;
+                        }
+                    }
+
                     CPBaaSNotarization newNotarization;
                     int newNotarizationOutNum;
 

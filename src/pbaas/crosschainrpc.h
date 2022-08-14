@@ -175,8 +175,9 @@ public:
         DEST_QUANTUM = 7,
         DEST_NESTEDTRANSFER = 8,            // used to chain transfers, enabling them to be routed through multiple systems
         DEST_ETH = 9,
-        DEST_RAW = 10,
-        LAST_VALID_TYPE_NO_FLAGS = 10,
+        DEST_ETHNFT = 10,                   // used when defining a mapped NFT to gateway that uses an ETH compatible model
+        DEST_RAW = 11,
+        LAST_VALID_TYPE_NO_FLAGS = DEST_RAW,
         FLAG_DEST_AUX = 64,
         FLAG_DEST_GATEWAY = 128,
         FLAG_MASK = FLAG_DEST_AUX + FLAG_DEST_GATEWAY
@@ -313,6 +314,36 @@ public:
         return "0x" + HexBytes(ethDestID.begin(), ethDestID.size());
     }
 
+    static std::pair<uint160, uint256> DecodeEthNFTDestination(const std::string &destStr)
+    {
+        uint160 retContract;
+        uint256 retTokenID;
+        UniValue nftJSON(UniValue::VOBJ);
+        nftJSON.read(destStr);
+ 
+        std::string contractAddrStr = uni_get_str(find_value(nftJSON, "contract"));
+        std::string TokenIDStr = uni_get_str(find_value(nftJSON, "tokenid"));
+
+        if (!(retContract = DecodeEthDestination(contractAddrStr)).IsNull() &&
+            TokenIDStr.length() == 66 &&
+            destStr.substr(0,2) == "0x" &&
+            IsHex(TokenIDStr.substr(2,64)))
+        {
+            retTokenID = uint256S(TokenIDStr.substr(2,64));
+            return std::make_pair(retContract, uint256S(TokenIDStr));
+        }
+        else
+        {
+            return std::make_pair(uint160(), uint256());
+        }
+    }
+
+    static std::string EncodeEthNFTDestination(const uint160 &ethContractID, const uint256 &tokenID)
+    {
+        // reverse bytes to match ETH encoding
+        return "{\"contract\":\"0x" + HexBytes(ethContractID.begin(), ethContractID.size()) + "\", \"tokenid\":\"0x" + HexBytes(tokenID.begin(), tokenID.size()) + "\"}";
+    }
+
     static std::string CurrencyExportKeyName()
     {
         return "vrsc::system.currency.export";
@@ -328,6 +359,40 @@ public:
     static uint160 CurrencyExportKeyToSystem(const uint160 &exportToSystemID);
     static uint160 GetBoundCurrencyExportKey(const uint160 &exportToSystemID, const uint160 &curToExportID);
     uint160 GetBoundCurrencyExportKey(const uint160 &exportToSystemID) const;
+
+    UniValue ToUniValue() const;
+};
+
+class CNFTAddress
+{
+public:
+    uint32_t version;
+    CTransferDestination rootContractOrID;
+    std::vector<uint160> shortHashes;
+    std::vector<uint256> longHashes;
+
+    enum EVersions {
+        VERSION_INVALID = 0,
+        VERSION_VERUSID = 1,
+        VERSION_FIRST = 1,
+        VERSION_DEFAULT = 1,
+        VERSION_LAST = 1
+    };
+
+    CNFTAddress(const UniValue &uni);
+    CNFTAddress(uint32_t ver=VERSION_DEFAULT) : version(ver) {}
+    CNFTAddress(const CTransferDestination &rootDest, const std::vector<uint160> &shorts, const std::vector<uint256> &longs, uint32_t ver=VERSION_DEFAULT) : 
+        version(ver), rootContractOrID(rootDest), shortHashes(shorts), longHashes(longs) {}
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(VARINT(version));
+        READWRITE(rootContractOrID);
+        READWRITE(shortHashes);
+        READWRITE(longHashes);
+    }
 
     UniValue ToUniValue() const;
 };
@@ -444,6 +509,8 @@ public:
         OPTION_PBAAS = 0x100,               // this is a PBaaS chain definition
         OPTION_GATEWAY_CONVERTER = 0x200,   // this means that for a specific PBaaS gateway, this is the default converter and will publish prices
         OPTION_GATEWAY_NAMECONTROLLER = 0x400, // when not set on a gateway, top level ID and currency registration happen on launch chain 
+        OPTION_NFT_TOKEN = 0x800,           // single satoshi NFT token, tokenizes control over the root ID
+        OPTIONS_FLAG_MASK = 0xfff
     };
 
     // these should be pluggable in function
@@ -968,6 +1035,7 @@ public:
     bool IsValid() const
     {
         return (nVersion != PBAAS_VERSION_INVALID) &&
+                !(options & ~OPTIONS_FLAG_MASK) &&
                 idReferralLevels <= MAX_ID_REFERRAL_LEVELS &&
                 name.size() > 0 && 
                 name.size() <= (KOMODO_ASSETCHAIN_MAXLEN - 1) &&
@@ -991,6 +1059,11 @@ public:
     bool IsToken() const
     {
         return ChainOptions() & OPTION_TOKEN;
+    }
+
+    bool IsNFTToken() const
+    {
+        return ChainOptions() & OPTION_NFT_TOKEN;
     }
 
     bool IsGateway() const
@@ -1028,6 +1101,18 @@ public:
         else
         {
             options &= ~OPTION_TOKEN;
+        }
+    }
+
+    void SetNFTToken(bool isToken)
+    {
+        if (isToken)
+        {
+            options |= OPTION_NFT_TOKEN;
+        }
+        else
+        {
+            options &= ~OPTION_NFT_TOKEN;
         }
     }
 
