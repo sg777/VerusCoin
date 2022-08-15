@@ -8269,7 +8269,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
 
     for (auto &oneID : newCurrency.preAllocation)
     {
-        if (!CIdentity::LookupIdentity(CIdentityID(oneID.first)).IsValid())
+        if (!(newCurrency.IsPBaaSChain() && oneID.first.IsNull()) && !CIdentity::LookupIdentity(CIdentityID(oneID.first)).IsValid())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "attempting to pre-allocate currency to a non-existent ID.");
         }
