@@ -1719,6 +1719,19 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
         return state.Error("Invalid currency definition in output");
     }
 
+    CDataStream ss(SER_DISK, PROTOCOL_VERSION);
+    if (GetSerializeSize(ss, CReserveTransfer(CReserveTransfer::CURRENCY_EXPORT + CReserveTransfer::VALID + CReserveTransfer::CROSS_SYSTEM,
+                            CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<int64_t>({1})),
+                            ASSETCHAINS_CHAINID,
+                            0,
+                            newCurrency.GetID(),
+                            CTransferDestination(CTransferDestination::DEST_REGISTERCURRENCY,
+                            ::AsVector(newCurrency),
+                            newCurrency.GetID()))) > (CScript::MAX_SCRIPT_ELEMENT_SIZE - 128))
+    {
+        return state.Error("Serialized currency is too large to send across PBaaS networks");
+    }
+
     if (!isBlockOneDefinition)
     {
         // if this is an imported currency definition,
@@ -2168,6 +2181,13 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         if (rt.IsArbitrageOnly())
         {
             return state.Error("Reserve transfers may not be statically set as arbitrage transfers " + rt.ToUniValue().write(1,2));
+        }
+
+        // TODO: HARDENING - all cases of potential protocol issues with having a too large output need to be covered
+        CDataStream ss(SER_DISK, PROTOCOL_VERSION);
+        if (p.AsVector().size() > CScript::MAX_SCRIPT_ELEMENT_SIZE)
+        {
+            return state.Error("Reserve transferexceeds maximum size " + rt.ToUniValue().write(1,2));
         }
 
         // reserve transfers must be spendable by the export public / private key

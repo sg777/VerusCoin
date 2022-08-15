@@ -1788,6 +1788,18 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                     {
                         identityP = p;
                         identity = checkIdentity;
+                        CDataStream ss(SER_DISK, PROTOCOL_VERSION);
+                        if (GetSerializeSize(ss, CReserveTransfer(CReserveTransfer::IDENTITY_EXPORT + CReserveTransfer::VALID + CReserveTransfer::CROSS_SYSTEM,
+                                             CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<int64_t>({1})),
+                                             ASSETCHAINS_CHAINID,
+                                             0,
+                                             checkIdentity.GetID(),
+                                             CTransferDestination(CTransferDestination::DEST_FULLID,
+                                             ::AsVector(checkIdentity),
+                                             checkIdentity.GetID()))) > (CScript::MAX_SCRIPT_ELEMENT_SIZE - 128))
+                        {
+                            return state.Error("Serialized identity is too large");
+                        }
                     }
                     validIdentity = true;
                 }
