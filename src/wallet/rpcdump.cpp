@@ -157,7 +157,10 @@ UniValue rescanfromheight(const UniValue& params, bool fHelp)
     EnsureWalletIsUnlocked();
 
     uint32_t fromHeight = params.size() < 1 ? 0 : uni_get_int64(params[0]);
-    pwalletMain->ScanForWalletTransactions(chainActive.Genesis(), true);
+    if (fromHeight < chainActive.Height())
+    {
+        pwalletMain->ScanForWalletTransactions(chainActive[fromHeight], true);
+    }
     return NullUniValue;
 }
 
