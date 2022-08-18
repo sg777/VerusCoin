@@ -284,12 +284,22 @@ CTxDestination TransferDestinationToDestination(const CTransferDestination &tran
                     case CTransferDestination::DEST_ID:
                     case CTransferDestination::DEST_PK:
                     case CTransferDestination::DEST_PKH:
-                    case CTransferDestination::DEST_ETH:
                     case CTransferDestination::DEST_SH:
                         return TransferDestinationToDestination(auxDest);
                 }
             }
             // no address found, send it to the public key of the currency definition type
+            cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
+            retDest = CTxDestination(CPubKey(ParseHex(CC.CChexstr)));
+            break;
+        }
+
+        case CTransferDestination::DEST_ETHNFT:
+        {
+            CCcontract_info CC;
+            CCcontract_info *cp;
+            // this type is only used in currency definitions and does not make sense
+            // to be converted to an address at this time
             cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
             retDest = CTxDestination(CPubKey(ParseHex(CC.CChexstr)));
             break;

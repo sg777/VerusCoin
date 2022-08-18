@@ -74,9 +74,10 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
         GetID() != newIdentity.GetID() ||
         ((newIdentity.flags & ~FLAG_REVOKED) && newIdentity.nVersion < VERSION_VAULT) ||
         ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_LOCKED)) && newIdentity.nVersion < VERSION_PBAAS) ||
-        ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY + FLAG_LOCKED)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||
+        ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY + FLAG_LOCKED + FLAG_TOKENIZED_CONTROL)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||
         (IsLocked(height) && (!newIdentity.IsRevoked() && !newIdentity.IsLocked(height))) ||
-        ((flags & FLAG_ACTIVECURRENCY) && !(newIdentity.flags & FLAG_ACTIVECURRENCY)) ||
+        (HasActiveCurrency() && !HasActiveCurrency()) ||
+        (HasTokenizedControl() && !HasTokenizedControl()) ||
         newIdentity.nVersion < VERSION_FIRSTVALID ||
         newIdentity.nVersion > VERSION_LASTVALID)
     {
@@ -1787,6 +1788,18 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                     {
                         identityP = p;
                         identity = checkIdentity;
+                        CDataStream ss(SER_DISK, PROTOCOL_VERSION);
+                        if (GetSerializeSize(ss, CReserveTransfer(CReserveTransfer::IDENTITY_EXPORT + CReserveTransfer::VALID + CReserveTransfer::CROSS_SYSTEM,
+                                             CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<int64_t>({1})),
+                                             ASSETCHAINS_CHAINID,
+                                             0,
+                                             checkIdentity.GetID(),
+                                             CTransferDestination(CTransferDestination::DEST_FULLID,
+                                             ::AsVector(checkIdentity),
+                                             checkIdentity.GetID()))) > (CScript::MAX_SCRIPT_ELEMENT_SIZE - 128))
+                        {
+                            return state.Error("Serialized identity is too large");
+                        }
                     }
                     validIdentity = true;
                 }
@@ -2186,16 +2199,38 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
 
     spendingTx.vout[idIndex].scriptPubKey.IsPayToCryptoCondition(q);
 
-    if (q.evalCode != EVAL_IDENTITY_PRIMARY)
+    if (!q.IsValid() || q.evalCode != EVAL_IDENTITY_PRIMARY)
     {
         return eval->Error("Invalid identity output in spending transaction");
     }
 
     bool advanced = newIdentity.nVersion >= newIdentity.VERSION_VAULT;
 
+    uint160 identityID = oldIdentity.GetID();
+
+    // before we start conditioning decisions on fulfilled status,
+    // check to see if it has been fulfilled by using a control token/NFT
+    if (!fulfilled && oldIdentity.HasTokenizedControl())
+    {
+        if (spendingTx.vout.size() <= (idIndex + 1) || spendingTx.vin.size() <= (nIn + 1))
+        {
+            CAmount controlCurrencyVal = spendingTx.vout[idIndex + 1].ReserveOutValue().valueMap[identityID];
+            CTransaction tokenOutTx;
+            uint256 hashBlock;
+            COptCCParams tokenP;
+            if (controlCurrencyVal > 0 &&
+                myGetTransaction(spendingTx.vin[nIn + 1].prevout.hash, tokenOutTx, hashBlock) &&
+                tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].ReserveOutValue().valueMap[identityID] == controlCurrencyVal &&
+                tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].scriptPubKey == spendingTx.vout[idIndex + 1].scriptPubKey)
+            {
+                fulfilled = true;
+            }
+        }
+    }
+
     if (advanced)
     {
-        // if not fulfilled, neither recovery data nor its spend condition may be modified
+        // if not fulfilled, neither revocation data nor its spend condition may be modified
         if (!fulfilled && !oldIdentity.IsRevoked())
         {
             if (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity, height))
@@ -2309,6 +2344,28 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
     }
 
     bool advanced = newIdentity.nVersion >= newIdentity.VERSION_VAULT;
+
+    uint160 identityID = oldIdentity.GetID();
+
+    // before we start conditioning decisions on fulfilled status,
+    // check to see if it has been fulfilled by using a control token/NFT
+    if (!fulfilled && oldIdentity.HasTokenizedControl())
+    {
+        if (spendingTx.vout.size() <= (idIndex + 1) || spendingTx.vin.size() <= (nIn + 1))
+        {
+            CAmount controlCurrencyVal = spendingTx.vout[idIndex + 1].ReserveOutValue().valueMap[identityID];
+            CTransaction tokenOutTx;
+            uint256 hashBlock;
+            COptCCParams tokenP;
+            if (controlCurrencyVal > 0 &&
+                myGetTransaction(spendingTx.vin[nIn + 1].prevout.hash, tokenOutTx, hashBlock) &&
+                tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].ReserveOutValue().valueMap[identityID] == controlCurrencyVal &&
+                tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].scriptPubKey == spendingTx.vout[idIndex + 1].scriptPubKey)
+            {
+                fulfilled = true;
+            }
+        }
+    }
 
     if (advanced)
     {

@@ -2023,6 +2023,12 @@ UniValue getaddressbalance(const UniValue& params, bool fHelp)
 
     if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) >= CActivationHeight::ACTIVATE_PBAAS)
     {
+        if (balance || received)
+        {
+            reserveBalance.valueMap[ASSETCHAINS_CHAINID] = balance;
+            reserveReceived.valueMap[ASSETCHAINS_CHAINID] = received;
+        }
+
         if (reserveBalance.valueMap.size())
         {
             UniValue currencyBal(UniValue::VOBJ);

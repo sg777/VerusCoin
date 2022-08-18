@@ -438,14 +438,23 @@ CNode* ConnectNode(CAddress addrConnect, const char *pszDest)
             {
                 LOCK(cs_vNonTLSNodesOutbound);
 
-                LogPrint("tls", "%s():%d - handling connection to %s\n", __func__, __LINE__,  addrConnect.ToString());
-
                 NODE_ADDR nodeAddr(addrConnect.ToStringIP());
 
-                bool bTlsEnforcement = (GetBoolArg("-tlsenforcement", true) || GetArg("-tlsenforcement", "") == "1");
-                bool bUseTLS = (find(vNonTLSNodesOutbound.begin(),
-                                     vNonTLSNodesOutbound.end(),
-                                     nodeAddr) == vNonTLSNodesOutbound.end());
+                bool bUseTLS = !GetBoolArg("-tlsdisable", false);
+                bool bTlsEnforcement = bUseTLS && (GetBoolArg("-tlsenforcement", true) || GetArg("-tlsenforcement", "") == "1");
+                bUseTLS = bUseTLS && (find(vNonTLSNodesOutbound.begin(),
+                                            vNonTLSNodesOutbound.end(),
+                                            nodeAddr) == vNonTLSNodesOutbound.end());
+
+                if (bUseTLS)
+                {
+                    LogPrint("tls", "%s():%d - handling connection to %s\n", __func__, __LINE__,  addrConnect.ToString());
+                }
+                else
+                {
+                    LogPrint("tls", "%s():%d - attempting unencrypted connection to %s\n", __func__, __LINE__,  addrConnect.ToString());
+                }
+
                 unsigned long err_code = 0;
                 if (bUseTLS)
                 {
@@ -1206,10 +1215,11 @@ if (CNode::GetTlsFallbackNonTls())
 
     NODE_ADDR nodeAddr(addr.ToStringIP());
 
-    bool bTlsEnforcement = (GetBoolArg("-tlsenforcement", true) || GetArg("-tlsenforcement", "") == "1");
-    bool bUseTLS = (find(vNonTLSNodesInbound.begin(),
-                         vNonTLSNodesInbound.end(),
-                         nodeAddr) == vNonTLSNodesInbound.end());
+    bool bUseTLS = !GetBoolArg("-tlsdisable", false);
+    bool bTlsEnforcement = bUseTLS && (GetBoolArg("-tlsenforcement", true) || GetArg("-tlsenforcement", "") == "1");
+    bUseTLS = bUseTLS && (find(vNonTLSNodesInbound.begin(),
+                            vNonTLSNodesInbound.end(),
+                            nodeAddr) == vNonTLSNodesInbound.end());
     unsigned long err_code = 0;
     if (bUseTLS)
     {

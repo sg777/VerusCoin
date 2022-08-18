@@ -255,6 +255,7 @@ public:
     static const uint8_t VERSION_VERUSID = 1;
     static const uint8_t VERSION_VAULT = 2;
     static const uint8_t VERSION_PBAAS = 3;
+    static const uint8_t VERSION_CURRENT = VERSION_VAULT;
     static const uint8_t VERSION_FIRSTVALID = 1;
     static const uint8_t VERSION_LASTVALID = 3;
 
@@ -383,6 +384,7 @@ public:
         FLAG_REVOKED = 0x8000,              // set when this identity is revoked
         FLAG_ACTIVECURRENCY = 0x1,          // flag that is set when this ID is being used as an active currency name
         FLAG_LOCKED = 0x2,                  // set when this identity is locked
+        FLAG_TOKENIZED_CONTROL = 0x4,       // set when revocation/recovery over this identity can be performed by anyone who controls its token
         MAX_UNLOCK_DELAY = 60 * 24 * 22 * 365 // 21+ year maximum unlock time for an ID
     };
 
@@ -630,7 +632,7 @@ public:
     {
         if (nVersion == VERSION_FIRSTVALID)
         {
-            nVersion = VERSION_VAULT;
+            nVersion = VERSION_CURRENT;
         }
         flags |= FLAG_ACTIVECURRENCY;
     }
@@ -643,6 +645,25 @@ public:
     bool HasActiveCurrency() const
     {
         return flags & FLAG_ACTIVECURRENCY;
+    }
+
+    void ActivateTokenizedControl()
+    {
+        if (nVersion >= VERSION_FIRSTVALID && nVersion < VERSION_PBAAS)
+        {
+            nVersion = VERSION_PBAAS;
+        }
+        flags |= FLAG_TOKENIZED_CONTROL;
+    }
+
+    void DeactivateTokenizedControl()
+    {
+        flags &= ~FLAG_TOKENIZED_CONTROL;
+    }
+
+    bool HasTokenizedControl() const
+    {
+        return flags & FLAG_TOKENIZED_CONTROL;
     }
 
     bool IsValid(bool strict=false) const
@@ -733,6 +754,7 @@ public:
             privateAddresses != newIdentity.privateAddresses ||
             (unlockAfter != newIdentity.unlockAfter && (!isRevokedExempt || newIdentity.unlockAfter != 0)) ||
             (HasActiveCurrency() != newIdentity.HasActiveCurrency()) ||
+            (HasTokenizedControl() != newIdentity.HasTokenizedControl()) ||
             (IsLocked() != newIdentity.IsLocked() && (!isRevokedExempt || newIdentity.IsLocked())))
         {
             return true;
