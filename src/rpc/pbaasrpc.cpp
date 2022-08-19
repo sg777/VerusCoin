@@ -1794,7 +1794,7 @@ UniValue submitimports(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. see help.");
     }
 
-    LOCK2(cs_main, mempool.cs);
+    LOCK(cs_main);
 
     CCurrencyDefinition curDef;
     uint160 sourceSystemID = ValidateCurrencyName(uni_get_str(find_value(params[0], "sourcesystemid")), true, &curDef);
@@ -1815,18 +1815,23 @@ UniValue submitimports(const UniValue& params, bool fHelp)
     uint256 blkHash;
     COptCCParams p;
     CPBaaSNotarization lastConfirmed;
-    if (!(!notarizationTxId.IsNull() &&
-          myGetTransaction(notarizationTxId, notarizationTx, blkHash) &&
-          !blkHash.IsNull() &&
-          notarizationTxOutNum >= 0 &&
-          notarizationTx.vout.size() > notarizationTxOutNum &&
-          notarizationTx.vout[notarizationTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
-          p.IsValid() &&
-          (p.evalCode == EVAL_EARNEDNOTARIZATION || p.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
-          p.vData.size() &&
-          (lastConfirmed = CPBaaSNotarization(p.vData[0])).IsValid()))
+
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid notarization transaction id or transaction");
+        LOCK2(smartTransactionCS, mempool.cs);
+
+        if (!(!notarizationTxId.IsNull() &&
+            myGetTransaction(notarizationTxId, notarizationTx, blkHash) &&
+            !blkHash.IsNull() &&
+            notarizationTxOutNum >= 0 &&
+            notarizationTx.vout.size() > notarizationTxOutNum &&
+            notarizationTx.vout[notarizationTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
+            (p.evalCode == EVAL_EARNEDNOTARIZATION || p.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
+            p.vData.size() &&
+            (lastConfirmed = CPBaaSNotarization(p.vData[0])).IsValid()))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid notarization transaction id or transaction");
+        }
     }
 
     std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>> exports;
