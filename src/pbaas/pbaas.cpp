@@ -2163,10 +2163,12 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
     COptCCParams p;
     CReserveTransfer rt;
 
+    uint32_t chainHeight = chainActive.Height();
+    bool haveFullChain = height <= chainHeight + 1;
+
     // TODO: HARDENING - go through all outputs of this transaction and do all reserve transfers at once, the
     // first time for the first reserve transfer output, if this is not the first, we will have checked them all, so
     // we are done
-    
 
     // TODO: HARDENING - ensure that destinations and nested destinations are valid for the target system
 
@@ -2321,6 +2323,10 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
         if (!(importCurrencyDef.IsValid() && importState.IsValid()))
         {
+            if (!haveFullChain)
+            {
+                return true;
+            }
             // the only case this is ok is if we are part of a currency definition and this is to a new currency
             // if that is the case, importCurrencyDef will always be invalid
             if (!importCurrencyDef.IsValid())
@@ -2341,6 +2347,10 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
         if (!systemDest.IsValid())
         {
+            if (!haveFullChain)
+            {
+                return true;
+            }
             return state.Error("Invalid currency system in reserve transfer " + rt.ToUniValue().write(1,2));
         }
 
@@ -5519,8 +5529,11 @@ bool CCurrencyDefinition::IsValidDefinitionImport(const CCurrencyDefinition &sou
         // we would create an invalid import
         if (!IsValidExportCurrency(destSystem, currencyParentID, height))
         {
-            printf("%s: Currency parent %s is not exported to the destination system, which is required for export.\n", __func__, EncodeDestination(CIdentityID(currencyParentID)).c_str());
-            LogPrintf("%s: Currency parent %s is not exported to the destination system, which is required for export.\n", __func__, EncodeDestination(CIdentityID(currencyParentID)).c_str());
+            if (LogAcceptCategory("crosschain"))
+            {
+                printf("%s: Currency parent %s is not exported to the destination system, which is required for export.\n", __func__, EncodeDestination(CIdentityID(currencyParentID)).c_str());
+                LogPrintf("%s: Currency parent %s is not exported to the destination system, which is required for export.\n", __func__, EncodeDestination(CIdentityID(currencyParentID)).c_str());
+            }
             return false;
         }
     }
@@ -5529,8 +5542,11 @@ bool CCurrencyDefinition::IsValidDefinitionImport(const CCurrencyDefinition &sou
     {
         if (!curSystem.IsValid())
         {
-            printf("%s: Invalid currency parent for %s. Index may be corrupt.\n", __func__, EncodeDestination(CIdentityID(currencyParentID)).c_str());
-            LogPrintf("%s: Invalid currency parent for %s. Index may be corrupt.\n", __func__, EncodeDestination(CIdentityID(currencyParentID)).c_str());
+            if (LogAcceptCategory("crosschain"))
+            {
+                printf("%s: Invalid currency parent for %s. Index may be corrupt.\n", __func__, EncodeDestination(CIdentityID(currencyParentID)).c_str());
+                LogPrintf("%s: Invalid currency parent for %s. Index may be corrupt.\n", __func__, EncodeDestination(CIdentityID(currencyParentID)).c_str());
+            }
             return false;
         }
 

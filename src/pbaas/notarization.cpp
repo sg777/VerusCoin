@@ -4847,6 +4847,9 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
     // after we precheck and confirm a notarization finalization for a notary chain of this chain, we record it
     // as the last notarized checkpoint and prevent any unwind of the blockchain from that point
 
+    uint32_t chainHeight = chainActive.Height();
+    bool haveFullChain = height <= chainHeight + 1;
+
     auto upgradeVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
     if (upgradeVersion < CActivationHeight::ACTIVATE_VERUSVAULT)
     {
@@ -4881,6 +4884,10 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
           p.vData.size() &&
           (notarization = CPBaaSNotarization(p.vData[0])).IsValid()))
     {
+        if (!haveFullChain)
+        {
+            return true;
+        }
         return state.Error("Invalid notarization output for finalization");
     }
 

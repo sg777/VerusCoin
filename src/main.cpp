@@ -86,10 +86,11 @@ int nScriptCheckThreads = 0;
 bool fExperimentalMode = false;
 bool fImporting = false;
 bool fReindex = false;
-bool fTxIndex = false;
+bool fTxIndex = true;
+bool fIdIndex = false;
 bool fInsightExplorer = false;       // this ensures that the primary address and spent indexes are active, enabling advanced CCs
-bool fAddressIndex = false;
-bool fSpentIndex = false;
+bool fAddressIndex = true;
+bool fSpentIndex = true;
 bool fTimestampIndex = false;
 bool fHavePruned = false;
 bool fPruneMode = false;
@@ -4709,6 +4710,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     if (fTxIndex)
         if (!pblocktree->WriteTxIndex(vPos))
             return AbortNode(state, "Failed to write transaction index");
+
     if (fAddressIndex) {
         if (!pblocktree->WriteAddressIndex(addressIndex)) {
             return AbortNode(state, "Failed to write address index");
@@ -7037,6 +7039,10 @@ bool static LoadBlockIndexDB()
     // Check whether we have a transaction index
     pblocktree->ReadFlag("txindex", fTxIndex);
     LogPrintf("%s: transaction index %s\n", __func__, fTxIndex ? "enabled" : "disabled");
+
+    pblocktree->ReadFlag("idindex", fIdIndex);
+    LogPrintf("%s: identity index %s\n", __func__, fIdIndex ? "enabled" : "disabled");
+
     // Check whether we have an address index
     pblocktree->ReadFlag("addressindex", fAddressIndex);
     LogPrintf("%s: address index %s\n", __func__, fAddressIndex ? "enabled" : "disabled");
@@ -7446,9 +7452,15 @@ bool InitBlockIndex(const CChainParams& chainparams)
     {
         return true;
     }
+
     // Use the provided setting for -txindex in the new database
     fTxIndex = GetBoolArg("-txindex", true);
     pblocktree->WriteFlag("txindex", fTxIndex);
+
+    // Use the provided setting for -txindex in the new database
+    fIdIndex = GetBoolArg("-idindex", false);
+    pblocktree->WriteFlag("idindex", fIdIndex);
+
     // Use the provided setting for -addressindex in the new database
     fAddressIndex = true;
     pblocktree->WriteFlag("addressindex", fAddressIndex);
