@@ -2019,6 +2019,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                         {
                             LogPrintf("%s: Committed %d notarization transactions to mempool\n", __func__, txCount);
                         }
+                        LOCK(cs_main);
                         for (auto &oneTx : notarizations)
                         {
                             RelayTransaction(oneTx);
