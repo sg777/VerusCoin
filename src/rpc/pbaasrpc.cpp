@@ -8292,10 +8292,10 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             throw JSONRPCError(RPC_INVALID_PARAMETER, "currency cannot be both a token and also specify a mining and staking rewards schedule.");
         }
 
-        if ((newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH || newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT))
+        if ((newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH && !newCurrency.IsGateway()) ||
+            newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT)
         {
-            if (newCurrency.IsGateway() ||
-                newCurrency.IsPBaaSChain() ||
+            if (newCurrency.IsPBaaSChain() ||
                 !newCurrency.IsToken() ||
                 newCurrency.IsFractional())
             {
