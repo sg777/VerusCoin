@@ -772,6 +772,8 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
     std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
     outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, dests, 1, &newCurrency))));
 
+    ConnectedChains.UpdateCachedCurrency(newCurrency, 1);
+
     // import / export capable currencies include the main currency, fractional currencies on any system, 
     // gateway currencies. the launch system, and non-token currencies. they also get an import / export thread
     if (ConnectedChains.ThisChain().launchSystemID == newCurID ||

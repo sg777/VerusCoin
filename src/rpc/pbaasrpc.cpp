@@ -180,7 +180,7 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
                 chainDef = foundDef;
                 if (pDefHeight)
                 {
-                    *pDefHeight = 0;
+                    *pDefHeight = chainActive.Height() + 1;
                 }
                 if (pUTXO)
                 {
@@ -222,10 +222,12 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
         {
             thisChainLoaded = true;
             ConnectedChains.ThisChain() = foundDef;
+            ConnectedChains.UpdateCachedCurrency(foundDef, *pDefHeight);
         }
     }
     else if (foundDef.IsValid())
     {
+        ConnectedChains.UpdateCachedCurrency(foundDef, *pDefHeight);
         // add to nodes with last confirmed notarization nodes
         CChainNotarizationData cnd;
         if (notarizationCheck && GetNotarizationData(chainID, cnd) && cnd.IsConfirmed())

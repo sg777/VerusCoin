@@ -4372,6 +4372,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     else if (p.evalCode == EVAL_CURRENCY_DEFINITION)
                     {
                         cbCurDef = CCurrencyDefinition(p.vData[0]);
+                        ConnectedChains.UpdateCachedCurrency(cbCurDef, nHeight);
                         if (cbCurDef.GetID() == ASSETCHAINS_CHAINID)
                         {
                             ConnectedChains.ThisChain() = cbCurDef;
