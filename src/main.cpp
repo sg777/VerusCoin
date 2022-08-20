@@ -5465,7 +5465,7 @@ bool ActivateBestChain(CValidationState& state, const CChainParams& chainparams,
     do {
         boost::this_thread::interruption_point();
         
-        uint32_t chainHeight;
+        int32_t chainHeight; // must be signed
         bool fInitialDownload;
         {
             LOCK(cs_main);
@@ -6481,7 +6481,7 @@ static bool AcceptBlock(int32_t *futureblockp, const CBlock& block, CValidationS
         if (!fHasMoreWork) return true;     // Don't process less-work chains
         if (fTooFarAhead) return true;      // Block height is too high
     }
-    
+
     // See method docstring for why this is always disabled
     auto verifier = libzcash::ProofVerifier::Disabled();
     if ((!CheckBlock(futureblockp, pindex->GetHeight(), pindex, block, state, chainparams, verifier, 0)) || !ContextualCheckBlock(block, state, chainparams, pindex->pprev))

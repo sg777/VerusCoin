@@ -2876,7 +2876,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
     //fprintf(stderr,"done new block\n");
 
     // setup the header and buid the Merkle tree
-    unsigned int extraNonce;
+    unsigned int extraNonce = 0;
     IncrementExtraNonce(pblock, pindexPrev, extraNonce, true);
 
     return pblocktemplate.release();
