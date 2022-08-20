@@ -3721,7 +3721,6 @@ CCurrencyDefinition CConnectedChains::UpdateCachedCurrency(const CCurrencyDefini
     // in the long run, the daemon synchonrization model should be improved
     uint160 currencyID = currencyDef.GetID();
     CCurrencyDefinition retVal = currencyDef;
-    CCoinbaseCurrencyState curState = GetCurrencyState(retVal, height);
     currencyDefCache[currencyID] = retVal;
     if (currencyID == ASSETCHAINS_CHAINID)
     {

@@ -227,7 +227,6 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
     }
     else if (foundDef.IsValid())
     {
-        ConnectedChains.UpdateCachedCurrency(foundDef, *pDefHeight);
         // add to nodes with last confirmed notarization nodes
         CChainNotarizationData cnd;
         if (notarizationCheck && GetNotarizationData(chainID, cnd) && cnd.IsConfirmed())
