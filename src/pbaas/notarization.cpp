@@ -1626,6 +1626,13 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
         notarizationOutputMap.insert(std::make_pair(vtx[i].first, i));
     }
 
+    uint32_t confirmedBlockHeight = mapBlockIndex.count(txes[lastConfirmed].second) ? mapBlockIndex[txes[lastConfirmed].second]->GetHeight() : 0;
+    if (!confirmedBlockHeight)
+    {
+        LogPrint("notarization", "%s: last confirmed notarization not found in block index\n", __func__);
+        return false;
+    }
+
     spendsToClose = std::vector<std::vector<CInputDescriptor>>(vtx.size());
 
     for (auto onePending : CObjectFinalization::GetUnspentPendingFinalizations(currencyID))
@@ -1761,10 +1768,26 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
             }
             else
             {
-                extraSpends.insert(extraSpends.end(), associatedSpends.begin(), associatedSpends.end());
-                // for finalizations that have no found association, we warn
-                printf("%s: no associated notarization located for pending finalization:\n%s\n", __func__, pendingNotarizationOutput.ToString().c_str());
-                LogPrint("notarization", "%s: no associated notarization located for pending finalization:\n%s\n", __func__, pendingNotarizationOutput.ToString().c_str());
+                // it may be a straggler that came in before confirmation. if so, just clean it up
+                if (onePending.first <= confirmedBlockHeight)
+                {
+                    // if only in the mempool, skip altogether
+                    if (onePending.first)
+                    {
+                        // add it to the confirmed notarization's closing spends
+                        spendsToClose[lastConfirmed].insert(spendsToClose[associatedIdx].end(), associatedSpends.begin(), associatedSpends.end());
+                    }
+                }
+                else
+                {
+                    extraSpends.insert(extraSpends.end(), associatedSpends.begin(), associatedSpends.end());
+                    // for finalizations that have no found association, we warn
+                    printf("%s: no associated notarization located for pending finalization:\n%s\n", __func__, pendingNotarizationOutput.ToString().c_str());
+                }
+                if (onePending.first)
+                {
+                    LogPrint("notarization", "%s: no associated notarization located for pending finalization:\n%s\n", __func__, pendingNotarizationOutput.ToString().c_str());
+                }
             }
         }
     }
@@ -2314,7 +2337,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         // if we should confirm a notarization, it will be the first in forkIdx
         if (forkIdx > -1)
         {
-            printf("ready to confirm notarization tx: %s\n", txes[cnd.forks[forkIdx][forkPos]].second.GetHex().c_str());
+            printf("ready to confirm notarization tx: %s, output %d\n", cnd.vtx[cnd.forks[forkIdx][forkPos]].first.hash.GetHex().c_str(), cnd.vtx[cnd.forks[forkIdx][forkPos]].first.n);
             priorNotarizationIdx = cnd.forks[forkIdx][forkPos];
         }
         else
