@@ -1769,24 +1769,14 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
             else
             {
                 // it may be a straggler that came in before confirmation. if so, just clean it up
-                if (onePending.first <= confirmedBlockHeight)
+                if (onePending.first)
                 {
-                    // if only in the mempool, skip altogether
-                    if (onePending.first)
-                    {
-                        // add it to the confirmed notarization's closing spends
-                        spendsToClose[lastConfirmed].insert(spendsToClose[associatedIdx].end(), associatedSpends.begin(), associatedSpends.end());
-                    }
+                    // add it to unknown closing spends
+                    extraSpends.insert(extraSpends.end(), associatedSpends.begin(), associatedSpends.end());
                 }
                 else
                 {
-                    extraSpends.insert(extraSpends.end(), associatedSpends.begin(), associatedSpends.end());
-                    // for finalizations that have no found association, we warn
-                    printf("%s: no associated notarization located for pending finalization:\n%s\n", __func__, pendingNotarizationOutput.ToString().c_str());
-                }
-                if (onePending.first)
-                {
-                    LogPrint("notarization", "%s: no associated notarization located for pending finalization:\n%s\n", __func__, pendingNotarizationOutput.ToString().c_str());
+                    LogPrint("notarization", "%s: no associated notarization located for pending finalization in mempool:\n%s\n", __func__, pendingNotarizationOutput.ToString().c_str());
                 }
             }
         }
@@ -4347,6 +4337,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
         if (isFirstLaunchingNotarization)
         {
+            // TODO: HARDENING
             /* // get and prove our block 1 notarization on the coinbase, if this is the definition notarization
             if (firstProofNotarization.IsBlockOneNotarization())
             {
