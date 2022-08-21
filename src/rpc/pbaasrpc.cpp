@@ -11507,7 +11507,7 @@ UniValue getidentitieswithaddress(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_PARAMS, "getidentitieswithaddress requires -idindex=1 when starting the daemon\n");
     }
-    UniValue retVal(UniValue::VOBJ);
+    UniValue retVal(UniValue::VARR);
 
     std::string addressString = uni_get_str(find_value(params[0], "address"));
     CTxDestination addressDest = DecodeDestination(addressString);
@@ -11530,7 +11530,7 @@ UniValue getidentitieswithaddress(const UniValue& params, bool fHelp)
                 {
                     UniValue idUni = oneIdentity.second.second.ToUniValue();
                     idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
-                    retVal.pushKV("identity", idUni);
+                    retVal.push_back(idUni);
                 }
             }
         }
@@ -11544,7 +11544,7 @@ UniValue getidentitieswithaddress(const UniValue& params, bool fHelp)
             {
                 UniValue idUni = oneIdentity.second.second.ToUniValue();
                 idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
-                retVal.pushKV("identity", idUni);
+                retVal.push_back(idUni);
             }
         }
     }
@@ -11580,7 +11580,8 @@ UniValue getidentitieswithrevocation(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_PARAMS, "getidentitieswithrevocation requires -idindex=1 when starting the daemon\n");
     }
-    UniValue retVal(UniValue::VOBJ);
+    UniValue retVal(UniValue::VARR);
+
     std::string addressString = uni_get_str(find_value(params[0], "identityid"));
     CTxDestination addressDest = DecodeDestination(addressString);
     if (addressDest.which() != COptCCParams::ADDRTYPE_ID)
@@ -11605,7 +11606,7 @@ UniValue getidentitieswithrevocation(const UniValue& params, bool fHelp)
                 {
                     UniValue idUni = oneIdentity.second.second.ToUniValue();
                     idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
-                    retVal.pushKV("identity", idUni);
+                    retVal.push_back(idUni);
                 }
             }
         }
@@ -11619,7 +11620,7 @@ UniValue getidentitieswithrevocation(const UniValue& params, bool fHelp)
             {
                 UniValue idUni = oneIdentity.second.second.ToUniValue();
                 idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
-                retVal.pushKV("identity", idUni);
+                retVal.push_back(idUni);
             }
         }
     }
@@ -11655,7 +11656,8 @@ UniValue getidentitieswithrecovery(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_PARAMS, "getidentitieswithrecovery requires -idindex=1 when starting the daemon\n");
     }
-    UniValue retVal(UniValue::VOBJ);
+    UniValue retVal(UniValue::VARR);
+
     std::string addressString = uni_get_str(find_value(params[0], "identityid"));
     CTxDestination addressDest = DecodeDestination(addressString);
     if (addressDest.which() != COptCCParams::ADDRTYPE_ID)
@@ -11680,7 +11682,7 @@ UniValue getidentitieswithrecovery(const UniValue& params, bool fHelp)
                 {
                     UniValue idUni = oneIdentity.second.second.ToUniValue();
                     idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
-                    retVal.pushKV("identity", idUni);
+                    retVal.push_back(idUni);
                 }
             }
         }
@@ -11694,7 +11696,7 @@ UniValue getidentitieswithrecovery(const UniValue& params, bool fHelp)
             {
                 UniValue idUni = oneIdentity.second.second.ToUniValue();
                 idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
-                retVal.pushKV("identity", idUni);
+                retVal.push_back(idUni);
             }
         }
     }
