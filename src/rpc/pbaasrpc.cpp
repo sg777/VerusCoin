@@ -11495,7 +11495,7 @@ UniValue getidentitieswithaddress(const UniValue& params, bool fHelp)
             "}\n"
 
             "\nResult:\n"
-            "[\n"                               (array) array of matching identities
+            "[                                  (array) array of matching identities\n"
             "  {identityobject},                (object) identity with additional member \"txout\" with txhash and output index\n"
             "  ...\n"
             "]\n"
@@ -11572,7 +11572,7 @@ UniValue getidentitieswithrevocation(const UniValue& params, bool fHelp)
             "}\n"
 
             "\nResult:\n"
-            "[\n"                               (array) array of matching identities
+            "[                                  (array) array of matching identities\n"
             "  {identityobject},                (object) identity with additional member \"txout\" with txhash and output index\n"
             "  ...\n"
             "]\n"
@@ -11652,7 +11652,7 @@ UniValue getidentitieswithrecovery(const UniValue& params, bool fHelp)
             "}\n"
 
             "\nResult:\n"
-            "[\n"                               (array) array of matching identities
+            "[                                  (array) array of matching identities\n"
             "  {identityobject},                (object) identity with additional member \"txout\" with txhash and output index\n"
             "  ...\n"
             "]\n"
