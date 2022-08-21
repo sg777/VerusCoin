@@ -11478,12 +11478,12 @@ UniValue listidentities(const UniValue& params, bool fHelp)
     }
 }
 
-UniValue listidentitieswithaddress(const UniValue& params, bool fHelp)
+UniValue getidentitieswithaddress(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
     {
         throw runtime_error(
-            "listidentitieswithaddress {\"address\":\"validprimaryaddress\",\"fromheight\":height, \"toheight\":height, \"unspent\":false}\n"
+            "getidentitieswithaddress {\"address\":\"validprimaryaddress\",\"fromheight\":height, \"toheight\":height, \"unspent\":false}\n"
             "\n\n"
 
             "\nArguments\n"
@@ -11505,7 +11505,7 @@ UniValue listidentitieswithaddress(const UniValue& params, bool fHelp)
     CheckIdentityAPIsValid();
     if (!fIdIndex)
     {
-        throw JSONRPCError(RPC_INVALID_PARAMS, "listidentitieswithaddress requires -idindex=1 when starting the daemon\n");
+        throw JSONRPCError(RPC_INVALID_PARAMS, "getidentitieswithaddress requires -idindex=1 when starting the daemon\n");
     }
     UniValue retVal(UniValue::VOBJ);
 
@@ -11551,12 +11551,12 @@ UniValue listidentitieswithaddress(const UniValue& params, bool fHelp)
     return retVal;
 }
  
-UniValue listidentitieswithrevocation(const UniValue& params, bool fHelp)
+UniValue getidentitieswithrevocation(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() > 1)
     {
         throw runtime_error(
-            "listidentitieswithrevocation {\"identityid\":\"idori-address\", \"fromheight\":height, \"toheight\":height, \"unspent\":false}\n"
+            "getidentitieswithrevocation {\"identityid\":\"idori-address\", \"fromheight\":height, \"toheight\":height, \"unspent\":false}\n"
             "\n\n"
 
             "\nArguments\n"
@@ -11570,15 +11570,15 @@ UniValue listidentitieswithrevocation(const UniValue& params, bool fHelp)
             "\nResult:\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("listidentitieswithrevocation", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
-            + HelpExampleRpc("listidentitieswithrevocation", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
+            + HelpExampleCli("getidentitieswithrevocation", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
+            + HelpExampleRpc("getidentitieswithrevocation", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
         );
     }
 
     CheckIdentityAPIsValid();
     if (!fIdIndex)
     {
-        throw JSONRPCError(RPC_INVALID_PARAMS, "listidentitieswithrevocation requires -idindex=1 when starting the daemon\n");
+        throw JSONRPCError(RPC_INVALID_PARAMS, "getidentitieswithrevocation requires -idindex=1 when starting the daemon\n");
     }
     UniValue retVal(UniValue::VOBJ);
     std::string addressString = uni_get_str(find_value(params[0], "identityid"));
@@ -11626,12 +11626,12 @@ UniValue listidentitieswithrevocation(const UniValue& params, bool fHelp)
     return retVal;
 }
 
-UniValue listidentitieswithrecovery(const UniValue& params, bool fHelp)
+UniValue getidentitieswithrecovery(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() > 1)
     {
         throw runtime_error(
-            "listidentitieswithrecovery {\"identityid\":\"idori-address\", \"fromheight\":height, \"toheight\":height, \"unspent\":false}\n"
+            "getidentitieswithrecovery {\"identityid\":\"idori-address\", \"fromheight\":height, \"toheight\":height, \"unspent\":false}\n"
             "\n\n"
 
             "\nArguments\n"
@@ -11645,15 +11645,15 @@ UniValue listidentitieswithrecovery(const UniValue& params, bool fHelp)
             "\nResult:\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("listidentitieswithrecovery", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
-            + HelpExampleRpc("listidentitieswithrecovery", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
+            + HelpExampleCli("getidentitieswithrecovery", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
+            + HelpExampleRpc("getidentitieswithrecovery", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
         );
     }
 
     CheckIdentityAPIsValid();
     if (!fIdIndex)
     {
-        throw JSONRPCError(RPC_INVALID_PARAMS, "listidentitieswithrecovery requires -idindex=1 when starting the daemon\n");
+        throw JSONRPCError(RPC_INVALID_PARAMS, "getidentitieswithrecovery requires -idindex=1 when starting the daemon\n");
     }
     UniValue retVal(UniValue::VOBJ);
     std::string addressString = uni_get_str(find_value(params[0], "identityid"));
@@ -12192,9 +12192,9 @@ static const CRPCCommand commands[] =
     { "identity",     "recoveridentity",              &recoveridentity,        true  },
     { "identity",     "getidentity",                  &getidentity,            true  },
     { "identity",     "listidentities",               &listidentities,         true  },
-    { "identity",     "listidentitieswithaddress",    &listidentitieswithaddress, true  },
-    { "identity",     "listidentitieswithrevocation", &listidentitieswithrevocation, true  },
-    { "identity",     "listidentitieswithrecovery",   &listidentitieswithrecovery, true  },
+    { "identity",     "getidentitieswithaddress",     &getidentitieswithaddress, true  },
+    { "identity",     "getidentitieswithrevocation",  &getidentitieswithrevocation, true  },
+    { "identity",     "getidentitieswithrecovery",    &getidentitieswithrecovery, true  },
     { "marketplace",  "makeoffer",                    &makeoffer,              true  },
     { "marketplace",  "takeoffer",                    &takeoffer,              true  },
     { "marketplace",  "getoffers",                    &getoffers,              true  },
