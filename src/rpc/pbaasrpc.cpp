@@ -11501,8 +11501,8 @@ UniValue getidentitieswithaddress(const UniValue& params, bool fHelp)
             "]\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("listidentities", "\'{\"name\" : \"myname\"}\'")
-            + HelpExampleRpc("listidentities", "\'{\"name\" : \"myname\"}\'")
+            + HelpExampleCli("getidentitieswithaddress", "\'{\"address\":\"validprimaryaddress\",\"fromheight\":height, \"toheight\":height, \"unspent\":false}\'")
+            + HelpExampleRpc("getidentitieswithaddress", "\'{\"address\":\"validprimaryaddress\",\"fromheight\":height, \"toheight\":height, \"unspent\":false}\'")
         );
     }
 
