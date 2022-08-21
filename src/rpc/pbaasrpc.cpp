@@ -222,7 +222,7 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
         {
             thisChainLoaded = true;
             ConnectedChains.ThisChain() = foundDef;
-            ConnectedChains.UpdateCachedCurrency(foundDef, *pDefHeight);
+            ConnectedChains.UpdateCachedCurrency(foundDef, pDefHeight ? *pDefHeight : chainActive.Height());
         }
     }
     else if (foundDef.IsValid())
@@ -11338,7 +11338,7 @@ UniValue listidentities(const UniValue& params, bool fHelp)
     if (fHelp || params.size() > 3)
     {
         throw runtime_error(
-            "listidentities (includecansign) (includewatchonly)\n"
+            "listidentities (includecanspend) (includecansign) (includewatchonly)\n"
             "\n\n"
 
             "\nArguments\n"
@@ -11476,6 +11476,229 @@ UniValue listidentities(const UniValue& params, bool fHelp)
     {
         return NullUniValue;
     }
+}
+
+UniValue listidentitieswithaddress(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "listidentitieswithaddress {\"address\":\"validprimaryaddress\",\"fromheight\":height, \"toheight\":height, \"unspent\":false}\n"
+            "\n\n"
+
+            "\nArguments\n"
+            "{\n"
+            "    \"address\":\"validaddress\"   (string, required) returns all identities that contain the specified address in its primary addresses\n"
+            "    \"fromheight\":n               (number, optional, default=0) Search for qualified identities modified from this height forward only\n"
+            "    \"toheight\":n                 (number, optional, default=0) Search for qualified identities only up until this height (0 == no limit)\n"
+            "    \"unspent\":bool               (bool, optional, default=false) if true, this will only return active ID UTXOs as of the current block height\n"
+            "}\n"
+
+            "\nResult:\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("listidentities", "\'{\"name\" : \"myname\"}\'")
+            + HelpExampleRpc("listidentities", "\'{\"name\" : \"myname\"}\'")
+        );
+    }
+
+    CheckIdentityAPIsValid();
+    if (!fIdIndex)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMS, "listidentitieswithaddress requires -idindex=1 when starting the daemon\n");
+    }
+    UniValue retVal(UniValue::VOBJ);
+
+    std::string addressString = uni_get_str(find_value(params[0], "address"));
+    CTxDestination addressDest = DecodeDestination(addressString);
+    if (addressDest.which() != COptCCParams::ADDRTYPE_PKH && addressDest.which() != COptCCParams::ADDRTYPE_PK)
+    {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "no valid PKH or PK address\n");
+    }
+    uint32_t fromHeight = uni_get_int64(find_value(params[0], "fromheight"));
+    uint32_t toHeight = uni_get_int64(find_value(params[0], "toheight"));
+
+    if (uni_get_bool(find_value(params[0], "unspent")))
+    {
+        std::map<uint160, std::pair<CAddressUnspentDbEntry, CIdentity>> identities;
+        if (CIdentity::GetActiveIdentitiesByPrimaryAddress(addressDest, identities))
+        {
+            for (auto &oneIdentity : identities)
+            {
+                if ((!fromHeight || oneIdentity.second.first.second.blockHeight >= fromHeight) &&
+                    (!toHeight || oneIdentity.second.first.second.blockHeight <= toHeight))
+                {
+                    UniValue idUni = oneIdentity.second.second.ToUniValue();
+                    idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
+                    retVal.pushKV("identity", idUni);
+                }
+            }
+        }
+    }
+    else
+    {
+        std::map<uint160, std::pair<CAddressIndexDbEntry, CIdentity>> identities;
+        if (CIdentity::GetIdentityOutsByPrimaryAddress(addressDest, identities, fromHeight, toHeight))
+        {
+            for (auto &oneIdentity : identities)
+            {
+                UniValue idUni = oneIdentity.second.second.ToUniValue();
+                idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
+                retVal.pushKV("identity", idUni);
+            }
+        }
+    }
+    return retVal;
+}
+ 
+UniValue listidentitieswithrevocation(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+    {
+        throw runtime_error(
+            "listidentitieswithrevocation {\"identityid\":\"idori-address\", \"fromheight\":height, \"toheight\":height, \"unspent\":false}\n"
+            "\n\n"
+
+            "\nArguments\n"
+            "{\n"
+            "    \"identityid\":\"idori-address\" (string, required) returns all identities where this ID or i-address is the revocation authority\n"
+            "    \"fromheight\":n               (number, optional, default=0) Search for qualified identities modified from this height forward only\n"
+            "    \"toheight\":n                 (number, optional, default=0) Search for qualified identities only up until this height (0 == no limit)\n"
+            "    \"unspent\":bool               (bool, optional, default=false) if true, this will only return active ID UTXOs as of the current block height\n"
+            "}\n"
+
+            "\nResult:\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("listidentitieswithrevocation", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
+            + HelpExampleRpc("listidentitieswithrevocation", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
+        );
+    }
+
+    CheckIdentityAPIsValid();
+    if (!fIdIndex)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMS, "listidentitieswithrevocation requires -idindex=1 when starting the daemon\n");
+    }
+    UniValue retVal(UniValue::VOBJ);
+    std::string addressString = uni_get_str(find_value(params[0], "identityid"));
+    CTxDestination addressDest = DecodeDestination(addressString);
+    if (addressDest.which() != COptCCParams::ADDRTYPE_ID)
+    {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "no valid ID address\n");
+    }
+
+    CIdentityID idID = GetDestinationID(addressDest);
+
+    uint32_t fromHeight = uni_get_int64(find_value(params[0], "fromheight"));
+    uint32_t toHeight = uni_get_int64(find_value(params[0], "toheight"));
+
+    if (uni_get_bool(find_value(params[0], "unspent")))
+    {
+        std::map<uint160, std::pair<CAddressUnspentDbEntry, CIdentity>> identities;
+        if (CIdentity::GetActiveIdentitiesWithRevocationID(idID, identities))
+        {
+            for (auto &oneIdentity : identities)
+            {
+                if ((!fromHeight || oneIdentity.second.first.second.blockHeight >= fromHeight) &&
+                    (!toHeight || oneIdentity.second.first.second.blockHeight <= toHeight))
+                {
+                    UniValue idUni = oneIdentity.second.second.ToUniValue();
+                    idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
+                    retVal.pushKV("identity", idUni);
+                }
+            }
+        }
+    }
+    else
+    {
+        std::map<uint160, std::pair<CAddressIndexDbEntry, CIdentity>> identities;
+        if (CIdentity::GetIdentityOutsWithRevocationID(idID, identities, fromHeight, toHeight))
+        {
+            for (auto &oneIdentity : identities)
+            {
+                UniValue idUni = oneIdentity.second.second.ToUniValue();
+                idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
+                retVal.pushKV("identity", idUni);
+            }
+        }
+    }
+    return retVal;
+}
+
+UniValue listidentitieswithrecovery(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() > 1)
+    {
+        throw runtime_error(
+            "listidentitieswithrecovery {\"identityid\":\"idori-address\", \"fromheight\":height, \"toheight\":height, \"unspent\":false}\n"
+            "\n\n"
+
+            "\nArguments\n"
+            "{\n"
+            "    \"identityid\":\"idori-address\" (string, required) returns all identities where this ID or i-address is the recovery authority\n"
+            "    \"fromheight\":n               (number, optional, default=0) Search for qualified identities modified from this height forward only\n"
+            "    \"toheight\":n                 (number, optional, default=0) Search for qualified identities only up until this height (0 == no limit)\n"
+            "    \"unspent\":bool               (bool, optional, default=false) if true, this will only return active ID UTXOs as of the current block height\n"
+            "}\n"
+
+            "\nResult:\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("listidentitieswithrecovery", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
+            + HelpExampleRpc("listidentitieswithrecovery", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
+        );
+    }
+
+    CheckIdentityAPIsValid();
+    if (!fIdIndex)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMS, "listidentitieswithrecovery requires -idindex=1 when starting the daemon\n");
+    }
+    UniValue retVal(UniValue::VOBJ);
+    std::string addressString = uni_get_str(find_value(params[0], "identityid"));
+    CTxDestination addressDest = DecodeDestination(addressString);
+    if (addressDest.which() != COptCCParams::ADDRTYPE_ID)
+    {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "no valid ID address\n");
+    }
+
+    CIdentityID idID = GetDestinationID(addressDest);
+
+    uint32_t fromHeight = uni_get_int64(find_value(params[0], "fromheight"));
+    uint32_t toHeight = uni_get_int64(find_value(params[0], "toheight"));
+
+    if (uni_get_bool(find_value(params[0], "unspent")))
+    {
+        std::map<uint160, std::pair<CAddressUnspentDbEntry, CIdentity>> identities;
+        if (CIdentity::GetActiveIdentitiesWithRecoveryID(idID, identities))
+        {
+            for (auto &oneIdentity : identities)
+            {
+                if ((!fromHeight || oneIdentity.second.first.second.blockHeight >= fromHeight) &&
+                    (!toHeight || oneIdentity.second.first.second.blockHeight <= toHeight))
+                {
+                    UniValue idUni = oneIdentity.second.second.ToUniValue();
+                    idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
+                    retVal.pushKV("identity", idUni);
+                }
+            }
+        }
+    }
+    else
+    {
+        std::map<uint160, std::pair<CAddressIndexDbEntry, CIdentity>> identities;
+        if (CIdentity::GetIdentityOutsWithRecoveryID(idID, identities, fromHeight, toHeight))
+        {
+            for (auto &oneIdentity : identities)
+            {
+                UniValue idUni = oneIdentity.second.second.ToUniValue();
+                idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
+                retVal.pushKV("identity", idUni);
+            }
+        }
+    }
+    return retVal;
 }
 
 UniValue addmergedblock(const UniValue& params, bool fHelp)
@@ -11969,6 +12192,9 @@ static const CRPCCommand commands[] =
     { "identity",     "recoveridentity",              &recoveridentity,        true  },
     { "identity",     "getidentity",                  &getidentity,            true  },
     { "identity",     "listidentities",               &listidentities,         true  },
+    { "identity",     "listidentitieswithaddress",    &listidentitieswithaddress, true  },
+    { "identity",     "listidentitieswithrevocation", &listidentitieswithrevocation, true  },
+    { "identity",     "listidentitieswithrecovery",   &listidentitieswithrecovery, true  },
     { "marketplace",  "makeoffer",                    &makeoffer,              true  },
     { "marketplace",  "takeoffer",                    &takeoffer,              true  },
     { "marketplace",  "getoffers",                    &getoffers,              true  },

@@ -1362,6 +1362,17 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             {
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(identity.GetID(), evalCode)));
             }
+            // if we are maintaining an ID index, add keys for primary addresses, revocation, and recovery
+            extern bool fIdIndex;
+            if (fIdIndex)
+            {
+                for (auto &oneDest : identity.primaryAddresses)
+                {
+                    destinations.insert(identity.IdentityPrimaryAddressKey(oneDest));
+                }
+                destinations.insert(identity.IdentityRecoveryKey());
+                destinations.insert(identity.IdentityRevocationKey());
+            }
             break;
         }
 

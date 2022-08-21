@@ -17,6 +17,7 @@
 #include "pbaas/pbaas.h"
 #include "pbaas/notarization.h"
 #include "identity.h"
+#include "txdb.h"
 
 extern CTxMemPool mempool;
 
@@ -382,6 +383,222 @@ CIdentity CIdentity::LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHei
         }
     }
     return ret;
+}
+
+uint160 CIdentity::IdentityPrimaryAddressKey(const CTxDestination &dest)
+{
+    CHashWriterSHA256 hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << dest.which();
+    hw << GetDestinationBytes(dest);
+    uint160 nameSpace;
+    return CCrossChainRPCData::GetConditionID(CVDXF::GetDataKey(IdentityPrimaryAddressKeyName(), nameSpace), hw.GetHash());
+}
+
+bool CIdentity::GetIdentityOutsByPrimaryAddress(const CTxDestination &address, std::map<uint160, std::pair<CAddressIndexDbEntry, CIdentity>> &identities, uint32_t start, uint32_t end)
+{
+    if (!fIdIndex)
+    {
+        return false;
+    }
+    // which transaction are we in this block?
+    std::vector<CAddressIndexDbEntry> addressIndex;
+
+    // get all export transactions including and since this one up to the confirmed cross-notarization
+    if (GetAddressIndex(CIdentity::IdentityPrimaryAddressKey(address), 
+                        CScript::P2IDX, 
+                        addressIndex, 
+                        start,
+                        end))
+    {
+        for (auto &idx : addressIndex)
+        {
+            uint256 blkHash;
+            CTransaction identityTx;
+            if (!idx.first.spending && myGetTransaction(idx.first.txhash, identityTx, blkHash))
+            {
+                CIdentity identity;
+                if ((identity = CIdentity(identityTx.vout[idx.first.index].scriptPubKey)).IsValid())
+                {
+                    identities.insert(std::make_pair(identity.GetID(), std::make_pair(idx, identity)));
+                }
+                else
+                {
+                    LogPrintf("%s: invalid identity output: %s, %lu\n", __func__, idx.first.txhash.GetHex().c_str(), idx.first.index);
+                }
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+bool CIdentity::GetIdentityOutsWithRevocationID(const CIdentityID &idID, std::map<uint160, std::pair<CAddressIndexDbEntry, CIdentity>> &identities, uint32_t start, uint32_t end)
+{
+    if (!fIdIndex)
+    {
+        return false;
+    }
+    // which transaction are we in this block?
+    std::vector<CAddressIndexDbEntry> addressIndex;
+
+    // get all export transactions including and since this one up to the confirmed cross-notarization
+    if (GetAddressIndex(CIdentity::IdentityRevocationKey(idID), 
+                        CScript::P2IDX, 
+                        addressIndex, 
+                        start,
+                        end))
+    {
+        for (auto &idx : addressIndex)
+        {
+            uint256 blkHash;
+            CTransaction identityTx;
+            if (!idx.first.spending && myGetTransaction(idx.first.txhash, identityTx, blkHash))
+            {
+                CIdentity identity;
+                if ((identity = CIdentity(identityTx.vout[idx.first.index].scriptPubKey)).IsValid())
+                {
+                    identities.insert(std::make_pair(identity.GetID(), std::make_pair(idx, identity)));
+                }
+                else
+                {
+                    LogPrintf("%s: invalid identity output: %s, %lu\n", __func__, idx.first.txhash.GetHex().c_str(), idx.first.index);
+                }
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+bool CIdentity::GetIdentityOutsWithRecoveryID(const CIdentityID &idID, std::map<uint160, std::pair<CAddressIndexDbEntry, CIdentity>> &identities, uint32_t start, uint32_t end)
+{
+    if (!fIdIndex)
+    {
+        return false;
+    }
+    // which transaction are we in this block?
+    std::vector<CAddressIndexDbEntry> addressIndex;
+
+    // get all export transactions including and since this one up to the confirmed cross-notarization
+    if (GetAddressIndex(CIdentity::IdentityRecoveryKey(idID), 
+                        CScript::P2IDX, 
+                        addressIndex, 
+                        start,
+                        end))
+    {
+        for (auto &idx : addressIndex)
+        {
+            uint256 blkHash;
+            CTransaction identityTx;
+            if (!idx.first.spending && myGetTransaction(idx.first.txhash, identityTx, blkHash))
+            {
+                CIdentity identity;
+                if ((identity = CIdentity(identityTx.vout[idx.first.index].scriptPubKey)).IsValid())
+                {
+                    identities.insert(std::make_pair(identity.GetID(), std::make_pair(idx, identity)));
+                }
+                else
+                {
+                    LogPrintf("%s: invalid identity output: %s, %lu\n", __func__, idx.first.txhash.GetHex().c_str(), idx.first.index);
+                }
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+bool CIdentity::GetActiveIdentitiesByPrimaryAddress(const CTxDestination &address, std::map<uint160, std::pair<CAddressUnspentDbEntry, CIdentity>> &identities)
+{
+    if (!fIdIndex)
+    {
+        return false;
+    }
+    // which transaction are we in this block?
+    std::vector<CAddressUnspentDbEntry> unspentIndex;
+
+    // get all export transactions including and since this one up to the confirmed cross-notarization
+    if (GetAddressUnspent(CIdentity::IdentityPrimaryAddressKey(address), CScript::P2IDX, unspentIndex))
+    {
+        for (auto &idx : unspentIndex)
+        {
+            uint256 blkHash;
+            CTransaction identityTx;
+            CIdentity identity;
+            if ((identity = CIdentity(idx.second.script)).IsValid())
+            {
+                identities.insert(std::make_pair(identity.GetID(), std::make_pair(idx, identity)));
+            }
+            else
+            {
+                LogPrintf("%s: invalid identity in unspent index 0: %s, %lu\n", __func__, idx.first.txhash.GetHex().c_str(), idx.first.index);
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+bool CIdentity::GetActiveIdentitiesWithRevocationID(const CIdentityID &idID, std::map<uint160, std::pair<CAddressUnspentDbEntry, CIdentity>> &identities)
+{
+    if (!fIdIndex)
+    {
+        return false;
+    }
+    // which transaction are we in this block?
+    std::vector<CAddressUnspentDbEntry> unspentIndex;
+
+    // get all export transactions including and since this one up to the confirmed cross-notarization
+    if (GetAddressUnspent(CIdentity::IdentityRevocationKey(idID), CScript::P2IDX, unspentIndex))
+    {
+        for (auto &idx : unspentIndex)
+        {
+            uint256 blkHash;
+            CTransaction identityTx;
+            CIdentity identity;
+            if ((identity = CIdentity(idx.second.script)).IsValid())
+            {
+                identities.insert(std::make_pair(identity.GetID(), std::make_pair(idx, identity)));
+            }
+            else
+            {
+                LogPrintf("%s: invalid identity in unspent index 2: %s, %lu\n", __func__, idx.first.txhash.GetHex().c_str(), idx.first.index);
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+bool CIdentity::GetActiveIdentitiesWithRecoveryID(const CIdentityID &idID, std::map<uint160, std::pair<CAddressUnspentDbEntry, CIdentity>> &identities)
+{
+    if (!fIdIndex)
+    {
+        return false;
+    }
+    // which transaction are we in this block?
+    std::vector<CAddressUnspentDbEntry> unspentIndex;
+
+    // get all export transactions including and since this one up to the confirmed cross-notarization
+    if (GetAddressUnspent(CIdentity::IdentityRecoveryKey(idID), CScript::P2IDX, unspentIndex))
+    {
+        for (auto &idx : unspentIndex)
+        {
+            uint256 blkHash;
+            CTransaction identityTx;
+            CIdentity identity;
+            if ((identity = CIdentity(idx.second.script)).IsValid())
+            {
+                identities.insert(std::make_pair(identity.GetID(), std::make_pair(idx, identity)));
+            }
+            else
+            {
+                LogPrintf("%s: invalid identity in unspent index 3: %s, %lu\n", __func__, idx.first.txhash.GetHex().c_str(), idx.first.index);
+            }
+        }
+        return true;
+    }
+    return false;
 }
 
 // this enables earliest rejection of invalid identity registrations transactions

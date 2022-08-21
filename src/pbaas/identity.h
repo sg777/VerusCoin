@@ -31,6 +31,7 @@
 #include "script/standard.h"
 #include "primitives/transaction.h"
 #include "arith_uint256.h"
+#include "addressindex.h"
 
 std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false, bool addVerus=true);
 
@@ -803,6 +804,66 @@ public:
         }
         return false;
     }
+
+    static std::string IdentityRevocationKeyName()
+    {
+        return "vrsc::system.identity.revocationkey";
+    }
+
+    uint160 IdentityRevocationKey() const
+    {
+        uint160 nameSpace;
+        return CCrossChainRPCData::GetConditionID(CVDXF::GetDataKey(IdentityRevocationKeyName(), nameSpace), GetID());
+    }
+
+    static uint160 IdentityRevocationKey(const CIdentityID &identityID)
+    {
+        uint160 nameSpace;
+        return CCrossChainRPCData::GetConditionID(CVDXF::GetDataKey(IdentityRevocationKeyName(), nameSpace), identityID);
+    }
+
+    static std::string IdentityRecoveryKeyName()
+    {
+        return "vrsc::system.identity.recoverykey";
+    }
+
+    uint160 IdentityRecoveryKey() const
+    {
+        uint160 nameSpace;
+        return CCrossChainRPCData::GetConditionID(CVDXF::GetDataKey(IdentityRecoveryKeyName(), nameSpace), GetID());
+    }
+
+    static uint160 IdentityRecoveryKey(const CIdentityID &identityID)
+    {
+        uint160 nameSpace;
+        return CCrossChainRPCData::GetConditionID(CVDXF::GetDataKey(IdentityRecoveryKeyName(), nameSpace), identityID);
+    }
+
+    static std::string IdentityPrimaryAddressKeyName()
+    {
+        return "vrsc::system.identity.primaryaddress";
+    }
+
+    static uint160 IdentityPrimaryAddressKey(const CTxDestination &dest);
+
+    std::vector<uint160> IdentityPrimaryAddressKeys() const
+    {
+        uint160 nameSpace;
+        std::vector<uint160> retVec;
+
+        for (auto &oneDest : primaryAddresses)
+        {
+            retVec.push_back(IdentityPrimaryAddressKey(oneDest));
+        }
+        return retVec;
+    }
+
+    static bool GetIdentityOutsByPrimaryAddress(const CTxDestination &address, std::map<uint160, std::pair<std::pair<CAddressIndexKey, CAmount>, CIdentity>> &identities, uint32_t start=0, uint32_t end=0);
+    static bool GetIdentityOutsWithRevocationID(const CIdentityID &idID, std::map<uint160, std::pair<std::pair<CAddressIndexKey, CAmount>, CIdentity>> &identities, uint32_t start=0, uint32_t end=0);
+    static bool GetIdentityOutsWithRecoveryID(const CIdentityID &idID, std::map<uint160, std::pair<std::pair<CAddressIndexKey, CAmount>, CIdentity>> &identities, uint32_t start=0, uint32_t end=0);
+    static bool GetActiveIdentitiesByPrimaryAddress(const CTxDestination &address, std::map<uint160, std::pair<std::pair<CAddressUnspentKey, CAddressUnspentValue>, CIdentity>> &identities);
+    static bool GetActiveIdentitiesWithRevocationID(const CIdentityID &idID, std::map<uint160, std::pair<std::pair<CAddressUnspentKey, CAddressUnspentValue>, CIdentity>> &identities);
+    static bool GetActiveIdentitiesWithRecoveryID(const CIdentityID &idID, std::map<uint160, std::pair<std::pair<CAddressUnspentKey, CAddressUnspentValue>, CIdentity>> &identities);
 };
 
 class CIdentityMapKey

@@ -61,6 +61,7 @@ public:
     static uint160 GetConditionID(const uint160 &cid, uint32_t condition);
     static uint160 GetConditionID(const uint160 &cid, const uint160 &condition);
     static uint160 GetConditionID(const uint160 &cid, const uint160 &condition, const uint256 &txid, int32_t voutNum);
+    static uint160 GetConditionID(const uint160 &cid, const uint256 &hash256);
     static uint160 GetConditionID(const uint160 &cid, const uint256 &txid, int32_t voutNum);
     static uint160 GetConditionID(const uint160 &cid, const uint160 &condition, const uint256 &txid);
     static uint160 GetConditionID(std::string name, uint32_t condition);

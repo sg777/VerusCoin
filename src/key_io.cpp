@@ -953,6 +953,15 @@ uint160 CCrossChainRPCData::GetConditionID(const uint160 &cid, const uint256 &tx
     return Hash160(chainHash.begin(), chainHash.end());
 }
 
+uint160 CCrossChainRPCData::GetConditionID(const uint160 &cid, const uint256 &txid)
+{
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << cid;
+    hw << txid;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
+
 uint160 CCrossChainRPCData::GetConditionID(const uint160 &cid, const uint160 &condition, const uint256 &txid)
 {
     CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
