@@ -11495,6 +11495,10 @@ UniValue getidentitieswithaddress(const UniValue& params, bool fHelp)
             "}\n"
 
             "\nResult:\n"
+            "[\n"                               (array) array of matching identities
+            "  {identityobject},                (object) identity with additional member \"txout\" with txhash and output index\n"
+            "  ...\n"
+            "]\n"
 
             "\nExamples:\n"
             + HelpExampleCli("listidentities", "\'{\"name\" : \"myname\"}\'")
@@ -11568,6 +11572,10 @@ UniValue getidentitieswithrevocation(const UniValue& params, bool fHelp)
             "}\n"
 
             "\nResult:\n"
+            "[\n"                               (array) array of matching identities
+            "  {identityobject},                (object) identity with additional member \"txout\" with txhash and output index\n"
+            "  ...\n"
+            "]\n"
 
             "\nExamples:\n"
             + HelpExampleCli("getidentitieswithrevocation", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
@@ -11644,6 +11652,10 @@ UniValue getidentitieswithrecovery(const UniValue& params, bool fHelp)
             "}\n"
 
             "\nResult:\n"
+            "[\n"                               (array) array of matching identities
+            "  {identityobject},                (object) identity with additional member \"txout\" with txhash and output index\n"
+            "  ...\n"
+            "]\n"
 
             "\nExamples:\n"
             + HelpExampleCli("getidentitieswithrecovery", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
