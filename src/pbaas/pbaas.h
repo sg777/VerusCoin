@@ -200,6 +200,8 @@ public:
     virtual uint160 GatewayID() const;
 };
 
+class CObjectFinalization;
+
 // This is the data for a PBaaS notarization transaction, either of a PBaaS chain into the Verus chain, or the Verus
 // chain into a PBaaS chain.
 
@@ -506,7 +508,7 @@ public:
                                          std::vector<CTxOut> &txOutputs,
                                          CPBaaSNotarization &notarization);
 
-    bool FindEarnedNotarization(CAddressIndexDbEntry *pEarnedNotarizationIndex=nullptr) const;
+    bool FindEarnedNotarization(CObjectFinalization &finalization, CAddressIndexDbEntry *pEarnedNotarizationIndex=nullptr) const;
 
     // accepts enough information to build a local accepted notarization transaction
     // miner fees are deferred until an import that uses this notarization, in which case

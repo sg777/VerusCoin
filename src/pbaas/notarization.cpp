@@ -4005,7 +4005,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
 bool CallNotary(const CRPCChainData &notarySystem, std::string command, const UniValue &params, UniValue &result, UniValue &error);
 
-bool CPBaaSNotarization::FindEarnedNotarization(CAddressIndexDbEntry *pEarnedNotarizationIndex) const
+bool CPBaaSNotarization::FindEarnedNotarization(CObjectFinalization &confirmedFinalization, CAddressIndexDbEntry *pEarnedNotarizationIndex) const
 {
     CAddressIndexDbEntry __earnedNotarizationIndex;
     CAddressIndexDbEntry &earnedNotarizationIndex = pEarnedNotarizationIndex ? *pEarnedNotarizationIndex : __earnedNotarizationIndex;
@@ -4054,13 +4054,12 @@ bool CPBaaSNotarization::FindEarnedNotarization(CAddressIndexDbEntry *pEarnedNot
     uint160 finalizedNotarizationKey = CCrossChainRPCData::GetConditionID(CObjectFinalization::ObjectFinalizationFinalizedKey(),
                                                                           earnedNotarizationIndex.first.txhash,
                                                                           earnedNotarizationIndex.first.index);
+
     addressIndex.clear();
     if (!GetAddressIndex(finalizedNotarizationKey, CScript::P2IDX, addressIndex) ||
-        !addressIndex.size())
+         !addressIndex.size())
     {
-        LogPrintf("Unable to confirm finalization data for notarization:\n%s\n", checkNotarization.ToUniValue().write(1,2).c_str());
-        printf("Unable to confirm finalization data for notarization:\n%s\n", checkNotarization.ToUniValue().write(1,2).c_str());
-        return retVal;
+        return true;
     }
 
     CAddressIndexDbEntry finalizationIndex;
@@ -4075,13 +4074,12 @@ bool CPBaaSNotarization::FindEarnedNotarization(CAddressIndexDbEntry *pEarnedNot
     }
     if (!finalizationIndex.first.blockHeight)
     {
-        LogPrintf("Unable to locate finalization transaction for notarization:\n%s\n", checkNotarization.ToUniValue().write(1,2).c_str());
-        printf("Unable to locate finalization transaction for notarization:\n%s\n", checkNotarization.ToUniValue().write(1,2).c_str());
+        LogPrintf("Unable to locate indexed finalization transaction for notarization:\n%s\n", checkNotarization.ToUniValue().write(1,2).c_str());
+        printf("Unable to locate indexed finalization transaction for notarization:\n%s\n", checkNotarization.ToUniValue().write(1,2).c_str());
         return retVal;
     }
 
     CTransaction finalizationTx;
-    CObjectFinalization objectFinalization;
     uint256 blkHash;
     COptCCParams fP;
     if (!myGetTransaction(finalizationIndex.first.txhash, finalizationTx, blkHash) ||
@@ -4090,19 +4088,18 @@ bool CPBaaSNotarization::FindEarnedNotarization(CAddressIndexDbEntry *pEarnedNot
             fP.IsValid() &&
             fP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
             fP.vData.size() &&
-            (objectFinalization = CObjectFinalization(fP.vData[0])).IsValid()))
+            (confirmedFinalization = CObjectFinalization(fP.vData[0])).IsValid()))
     {
         LogPrintf("Invalid finalization transaction %s for notarization:\n%s\n", finalizationIndex.first.txhash.GetHex().c_str(), checkNotarization.ToUniValue().write(1,2).c_str());
         printf("Invalid finalization transaction %s for notarization:\n%s\n", finalizationIndex.first.txhash.GetHex().c_str(), checkNotarization.ToUniValue().write(1,2).c_str());
         return retVal;
     }
 
-    // if the entry is finalized and not confirmed, it isn't valid for us to use
-    if (!objectFinalization.IsConfirmed())
+    // if the entry is finalized and not confirmed
+    if (!confirmedFinalization.IsConfirmed())
     {
-        LogPrintf("Finalization rejected on transaction %s for notarization:\n%s\n", finalizationIndex.first.txhash.GetHex().c_str(), checkNotarization.ToUniValue().write(1,2).c_str());
-        printf("Finalization rejected on transaction %s for notarization:\n%s\n", finalizationIndex.first.txhash.GetHex().c_str(), checkNotarization.ToUniValue().write(1,2).c_str());
-        return retVal;
+        LogPrint("notarization", "Finalization unconfirmed on transaction %s for notarization:\n%s\n", finalizationIndex.first.txhash.GetHex().c_str(), checkNotarization.ToUniValue().write(1,2).c_str());
+        return false;
     }
     return true;
 }
@@ -4282,11 +4279,36 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         {
             // ensure that we at least agree with the last notarization, or we can't submit
             confirmingIdx = crosschainCND.IsConfirmed() ? crosschainCND.lastConfirmed : 0;
+            CObjectFinalization finalizationObj;
 
             if (!isFirstLaunchingNotarization &&
-                !crosschainCND.vtx[confirmingIdx].second.FindEarnedNotarization(&earnedNotarizationIndexEntry))
+                !crosschainCND.vtx[confirmingIdx].second.FindEarnedNotarization(finalizationObj, &earnedNotarizationIndexEntry))
             {
                 return retVal;
+            }
+            else if (!finalizationObj.IsValid() || !finalizationObj.IsConfirmed())
+            {
+                CTransaction notarizationTx;
+                CPBaaSNotarization checkNotarization1, checkNotarization2 = crosschainCND.vtx[confirmingIdx].second;
+                uint256 blkHash;
+                COptCCParams nP;
+                if (!myGetTransaction(earnedNotarizationIndexEntry.first.txhash, notarizationTx, blkHash) ||
+                    earnedNotarizationIndexEntry.first.index >= notarizationTx.vout.size() ||
+                    !(notarizationTx.vout[earnedNotarizationIndexEntry.first.index].scriptPubKey.IsPayToCryptoCondition(nP) &&
+                      nP.IsValid() &&
+                      nP.evalCode == EVAL_EARNEDNOTARIZATION &&
+                      nP.vData.size() &&
+                      (checkNotarization1 = CPBaaSNotarization(nP.vData[0])).IsValid() &&
+                      checkNotarization2.SetMirror(false) &&
+                      ::AsVector(checkNotarization1) == ::AsVector(checkNotarization2) &&
+                      checkNotarization1.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                      checkNotarization2.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                      checkNotarization1.proofRoots[ASSETCHAINS_CHAINID].rootHeight <= checkNotarization2.proofRoots[ASSETCHAINS_CHAINID].rootHeight))
+                {
+                    LogPrintf("Invalid notarization index entry for txid: %s\n", earnedNotarizationIndexEntry.first.txhash.GetHex().c_str());
+                    printf("Invalid notarization index entry for txid: %s\n", earnedNotarizationIndexEntry.first.txhash.GetHex().c_str());
+                    return retVal;
+                }
             }
         }
 
@@ -4297,7 +4319,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             for (int i = crosschainCND.vtx.size() - 1; i > 0; i--)
             {
                 CAddressIndexDbEntry tmpIndexEntry;
-                if (crosschainCND.vtx[i].second.FindEarnedNotarization(&tmpIndexEntry))
+                CObjectFinalization finalizationObj;
+                if (crosschainCND.vtx[i].second.FindEarnedNotarization(finalizationObj, &tmpIndexEntry) && finalizationObj.IsConfirmed())
                 {
                     earnedNotarizationIndexEntry = tmpIndexEntry;
                     confirmingIdx = i;
