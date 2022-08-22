@@ -11483,7 +11483,7 @@ UniValue getidentitieswithaddress(const UniValue& params, bool fHelp)
     if (fHelp || params.size() != 1)
     {
         throw runtime_error(
-            "getidentitieswithaddress {\"address\":\"validprimaryaddress\",\"fromheight\":height, \"toheight\":height, \"unspent\":false}\n"
+            "getidentitieswithaddress '{\"address\":\"validprimaryaddress\",\"fromheight\":height, \"toheight\":height, \"unspent\":false}'\n"
             "\n\n"
 
             "\nArguments\n"
@@ -11560,7 +11560,7 @@ UniValue getidentitieswithrevocation(const UniValue& params, bool fHelp)
     if (fHelp || params.size() > 1)
     {
         throw runtime_error(
-            "getidentitieswithrevocation {\"identityid\":\"idori-address\", \"fromheight\":height, \"toheight\":height, \"unspent\":false}\n"
+            "getidentitieswithrevocation '{\"identityid\":\"idori-address\", \"fromheight\":height, \"toheight\":height, \"unspent\":false}'\n"
             "\n\n"
 
             "\nArguments\n"
@@ -11640,7 +11640,7 @@ UniValue getidentitieswithrecovery(const UniValue& params, bool fHelp)
     if (fHelp || params.size() > 1)
     {
         throw runtime_error(
-            "getidentitieswithrecovery {\"identityid\":\"idori-address\", \"fromheight\":height, \"toheight\":height, \"unspent\":false}\n"
+            "getidentitieswithrecovery '{\"identityid\":\"idori-address\", \"fromheight\":height, \"toheight\":height, \"unspent\":false}'\n"
             "\n\n"
 
             "\nArguments\n"
