@@ -902,6 +902,19 @@ std::string SignMessageHash(const CIdentity &identity, const uint256 &_msgHash, 
 
     uint256 msgHash = ss.GetHash();
 
+    if (LogAcceptCategory("signaturehash"))
+    {
+        std::vector<unsigned char> vch;
+        LogPrintf("%s: Signing hash with all additional metadata:\nsignatureprefix: %s\nsystemid: %s\nblockheight: %s\nidentityid: %s\nmsghash: %s\nfinalhash: %s\n",
+                  __func__,
+                  HexBytes(&((vch = ::AsVector(verusDataSignaturePrefix), vch)[0]), vch.size()).c_str(),
+                  HexBytes(&((vch = ::AsVector(ConnectedChains.ThisChain().GetID()), vch)[0]), vch.size()).c_str(),
+                  HexBytes(&((vch = ::AsVector(blockHeight), vch)[0]), vch.size()).c_str(),
+                  HexBytes(&((vch = ::AsVector(identity.GetID()), vch)[0]), vch.size()).c_str(),
+                  _msgHash.GetHex().c_str(),
+                  msgHash.GetHex().c_str());
+    }
+
     // get the signature, a hex string, which is deserialized into an instance of the ID signature class
     std::vector<unsigned char> sigVec;
     try
@@ -2140,7 +2153,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
     bool bIsStake = false;
     bool bIsCoinbase = false;
     bool bIsMint = false;
-    bool bIsReserve = ConnectedChains.ThisChain().IsFractional();
+    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) > CActivationHeight::ACTIVATE_PBAAS;
     CReserveTransactionDescriptor rtxd;
     CCoinsViewCache view(pcoinsTip);
     uint32_t nHeight = chainActive.Height();
@@ -2152,13 +2165,17 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
     else
     {
         bIsCoinbase = wtx.IsCoinBase();
-        bIsMint = bIsCoinbase && wtx.vout.size() > 0 && wtx.vout[0].scriptPubKey.IsPayToCryptoCondition();
+        CBlockIndex *pIndex = mapBlockIndex.count(wtx.hashBlock) ? mapBlockIndex[wtx.hashBlock] : nullptr;
+        bIsMint = pIndex && pIndex->IsVerusPOSBlock();
     }
 
-    if (bIsReserve && (rtxd = CReserveTransactionDescriptor(wtx, view, nHeight)).IsReserve())
+    if (isPBaaS)
     {
-        ret.push_back(Pair("isreserve", true));
-        ret.push_back(Pair("isreservetransfer", rtxd.IsReserveTransfer()));
+        if (rtxd.IsReserveTransfer()) ret.push_back(Pair("isreservetransfer", true));
+        if (rtxd.flags & rtxd.IS_IMPORT) ret.push_back(Pair("isimport", true));
+        if (rtxd.flags & rtxd.IS_IDENTITY) ret.push_back(Pair("isidentity", true));
+        if (rtxd.flags & rtxd.IS_CURRENCY_DEFINITION) ret.push_back(Pair("iscurrencydefinition", true));
+        if (rtxd.flags & rtxd.IS_CHAIN_NOTARIZATION) ret.push_back(Pair("isnotarization", true));
         ret.push_back(Pair("nativefees", rtxd.NativeFees()));
         ret.push_back(Pair("reservefees", rtxd.ReserveFees().ToUniValue()));
         if (rtxd.nativeConversionFees || (rtxd.ReserveConversionFeesMap() > CCurrencyValueMap()))
@@ -2166,10 +2183,6 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
             ret.push_back(Pair("nativeconversionfees", rtxd.nativeConversionFees));
             ret.push_back(Pair("reserveconversionfees", rtxd.ReserveConversionFeesMap().ToUniValue()));
         }
-    }
-    else
-    {
-        ret.push_back(Pair("isreserve", false));
     }
 
     wtx.GetAmounts(listReceived, listSent, nFee, strSentAccount, bIsStake ? ISMINE_ALLANDCHANGE : filter);
@@ -2248,18 +2261,14 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
                 }
                 
                 COptCCParams p;
-                if (rtxd.IsValid() && wtx.vout[r.vout].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
+                if (wtx.vout[r.vout].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
                 {
                     UniValue ccUni;
                     ScriptPubKeyToJSON(wtx.vout[r.vout].scriptPubKey, ccUni, false, false);
-                    entry.push_back(Pair("cryptocondition", ccUni));
+                    entry.push_back(Pair("smartoutput", ccUni));
                 }
 
                 entry.push_back(Pair("amount", ValueFromAmount(r.amount)));
-                if (wtx.vout.size() > r.vout && rtxd.IsReserve())
-                {
-                    entry.push_back(Pair("reserveamount", wtx.vout[r.vout].scriptPubKey.ReserveOutValue().ToUniValue()));
-                }
                 entry.push_back(Pair("vout", r.vout));
                 if (fLong)
                     WalletTxToJSON(wtx, entry);
@@ -5528,6 +5537,7 @@ UniValue z_shieldcoinbase(const UniValue& params, bool fHelp)
     if (fHelp || params.size() < 2 || params.size() > 4)
         throw runtime_error(
             "z_shieldcoinbase \"fromaddress\" \"tozaddress\" ( fee ) ( limit )\n"
+            "\nTHIS API IS DEPRECATED AND NON NECESSARY TO USE ON VERUS OR STANDARD PBAAS NETWORKS"
             "\nShield transparent coinbase funds by sending to a shielded zaddr.  This is an asynchronous operation and utxos"
             "\nselected for shielding will be locked.  If there is an error, they are unlocked.  The RPC call `listlockunspent`"
             "\ncan be used to return a list of locked utxos.  The number of coinbase utxos selected for shielding can be limited"
@@ -5556,6 +5566,7 @@ UniValue z_shieldcoinbase(const UniValue& params, bool fHelp)
             + HelpExampleRpc("z_shieldcoinbase", "\"RD6GgnrMpPaTSMn8vai6yiGA7mN4QGPV\", \"ztfaW34Gj9FrnGUEf833ywDVL62NWXBM81u6EQnM6VR45eYnXhwztecW1SjxA7JrmAXKJhxhj3vDNEpVCQoSvVoSpmbhtjf\"")
         );
 
+    printf("Shielding coinbases in Verus or standard PBaaS bockchain networks is unnecessary and %s is a deprecated function\n", __func__);
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
     // Validate the from address
@@ -5570,9 +5581,10 @@ UniValue z_shieldcoinbase(const UniValue& params, bool fHelp)
     }
 
     // Validate the destination address
-    auto destaddress = params[1].get_str();
-    if (!IsValidPaymentAddressString(destaddress, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()))) {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, string("Invalid parameter, unknown address format: ") + destaddress );
+    libzcash::PaymentAddress zaddress;
+    if (!pwalletMain->GetAndValidateSaplingZAddress(params[1].get_str(), zaddress))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, string("Invalid parameter, unknown address format: ") + params[1].get_str() );
     }
 
     // Convert fee from currency format to zatoshis
@@ -5596,19 +5608,6 @@ UniValue z_shieldcoinbase(const UniValue& params, bool fHelp)
     int nextBlockHeight = chainActive.Height() + 1;
     bool overwinterActive = Params().GetConsensus().NetworkUpgradeActive(nextBlockHeight, Consensus::UPGRADE_OVERWINTER);
     unsigned int max_tx_size = MAX_TX_SIZE_AFTER_SAPLING;
-    if (!Params().GetConsensus().NetworkUpgradeActive(nextBlockHeight, Consensus::UPGRADE_SAPLING)) {
-        max_tx_size = MAX_TX_SIZE_BEFORE_SAPLING;
-        auto res = DecodePaymentAddress(destaddress);
-        // If Sapling is not active, do not allow sending to a Sapling address.
-        if (IsValidPaymentAddress(res)) {
-            bool toSapling = boost::get<libzcash::SaplingPaymentAddress>(&res) != nullptr;
-            if (toSapling) {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, Sapling has not activated");
-            }
-        } else {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, string("Invalid parameter, unknown address format: ") + destaddress );
-        }
-    }
 
     // Prepare to get coinbase utxos
     std::vector<ShieldCoinbaseUTXO> inputs;
@@ -5701,9 +5700,10 @@ UniValue z_shieldcoinbase(const UniValue& params, bool fHelp)
     }
 
     // Keep record of parameters in context object
+    std::string destaddress = EncodePaymentAddress(zaddress);
     UniValue contextInfo(UniValue::VOBJ);
     contextInfo.push_back(Pair("fromaddress", params[0]));
-    contextInfo.push_back(Pair("toaddress", params[1]));
+    contextInfo.push_back(Pair("toaddress", destaddress));
     contextInfo.push_back(Pair("fee", ValueFromAmount(nFee)));
 
     // Builder (used if Sapling addresses are involved)
@@ -5889,7 +5889,7 @@ UniValue z_mergetoaddress(const UniValue& params, bool fHelp)
             if (IsValidPaymentAddress(res)) {
                 isToSaplingZaddr = boost::get<libzcash::SaplingPaymentAddress>(&res) != nullptr;
             } else {
-                isToSproutZaddr = true;
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Legacy Sprout address not supported as destination. Use a transparent or Sapling compatible address");
             }
         } else {
             throw JSONRPCError(RPC_INVALID_PARAMETER, string("Invalid parameter, unknown address format: ") + destaddress );

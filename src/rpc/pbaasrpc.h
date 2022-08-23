@@ -22,8 +22,9 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
 bool GetNotarizationData(const uint160 &chainID, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut = NULL);
 bool GetChainTransfers(std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, 
                             uint160 chainFilter = uint160(), int start=0, int end=0, uint32_t flags=CReserveTransfer::VALID);
+bool GetChainTransfersUnspentBy(std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors,
+                            uint160 chainFilter, uint32_t start, uint32_t end, uint32_t unspentBy, uint32_t flags=CReserveTransfer::VALID);
 bool GetUnspentChainTransfers(std::multimap<uint160, ChainTransferData> &inputDescriptors, uint160 chainFilter = uint160());
-
 UniValue getcurrency(const UniValue& params, bool fHelp);
 UniValue getnotarizationdata(const UniValue& params, bool fHelp);
 UniValue definecurrency(const UniValue& params, bool fHelp);

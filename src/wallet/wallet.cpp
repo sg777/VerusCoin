@@ -1568,6 +1568,12 @@ CWallet::TxItems CWallet::OrderedTxItems(std::list<CAccountingEntry>& acentries,
     return txOrdered;
 }
 
+bool CWallet::IsMineLock(const CTxDestination &destination) const
+{
+    LOCK(pwalletMain->cs_wallet);
+    return ::IsMine(*this, destination);
+}
+
 // looks through all wallet UTXOs and checks to see if any qualify to stake the block at the current height. it always returns the qualified
 // UTXO with the smallest coin age if there is more than one, as larger coin age will win more often and is worth saving
 // each attempt consists of taking a VerusHash of the following values:
@@ -1701,38 +1707,41 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
             int nRequired = 0;
             bool canSign = false, canSpend = false;
 
-            if (UintToArith256(txout.tx->GetVerusPOSHash(&(pBlock->nNonce), txout.i, nHeight, pastHash)) <= target &&
-                ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey, whichType, destinations, nRequired, this, &canSign, &canSpend) &&
-                ((txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) && 
-                  extendedStake && 
-                  canSpend) ||
-                (!p.IsValid() && (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH) && ::IsMine(*this, destinations[0]))))
+            if (UintToArith256(txout.tx->GetVerusPOSHash(&(pBlock->nNonce), txout.i, nHeight, pastHash)) <= target)
             {
-                uint256 txHash = txout.tx->GetHash();
-                checkStakeTx.vin.push_back(CTxIn(COutPoint(txHash, txout.i)));
-
                 LOCK2(cs_main, cs_wallet);
 
-                if ((!pwinner || UintToArith256(curNonce) < UintToArith256(pBlock->nNonce)) &&
-                    !cheatList.IsUTXOInList(COutPoint(txHash, txout.i), nHeight <= 100 ? 1 : nHeight-100))
+                if (ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey, whichType, destinations, nRequired, this, &canSign, &canSpend) &&
+                    ((txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) && 
+                    extendedStake && 
+                    canSpend) ||
+                    (!p.IsValid() && (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH) && ::IsMine(*this, destinations[0]))))
                 {
-                    if (view.HaveCoins(txHash) && Consensus::CheckTxInputs(checkStakeTx, state, view, nHeight, consensusParams))
-                    {
-                        //printf("Found PoS block\nnNonce:    %s\n", pBlock->nNonce.GetHex().c_str());
-                        pwinner = &txout;
-                        curNonce = pBlock->nNonce;
-                        srcIndex = nHeight - txout.nDepth;
-                    }
-                    else
-                    {
-                        LogPrintf("Transaction %s failed to stake due to %s\n", txout.tx->GetHash().GetHex().c_str(), 
-                                                                                view.HaveCoins(txHash) ? "bad inputs" : "unavailable coins");
-                    }
-                }
+                    uint256 txHash = txout.tx->GetHash();
+                    checkStakeTx.vin.push_back(CTxIn(COutPoint(txHash, txout.i)));
 
-                checkStakeTx.vin.pop_back();
+                    if ((!pwinner || UintToArith256(curNonce) < UintToArith256(pBlock->nNonce)) &&
+                        !cheatList.IsUTXOInList(COutPoint(txHash, txout.i), nHeight <= 100 ? 1 : nHeight-100))
+                    {
+                        if (view.HaveCoins(txHash) && Consensus::CheckTxInputs(checkStakeTx, state, view, nHeight, consensusParams))
+                        {
+                            //printf("Found PoS block\nnNonce:    %s\n", pBlock->nNonce.GetHex().c_str());
+                            pwinner = &txout;
+                            curNonce = pBlock->nNonce;
+                            srcIndex = nHeight - txout.nDepth;
+                        }
+                        else
+                        {
+                            LogPrintf("Transaction %s failed to stake due to %s\n", txout.tx->GetHash().GetHex().c_str(), 
+                                                                                    view.HaveCoins(txHash) ? "bad inputs" : "unavailable coins");
+                        }
+                    }
+
+                    checkStakeTx.vin.pop_back();
+                }
             }
         }
+
         if (pwinner)
         {
             stakeSource = static_cast<CTransaction>(*pwinner->tx);
@@ -1749,6 +1758,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
 
             if (solutionVersion >= CActivationHeight::ACTIVATE_STAKEHEADER)
             {
+                LOCK(cs_main);
                 CDataStream headerStream = CDataStream(SER_NETWORK, PROTOCOL_VERSION);
 
                 // store:
@@ -2411,7 +2421,11 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
             else
             {
                 // this should never happen
-                assert(false);
+                UniValue txUniv(UniValue::VOBJ);
+                TxToUniv(tx, pblock->GetHash(), txUniv);
+                LogPrintf("%s: UNEXPECTED ERROR: block (%s) for transaction %s:\n%s\nnot found\n", __func__, pblock->GetHash().GetHex().c_str(), txHash.GetHex().c_str(), txUniv.write(1,2).c_str());
+                printf("%s: UNEXPECTED ERROR: block (%s) for transaction %s:\n%s\nnot found\n", __func__, pblock->GetHash().GetHex().c_str(), txHash.GetHex().c_str(), txUniv.write(1,2).c_str());
+                return false;
             }
         }
 
@@ -3079,7 +3093,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 
 void CWallet::SyncTransaction(const CTransaction& tx, const CBlock* pblock)
 {
-    LOCK(cs_wallet);
+    LOCK2(cs_main, cs_wallet);
     if (!AddToWalletIfInvolvingMe(tx, pblock, true, false))
         return; // Not one of ours
 
@@ -4372,7 +4386,6 @@ void CWallet::ReacceptWalletTransactions()
     {
         CWalletTx& wtx = *(item.second);
 
-        LOCK(mempool.cs);
         CValidationState state;
         // attempt to add them, but don't set any DOS level
         if (!::AcceptToMemoryPool(mempool, state, wtx, false, NULL, true, 0))
@@ -6556,7 +6569,6 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                 // Check mempooltxinputlimit to avoid creating a transaction which the local mempool rejects
                 size_t limit = (size_t)GetArg("-mempooltxinputlimit", 0);
                 {
-                    LOCK(cs_main);
                     if (Params().GetConsensus().NetworkUpgradeActive(chainActive.Height() + 1, Consensus::UPGRADE_OVERWINTER)) {
                         limit = 0;
                     }

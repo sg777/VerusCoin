@@ -1107,26 +1107,23 @@ UniValue CObjectFinalization::ToUniValue() const
                                     IsRejected() ? 
                                         "rejected" : 
                                         "pending"));
-    if (IsConfirmed() || IsRejected())
+    if (evidenceInputs.size())
     {
-        if (evidenceInputs.size())
+        UniValue inputsUni(UniValue::VARR);
+        for (auto i : evidenceInputs)
         {
-            UniValue inputsUni(UniValue::VARR);
-            for (auto i : evidenceInputs)
-            {
-                inputsUni.push_back(i);
-            }
-            ret.pushKV("evidenceinputs", inputsUni);
+            inputsUni.push_back(i);
         }
-        if (evidenceOutputs.size())
+        ret.pushKV("evidenceinputs", inputsUni);
+    }
+    if (evidenceOutputs.size())
+    {
+        UniValue outputsUni(UniValue::VARR);
+        for (auto i : evidenceOutputs)
         {
-            UniValue outputsUni(UniValue::VARR);
-            for (auto i : evidenceOutputs)
-            {
-                outputsUni.push_back(i);
-            }
-            ret.pushKV("evidenceoutputs", outputsUni);
+            outputsUni.push_back(i);
         }
+        ret.pushKV("evidenceoutputs", outputsUni);
     }
     ret.push_back(Pair("currencyid", EncodeDestination(CIdentityID(currencyID))));
     ret.push_back(Pair("output", output.ToUniValue()));
@@ -1551,7 +1548,7 @@ void ScriptPubKeyToUniv(const CScript& scriptPubKey, UniValue& out, bool fInclud
         }
     }
 
-    out.push_back(Pair("spendableoutput", scriptPubKey.IsSpendableOutputType() ? true : false));
+    out.push_back(Pair("spendableoutput", scriptPubKey.IsSpendableOutputType()));
 
     if (tokensOut.valueMap.size())
     {

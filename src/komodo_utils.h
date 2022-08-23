@@ -1690,13 +1690,6 @@ uint64_t komodo_ac_block_subsidy(int nHeight)
         {
             subsidy += ASSETCHAINS_SUPPLY + (ASSETCHAINS_MAGIC & 0xffffff);
         }
-        // TODO: HARDENING - supply has always been zero when this was called and it
-        // mattered in the past on PBaaS chains. verify this is correct to have this commented
-        // before mainnet release
-        /*else
-        {
-            subsidy += ASSETCHAINS_SUPPLY;
-        } */
         else if (_IsVerusActive())
         {
             subsidy += ASSETCHAINS_SUPPLY;

@@ -766,7 +766,7 @@ uint256 CPartialTransactionProof::GetPartialTransaction(CTransaction &outTx, boo
 
                 if (ccx.IsValid() && checkOK)
                 {
-                    auto hw2 = CNativeHashWriter(CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
+                    CNativeHashWriter hw2(CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
                     hw2 << ccx;
                     hw2 << prevtxid;
 
@@ -802,3 +802,15 @@ uint256 CPartialTransactionProof::CheckPartialTransaction(CTransaction &outTx, b
 {
     return txProof.CheckProof(GetPartialTransaction(outTx, pIsPartial));
 }
+
+uint256 CPartialTransactionProof::CheckBlockPreHeader(CPBaaSPreHeader &outPreHeader) const
+{
+    CPBaaSPreHeader preHeader = GetBlockPreHeader();
+    if (preHeader.IsValid())
+    {
+        auto hw = CDefaultMMRNode::GetHashWriter();
+        return txProof.CheckProof((hw << preHeader).GetHash());
+    }
+    return uint256();
+}
+

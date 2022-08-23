@@ -345,12 +345,10 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
             std::vector<CC*> ccs;
 
             CIdentity identity;
-            bool identitySpend = false;
             uint160 idID;
             if (p.evalCode == EVAL_IDENTITY_PRIMARY)
             {
                 identity = CIdentity(p.vData[0]);
-                identitySpend = identity.IsValid();
                 idID = identity.GetID();
             }
 
@@ -393,7 +391,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                             // if revoked or undefined
                             CIdentity id;
 
-                            // if this is an identity self spend, we always use the absolute latest version to control it ,mcf 
+                            // if this is an identity self spend, we always use the absolute latest version to control it
                             if (destId == idID)
                             {
                                 id = identity;

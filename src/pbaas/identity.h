@@ -31,6 +31,7 @@
 #include "script/standard.h"
 #include "primitives/transaction.h"
 #include "arith_uint256.h"
+#include "addressindex.h"
 
 std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false, bool addVerus=true);
 
@@ -255,6 +256,7 @@ public:
     static const uint8_t VERSION_VERUSID = 1;
     static const uint8_t VERSION_VAULT = 2;
     static const uint8_t VERSION_PBAAS = 3;
+    static const uint8_t VERSION_CURRENT = VERSION_VAULT;
     static const uint8_t VERSION_FIRSTVALID = 1;
     static const uint8_t VERSION_LASTVALID = 3;
 
@@ -383,6 +385,7 @@ public:
         FLAG_REVOKED = 0x8000,              // set when this identity is revoked
         FLAG_ACTIVECURRENCY = 0x1,          // flag that is set when this ID is being used as an active currency name
         FLAG_LOCKED = 0x2,                  // set when this identity is locked
+        FLAG_TOKENIZED_CONTROL = 0x4,       // set when revocation/recovery over this identity can be performed by anyone who controls its token
         MAX_UNLOCK_DELAY = 60 * 24 * 22 * 365 // 21+ year maximum unlock time for an ID
     };
 
@@ -630,7 +633,7 @@ public:
     {
         if (nVersion == VERSION_FIRSTVALID)
         {
-            nVersion = VERSION_VAULT;
+            nVersion = VERSION_CURRENT;
         }
         flags |= FLAG_ACTIVECURRENCY;
     }
@@ -643,6 +646,25 @@ public:
     bool HasActiveCurrency() const
     {
         return flags & FLAG_ACTIVECURRENCY;
+    }
+
+    void ActivateTokenizedControl()
+    {
+        if (nVersion >= VERSION_FIRSTVALID && nVersion < VERSION_PBAAS)
+        {
+            nVersion = VERSION_PBAAS;
+        }
+        flags |= FLAG_TOKENIZED_CONTROL;
+    }
+
+    void DeactivateTokenizedControl()
+    {
+        flags &= ~FLAG_TOKENIZED_CONTROL;
+    }
+
+    bool HasTokenizedControl() const
+    {
+        return flags & FLAG_TOKENIZED_CONTROL;
     }
 
     bool IsValid(bool strict=false) const
@@ -733,6 +755,7 @@ public:
             privateAddresses != newIdentity.privateAddresses ||
             (unlockAfter != newIdentity.unlockAfter && (!isRevokedExempt || newIdentity.unlockAfter != 0)) ||
             (HasActiveCurrency() != newIdentity.HasActiveCurrency()) ||
+            (HasTokenizedControl() != newIdentity.HasTokenizedControl()) ||
             (IsLocked() != newIdentity.IsLocked() && (!isRevokedExempt || newIdentity.IsLocked())))
         {
             return true;
@@ -781,6 +804,66 @@ public:
         }
         return false;
     }
+
+    static std::string IdentityRevocationKeyName()
+    {
+        return "vrsc::system.identity.revocationkey";
+    }
+
+    uint160 IdentityRevocationKey() const
+    {
+        uint160 nameSpace;
+        return CCrossChainRPCData::GetConditionID(CVDXF::GetDataKey(IdentityRevocationKeyName(), nameSpace), GetID());
+    }
+
+    static uint160 IdentityRevocationKey(const CIdentityID &identityID)
+    {
+        uint160 nameSpace;
+        return CCrossChainRPCData::GetConditionID(CVDXF::GetDataKey(IdentityRevocationKeyName(), nameSpace), identityID);
+    }
+
+    static std::string IdentityRecoveryKeyName()
+    {
+        return "vrsc::system.identity.recoverykey";
+    }
+
+    uint160 IdentityRecoveryKey() const
+    {
+        uint160 nameSpace;
+        return CCrossChainRPCData::GetConditionID(CVDXF::GetDataKey(IdentityRecoveryKeyName(), nameSpace), GetID());
+    }
+
+    static uint160 IdentityRecoveryKey(const CIdentityID &identityID)
+    {
+        uint160 nameSpace;
+        return CCrossChainRPCData::GetConditionID(CVDXF::GetDataKey(IdentityRecoveryKeyName(), nameSpace), identityID);
+    }
+
+    static std::string IdentityPrimaryAddressKeyName()
+    {
+        return "vrsc::system.identity.primaryaddress";
+    }
+
+    static uint160 IdentityPrimaryAddressKey(const CTxDestination &dest);
+
+    std::vector<uint160> IdentityPrimaryAddressKeys() const
+    {
+        uint160 nameSpace;
+        std::vector<uint160> retVec;
+
+        for (auto &oneDest : primaryAddresses)
+        {
+            retVec.push_back(IdentityPrimaryAddressKey(oneDest));
+        }
+        return retVec;
+    }
+
+    static bool GetIdentityOutsByPrimaryAddress(const CTxDestination &address, std::map<uint160, std::pair<std::pair<CAddressIndexKey, CAmount>, CIdentity>> &identities, uint32_t start=0, uint32_t end=0);
+    static bool GetIdentityOutsWithRevocationID(const CIdentityID &idID, std::map<uint160, std::pair<std::pair<CAddressIndexKey, CAmount>, CIdentity>> &identities, uint32_t start=0, uint32_t end=0);
+    static bool GetIdentityOutsWithRecoveryID(const CIdentityID &idID, std::map<uint160, std::pair<std::pair<CAddressIndexKey, CAmount>, CIdentity>> &identities, uint32_t start=0, uint32_t end=0);
+    static bool GetActiveIdentitiesByPrimaryAddress(const CTxDestination &address, std::map<uint160, std::pair<std::pair<CAddressUnspentKey, CAddressUnspentValue>, CIdentity>> &identities);
+    static bool GetActiveIdentitiesWithRevocationID(const CIdentityID &idID, std::map<uint160, std::pair<std::pair<CAddressUnspentKey, CAddressUnspentValue>, CIdentity>> &identities);
+    static bool GetActiveIdentitiesWithRecoveryID(const CIdentityID &idID, std::map<uint160, std::pair<std::pair<CAddressUnspentKey, CAddressUnspentValue>, CIdentity>> &identities);
 };
 
 class CIdentityMapKey

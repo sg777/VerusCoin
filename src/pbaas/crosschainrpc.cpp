@@ -42,6 +42,7 @@
 #include "hash.h"
 #include "pbaas/crosschainrpc.h"
 #include "pbaas/identity.h"
+#include "sync.h"
 
 using namespace std;
 
@@ -284,6 +285,7 @@ CIdentitySignature::CIdentitySignature(const UniValue &uni)
     try
     {
         version = uni_get_int(find_value(uni, "version"));
+        hashType = uni_get_int(find_value(uni, "hashtype"), CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR);
         blockHeight = uni_get_int64(find_value(uni, "blockheight"));
         UniValue sigs = find_value(uni, "signatures");
         if (sigs.isArray() && sigs.size())
@@ -323,7 +325,7 @@ uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vd
     }
     else
     {
-        auto ss = CNativeHashWriter((CCurrencyDefinition::EProofProtocol)hashType);
+        CNativeHashWriter ss((CCurrencyDefinition::EProofProtocol)hashType);
 
         bool crossChainLogging = LogAcceptCategory("notarysignatures");
         if (crossChainLogging)
@@ -393,7 +395,8 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(co
                                                                               const std::vector<uint256> &statements, 
                                                                               const uint160 systemID, 
                                                                               const std::string &prefixString, 
-                                                                              const uint256 &msgHash) const
+                                                                              const uint256 &msgHash,
+                                                                              std::vector<std::vector<unsigned char>> *pDupSigs) const
 {
     CPubKey checkKey;
     std::set<uint160> keys;
@@ -419,11 +422,17 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(co
             return SIGNATURE_INVALID;
         }
         uint160 checkKeyID = checkKey.GetID();
+
         if (!idKeys.count(checkKeyID))
         {
             return SIGNATURE_INVALID;
         }
-        keys.insert(checkKey.GetID());
+
+        if (pDupSigs && keys.count(checkKeyID))
+        {
+            pDupSigs->push_back(oneSig);
+        }
+        keys.insert(checkKeyID);
     }
     if (keys.size() >= signingID.minSigs)
     {
@@ -435,7 +444,7 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(co
     }
     else
     {
-        return SIGNATURE_INVALID;
+        return SIGNATURE_EMPTY;
     }
 }
 
@@ -1099,7 +1108,7 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
             UniValue uniEra1(UniValue::VOBJ);
             uniEra1.pushKV("reward", 1200000000);
             uniEra1.pushKV("decay", 0);
-            uniEra1.pushKV("halving", 1011011);
+            uniEra1.pushKV("halving", 163382);
             uniEra1.pushKV("eraend", 0);
             uniEras.push_back(uniEra1);
 
@@ -1142,6 +1151,348 @@ int32_t CCurrencyDefinition::GetTotalCarveOut() const
     return preLaunchCarveOut;
 }
 
+const std::map<uint160, int> &CCrossChainProof::KnownVDXFKeys()
+{
+    static CCriticalSection localCS;
+    static std::map<uint160, int> knownVDXFKeys;
+
+    LOCK(localCS);
+    if (!knownVDXFKeys.size())
+    {
+        knownVDXFKeys.insert(std::make_pair(CrossChainProofKey(), CHAINOBJ_CROSSCHAINPROOF));
+        knownVDXFKeys.insert(std::make_pair(HeaderAndProofKey(), CHAINOBJ_HEADER));
+        knownVDXFKeys.insert(std::make_pair(HeaderProofKey(), CHAINOBJ_HEADER_REF));
+        knownVDXFKeys.insert(std::make_pair(NotarySignatureKey(), CHAINOBJ_NOTARYSIGNATURE));
+        knownVDXFKeys.insert(std::make_pair(HashCommitmentsKey(), CHAINOBJ_COMMITMENTDATA));
+        knownVDXFKeys.insert(std::make_pair(ProofRootKey(), CHAINOBJ_PROOF_ROOT));
+        knownVDXFKeys.insert(std::make_pair(TransactionProofKey(), CHAINOBJ_TRANSACTION_PROOF));
+        knownVDXFKeys.insert(std::make_pair(ReserveTransferKey(), CHAINOBJ_RESERVETRANSFER));
+        knownVDXFKeys.insert(std::make_pair(EvidenceDataKey(), CHAINOBJ_EVIDENCEDATA));
+    }
+    return knownVDXFKeys;
+}
+
+const std::map<int, uint160> &CCrossChainProof::KnownVDXFIndices()
+{
+    static CCriticalSection localCS;
+    static std::map<int, uint160> knownVDXFIndices;
+
+    LOCK(localCS);
+    if (!knownVDXFIndices.size())
+    {
+        knownVDXFIndices.insert(std::make_pair(CHAINOBJ_CROSSCHAINPROOF, CrossChainProofKey()));
+        knownVDXFIndices.insert(std::make_pair(CHAINOBJ_HEADER, HeaderAndProofKey()));
+        knownVDXFIndices.insert(std::make_pair(CHAINOBJ_HEADER_REF, HeaderProofKey()));
+        knownVDXFIndices.insert(std::make_pair(CHAINOBJ_NOTARYSIGNATURE, NotarySignatureKey()));
+        knownVDXFIndices.insert(std::make_pair(CHAINOBJ_COMMITMENTDATA, HashCommitmentsKey()));
+        knownVDXFIndices.insert(std::make_pair(CHAINOBJ_PROOF_ROOT, ProofRootKey()));
+        knownVDXFIndices.insert(std::make_pair(CHAINOBJ_TRANSACTION_PROOF, TransactionProofKey()));
+        knownVDXFIndices.insert(std::make_pair(CHAINOBJ_RESERVETRANSFER, ReserveTransferKey()));
+        knownVDXFIndices.insert(std::make_pair(CHAINOBJ_EVIDENCEDATA, EvidenceDataKey()));
+    }
+    return knownVDXFIndices;
+}
+
+void DeleteOpRetObjects(std::vector<CBaseChainObject *> &ora)
+{
+    for (auto pobj : ora)
+    {
+        switch(pobj->objectType)
+        {
+            case CHAINOBJ_HEADER:
+            {
+                delete (CChainObject<CBlockHeaderAndProof> *)pobj;
+                break;
+            }
+
+            case CHAINOBJ_TRANSACTION_PROOF:
+            {
+                delete (CChainObject<CPartialTransactionProof> *)pobj;
+                break;
+            }
+
+            case CHAINOBJ_PROOF_ROOT:
+            {
+                delete (CChainObject<CProofRoot> *)pobj;
+                break;
+            }
+
+            case CHAINOBJ_EVIDENCEDATA:
+            {
+                delete (CChainObject<CEvidenceData> *)pobj;
+                break;
+            }
+
+            case CHAINOBJ_HEADER_REF:
+            {
+                delete (CChainObject<CBlockHeaderProof> *)pobj;
+                break;
+            }
+
+            case CHAINOBJ_COMMITMENTDATA:
+            {
+                delete (CChainObject<CHashCommitments> *)pobj;
+                break;
+            }
+
+            case CHAINOBJ_RESERVETRANSFER:
+            {
+                delete (CChainObject<CReserveTransfer> *)pobj;
+                break;
+            }
+
+            case CHAINOBJ_CROSSCHAINPROOF:
+            {
+                delete (CChainObject<CCrossChainProof> *)pobj;
+                break;
+            }
+
+            case CHAINOBJ_COMPOSITEOBJECT:
+            {
+                delete (CChainObject<CCompositeChainObject> *)pobj;
+                break;
+            }
+
+            case CHAINOBJ_NOTARYSIGNATURE:
+            {
+                delete (CChainObject<CNotarySignature> *)pobj;
+                break;
+            }
+
+            default:
+            {
+                printf("ERROR: invalid object type (%u), likely corrupt pointer %p\n", pobj->objectType, pobj);
+                printf("generate code that won't be optimized away %s\n", CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<CAmount>({200000000})).ToUniValue().write(1,2).c_str());
+                
+                delete pobj;
+            }
+        }
+    }
+    ora.clear();
+}
+
+CCrossChainProof::CCrossChainProof(const UniValue &uniObj)
+{
+    version = uni_get_int(find_value(uniObj, "version"), VERSION_CURRENT);
+    UniValue chainObjArr = find_value(uniObj, "chainobjects");
+    if (chainObjArr.isArray())
+    {
+        for (int i = 0; i < chainObjArr.size(); i++)
+        {
+            // each element is an object with a VDXF key and univalue object specific to the VDXF type
+            // for any VDXF object that isn't understood, we skip it as a char vector
+            std::string vdxfKey = uni_get_str(find_value(chainObjArr[i], "vdxftype"));
+            UniValue obj = find_value(chainObjArr[i], "value");
+            CTxDestination keyDest = DecodeDestination(vdxfKey);
+            uint160 namespaceID;
+            if (keyDest.which() == COptCCParams::ADDRTYPE_INVALID)
+            {
+                uint160 vdxfKeyID = CVDXF::GetDataKey(vdxfKey, namespaceID);
+                if (!vdxfKeyID.IsNull())
+                {
+                    keyDest = CIdentityID(vdxfKeyID);
+                }
+            }
+            // if no valid key or empty value
+            if (keyDest.which() != COptCCParams::ADDRTYPE_ID ||
+                obj.isNull())
+            {
+                version = VERSION_INVALID;
+                DeleteOpRetObjects(chainObjects);
+                chainObjects.clear();
+                break;
+            }
+            uint160 vdxfKeyID = GetDestinationID(keyDest);
+            if (KnownVDXFKeys().count(vdxfKeyID))
+            {
+                switch (KnownVDXFKeys().find(vdxfKeyID)->second)
+                {
+                    case CHAINOBJ_HEADER:
+                    {
+                        chainObjects.push_back(new CChainObject<CBlockHeaderAndProof>(CHAINOBJ_HEADER, CBlockHeaderAndProof(obj)));
+                        break;
+                    }
+
+                    case CHAINOBJ_TRANSACTION_PROOF:
+                    {
+                        chainObjects.push_back(new CChainObject<CPartialTransactionProof>(CHAINOBJ_TRANSACTION_PROOF, CPartialTransactionProof(obj)));
+                        break;
+                    }
+
+                    case CHAINOBJ_PROOF_ROOT:
+                    {
+                        chainObjects.push_back(new CChainObject<CProofRoot>(CHAINOBJ_PROOF_ROOT, CProofRoot(obj)));
+                        break;
+                    }
+
+                    case CHAINOBJ_HEADER_REF:
+                    {
+                        chainObjects.push_back(new CChainObject<CBlockHeaderProof>(CHAINOBJ_HEADER_REF, CBlockHeaderProof(obj)));
+                        break;
+                    }
+
+                    case CHAINOBJ_COMMITMENTDATA:
+                    {
+                        chainObjects.push_back(new CChainObject<CHashCommitments>(CHAINOBJ_COMMITMENTDATA, CHashCommitments(obj)));
+                        break;
+                    }
+
+                    case CHAINOBJ_RESERVETRANSFER:
+                    {
+                        chainObjects.push_back(new CChainObject<CReserveTransfer>(CHAINOBJ_RESERVETRANSFER, CReserveTransfer(obj)));
+                        break;
+                    }
+
+                    case CHAINOBJ_CROSSCHAINPROOF:
+                    case CHAINOBJ_COMPOSITEOBJECT:
+                    {
+                        chainObjects.push_back(new CChainObject<CCrossChainProof>(CHAINOBJ_CROSSCHAINPROOF, CCrossChainProof(obj)));
+                        break;
+                    }
+
+                    case CHAINOBJ_NOTARYSIGNATURE:
+                    {
+                        chainObjects.push_back(new CChainObject<CNotarySignature>(CHAINOBJ_NOTARYSIGNATURE, CNotarySignature(obj)));
+                        break;
+                    }
+
+                    case CHAINOBJ_EVIDENCEDATA:
+                    {
+                        chainObjects.push_back(new CChainObject<CEvidenceData>(CHAINOBJ_EVIDENCEDATA, CEvidenceData(obj)));
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                // we ignore elements we don't understand
+            }
+        }
+    }
+}
+
+UniValue CCrossChainProof::ToUniValue() const
+{
+    UniValue chainObjArr(UniValue::VARR);
+
+    for (int i = 0; i < chainObjects.size(); i++)
+    {
+        try
+        {
+            union {
+                CChainObject<CBlockHeaderAndProof> *pNewHeader;
+                CChainObject<CPartialTransactionProof> *pNewTx;
+                CChainObject<CProofRoot> *pNewProof;
+                CChainObject<CBlockHeaderProof> *pNewHeaderRef;
+                CChainObject<CHashCommitments> *pPriors;
+                CChainObject<CReserveTransfer> *pExport;
+                CChainObject<CCrossChainProof> *pCrossChainProof;
+                CChainObject<CNotarySignature> *pNotarySignature;
+                CChainObject<CEvidenceData> *pBytes;
+                CBaseChainObject *pobj;
+            };
+
+            pobj = chainObjects[i];
+            if (pobj)
+            {
+                switch(pobj->objectType)
+                {
+                    case CHAINOBJ_HEADER:
+                    {
+                        UniValue blockHeaderAndProofUni(UniValue::VOBJ);
+                        blockHeaderAndProofUni.pushKV("vdxftype", EncodeDestination(CIdentityID(CCrossChainProof::HeaderAndProofKey())));
+                        blockHeaderAndProofUni.pushKV("value", pNewHeader->object.ToUniValue());
+                        chainObjArr.push_back(blockHeaderAndProofUni);
+                        break;
+                    }
+
+                    case CHAINOBJ_TRANSACTION_PROOF:
+                    {
+                        UniValue partialTransactionProofUni(UniValue::VOBJ);
+                        partialTransactionProofUni.pushKV("vdxftype", EncodeDestination(CIdentityID(CCrossChainProof::TransactionProofKey())));
+                        partialTransactionProofUni.pushKV("value", pNewTx->object.ToUniValue());
+                        chainObjArr.push_back(partialTransactionProofUni);
+                        break;
+                    }
+
+                    case CHAINOBJ_PROOF_ROOT:
+                    {
+                        UniValue proofRootUni(UniValue::VOBJ);
+                        proofRootUni.pushKV("vdxftype", EncodeDestination(CIdentityID(CCrossChainProof::ProofRootKey())));
+                        proofRootUni.pushKV("value", pNewProof->object.ToUniValue());
+                        chainObjArr.push_back(proofRootUni);
+                        break;
+                    }
+
+                    case CHAINOBJ_HEADER_REF:
+                    {
+                        UniValue headerRefUni(UniValue::VOBJ);
+                        headerRefUni.pushKV("vdxftype", EncodeDestination(CIdentityID(CCrossChainProof::HeaderProofKey())));
+                        headerRefUni.pushKV("value", pNewHeaderRef->object.ToUniValue());
+                        chainObjArr.push_back(headerRefUni);
+                        break;
+                    }
+
+                    case CHAINOBJ_COMMITMENTDATA:
+                    {
+                        UniValue priorBlocksUni(UniValue::VOBJ);
+                        priorBlocksUni.pushKV("vdxftype", EncodeDestination(CIdentityID(CCrossChainProof::HashCommitmentsKey())));
+                        priorBlocksUni.pushKV("value", pPriors->object.ToUniValue());
+                        chainObjArr.push_back(priorBlocksUni);
+                        break;
+                    }
+                    case CHAINOBJ_RESERVETRANSFER:
+                    {
+                        UniValue reserveTransferUni(UniValue::VOBJ);
+                        reserveTransferUni.pushKV("vdxftype", EncodeDestination(CIdentityID(CCrossChainProof::ReserveTransferKey())));
+                        reserveTransferUni.pushKV("value", pExport->object.ToUniValue());
+                        chainObjArr.push_back(reserveTransferUni);
+                        break;
+                    }
+
+                    case CHAINOBJ_CROSSCHAINPROOF:
+                    case CHAINOBJ_COMPOSITEOBJECT:
+                    {
+                        UniValue crossChainProofUni(UniValue::VOBJ);
+                        crossChainProofUni.pushKV("vdxftype", EncodeDestination(CIdentityID(CCrossChainProof::CrossChainProofKey())));
+                        crossChainProofUni.pushKV("value", pCrossChainProof->object.ToUniValue());
+                        chainObjArr.push_back(crossChainProofUni);
+                        break;
+                    }
+
+                    case CHAINOBJ_NOTARYSIGNATURE:
+                    {
+                        UniValue notarySignatureUni(UniValue::VOBJ);
+                        notarySignatureUni.pushKV("vdxftype", EncodeDestination(CIdentityID(CCrossChainProof::NotarySignatureKey())));
+                        notarySignatureUni.pushKV("value", pNotarySignature->object.ToUniValue());
+                        chainObjArr.push_back(notarySignatureUni);
+                        break;
+                    }
+
+                    case CHAINOBJ_EVIDENCEDATA:
+                    {
+                        UniValue bytesUni(UniValue::VOBJ);
+                        bytesUni.pushKV("vdxftype", EncodeDestination(CIdentityID(CCrossChainProof::EvidenceDataKey())));
+                        bytesUni.pushKV("value", pBytes->object.ToUniValue());
+                        chainObjArr.push_back(bytesUni);
+                        break;
+                    }
+                }
+            }
+        }
+        catch(const std::exception& e)
+        {
+            printf("%s: ERROR: data is likely corrupt\n", __func__);
+            LogPrintf("%s: ERROR: data is likely corrupt\n", __func__);
+            throw e;
+        }
+    }
+    UniValue retVal(UniValue::VOBJ);
+    retVal.pushKV("version", (int64_t)version);
+    retVal.pushKV("chainobjects", chainObjArr);
+    return retVal;
+}
+
 CAmount AmountFromValue(const UniValue& value)
 {
     if (!value.isNum() && !value.isStr())
@@ -1153,4 +1504,3 @@ CAmount AmountFromValue(const UniValue& value)
         throw JSONRPCError(RPC_TYPE_ERROR, "Amount out of range");
     return amount;
 }
-

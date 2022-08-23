@@ -25,7 +25,7 @@ int64_t komodo_current_supply(uint32_t nHeight);
 
 extern uint32_t ASSETCHAINS_ALGO, ASSETCHAINS_EQUIHASH, ASSETCHAINS_VERUSHASH, ASSETCHAINS_STAKED, ASSETCHAINS_LWMAPOS, ASSETCHAINS_STARTING_DIFF;
 extern char ASSETCHAINS_SYMBOL[65];
-extern int32_t VERUS_BLOCK_POSUNITS, VERUS_CONSECUTIVE_POS_THRESHOLD, VERUS_PBAAS_CONSECUTIVE_POS_THRESHOLD, VERUS_NOPOS_THRESHHOLD;
+extern int32_t VERUS_BLOCK_POSUNITS, VERUS_CONSECUTIVE_POS_THRESHOLD, VERUS_PBAAS_CONSECUTIVE_POS_THRESHOLD, VERUS_NOPOS_THRESHHOLD, VERUS_PBAAS_NOPOS_THRESHHOLD;
 unsigned int lwmaGetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params);
 unsigned int lwmaCalculateNextWorkRequired(const CBlockIndex* pindexLast, const Consensus::Params& params);
 
@@ -239,6 +239,7 @@ uint32_t lwmaGetNextPOSRequired(const CBlockIndex* pindexLast, const Consensus::
     int32_t nHeight = pindexLast->GetHeight();
 
     int32_t maxConsecutivePos = VERUS_CONSECUTIVE_POS_THRESHOLD;
+    int32_t maxConsecutiveNoPos = VERUS_NOPOS_THRESHHOLD;
 
     bnLimit = UintToArith256(params.posLimit);
     uint32_t nProofOfStakeDefault = bnLimit.GetCompact();
@@ -246,17 +247,20 @@ uint32_t lwmaGetNextPOSRequired(const CBlockIndex* pindexLast, const Consensus::
     if (CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight + 1) >= CActivationHeight::ACTIVATE_PBAAS)
     {
         maxConsecutivePos = VERUS_PBAAS_CONSECUTIVE_POS_THRESHOLD;
+        maxConsecutiveNoPos = VERUS_PBAAS_NOPOS_THRESHHOLD;
 
         // the default staking difficulty is based on an expectation of 25% of the supply staking, which if facing 100%, will not be catastrophic
         // neither will it be impossible to adapt if only 1/64th or even less is staking, though it will take longer to get to an equilibrium.
         arith_uint256 fiftyPercentPerSatoshi = UintToArith256(uint256S("7f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"));
         uint64_t supplyDivisor = nHeight ? komodo_current_supply(nHeight) : MAX_MONEY;
-        supplyDivisor = nHeight ? komodo_current_supply(nHeight) : MAX_MONEY;
+
+        // default is if 1/4th of expected max supply is staking
         supplyDivisor = ((supplyDivisor >> 2) == 0) ? 1 : supplyDivisor >> 2;
         nProofOfStakeDefault = ((arith_uint256)(fiftyPercentPerSatoshi / supplyDivisor)).GetCompact();
 
-        // the lowest equilibrium we can achieve is if 1/1024th of supply is staking, set that as the lower difficulty limit
-        supplyDivisor = ((supplyDivisor >> 8) == 0) ? 1 : supplyDivisor >> 8;
+        // the lowest 50% equilibrium we can achieve is if one millionth of expected max supply is staking,
+        // set that as the lower difficulty limit
+        supplyDivisor = ((supplyDivisor >> 16) == 0) ? 1 : supplyDivisor >> 16;
         bnLimit = fiftyPercentPerSatoshi / supplyDivisor;
     }
     else if (_IsVerusMainnetActive() && pindexLast && pindexLast->GetHeight() >= 1567999)
@@ -285,7 +289,7 @@ uint32_t lwmaGetNextPOSRequired(const CBlockIndex* pindexLast, const Consensus::
     // if we have had no POS block in the threshold number of blocks, we must return the default, otherwise, we'll now have
     // a starting point
     uint32_t nBits = nProofOfStakeDefault;
-    for (int64_t i = 0; i < VERUS_NOPOS_THRESHHOLD; i++)
+    for (int64_t i = 0; i < maxConsecutiveNoPos; i++)
     {
         if (!pindexFirst)
         {
@@ -331,7 +335,7 @@ uint32_t lwmaGetNextPOSRequired(const CBlockIndex* pindexLast, const Consensus::
         if (x)
         {
             idx[i].consecutive = false;
-            if (!memcmp(ASSETCHAINS_SYMBOL, "VRSC", 4) && nHeight < 67680)
+            if (_IsVerusMainnetActive() && nHeight < 67680)
             {
                 idx[i].solveTime = VERUS_BLOCK_POSUNITS * (x + 1);
             }

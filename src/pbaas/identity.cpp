@@ -17,6 +17,7 @@
 #include "pbaas/pbaas.h"
 #include "pbaas/notarization.h"
 #include "identity.h"
+#include "txdb.h"
 
 extern CTxMemPool mempool;
 
@@ -74,9 +75,10 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
         GetID() != newIdentity.GetID() ||
         ((newIdentity.flags & ~FLAG_REVOKED) && newIdentity.nVersion < VERSION_VAULT) ||
         ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_LOCKED)) && newIdentity.nVersion < VERSION_PBAAS) ||
-        ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY + FLAG_LOCKED)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||
+        ((newIdentity.flags & ~(FLAG_REVOKED + FLAG_ACTIVECURRENCY + FLAG_LOCKED + FLAG_TOKENIZED_CONTROL)) && (newIdentity.nVersion >= VERSION_PBAAS)) ||
         (IsLocked(height) && (!newIdentity.IsRevoked() && !newIdentity.IsLocked(height))) ||
-        ((flags & FLAG_ACTIVECURRENCY) && !(newIdentity.flags & FLAG_ACTIVECURRENCY)) ||
+        (HasActiveCurrency() && !HasActiveCurrency()) ||
+        (HasTokenizedControl() && !HasTokenizedControl()) ||
         newIdentity.nVersion < VERSION_FIRSTVALID ||
         newIdentity.nVersion > VERSION_LASTVALID)
     {
@@ -105,7 +107,7 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
                         return true;
                     }
                 }
-                else if (!IsLocked())
+                else
                 {
                     // only revocation can change unlock after time, and we don't allow re-lock to an earlier time until unlock either, 
                     // which can change the new unlock time
@@ -116,7 +118,8 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
                             return true;
                         }
                     }
-                    else if (newIdentity.unlockAfter != unlockAfter)
+                    else if ((nSolVersion < CActivationHeight::ACTIVATE_PBAAS && newIdentity.unlockAfter != unlockAfter) ||
+                             (nSolVersion >= CActivationHeight::ACTIVATE_PBAAS && newIdentity.unlockAfter < unlockAfter))
                     {
                         return true;
                     }
@@ -380,6 +383,222 @@ CIdentity CIdentity::LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHei
         }
     }
     return ret;
+}
+
+uint160 CIdentity::IdentityPrimaryAddressKey(const CTxDestination &dest)
+{
+    CHashWriterSHA256 hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << dest.which();
+    hw << GetDestinationBytes(dest);
+    uint160 nameSpace;
+    return CCrossChainRPCData::GetConditionID(CVDXF::GetDataKey(IdentityPrimaryAddressKeyName(), nameSpace), hw.GetHash());
+}
+
+bool CIdentity::GetIdentityOutsByPrimaryAddress(const CTxDestination &address, std::map<uint160, std::pair<CAddressIndexDbEntry, CIdentity>> &identities, uint32_t start, uint32_t end)
+{
+    if (!fIdIndex)
+    {
+        return false;
+    }
+    // which transaction are we in this block?
+    std::vector<CAddressIndexDbEntry> addressIndex;
+
+    // get all export transactions including and since this one up to the confirmed cross-notarization
+    if (GetAddressIndex(CIdentity::IdentityPrimaryAddressKey(address), 
+                        CScript::P2IDX, 
+                        addressIndex, 
+                        start,
+                        end))
+    {
+        for (auto &idx : addressIndex)
+        {
+            uint256 blkHash;
+            CTransaction identityTx;
+            if (!idx.first.spending && myGetTransaction(idx.first.txhash, identityTx, blkHash))
+            {
+                CIdentity identity;
+                if ((identity = CIdentity(identityTx.vout[idx.first.index].scriptPubKey)).IsValid())
+                {
+                    identities.insert(std::make_pair(identity.GetID(), std::make_pair(idx, identity)));
+                }
+                else
+                {
+                    LogPrintf("%s: invalid identity output: %s, %lu\n", __func__, idx.first.txhash.GetHex().c_str(), idx.first.index);
+                }
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+bool CIdentity::GetIdentityOutsWithRevocationID(const CIdentityID &idID, std::map<uint160, std::pair<CAddressIndexDbEntry, CIdentity>> &identities, uint32_t start, uint32_t end)
+{
+    if (!fIdIndex)
+    {
+        return false;
+    }
+    // which transaction are we in this block?
+    std::vector<CAddressIndexDbEntry> addressIndex;
+
+    // get all export transactions including and since this one up to the confirmed cross-notarization
+    if (GetAddressIndex(CIdentity::IdentityRevocationKey(idID), 
+                        CScript::P2IDX, 
+                        addressIndex, 
+                        start,
+                        end))
+    {
+        for (auto &idx : addressIndex)
+        {
+            uint256 blkHash;
+            CTransaction identityTx;
+            if (!idx.first.spending && myGetTransaction(idx.first.txhash, identityTx, blkHash))
+            {
+                CIdentity identity;
+                if ((identity = CIdentity(identityTx.vout[idx.first.index].scriptPubKey)).IsValid())
+                {
+                    identities.insert(std::make_pair(identity.GetID(), std::make_pair(idx, identity)));
+                }
+                else
+                {
+                    LogPrintf("%s: invalid identity output: %s, %lu\n", __func__, idx.first.txhash.GetHex().c_str(), idx.first.index);
+                }
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+bool CIdentity::GetIdentityOutsWithRecoveryID(const CIdentityID &idID, std::map<uint160, std::pair<CAddressIndexDbEntry, CIdentity>> &identities, uint32_t start, uint32_t end)
+{
+    if (!fIdIndex)
+    {
+        return false;
+    }
+    // which transaction are we in this block?
+    std::vector<CAddressIndexDbEntry> addressIndex;
+
+    // get all export transactions including and since this one up to the confirmed cross-notarization
+    if (GetAddressIndex(CIdentity::IdentityRecoveryKey(idID), 
+                        CScript::P2IDX, 
+                        addressIndex, 
+                        start,
+                        end))
+    {
+        for (auto &idx : addressIndex)
+        {
+            uint256 blkHash;
+            CTransaction identityTx;
+            if (!idx.first.spending && myGetTransaction(idx.first.txhash, identityTx, blkHash))
+            {
+                CIdentity identity;
+                if ((identity = CIdentity(identityTx.vout[idx.first.index].scriptPubKey)).IsValid())
+                {
+                    identities.insert(std::make_pair(identity.GetID(), std::make_pair(idx, identity)));
+                }
+                else
+                {
+                    LogPrintf("%s: invalid identity output: %s, %lu\n", __func__, idx.first.txhash.GetHex().c_str(), idx.first.index);
+                }
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+bool CIdentity::GetActiveIdentitiesByPrimaryAddress(const CTxDestination &address, std::map<uint160, std::pair<CAddressUnspentDbEntry, CIdentity>> &identities)
+{
+    if (!fIdIndex)
+    {
+        return false;
+    }
+    // which transaction are we in this block?
+    std::vector<CAddressUnspentDbEntry> unspentIndex;
+
+    // get all export transactions including and since this one up to the confirmed cross-notarization
+    if (GetAddressUnspent(CIdentity::IdentityPrimaryAddressKey(address), CScript::P2IDX, unspentIndex))
+    {
+        for (auto &idx : unspentIndex)
+        {
+            uint256 blkHash;
+            CTransaction identityTx;
+            CIdentity identity;
+            if ((identity = CIdentity(idx.second.script)).IsValid())
+            {
+                identities.insert(std::make_pair(identity.GetID(), std::make_pair(idx, identity)));
+            }
+            else
+            {
+                LogPrintf("%s: invalid identity in unspent index 0: %s, %lu\n", __func__, idx.first.txhash.GetHex().c_str(), idx.first.index);
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+bool CIdentity::GetActiveIdentitiesWithRevocationID(const CIdentityID &idID, std::map<uint160, std::pair<CAddressUnspentDbEntry, CIdentity>> &identities)
+{
+    if (!fIdIndex)
+    {
+        return false;
+    }
+    // which transaction are we in this block?
+    std::vector<CAddressUnspentDbEntry> unspentIndex;
+
+    // get all export transactions including and since this one up to the confirmed cross-notarization
+    if (GetAddressUnspent(CIdentity::IdentityRevocationKey(idID), CScript::P2IDX, unspentIndex))
+    {
+        for (auto &idx : unspentIndex)
+        {
+            uint256 blkHash;
+            CTransaction identityTx;
+            CIdentity identity;
+            if ((identity = CIdentity(idx.second.script)).IsValid())
+            {
+                identities.insert(std::make_pair(identity.GetID(), std::make_pair(idx, identity)));
+            }
+            else
+            {
+                LogPrintf("%s: invalid identity in unspent index 2: %s, %lu\n", __func__, idx.first.txhash.GetHex().c_str(), idx.first.index);
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+bool CIdentity::GetActiveIdentitiesWithRecoveryID(const CIdentityID &idID, std::map<uint160, std::pair<CAddressUnspentDbEntry, CIdentity>> &identities)
+{
+    if (!fIdIndex)
+    {
+        return false;
+    }
+    // which transaction are we in this block?
+    std::vector<CAddressUnspentDbEntry> unspentIndex;
+
+    // get all export transactions including and since this one up to the confirmed cross-notarization
+    if (GetAddressUnspent(CIdentity::IdentityRecoveryKey(idID), CScript::P2IDX, unspentIndex))
+    {
+        for (auto &idx : unspentIndex)
+        {
+            uint256 blkHash;
+            CTransaction identityTx;
+            CIdentity identity;
+            if ((identity = CIdentity(idx.second.script)).IsValid())
+            {
+                identities.insert(std::make_pair(identity.GetID(), std::make_pair(idx, identity)));
+            }
+            else
+            {
+                LogPrintf("%s: invalid identity in unspent index 3: %s, %lu\n", __func__, idx.first.txhash.GetHex().c_str(), idx.first.index);
+            }
+        }
+        return true;
+    }
+    return false;
 }
 
 // this enables earliest rejection of invalid identity registrations transactions
@@ -1015,10 +1234,8 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
             }
         }
 
-        // TODO: HARDENING - enable this check before mainnet and ensure that PBaaS undergoes the same referral
-        // enforcement
         // only validate referrers before PBaaS
-        /* if (referrers.size() != checkReferrers.size())
+        if (referrers.size() != checkReferrers.size())
         {
             return state.Error("Invalid identity registration - incorrect referral payments");
         }
@@ -1030,7 +1247,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
             {
                 return state.Error("Invalid identity registration - incorrect referral payments");
             }
-        } */
+        }
 
         // CHECK #6 - ensure that the transaction pays the correct mining and referral fees
         if (feePaid < (idReferredRegistrationFee - (referrers.size() * idReferralFee)))
@@ -1147,7 +1364,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
             {
                 // TODO: HARDENING - ensure that we properly check payment for fractional or centralized IDs
                 // here or elsewhere - this should only get here on centralized currencies and fix may be as easy as
-                // allowing it to run in the block above that is currently conditions on fractional
+                // allowing it to run in the block above that is currently conditioned on fractional
             }
         }
         else
@@ -1777,7 +1994,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                     }
 
                     // twice through makes it invalid
-                    // TODO: HARDENING TESTNET - need to ensure that cross-chain imports only import IDs
+                    // TODO: HARDENING TESTNET - need to confirm that we enforce cross-chain imports only import IDs
                     // under the control of the importing currency
                     if (!advancedIdentity && validIdentity)
                     {
@@ -1788,6 +2005,18 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                     {
                         identityP = p;
                         identity = checkIdentity;
+                        CDataStream ss(SER_DISK, PROTOCOL_VERSION);
+                        if (GetSerializeSize(ss, CReserveTransfer(CReserveTransfer::IDENTITY_EXPORT + CReserveTransfer::VALID + CReserveTransfer::CROSS_SYSTEM,
+                                             CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<int64_t>({1})),
+                                             ASSETCHAINS_CHAINID,
+                                             0,
+                                             checkIdentity.GetID(),
+                                             CTransferDestination(CTransferDestination::DEST_FULLID,
+                                             ::AsVector(checkIdentity),
+                                             checkIdentity.GetID()))) > (CScript::MAX_SCRIPT_ELEMENT_SIZE - 128))
+                        {
+                            return state.Error("Serialized identity is too large");
+                        }
                     }
                     validIdentity = true;
                 }
@@ -2187,16 +2416,38 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
 
     spendingTx.vout[idIndex].scriptPubKey.IsPayToCryptoCondition(q);
 
-    if (q.evalCode != EVAL_IDENTITY_PRIMARY)
+    if (!q.IsValid() || q.evalCode != EVAL_IDENTITY_PRIMARY)
     {
         return eval->Error("Invalid identity output in spending transaction");
     }
 
     bool advanced = newIdentity.nVersion >= newIdentity.VERSION_VAULT;
 
+    uint160 identityID = oldIdentity.GetID();
+
+    // before we start conditioning decisions on fulfilled status,
+    // check to see if it has been fulfilled by using a control token/NFT
+    if (!fulfilled && oldIdentity.HasTokenizedControl())
+    {
+        if (spendingTx.vout.size() <= (idIndex + 1) || spendingTx.vin.size() <= (nIn + 1))
+        {
+            CAmount controlCurrencyVal = spendingTx.vout[idIndex + 1].ReserveOutValue().valueMap[identityID];
+            CTransaction tokenOutTx;
+            uint256 hashBlock;
+            COptCCParams tokenP;
+            if (controlCurrencyVal > 0 &&
+                myGetTransaction(spendingTx.vin[nIn + 1].prevout.hash, tokenOutTx, hashBlock) &&
+                tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].ReserveOutValue().valueMap[identityID] == controlCurrencyVal &&
+                tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].scriptPubKey == spendingTx.vout[idIndex + 1].scriptPubKey)
+            {
+                fulfilled = true;
+            }
+        }
+    }
+
     if (advanced)
     {
-        // if not fulfilled, neither recovery data nor its spend condition may be modified
+        // if not fulfilled, neither revocation data nor its spend condition may be modified
         if (!fulfilled && !oldIdentity.IsRevoked())
         {
             if (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity, height))
@@ -2310,6 +2561,28 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
     }
 
     bool advanced = newIdentity.nVersion >= newIdentity.VERSION_VAULT;
+
+    uint160 identityID = oldIdentity.GetID();
+
+    // before we start conditioning decisions on fulfilled status,
+    // check to see if it has been fulfilled by using a control token/NFT
+    if (!fulfilled && oldIdentity.HasTokenizedControl())
+    {
+        if (spendingTx.vout.size() <= (idIndex + 1) || spendingTx.vin.size() <= (nIn + 1))
+        {
+            CAmount controlCurrencyVal = spendingTx.vout[idIndex + 1].ReserveOutValue().valueMap[identityID];
+            CTransaction tokenOutTx;
+            uint256 hashBlock;
+            COptCCParams tokenP;
+            if (controlCurrencyVal > 0 &&
+                myGetTransaction(spendingTx.vin[nIn + 1].prevout.hash, tokenOutTx, hashBlock) &&
+                tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].ReserveOutValue().valueMap[identityID] == controlCurrencyVal &&
+                tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].scriptPubKey == spendingTx.vout[idIndex + 1].scriptPubKey)
+            {
+                fulfilled = true;
+            }
+        }
+    }
 
     if (advanced)
     {
