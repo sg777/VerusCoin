@@ -4288,6 +4288,9 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             }
             else if (!finalizationObj.IsValid() || !finalizationObj.IsConfirmed())
             {
+                // the notarization considered confirmed on the other
+                // chain must be in the same notarization chain as the one confirmed on this chain that would
+                // be true if it is on both chains, accurate on both, and behind this confirmed notarization
                 CTransaction notarizationTx;
                 CPBaaSNotarization checkNotarization1, checkNotarization2 = crosschainCND.vtx[confirmingIdx].second;
                 uint256 blkHash;
@@ -4303,7 +4306,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                       ::AsVector(checkNotarization1) == ::AsVector(checkNotarization2) &&
                       checkNotarization1.proofRoots.count(ASSETCHAINS_CHAINID) &&
                       checkNotarization2.proofRoots.count(ASSETCHAINS_CHAINID) &&
-                      checkNotarization1.proofRoots[ASSETCHAINS_CHAINID].rootHeight <= checkNotarization2.proofRoots[ASSETCHAINS_CHAINID].rootHeight))
+                      checkNotarization1.proofRoots[ASSETCHAINS_CHAINID].rootHeight < checkNotarization2.proofRoots[ASSETCHAINS_CHAINID].rootHeight))
                 {
                     LogPrintf("Invalid notarization index entry for txid: %s\n", earnedNotarizationIndexEntry.first.txhash.GetHex().c_str());
                     printf("Invalid notarization index entry for txid: %s\n", earnedNotarizationIndexEntry.first.txhash.GetHex().c_str());

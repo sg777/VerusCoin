@@ -1703,6 +1703,15 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             fReindex = true;
         }
 
+        pblocktree->ReadFlag("idindex", checkval);
+        fIdIndex = GetBoolArg("-idindex", checkval);
+        if ( checkval != fIdIndex )
+        {
+            pblocktree->WriteFlag("idindex", fIdIndex);
+            fprintf(stderr,"set idindex, will reindex. sorry will take a while.\n");
+            fReindex = true;
+        }
+
         fInsightExplorer = GetBoolArg("-insightexplorer", DEFAULT_INSIGHTEXPLORER);
         pblocktree->ReadFlag("insightexplorer", checkval);
         if ( checkval != fInsightExplorer )
