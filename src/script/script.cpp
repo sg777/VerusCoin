@@ -274,7 +274,32 @@ CTxDestination TransferDestinationToDestination(const CTransferDestination &tran
             CCcontract_info CC;
             CCcontract_info *cp;
 
-            // make a currency definition
+            // return first valid auxilliary address for this chain
+            int auxDestCount = transferDest.AuxDestCount();
+            for (int i=0; i < auxDestCount; i++)
+            {
+                CTransferDestination auxDest = transferDest.GetAuxDest(i);
+                switch (auxDest.TypeNoFlags())
+                {
+                    case CTransferDestination::DEST_ID:
+                    case CTransferDestination::DEST_PK:
+                    case CTransferDestination::DEST_PKH:
+                    case CTransferDestination::DEST_SH:
+                        return TransferDestinationToDestination(auxDest);
+                }
+            }
+            // no address found, send it to the public key of the currency definition type
+            cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
+            retDest = CTxDestination(CPubKey(ParseHex(CC.CChexstr)));
+            break;
+        }
+
+        case CTransferDestination::DEST_ETHNFT:
+        {
+            CCcontract_info CC;
+            CCcontract_info *cp;
+            // this type is only used in currency definitions and does not make sense
+            // to be converted to an address at this time
             cp = CCinit(&CC, EVAL_CURRENCY_DEFINITION);
             retDest = CTxDestination(CPubKey(ParseHex(CC.CChexstr)));
             break;
@@ -592,6 +617,10 @@ bool CScript::IsInstantSpend() const
     bool isInstantSpend = false;
 
     // TODO: HARDENING - this must run on the Verus chain, but should have a version check and parameter
+    //
+    // before we remove the exclusion for mainnet, make sure that all smart transaction types below cannot
+    // release value from the protocol until at least the finalization of this chain's notarizations
+    // 
     if (!_IsVerusMainnetActive() && IsPayToCryptoCondition(p) && p.IsValid())
     {
         // instant spends must be to expected instant spend crypto conditions and to the right address as well
@@ -1060,22 +1089,26 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 switch (evidence.type)
                 {
                     // notary signature
-                    case CNotaryEvidence::TYPE_NOTARY_SIGNATURE:
+                    case CNotaryEvidence::TYPE_NOTARY_EVIDENCE:
                     {
-                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(evidence.systemID, 
-                                                                                        CNotaryEvidence::NotarySignatureKey(), 
+                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CNotaryEvidence::NotarySignatureKey(), 
                                                                                         evidence.output.hash, 
                                                                                         evidence.output.n)));
                         break;
                     }
-                    // currency start from another chain, confirming launch and recording correct start block
-                    case CNotaryEvidence::TYPE_CURRENCY_START:
+
+                    // import proof
+                    case CNotaryEvidence::TYPE_IMPORT_PROOF:
                     {
                         break;
                     }
-                    // evidence that an export from another system is real
-                    case CNotaryEvidence::TYPE_PARTIAL_TXPROOF:
+
+                    // data broken into multiple parts
+                    case CNotaryEvidence::TYPE_MULTIPART_DATA:
                     {
+                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CNotaryEvidence::NotarySignatureKey(), 
+                                                                                        evidence.output.hash, 
+                                                                                        evidence.output.n)));
                         break;
                     }
                 }
@@ -1092,11 +1125,32 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             {
                 // always index a notarization, without regard to its status
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::NotaryNotarizationKey())));
+                if (evalCode == EVAL_EARNEDNOTARIZATION)
+                {
+                    CPBaaSNotarization checkNotarization = notarization;
+                    if (checkNotarization.IsMirror())
+                    {
+                        checkNotarization.SetMirror(false);
+                    }
+                    if (!checkNotarization.IsMirror())
+                    {
+                        CNativeHashWriter hw;
+                        hw << checkNotarization;
+                        uint256 objHash = hw.GetHash();
+                        destinations.insert(CIndexID(
+                            CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::EarnedNotarizationKey(), objHash)
+                        ));
+                    }
+                }
 
                 // index all pre-launch notarizations as pre-launch, then one final index for launchclear of
                 // either launch or refund, finally, we create one last index entry for launchcompletemarker
 
                 // if this is the first launch clear notarization, index as confirmed or refunding
+                if (notarization.IsDefinitionNotarization())
+                {
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::DefinitionNotarizationKey())));
+                }
                 if (notarization.IsPreLaunch())
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchPrelaunchKey())));
@@ -1167,6 +1221,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 if (finalization.IsConfirmed())
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizationNotarizationID, CObjectFinalization::ObjectFinalizationConfirmedKey())));
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CObjectFinalization::ObjectFinalizationFinalizedKey(), finalization.output.hash, finalization.output.n)));
                 }
                 else if (finalization.IsPending())
                 {
@@ -1175,6 +1230,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 else if (finalization.IsRejected())
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizationNotarizationID, CObjectFinalization::ObjectFinalizationRejectedKey())));
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CObjectFinalization::ObjectFinalizationFinalizedKey(), finalization.output.hash, finalization.output.n)));
                 }
             }
             break;
@@ -1305,6 +1361,17 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             if (vData.size() && (identity = CIdentity(vData[0])).IsValid())
             {
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(identity.GetID(), evalCode)));
+            }
+            // if we are maintaining an ID index, add keys for primary addresses, revocation, and recovery
+            extern bool fIdIndex;
+            if (fIdIndex)
+            {
+                for (auto &oneDest : identity.primaryAddresses)
+                {
+                    destinations.insert(identity.IdentityPrimaryAddressKey(oneDest));
+                }
+                destinations.insert(identity.IdentityRecoveryKey());
+                destinations.insert(identity.IdentityRevocationKey());
             }
             break;
         }

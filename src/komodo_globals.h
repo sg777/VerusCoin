@@ -13,6 +13,7 @@
  *                                                                            *
  ******************************************************************************/
 
+#include "sync.h"
 #include "komodo_structs.h"
 
 void komodo_prefetch(FILE *fp);
@@ -96,9 +97,10 @@ uint32_t ASSETCHAINS_STARTING_DIFF = 0;
 int32_t ASSETCHAINS_LWMAPOS = 0;        // percentage of blocks should be PoS
 int32_t VERUS_BLOCK_POSUNITS = 1024;    // one block is 1000 units
 int32_t VERUS_MIN_STAKEAGE = 150;       // 1/2 this should also be a cap on the POS averaging window, or startup could be too easy
-int32_t VERUS_CONSECUTIVE_POS_THRESHOLD = 7; // this gives us 8 in a row
-int32_t VERUS_PBAAS_CONSECUTIVE_POS_THRESHOLD = 3; // reduce to max 4 in a row
+int32_t VERUS_CONSECUTIVE_POS_THRESHOLD = 7; // this gives us 9 in a row
+int32_t VERUS_PBAAS_CONSECUTIVE_POS_THRESHOLD = 3; // reduce to max 5 in a row
 int32_t VERUS_NOPOS_THRESHHOLD = 150;   // if we have no POS blocks in this many blocks, reset difficulty
+int32_t VERUS_PBAAS_NOPOS_THRESHHOLD = 150; // extend for PBaaS to enable more variability in staking supply
 int32_t PBAAS_STARTBLOCK = 0;           // the parent blockchain must be notarized at this value in block 1 for it to be accepted
 int32_t PBAAS_ENDBLOCK = 0;             // end of life block for the PBaaS blockchain
 
@@ -116,7 +118,8 @@ extern int32_t KOMODO_LOADINGBLOCKS;
 unsigned int MAX_BLOCK_SIGOPS = 20000;
 
 struct komodo_kv *KOMODO_KV;
-pthread_mutex_t KOMODO_KV_mutex,KOMODO_CC_mutex;
+pthread_mutex_t KOMODO_KV_mutex;
+CCriticalSection smartTransactionCS;
 
 #define MAX_CURRENCIES 32
 char CURRENCIES[][8] = { "USD", "EUR", "JPY", "GBP", "AUD", "CAD", "CHF", "NZD", // major currencies
@@ -254,12 +257,6 @@ int64_t komodo_current_supply(uint32_t nHeight)
                 {
                     for ( int k = lastEnd; k < curEnd; k += period )
                     {
-                        // TODO: HARDENING - ensure that we don't want to switch to the more precise cur_money calculation in the PBaaS upgrade
-                        // before considering this mainnet ready
-                        /*if (_IsVerusMainnetActive())
-                        {
-                            cur_money += period * reward;
-                        } */
                         cur_money += period * reward;
 
                         // if zero, we do straight halving

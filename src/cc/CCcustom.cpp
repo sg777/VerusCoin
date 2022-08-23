@@ -395,7 +395,7 @@ struct CCcontract_info *CCinit(struct CCcontract_info *cp, uint8_t evalcode)
             memcpy(cp->CCpriv,DecodeSecret(FinalizeNotarizationWIF).begin(),32);
             cp->validate = ValidateFinalizeNotarization;
             cp->ismyvin = IsFinalizeNotarizationInput;
-            cp->contextualprecheck = DefaultCCContextualPreCheck;
+            cp->contextualprecheck = PreCheckFinalizeNotarization;
             break;
 
         case EVAL_NOTARY_EVIDENCE:

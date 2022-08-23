@@ -346,6 +346,16 @@ std::string HelpMessage(HelpMessageMode mode)
     // When adding new options to the categories, please keep and ensure alphabetical ordering.
     // Do not translate _(...) -help-debug options, many technical terms, and only a very small audience, so is unnecessary stress to translators
 
+    // TODO: HARDENING - edit this help information before final mainnet release, remove irrelevant switches, include:
+    // -mineraddress
+    // -pubkey
+    // -defaultid
+    // -cheatcatcher
+    // -miningdistribution
+    // -miningdistributionpassthrough
+    // -chain=
+    // more...
+
     string strUsage = HelpMessageGroup(_("Options:"));
     strUsage += HelpMessageOpt("-?", _("This help message"));
     strUsage += HelpMessageOpt("-alerts", strprintf(_("Receive and display P2P network alerts (default: %u)"), DEFAULT_ALERTS));
@@ -379,6 +389,7 @@ std::string HelpMessage(HelpMessageMode mode)
     strUsage += HelpMessageOpt("-sysperms", _("Create new files with system default permissions, instead of umask 077 (only effective with disabled wallet functionality)"));
 #endif
     strUsage += HelpMessageOpt("-txindex", strprintf(_("Maintain a full transaction index, used by the getrawtransaction rpc call (default: %u)"), 0));
+    strUsage += HelpMessageOpt("-idindex", strprintf(_("Maintain a full identity index, enabling queries to select IDs with addresses, revocation or recovery IDs (default: %u)"), 0));
     strUsage += HelpMessageOpt("-addressindex", strprintf(_("Maintain a full address index, used to query for the balance, txids and unspent outputs for addresses (default: %u)"), DEFAULT_ADDRESSINDEX));
     strUsage += HelpMessageOpt("-timestampindex", strprintf(_("Maintain a timestamp index for block hashes, used to query blocks hashes by a range of timestamps (default: %u)"), DEFAULT_TIMESTAMPINDEX));
     strUsage += HelpMessageOpt("-spentindex", strprintf(_("Maintain a full spent index, used to query the spending txid and input index for an outpoint (default: %u)"), DEFAULT_SPENTINDEX));
@@ -411,6 +422,14 @@ std::string HelpMessage(HelpMessageMode mode)
     strUsage += HelpMessageOpt("-timeout=<n>", strprintf(_("Specify connection timeout in milliseconds (minimum: 1, default: %d)"), DEFAULT_CONNECT_TIMEOUT));
     strUsage += HelpMessageOpt("-torcontrol=<ip>:<port>", strprintf(_("Tor control port to use if onion listening enabled (default: %s)"), DEFAULT_TOR_CONTROL));
     strUsage += HelpMessageOpt("-torpassword=<pass>", _("Tor control port password (default: empty)"));
+    strUsage += HelpMessageOpt("-tlsenforcement=<0 or 1>", _("Only connect to TLS compatible peers. (default: 0)"));
+    strUsage += HelpMessageOpt("-tlsdisable=<0 or 1>", _("Disable TLS connections. (default: 0)"));
+    strUsage += HelpMessageOpt("-tlsfallbacknontls=<0 or 1>", _("If a TLS connection fails, the next connection attempt of the same peer (based on IP address) takes place without TLS (default: 1)"));
+    strUsage += HelpMessageOpt("-tlsvalidate=<0 or 1>", _("Connect to peers only with valid certificates (default: 0)"));
+    strUsage += HelpMessageOpt("-tlskeypath=<path>", _("Full path to a private key"));
+    strUsage += HelpMessageOpt("-tlskeypwd=<password>", _("Password for a private key encryption (default: not set, i.e. private key will be stored unencrypted)"));
+    strUsage += HelpMessageOpt("-tlscertpath=<path>", _("Full path to a certificate"));
+    strUsage += HelpMessageOpt("-tlstrustdir=<path>", _("Full path to a trusted certificates directory"));
     strUsage += HelpMessageOpt("-whitebind=<addr>", _("Bind to given address and whitelist peers connecting to it. Use [host]:port notation for IPv6"));
     strUsage += HelpMessageOpt("-whitelist=<netmask>", _("Whitelist peers connecting from the given netmask or IP address. Can be specified multiple times.") +
         " " + _("Whitelisted peers cannot be DoS banned and their transactions are always relayed, even if they are already in the mempool, useful e.g. for a gateway"));
@@ -952,6 +971,9 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             LogPrintf("%s: parameter interaction: -zapwallettxes=<mode> -> setting -rescan=1\n", __func__);
     }
 
+    //Default tlsenforcement to false
+    SoftSetArg("-tlsenforcement","0");
+    
     // Make sure enough file descriptors are available
     int nBind = std::max((int)mapArgs.count("-bind") + (int)mapArgs.count("-whitebind"), 1);
     nMaxConnections = GetArg("-maxconnections", DEFAULT_MAX_PEER_CONNECTIONS);
@@ -1524,6 +1546,24 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         }
     }
 
+        if (mapArgs.count("-tlskeypath")) {
+        boost::filesystem::path pathTLSKey(GetArg("-tlskeypath", ""));
+    if (!boost::filesystem::exists(pathTLSKey))
+         return InitError(strprintf(_("Cannot find TLS key file: '%s'"), pathTLSKey.string()));
+    }
+
+    if (mapArgs.count("-tlscertpath")) {
+        boost::filesystem::path pathTLSCert(GetArg("-tlscertpath", ""));
+    if (!boost::filesystem::exists(pathTLSCert))
+        return InitError(strprintf(_("Cannot find TLS cert file: '%s'"), pathTLSCert.string()));
+    }
+
+    if (mapArgs.count("-tlstrustdir")) {
+        boost::filesystem::path pathTLSTrustredDir(GetArg("-tlstrustdir", ""));
+        if (!boost::filesystem::exists(pathTLSTrustredDir))
+            return InitError(strprintf(_("Cannot find trusted certificates directory: '%s'"), pathTLSTrustredDir.string()));
+    }
+
 #if ENABLE_ZMQ
     pzmqNotificationInterface = CZMQNotificationInterface::CreateWithArguments(mapArgs);
 
@@ -1663,6 +1703,15 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             fReindex = true;
         }
 
+        pblocktree->ReadFlag("idindex", checkval);
+        fIdIndex = GetBoolArg("-idindex", checkval);
+        if ( checkval != fIdIndex )
+        {
+            pblocktree->WriteFlag("idindex", fIdIndex);
+            fprintf(stderr,"set idindex, will reindex. sorry will take a while.\n");
+            fReindex = true;
+        }
+
         fInsightExplorer = GetBoolArg("-insightexplorer", DEFAULT_INSIGHTEXPLORER);
         pblocktree->ReadFlag("insightexplorer", checkval);
         if ( checkval != fInsightExplorer )
@@ -1756,6 +1805,44 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                     if (!RewindBlockIndex(chainparams, clearWitnessCaches)) {
                         strLoadError = _("Unable to rewind the database to a pre-upgrade state. You will need to redownload the blockchain");
                         break;
+                    }
+                }
+
+                if (!IsVerusActive() &&
+                    chainActive.Height() > 1)
+                {
+                    // get currency definition from the coinbase in block 1
+                    CCurrencyDefinition loadedDefinition;
+                    if (GetCurrencyDefinition(ConnectedChains.ThisChain().GetID(), loadedDefinition))
+                    {
+                        ConnectedChains.UpdateCachedCurrency(loadedDefinition, chainActive.Height());
+                    }
+                }
+
+                if (_IsVerusActive() &&
+                    CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) >= CActivationHeight::ACTIVATE_PBAAS)
+                {
+                    // until we have connected to the ETH bridge, after PBaaS has launched, we check each block to see if there is now an
+                    // ETH bridge defined
+                    ConnectedChains.ConfigureEthBridge();
+                }
+
+                CChainNotarizationData cnd;
+                if (ConnectedChains.FirstNotaryChain().IsValid())
+                {
+                    uint160 notaryChainID = ConnectedChains.FirstNotaryChain().GetID();
+                    CNotarySystemInfo &notarySystem = ConnectedChains.notarySystems[notaryChainID];
+                    LOCK(cs_main);
+                    if (GetNotarizationData(notaryChainID, cnd) &&
+                        cnd.IsConfirmed() &&
+                        cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(notaryChainID) &&
+                        (!notarySystem.lastConfirmedNotarization.IsValid() ||
+                        !notarySystem.lastConfirmedNotarization.proofRoots.count(notaryChainID) ||
+                        notarySystem.lastConfirmedNotarization.proofRoots[notaryChainID].rootHeight <
+                            cnd.vtx[cnd.lastConfirmed].second.proofRoots[notaryChainID].rootHeight))
+                    {
+
+                        ConnectedChains.notarySystems[ConnectedChains.FirstNotaryChain().GetID()].lastConfirmedNotarization = cnd.vtx[cnd.lastConfirmed].second;
                     }
                 }
 

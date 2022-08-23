@@ -46,6 +46,13 @@ CCurrencyDefinition CConnectedChains::GetCachedCurrency(const uint160 &currencyI
 {
     return CCurrencyDefinition();
 }
+// unused in client, but here for linking
+bool fIdIndex;
+uint160 CIdentity::IdentityPrimaryAddressKey(const CTxDestination &dest)
+{
+    assert(false);
+    return uint160();
+}
 
 void show_help()
 {

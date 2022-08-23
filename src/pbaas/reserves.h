@@ -163,6 +163,7 @@ public:
         REFUND = 0x800,                     // this transfer should be refunded, individual property when conversions exceed limits
         IDENTITY_EXPORT = 0x1000,           // this exports a full identity when the next cross-chain leg is processed
         CURRENCY_EXPORT = 0x2000,           // this exports a currency definition
+        ARBITRAGE_ONLY = 0x4000,            // in PBaaS V1, one additional reserve transfer from the local system may be added by the importer
     };
 
     enum EConstants
@@ -383,9 +384,38 @@ public:
         return flags & IDENTITY_EXPORT;
     }
 
+    void SetCurrencyExport(bool isExport=true)
+    {
+        if (isExport)
+        {
+            flags |= CURRENCY_EXPORT;
+        }
+        else
+        {
+            flags &= ~CURRENCY_EXPORT;
+        }
+    }
+
     bool IsCurrencyExport() const
     {
         return flags & CURRENCY_EXPORT;
+    }
+
+    void SetArbitrageOnly(bool isArbitrage=true)
+    {
+        if (isArbitrage)
+        {
+            flags |= ARBITRAGE_ONLY;
+        }
+        else
+        {
+            flags &= ~ARBITRAGE_ONLY;
+        }
+    }
+
+    bool IsArbitrageOnly() const
+    {
+        return flags & ARBITRAGE_ONLY;
     }
 
     CReserveTransfer GetRefundTransfer(bool clearCrossSystem=true) const;
@@ -772,6 +802,15 @@ public:
         static uint160 key = CVDXF::GetDataKey(CurrencySystemImportKeyName(), nameSpace);
         return key;
     }
+
+    CReserveTransfer GetArbitrageTransfer(const CTransaction &tx,
+                                          int32_t outNum,
+                                          CValidationState &state,
+                                          uint32_t height,
+                                          CTransaction *priorTx=nullptr,
+                                          int32_t *priorOutNum=nullptr,
+                                          uint256 *ppriorTxBlockHash=nullptr) const;
+
 
     CCrossChainImport GetPriorImport(const CTransaction &tx,
                                      int32_t outNum,
@@ -1656,7 +1695,9 @@ public:
         IS_EXPORT=0x100,                        // If set, this is an expired fill or kill in a valid tx
         IS_IDENTITY=0x200,                      // If set, this is an identity definition or update
         IS_IDENTITY_DEFINITION=0x400,           // If set, this is an identity definition
-        IS_HIGH_FEE=0x800                       // If set, this may have "absurdly high fees"
+        IS_HIGH_FEE=0x800,                      // If set, this may have "absurdly high fees"
+        IS_CURRENCY_DEFINITION=0x1000,          // If set, this is a currency definition
+        IS_CHAIN_NOTARIZATION=0x2000            // If set, this is to do with primary chain notarization and connection
     };
 
     enum ESubIndexCodes {
@@ -1695,6 +1736,8 @@ public:
     bool IsFillOrKill() const { return flags & IS_FILLORKILL; }
     bool IsFillOrKillFail() const { return flags & IS_FILLORKILLFAIL; }
     bool IsIdentity() const { return flags & IS_IDENTITY; }
+    bool IsCurrencyDefinition() const { return flags & IS_CURRENCY_DEFINITION; }
+    bool IsNotaryPrioritized() const { return flags & IS_CHAIN_NOTARIZATION; }
     bool IsIdentityDefinition() const { return flags & IS_IDENTITY_DEFINITION; }
     bool IsHighFee() const { return flags & IS_HIGH_FEE; }
 

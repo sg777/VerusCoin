@@ -61,6 +61,9 @@ public:
     static uint160 GetConditionID(const uint160 &cid, uint32_t condition);
     static uint160 GetConditionID(const uint160 &cid, const uint160 &condition);
     static uint160 GetConditionID(const uint160 &cid, const uint160 &condition, const uint256 &txid, int32_t voutNum);
+    static uint160 GetConditionID(const uint160 &cid, const uint256 &hash256);
+    static uint160 GetConditionID(const uint160 &cid, const uint256 &txid, int32_t voutNum);
+    static uint160 GetConditionID(const uint160 &cid, const uint160 &condition, const uint256 &txid);
     static uint160 GetConditionID(std::string name, uint32_t condition);
 
     UniValue ToUniValue() const;
@@ -173,8 +176,9 @@ public:
         DEST_QUANTUM = 7,
         DEST_NESTEDTRANSFER = 8,            // used to chain transfers, enabling them to be routed through multiple systems
         DEST_ETH = 9,
-        DEST_RAW = 10,
-        LAST_VALID_TYPE_NO_FLAGS = 10,
+        DEST_ETHNFT = 10,                   // used when defining a mapped NFT to gateway that uses an ETH compatible model
+        DEST_RAW = 11,
+        LAST_VALID_TYPE_NO_FLAGS = DEST_RAW,
         FLAG_DEST_AUX = 64,
         FLAG_DEST_GATEWAY = 128,
         FLAG_MASK = FLAG_DEST_AUX + FLAG_DEST_GATEWAY
@@ -311,6 +315,36 @@ public:
         return "0x" + HexBytes(ethDestID.begin(), ethDestID.size());
     }
 
+    static std::pair<uint160, uint256> DecodeEthNFTDestination(const std::string &destStr)
+    {
+        uint160 retContract;
+        uint256 retTokenID;
+        UniValue nftJSON(UniValue::VOBJ);
+        nftJSON.read(destStr);
+ 
+        std::string contractAddrStr = uni_get_str(find_value(nftJSON, "contract"));
+        std::string TokenIDStr = uni_get_str(find_value(nftJSON, "tokenid"));
+
+        if (!(retContract = DecodeEthDestination(contractAddrStr)).IsNull() &&
+            TokenIDStr.length() == 66 &&
+            destStr.substr(0,2) == "0x" &&
+            IsHex(TokenIDStr.substr(2,64)))
+        {
+            retTokenID = uint256S(TokenIDStr.substr(2,64));
+            return std::make_pair(retContract, uint256S(TokenIDStr));
+        }
+        else
+        {
+            return std::make_pair(uint160(), uint256());
+        }
+    }
+
+    static std::string EncodeEthNFTDestination(const uint160 &ethContractID, const uint256 &tokenID)
+    {
+        // reverse bytes to match ETH encoding
+        return "{\"contract\":\"0x" + HexBytes(ethContractID.begin(), ethContractID.size()) + "\", \"tokenid\":\"0x" + HexBytes(tokenID.begin(), tokenID.size()) + "\"}";
+    }
+
     static std::string CurrencyExportKeyName()
     {
         return "vrsc::system.currency.export";
@@ -326,6 +360,40 @@ public:
     static uint160 CurrencyExportKeyToSystem(const uint160 &exportToSystemID);
     static uint160 GetBoundCurrencyExportKey(const uint160 &exportToSystemID, const uint160 &curToExportID);
     uint160 GetBoundCurrencyExportKey(const uint160 &exportToSystemID) const;
+
+    UniValue ToUniValue() const;
+};
+
+class CNFTAddress
+{
+public:
+    uint32_t version;
+    CTransferDestination rootContractOrID;
+    std::vector<uint160> shortHashes;
+    std::vector<uint256> longHashes;
+
+    enum EVersions {
+        VERSION_INVALID = 0,
+        VERSION_VERUSID = 1,
+        VERSION_FIRST = 1,
+        VERSION_DEFAULT = 1,
+        VERSION_LAST = 1
+    };
+
+    CNFTAddress(const UniValue &uni);
+    CNFTAddress(uint32_t ver=VERSION_DEFAULT) : version(ver) {}
+    CNFTAddress(const CTransferDestination &rootDest, const std::vector<uint160> &shorts, const std::vector<uint256> &longs, uint32_t ver=VERSION_DEFAULT) : 
+        version(ver), rootContractOrID(rootDest), shortHashes(shorts), longHashes(longs) {}
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(VARINT(version));
+        READWRITE(rootContractOrID);
+        READWRITE(shortHashes);
+        READWRITE(longHashes);
+    }
 
     UniValue ToUniValue() const;
 };
@@ -404,13 +472,14 @@ public:
 
     enum ELimitsDefaults
     {
+        // TODO: HARDENING - reconcile all core fees, including for z-transactions, imports, identities, etc.
         TRANSACTION_CROSSCHAIN_FEE = 2000000, // 0.02 destination currency per cross chain transfer total, chain's accept notary currency or have converter
         TRANSACTION_TRANSFER_FEE = 20000,   // 0.0002 per same chain transfer total, chain's accept notary currency or have converter
         CURRENCY_REGISTRATION_FEE = 20000000000, // default 100 to register a currency
         PBAAS_SYSTEM_LAUNCH_FEE = 1000000000000, // default 10000 to register and launch a PBaaS chain
         CURRENCY_IMPORT_FEE = 10000000000,  // default 100 to import a currency
         IDENTITY_REGISTRATION_FEE = 10000000000, // 100 to register an identity
-        IDENTITY_IMPORT_FEE = 100000000,    // 1 in native currency to import an identity
+        IDENTITY_IMPORT_FEE = 2000000,      // 0.02 in native currency to import an identity
         MIN_RESERVE_CONTRIBUTION = 1000000, // 0.01 minimum per reserve contribution minimum
         MIN_BILLING_PERIOD = 960,           // 16 hour minimum billing period for notarization, typically expect days/weeks/months
         MIN_CURRENCY_LIFE = 480,            // 8 hour minimum lifetime, which gives 8 hours of minimum billing to notarize conclusion
@@ -441,6 +510,8 @@ public:
         OPTION_PBAAS = 0x100,               // this is a PBaaS chain definition
         OPTION_GATEWAY_CONVERTER = 0x200,   // this means that for a specific PBaaS gateway, this is the default converter and will publish prices
         OPTION_GATEWAY_NAMECONTROLLER = 0x400, // when not set on a gateway, top level ID and currency registration happen on launch chain 
+        OPTION_NFT_TOKEN = 0x800,           // single satoshi NFT token, tokenizes control over the root ID
+        OPTIONS_FLAG_MASK = 0xfff
     };
 
     // these should be pluggable in function
@@ -448,9 +519,9 @@ public:
     {
         NOTARIZATION_INVALID = 0,           // notarization protocol must have valid type
         NOTARIZATION_AUTO = 1,              // PBaaS autonotarization
-        NOTARIZATION_NOTARY_CONFIRM = 2,    // autonotarization with confirmation by specified notaries
-        NOTARIZATION_NOTARY_CHAINID = 3,    // chain identity controls notarization and currency supply
-        NOTARIZATION_NOTARY_LAST = 3        // chain identity controls notarization and currency supply
+        NOTARIZATION_NOTARY_CONFIRM = 2,    // confirmation by specified notaries with no auto-protocol requirements
+        NOTARIZATION_NOTARY_CHAINID = 3,    // chain identity controls notarization and imports
+        NOTARIZATION_NOTARY_LAST = 3        // last valid value
     };
 
     enum EProofProtocol
@@ -729,6 +800,35 @@ public:
         return GetID(Name, Parent);
     }
 
+    std::set<uint160> GetNotarySet() const
+    {
+        std::set<uint160> notarySet;
+        if (notarizationProtocol == NOTARIZATION_NOTARY_CHAINID)
+        {
+            notarySet.insert(GetID());
+        }
+        else
+        {
+            for (auto &oneSigID : notaries)
+            {
+                notarySet.insert(oneSigID);
+            }
+        }
+        return notarySet;
+    }
+
+    int MinimumNotariesConfirm() const
+    {
+        if (notarizationProtocol == NOTARIZATION_NOTARY_CHAINID)
+        {
+            return 1;
+        }
+        else
+        {
+            return minNotariesConfirm;
+        }
+    }
+
     uint160 GatewayConverterID() const
     {
         uint160 retVal;
@@ -936,6 +1036,7 @@ public:
     bool IsValid() const
     {
         return (nVersion != PBAAS_VERSION_INVALID) &&
+                !(options & ~OPTIONS_FLAG_MASK) &&
                 idReferralLevels <= MAX_ID_REFERRAL_LEVELS &&
                 name.size() > 0 && 
                 name.size() <= (KOMODO_ASSETCHAIN_MAXLEN - 1) &&
@@ -959,6 +1060,11 @@ public:
     bool IsToken() const
     {
         return ChainOptions() & OPTION_TOKEN;
+    }
+
+    bool IsNFTToken() const
+    {
+        return ChainOptions() & OPTION_NFT_TOKEN;
     }
 
     bool IsGateway() const
@@ -996,6 +1102,18 @@ public:
         else
         {
             options &= ~OPTION_TOKEN;
+        }
+    }
+
+    void SetNFTToken(bool isToken)
+    {
+        if (isToken)
+        {
+            options |= OPTION_NFT_TOKEN;
+        }
+        else
+        {
+            options &= ~OPTION_NFT_TOKEN;
         }
     }
 
@@ -1087,6 +1205,8 @@ public:
 class CIdentitySignature
 {
 public:
+    // TODO HARDENING - move all instances post PBaaS to
+    // VERSION_ETHBRIDGE
     enum EVersions {
         VERSION_INVALID = 0,
         VERSION_VERUSID = 1,
@@ -1103,7 +1223,8 @@ public:
     enum ESignatureVerification {
         SIGNATURE_INVALID = 0,
         SIGNATURE_PARTIAL = 1,
-        SIGNATURE_COMPLETE = 2
+        SIGNATURE_COMPLETE = 2,
+        SIGNATURE_EMPTY = 3
     };
 
     uint8_t version;
@@ -1239,7 +1360,8 @@ public:
                                           const std::vector<uint256> &statements, 
                                           const uint160 systemID, 
                                           const std::string &prefixString, 
-                                          const uint256 &msgHash) const;
+                                          const uint256 &msgHash,
+                                          std::vector<std::vector<unsigned char>> *pDupSigs=nullptr) const;
 
     uint32_t Version()
     {
@@ -1292,7 +1414,7 @@ public:
     uint256 blockHash;                      // combination of block hash, block MMR root, and compact power (or external proxy) for the notarization height
     uint256 compactPower;                   // compact power (or external proxy) of the block height notarization to compare
 
-    CProofRoot() : rootHeight(0) {}
+    CProofRoot(int Type=TYPE_PBAAS, int Version=VERSION_CURRENT) : type(Type), version(Version), rootHeight(0) {}
     CProofRoot(const UniValue &uni);
     CProofRoot(const uint160 &sysID, 
                 uint32_t nHeight, 
@@ -1413,6 +1535,12 @@ public:
         ::Serialize(*this, obj);
         return (*this);
     }
+
+    // disallow copy/move until we implement these constructors and operators
+    CNativeHashWriter(CNativeHashWriter const&) = delete;             // Copy construct
+    CNativeHashWriter(CNativeHashWriter&&) = delete;                  // Move construct
+    CNativeHashWriter& operator=(CNativeHashWriter const&) = delete;  // Copy assign
+    CNativeHashWriter& operator=(CNativeHashWriter &&) = delete;      // Move assign
 
     CNativeHashWriter& write(const char *pch, size_t size)
     {

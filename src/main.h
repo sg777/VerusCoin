@@ -151,6 +151,7 @@ extern bool fImporting;
 extern bool fReindex;
 extern int nScriptCheckThreads;
 extern bool fTxIndex;
+extern bool fIdIndex;
 
 // START insightexplorer
 extern bool fInsightExplorer;

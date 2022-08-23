@@ -114,6 +114,11 @@ public:
     }
 
     void SetBlockData(CBlockHeader &bh);
+    
+    bool IsValid() const
+    {
+        return !(hashPrevBlock.IsNull() && hashMerkleRoot.IsNull() && hashFinalSaplingRoot.IsNull() && nNonce.IsNull() && !nBits && hashBlockMMRRoot.IsNull());
+    }
 };
 
 // this class provides a minimal and compact hash pair and identity for a merge mined PBaaS header

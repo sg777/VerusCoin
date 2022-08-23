@@ -943,6 +943,35 @@ uint160 CCrossChainRPCData::GetConditionID(const uint160 &cid, const uint160 &co
     return Hash160(chainHash.begin(), chainHash.end());
 }
 
+uint160 CCrossChainRPCData::GetConditionID(const uint160 &cid, const uint256 &txid, int32_t voutNum)
+{
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << cid;
+    hw << txid;
+    hw << voutNum;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
+
+uint160 CCrossChainRPCData::GetConditionID(const uint160 &cid, const uint256 &txid)
+{
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << cid;
+    hw << txid;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
+
+uint160 CCrossChainRPCData::GetConditionID(const uint160 &cid, const uint160 &condition, const uint256 &txid)
+{
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    hw << condition;
+    hw << cid;
+    hw << txid;
+    uint256 chainHash = hw.GetHash();
+    return Hash160(chainHash.begin(), chainHash.end());
+}
+
 uint160 CCrossChainRPCData::GetConditionID(std::string name, uint32_t condition)
 {
     uint160 parent;
@@ -962,6 +991,44 @@ UniValue CNotaryEvidence::ToUniValue() const
     retObj.push_back(Pair("type", type));
     retObj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
     retObj.push_back(Pair("output", output.ToUniValue()));
+    retObj.push_back(Pair("state", (int)state));
+    retObj.push_back(Pair("evidence", evidence.ToUniValue()));
+    return retObj;
+}
+
+CNotarySignature::CNotarySignature(const UniValue &uniObj) : confirmed(false)
+{
+    version = uni_get_int64(find_value(uniObj, "version"), VERSION_CURRENT);
+    systemID = DecodeCurrencyName(uni_get_str(find_value(uniObj, "systemid")));
+    output = CUTXORef(find_value(uniObj, "output"));
+    confirmed = uni_get_bool(find_value(uniObj, "confirmed"));
+    UniValue sigsObj = find_value(uniObj, "signatures");
+    auto keys = sigsObj.getKeys();
+    auto values = sigsObj.getValues();
+    for (int i = 0; i < keys.size(); i++)
+    {
+        CTxDestination idDest = DecodeDestination(keys[i]);
+        if (idDest.which() != COptCCParams::ADDRTYPE_ID)
+        {
+            version = VERSION_INVALID;
+            break;
+        }
+        CIdentitySignature oneSig(values[i]);
+        if (!oneSig.IsValid())
+        {
+            version = VERSION_INVALID;
+            break;
+        }
+        signatures[CIdentityID(GetDestinationID(idDest))] = oneSig;
+    }
+}
+
+UniValue CNotarySignature::ToUniValue() const
+{
+    UniValue retObj(UniValue::VOBJ);
+    retObj.push_back(Pair("version", version));
+    retObj.push_back(Pair("systemid", EncodeDestination(CIdentityID(systemID))));
+    retObj.push_back(Pair("output", output.ToUniValue()));
     retObj.push_back(Pair("confirmed", confirmed));
     UniValue sigObj(UniValue::VOBJ);
     for (auto &oneSig : signatures)
@@ -969,12 +1036,6 @@ UniValue CNotaryEvidence::ToUniValue() const
         sigObj.push_back(Pair(EncodeDestination(CIdentityID(oneSig.first)), oneSig.second.ToUniValue()));
     }
     retObj.push_back(Pair("signatures", sigObj));
-    UniValue evidenceProofs(UniValue::VARR);
-    for (auto &oneProof : evidence)
-    {
-        evidenceProofs.push_back(oneProof.ToUniValue());
-    }
-    retObj.push_back(Pair("evidence", evidenceProofs));
     return retObj;
 }
 

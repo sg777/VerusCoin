@@ -180,7 +180,7 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
                 chainDef = foundDef;
                 if (pDefHeight)
                 {
-                    *pDefHeight = 0;
+                    *pDefHeight = chainActive.Height() + 1;
                 }
                 if (pUTXO)
                 {
@@ -222,6 +222,7 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
         {
             thisChainLoaded = true;
             ConnectedChains.ThisChain() = foundDef;
+            ConnectedChains.UpdateCachedCurrency(foundDef, pDefHeight ? *pDefHeight : chainActive.Height());
         }
     }
     else if (foundDef.IsValid())
@@ -470,7 +471,6 @@ bool SetThisChain(const UniValue &chainDefinition, CCurrencyDefinition *retDef)
 
         ConnectedChains.notarySystems[notaryChainDef.GetID()] = 
             CNotarySystemInfo(0, CRPCChainData(notaryChainDef, PBAAS_HOST, PBAAS_PORT, PBAAS_USERPASS), CPBaaSNotarization());
-        CCurrencyState currencyState = ConnectedChains.GetCurrencyState(0);
         ASSETCHAINS_SUPPLY = ConnectedChains.ThisChain().GetTotalPreallocation();
         ASSETCHAINS_ISSUANCE = ConnectedChains.ThisChain().gatewayConverterIssuance;
         ASSETCHAINS_ERAOPTIONS[0] = ConnectedChains.ThisChain().ChainOptions();
@@ -1388,8 +1388,7 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
 
         UniValue lastStateUni = ConnectedChains.GetCurrencyState(chainDef, height + 1, defHeight).ToUniValue();
 
-        if ((chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID) || 
-            (chainDef.launchSystemID == ASSETCHAINS_CHAINID && height < chainDef.startBlock))
+        if (chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID)
         {
             ret.push_back(Pair("bestheight", chainActive.Height()));
             ret.push_back(Pair("lastconfirmedheight", chainActive.Height()));
@@ -1403,7 +1402,14 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
                 cnd.vtx[cnd.lastConfirmed].second.currencyStates.count(chainID))
             {
                 ret.push_back(Pair("bestheight", (int64_t)cnd.vtx[cnd.lastConfirmed].second.notarizationHeight));
-                ret.push_back(Pair("lastconfirmedheight", (int64_t)cnd.vtx[cnd.lastConfirmed].second.notarizationHeight));
+                if (cnd.vtx[cnd.lastConfirmed].second.IsPreLaunch() && cnd.vtx[cnd.lastConfirmed].second.IsLaunchConfirmed())
+                {
+                    ret.push_back(Pair("lastconfirmedheight", 0));
+                }
+                else
+                {
+                    ret.push_back(Pair("lastconfirmedheight", (int64_t)cnd.vtx[cnd.lastConfirmed].second.notarizationHeight));
+                }
                 ret.push_back(Pair("bestcurrencystate", lastStateUni));
                 ret.push_back(Pair("lastconfirmedcurrencystate", lastStateUni));
             }
@@ -1413,12 +1419,17 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
 
                 int32_t confirmedHeight = -1, bestHeight = -1;
 
+                std::set<std::string> nodeAddressSet;
                 if (goodNodes.size())
                 {
                     UniValue nodeArr(UniValue::VARR);
                     for (auto &oneNode : goodNodes)
                     {
-                        nodeArr.push_back(oneNode.ToUniValue());
+                        if (!nodeAddressSet.count(oneNode.networkAddress))
+                        {
+                            nodeAddressSet.insert(oneNode.networkAddress);
+                            nodeArr.push_back(oneNode.ToUniValue());
+                        }
                     }
                     ret.push_back(Pair("nodes", nodeArr));
                 }
@@ -1784,7 +1795,7 @@ UniValue submitimports(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. see help.");
     }
 
-    LOCK2(cs_main, mempool.cs);
+    LOCK(cs_main);
 
     CCurrencyDefinition curDef;
     uint160 sourceSystemID = ValidateCurrencyName(uni_get_str(find_value(params[0], "sourcesystemid")), true, &curDef);
@@ -1805,18 +1816,23 @@ UniValue submitimports(const UniValue& params, bool fHelp)
     uint256 blkHash;
     COptCCParams p;
     CPBaaSNotarization lastConfirmed;
-    if (!(!notarizationTxId.IsNull() &&
-          myGetTransaction(notarizationTxId, notarizationTx, blkHash) &&
-          !blkHash.IsNull() &&
-          notarizationTxOutNum >= 0 &&
-          notarizationTx.vout.size() > notarizationTxOutNum &&
-          notarizationTx.vout[notarizationTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
-          p.IsValid() &&
-          (p.evalCode == EVAL_EARNEDNOTARIZATION || p.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
-          p.vData.size() &&
-          (lastConfirmed = CPBaaSNotarization(p.vData[0])).IsValid()))
+
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid notarization transaction id or transaction");
+        LOCK2(smartTransactionCS, mempool.cs);
+
+        if (!(!notarizationTxId.IsNull() &&
+            myGetTransaction(notarizationTxId, notarizationTx, blkHash) &&
+            !blkHash.IsNull() &&
+            notarizationTxOutNum >= 0 &&
+            notarizationTx.vout.size() > notarizationTxOutNum &&
+            notarizationTx.vout[notarizationTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
+            (p.evalCode == EVAL_EARNEDNOTARIZATION || p.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
+            p.vData.size() &&
+            (lastConfirmed = CPBaaSNotarization(p.vData[0])).IsValid()))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid notarization transaction id or transaction");
+        }
     }
 
     std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>> exports;
@@ -2320,7 +2336,7 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
 
 // returns all chain transfer outputs, both spent and unspent between a specific start and end block with an optional chainFilter. if the chainFilter is not
 // NULL, only transfers to that system are returned
-bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter, int start, int end, uint32_t flags)
+bool GetChainTransfers(multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter, int start, int end, uint32_t flags)
 {
     if (!flags)
     {
@@ -2367,6 +2383,89 @@ bool GetChainTransfers(multimap<uint160, pair<CInputDescriptor, CReserveTransfer
                     inputDescriptors.insert(make_pair(((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID),
                                                 make_pair(CInputDescriptor(ntx.vout[it->first.index].scriptPubKey, ntx.vout[it->first.index].nValue, CTxIn(COutPoint(it->first.txhash, it->first.index))), 
                                                             rt)));
+                }
+
+                /*
+                uint256 hashBlk;
+                UniValue univTx(UniValue::VOBJ);
+                TxToUniv(ntx, hashBlk, univTx);
+                printf("tx: %s\n", univTx.write(1,2).c_str());
+                */
+            }
+            else
+            {
+                LogPrintf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
+                printf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+// returns all chain transfer outputs, both spent and unspent between a specific start and end block with an optional chainFilter. if the chainFilter is not
+// NULL, only transfers to that system are returned
+bool GetChainTransfersUnspentBy(std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter, uint32_t start, uint32_t end, uint32_t unspentBy, uint32_t flags)
+{
+    if (!flags)
+    {
+        flags = CReserveTransfer::VALID;
+    }
+    bool nofilter = chainFilter.IsNull();
+
+    // which transaction are we in this block?
+    std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
+
+    LOCK2(cs_main, mempool.cs);
+
+    if (!GetAddressIndex(CReserveTransfer::ReserveTransferKey(), 
+                         CScript::P2IDX, 
+                         addressIndex, 
+                         start, 
+                         end))
+    {
+        return false;
+    }
+    else
+    {
+        // This call does not include outputs that were mined in as spent at the
+        // end height requested
+        for (auto it = addressIndex.begin(); it != addressIndex.end(); it++)
+        {
+            CTransaction ntx;
+            uint256 blkHash;
+
+            if (it->first.spending)
+            {
+                continue;
+            }
+
+            // no matter where we are getting the reserve transfers from, if they are otherwise spent
+            // in the block prior, they are not considered unspent by the "end" block, meaning they 
+            CSpentIndexValue spentInfo;
+            CSpentIndexKey spentKey(it->first.txhash, it->first.index);
+
+            if (GetSpentIndex(spentKey, spentInfo) &&
+                !spentInfo.IsNull() &&
+                spentInfo.blockHeight < unspentBy)
+            {
+                continue;
+            }
+
+            if (myGetTransaction(it->first.txhash, ntx, blkHash))
+            {
+                COptCCParams p, m;
+                CReserveTransfer rt;
+                if (ntx.vout[it->first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.evalCode == EVAL_RESERVE_TRANSFER &&
+                    p.vData.size() > 1 && (rt = CReserveTransfer(p.vData[0])).IsValid() &&
+                    (m = COptCCParams(p.vData[1])).IsValid() &&
+                    (nofilter || ((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID) == chainFilter) &&
+                    (rt.flags & flags) == flags)
+                {
+                    inputDescriptors.insert(std::make_pair(((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID),
+                                                std::make_pair(CInputDescriptor(ntx.vout[it->first.index].scriptPubKey, ntx.vout[it->first.index].nValue, CTxIn(COutPoint(it->first.txhash, it->first.index))), 
+                                                               rt)));
                 }
 
                 /*
@@ -2603,8 +2702,6 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                           pendingFinalizations) &&
         pendingFinalizations.size())
     {
-        uint160 pendingNotarizationKey = CCrossChainRPCData::GetConditionID(finalizeNotarizationKey, CObjectFinalization::ObjectFinalizationPendingKey());
-
         // all pending finalizations must be later than the last confirmed transaction and
         // refer to a previous valid / confirmable, not necessarily confirmed, notarization
         multimap<uint32_t, pair<CUTXORef, CPBaaSNotarization>> sorted;
@@ -2640,13 +2737,41 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                 continue;
             }
 
+            // if the notarization is a mirror, it's prior notarization is on the alternate chain
+            CUTXORef priorRef = n.prevNotarization;
+            if (p.evalCode == EVAL_ACCEPTEDNOTARIZATION && n.IsMirror())
+            {
+                // we should have another finalization of our prior following the
+                // pending finalization
+                CTransaction finalizationTx;
+                if (f.output.hash.IsNull())
+                {
+                    finalizationTx = nTx;
+                }
+
+                CObjectFinalization priorOF;
+                if (!(myGetTransaction(it->first.txhash, finalizationTx, blkHash) &&
+                        (it->first.index + 1) < finalizationTx.vout.size() &&
+                        finalizationTx.vout[it->first.index + 1].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() &&
+                        p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                        p.vData.size() &&
+                        (priorOF = CObjectFinalization(p.vData[0])).IsValid()))
+                {
+                    LogPrintf("%s: invalid index for finalization %s, output %d\n", __func__, it->first.txhash.GetHex().c_str(), (int)it->first.index);
+                    continue;
+                }
+                // we should have a finalization right after on the same TX, pointing to the prior notarization that we care about
+                priorRef = priorOF.output;
+            }
+
             // if finalization is on same transaction as notarization, set it
             if (f.output.hash.IsNull())
             {
                 f.output.hash = it->first.txhash;
             }
 
-            notarizationReferences.insert(std::make_pair(n.prevNotarization, std::make_pair(f.output, n)));
+            notarizationReferences.insert(std::make_pair(priorRef, std::make_pair(f.output, n)));
             if (optionalTxOut)
             {
                 referencedTxes.insert(std::make_pair(f.output, std::make_pair(nTx, blkHash)));
@@ -2711,6 +2836,12 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                     best = curPower;
                     notarizationData.bestChain = i;
                 }
+            }
+            else if (notarizationData.vtx[notarizationData.forks[i].back()].second.IsLaunchCleared() &&
+                     notarizationData.vtx[notarizationData.forks[i].back()].second.IsPreLaunch() &&
+                     notarizationData.vtx[notarizationData.forks[i].back()].second.IsLaunchConfirmed())
+            {
+                notarizationData.bestChain = i;
             }
             else
             {
@@ -2904,6 +3035,8 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
             "\nResult:\n"
             "\"bestindex\"                      (int) index of best proof root not confirmed that is provided, confirmed index, or -1"
             "\"latestproofroot\"                (object) latest valid proof root of chain"
+            "\"laststableproofroot\"            (object) either tip-BLOCK_MATURITY or last notarized/witnessed tip"
+            "\"lastconfirmedproofroot\"         (object) last proof root of chain that has been confirmed"
             "\"currencystates\"                 (int) currency states of target currency and published bridges"
 
             "\nExamples:\n"
@@ -2923,7 +3056,7 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
     }
 
     int lastConfirmed = uni_get_int(find_value(params[0], "lastconfirmed"), -1);
-    if (lastConfirmed == -1)
+    if (lastConfirmed < 0)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid lastconfirmed");
     }
@@ -2935,6 +3068,42 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid proof root array parameter");
     }
 
+    CProofRoot lastConfirmedRoot, lastConfirmedRootClaim;
+    
+    if (uniProofRoots.size() > lastConfirmed)
+    {
+        lastConfirmedRootClaim = CProofRoot(uniProofRoots[lastConfirmed]);
+    }
+    
+    if (!lastConfirmedRootClaim.IsValid())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid last confirmed proof root");
+    }
+
+    LOCK(cs_main);
+
+    UniValue retVal(UniValue::VOBJ);
+
+    // no notarization can be considered confirmed by another chain or system, if it has not already been first confirmed
+    // by the first notary of this one. any confirmed proof root must map to a confirmed notarization on this chain that is
+    // correct and at least before the last confirmed one on this chain
+    std::vector<std::pair<CTransaction, uint256>> notaryTxVec;
+    CChainNotarizationData notaryCND;
+    if (ConnectedChains.FirstNotaryChain().IsValid())
+    {
+        if (GetNotarizationData(ConnectedChains.FirstNotaryChain().GetID(), notaryCND, &notaryTxVec) &&
+            notaryCND.IsConfirmed() &&
+            notaryCND.vtx[notaryCND.lastConfirmed].second.proofRoots.count(ASSETCHAINS_CHAINID))
+        {
+            lastConfirmedRoot = notaryCND.vtx[notaryCND.lastConfirmed].second.proofRoots[ASSETCHAINS_CHAINID];
+        }
+        else
+        {
+            // if we have a valid first notary, then we should have a valid confirmed notarization, or something is wrong
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid notarization for confirmed proof of current chain");
+        }
+    }
+
     for (int i = 0; i < uniProofRoots.size(); i++)
     {
         CProofRoot oneRoot(uniProofRoots[i]);
@@ -2944,31 +3113,34 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
         }
         if (oneRoot.systemID != ASSETCHAINS_CHAINID)
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("oncorrect systemid in proof root for %s", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
+            throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("incorrect systemid in proof root for %s", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
         }
+        // if we have no notary chain, we could have an invalid last confirmed
         proofRootMap.insert(std::make_pair(oneRoot.rootHeight, std::make_pair(i, oneRoot)));
     }
-
-    LOCK(cs_main);
 
     uint32_t nHeight = chainActive.Height();
 
     std::map<uint32_t, int32_t> validRoots;       // height, index (only return the first valid at each height)
 
-    for (auto &oneRoot : proofRootMap)
+    for (auto it = proofRootMap.rbegin(); it != proofRootMap.rend(); it ++)
     {
         // ignore potential dups
-        if (validRoots.count(oneRoot.second.second.rootHeight))
+        if (validRoots.count(it->second.second.rootHeight))
         {
             continue;
         }
-        if (oneRoot.second.second == oneRoot.second.second.GetProofRoot(oneRoot.second.second.rootHeight))
+        if (it->second.second == it->second.second.GetProofRoot(it->second.second.rootHeight))
         {
-            validRoots.insert(std::make_pair(oneRoot.second.second.rootHeight, oneRoot.second.first));
+            validRoots.insert(std::make_pair(it->second.second.rootHeight, it->second.first));
         }
     }
 
-    UniValue retVal(UniValue::VOBJ);
+    if (lastConfirmedRoot.IsValid() &&
+        (!validRoots.count(lastConfirmedRootClaim.rootHeight) || lastConfirmedRootClaim.rootHeight > lastConfirmedRoot.rootHeight))
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("incorrect claim of confirmed proof root for height %u, %s", lastConfirmedRoot.rootHeight, EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
+    }
 
     if (validRoots.size())
     {
@@ -2983,11 +3155,22 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
 
     // get the latest proof root and currency states
     retVal.pushKV("latestproofroot", CProofRoot::GetProofRoot(nHeight).ToUniValue());
+    if (lastConfirmedRoot.IsValid() && validRoots.count(lastConfirmedRoot.rootHeight))
+    {
+        retVal.pushKV("lastconfirmedproofroot", lastConfirmedRoot.ToUniValue());
+        retVal.pushKV("laststableproofroot", lastConfirmedRoot.ToUniValue());
+        retVal.pushKV("lastconfirmedindex", validRoots[lastConfirmedRoot.rootHeight]);
+    }
+    else
+    {
+        retVal.pushKV("laststableproofroot", CProofRoot::GetProofRoot((nHeight - COINBASE_MATURITY) > 0 ? (nHeight - COINBASE_MATURITY) : 1).ToUniValue());
+    }
 
     std::set<uint160> currenciesSet({ASSETCHAINS_CHAINID});
     CCurrencyDefinition targetCur;
     uint160 targetCurID;
     UniValue currencyStatesUni(UniValue::VARR);
+    UniValue confirmedCurrencyStatesUni(UniValue::VARR);
     if ((targetCurID = ValidateCurrencyName(EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)), true, &targetCur)).IsNull())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("invalid currency state request for %s", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
@@ -3003,9 +3186,14 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
         if (!currenciesSet.count(targetCurID))
         {
             currencyStatesUni.push_back(ConnectedChains.GetCurrencyState(targetCur, nHeight).ToUniValue());
+            if (lastConfirmedRoot.IsValid())
+            {
+                confirmedCurrencyStatesUni.push_back(ConnectedChains.GetCurrencyState(targetCur, lastConfirmedRoot.rootHeight).ToUniValue());
+            }
         }
     }
-    retVal.pushKV("currencystates", currencyStatesUni);
+    retVal.pushKV("currencystates", lastConfirmedRoot.IsValid() ? confirmedCurrencyStatesUni : currencyStatesUni);
+    retVal.pushKV("latestcurrencystates", currencyStatesUni);
 
     return retVal;
 }
@@ -3017,7 +3205,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
         throw runtime_error(
             "submitacceptednotarization \"{earnednotarization}\" \"{notaryevidence}\"\n"
             "\nFinishes an almost complete notarization transaction based on the notary chain and the current wallet or pubkey.\n"
-            "\nIf successful in submitting the transaction based on all rules, a transaction ID is returned, otherwise, NULL.\n"
+            "If successful in submitting the transaction based on all rules, a transaction ID is returned, otherwise, NULL.\n"
 
             "\nArguments\n"
             "\"earnednotarization\"             (object, required) notarization earned on the other system, which is the basis for this\n"
@@ -3034,8 +3222,6 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
 
     CheckPBaaSAPIsValid();
 
-    LOCK2(cs_main, mempool.cs);
-
     uint32_t nHeight = chainActive.Height();
 
     // decode the transaction and ensure that it is formatted as expected
@@ -3051,42 +3237,52 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
     checkPbn.SetMirror(false);
     printf("%s: checknotarization after:\n%s\n", __func__, checkPbn.ToUniValue().write(1,2).c_str()); */
 
-    if (!(pbn = CPBaaSNotarization(params[0])).IsValid() ||
-        !pbn.SetMirror() ||
-        !GetCurrencyDefinition(pbn.currencyID, chainDef, &chainDefHeight) ||
-        chainDef.systemID == ASSETCHAINS_CHAINID ||
-        !(chainDef.IsPBaaSChain() || chainDef.IsGateway()))
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid earned notarization");
-    }
-
-    if (!(evidence = CNotaryEvidence(params[1])).IsValid() ||
-        !evidence.signatures.size() ||
-        evidence.systemID != pbn.currencyID)
-    {
-        printf("%s: invalid evidence %s\n", __func__, evidence.ToUniValue().write(1,2).c_str());
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "insufficient notarization evidence");
-    }
-
-    // printf("%s: evidence: %s\n", __func__, evidence.ToUniValue().write(1,2).c_str());
-
-    // now, make a new notarization based on this earned notarization, mirrored, so it reflects a notarization on this chain, 
-    // but can be verified with the cross-chain signatures and evidence
-
-    // flip back to normal earned notarization as before
-    pbn.SetMirror(false);
-
-    CValidationState state;
     TransactionBuilder tb(Params().GetConsensus(), nHeight, pwalletMain);
-    if (!pbn.CreateAcceptedNotarization(chainDef, pbn, evidence, state, tb))
+
     {
-        //printf("%s: unable to create accepted notarization: %s\n", __func__, state.GetRejectReason().c_str());
-        throw JSONRPCError(RPC_INVALID_PARAMETER, state.GetRejectReason());
+        LOCK2(cs_main, mempool.cs);
+        if (!(pbn = CPBaaSNotarization(params[0])).IsValid() ||
+            !pbn.SetMirror() ||
+            !GetCurrencyDefinition(pbn.currencyID, chainDef, &chainDefHeight) ||
+            chainDef.systemID == ASSETCHAINS_CHAINID ||
+            !(chainDef.IsPBaaSChain() || chainDef.IsGateway()))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid earned notarization");
+        }
+
+        if (!(evidence = CNotaryEvidence(params[1])).IsValid() ||
+            !evidence.GetNotarySignatures().size() ||
+            evidence.systemID != pbn.currencyID)
+        {
+            printf("%s: invalid evidence %s\n", __func__, evidence.ToUniValue().write(1,2).c_str());
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "insufficient notarization evidence");
+        }
+
+        // flip back to normal earned notarization as before
+        pbn.SetMirror(false);
+
+        // printf("%s: evidence: %s\n", __func__, evidence.ToUniValue().write(1,2).c_str());
+
+        // now, make a new notarization based on this earned notarization, mirrored, so it reflects a notarization on this chain, 
+        // but can be verified with the cross-chain signatures and evidence
+
+        CValidationState state;
+        if (!pbn.CreateAcceptedNotarization(chainDef, pbn, evidence, state, tb))
+        {
+            //printf("%s: unable to create accepted notarization: %s\n", __func__, state.GetRejectReason().c_str());
+            throw JSONRPCError(RPC_INVALID_PARAMETER, state.GetRejectReason());
+        }
     }
 
     // get the new notarization transaction
     tb.SetFee(0);
-    auto buildResult = tb.Build();
+    std::vector<TransactionBuilderResult> buildResultVec;
+
+    {
+        LOCK2(cs_main, pwalletMain->cs_wallet);
+        buildResultVec.push_back(tb.Build());
+    }
+    auto buildResult = buildResultVec[0];
     CTransaction newTx;
     if (buildResult.IsTx())
     {
@@ -3096,12 +3292,20 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, buildResult.GetError());
     }
-    
-    std::list<CTransaction> removed;
-    mempool.removeConflicts(newTx, removed);
+
+    bool relayTx;
+    {
+        LOCK(cs_main);
+        LOCK2(smartTransactionCS, mempool.cs);
+        std::list<CTransaction> removed;
+        mempool.removeConflicts(newTx, removed);
+
+        // add to mem pool and relay
+        relayTx = myAddtomempool(newTx);
+    }
 
     // add to mem pool and relay
-    if (myAddtomempool(newTx))
+    if (relayTx)
     {
         RelayTransaction(newTx);
         return newTx.GetHash().GetHex();
@@ -3271,18 +3475,23 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
 
             "\nArguments\n"
             "1. {\n"
-            "      \"currency\": \"name\"   (string, required) Name of the source currency to send in this output, defaults to native of chain\n"
-            "      \"amount\":amount        (numeric, required) The numeric amount of currency, denominated in source currency\n"
-            "      \"feecurrency\": \"name\" (string, required) Name of the currency to use for paying fees, defaults to native of destination chain\n"
-            "      \"convertto\":\"name\",  (string, optional) Valid currency to convert to, either a reserve of a fractional, or fractional\n"
-            "      \"preconvert\":\"false\", (bool,  optional) Convert to currency at market price (default=false), only works if transaction is mined before start of currency\n"
-            "      \"exportto\":\"systemid\" (string, optional) Valid system name or i-addresss to export to another blockchain or gateway"
-            "      \"via\":\"name\",        (string, optional) If source and destination currency are reserves, via is a common fractional to convert through\n"
+            "      \"currency\": \"name\"       (string, required)  Name of the source currency to send in this output, defaults to\n"
+            "                                                       native of chain\n"
+            "      \"amount\":amount            (numeric, required) The numeric amount of currency, denominated in source currency\n"
+            "      \"convertto\":\"name\",      (string, optional)  Valid currency to convert to, either a reserve of a fractional, or fractional\n"
+            "      \"preconvert\":\"false\",    (bool,  optional)   Convert to currency at market price (default=false), only works if\n"
+            "                                                       transaction is mined before start of currency\n"
+            "      \"via\":\"name\",            (string, optional)  If source and destination currency are reserves, via is a common fractional\n"
+            "                                                       to convert through\n"
             "   }\n"
 
             "\nResult:\n"
-            "   \"txid\" : \"transactionid\" (string) The transaction id if (returntx) is false\n"
-            "   \"hextx\" : \"hex\"         (string) The hexadecimal, serialized transaction if (returntx) is true\n"
+            "   {\n"
+            "      \"estimatereceived\": (value),                   Estimated amount of converted currency after conversion\n"
+            "      \"estimatedslippage\": (value),                  Estimated percent slippage from conversion\n"
+            "      \"transactionsperblock100\": (value),            Transactions per block over last 100 blocks\n"
+            "      \"transactionsperblock10\": (value),             Transactions per block over last 10 blocks\n"
+            "   }\n"
 
             "\nExamples:\n"
             + HelpExampleCli("estimateconversion", "'{\"currency\":\"name\",\"convertto\":\"name\",\"amount\":n}'")
@@ -3301,7 +3510,6 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
     auto currencyStr = TrimSpaces(uni_get_str(find_value(params[0], "currency")));
     CAmount sourceAmount = AmountFromValue(find_value(params[0], "amount"));
     auto convertToStr = TrimSpaces(uni_get_str(find_value(params[0], "convertto")));
-    auto exportToStr = TrimSpaces(uni_get_str(find_value(params[0], "exportto")));
     auto viaStr = TrimSpaces(uni_get_str(find_value(params[0], "via")));
     bool preConvert = uni_get_bool(find_value(params[0], "preconvert"));
 
@@ -3427,8 +3635,12 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
                                                 *((int32_t *)&lastUnspentUTXO.n),
                                                 &lastUnspentTx);
     }
-    else if (pFractionalCurrency->systemID != ASSETCHAINS_CHAINID)
+    else
     {
+        if (preConvert && !(pFractionalCurrency->IsGatewayConverter() && pFractionalCurrency->launchSystemID == ASSETCHAINS_CHAINID))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Can only preconvert to currencies launching on the current chain");
+        }
         CChainNotarizationData cnd;
         if (!GetNotarizationData(fractionalCurrencyID, cnd))
         {
@@ -3441,6 +3653,7 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_TRANSACTION_ERROR, "Cannot find valid notarization for " + pFractionalCurrency->name);
     }
 
+    UniValue retVal(UniValue::VOBJ);
     if (preConvert)
     {
         // estimate preconversion
@@ -3826,8 +4039,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
 
     std::vector<CRecipient> outputs;
 
-    LOCK2(cs_main, mempool.cs);
-    LOCK(pwalletMain->cs_wallet);
+    LOCK2(cs_main, pwalletMain->cs_wallet);
 
     libzcash::PaymentAddress zaddressSource;
     libzcash::SaplingExpandedSpendingKey expsk;
@@ -4189,9 +4401,17 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             TransactionBuilderResult preResult = tb.Build();
             preTx = preResult.GetTxOrThrow();
 
-            // add to mem pool and relay
+            LOCK2(smartTransactionCS, mempool.cs);
+
+            bool relayTx;
             CValidationState state;
-            if (!myAddtomempool(preTx, &state))
+            {
+                LOCK2(smartTransactionCS, mempool.cs);
+                relayTx = myAddtomempool(preTx, &state);
+            }
+
+            // add to mem pool and relay
+            if (!relayTx)
             {
                 throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Unable to prepare offer tx: " + state.GetRejectReason());
             }
@@ -4293,9 +4513,14 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                 TransactionBuilderResult preResult = tb.Build();
                 preTx = preResult.GetTxOrThrow();
 
-                // add to mem pool and relay
+                bool relayTx;
                 CValidationState state;
-                if (!myAddtomempool(preTx, &state))
+                {
+                    LOCK2(smartTransactionCS, mempool.cs);
+                    relayTx = myAddtomempool(preTx, &state);
+                }
+
+                if (!relayTx)
                 {
                     throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Unable to prepare offer tx for identity: " + state.GetRejectReason());
                 }
@@ -4622,9 +4847,14 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             TransactionBuilderResult result = tb.Build();
             CTransaction offerPostTx = result.GetTxOrThrow();
 
-            // add to mem pool and relay
+            bool relayTx;
             CValidationState state;
-            if (!myAddtomempool(offerPostTx, &state))
+            {
+                LOCK2(smartTransactionCS, mempool.cs);
+                relayTx = myAddtomempool(offerPostTx, &state);
+            }
+
+            if (!relayTx)
             {
                 throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Failed to add offer transaction to mempool");
             }
@@ -4905,8 +5135,8 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
 
     int firstFundingInput = 0;
     {
-        LOCK2(cs_main, mempool.cs);
-        LOCK(pwalletMain->cs_wallet);
+        LOCK2(cs_main, pwalletMain->cs_wallet);
+        LOCK(mempool.cs);
 
         if (deliver.isStr())
         {
@@ -5362,9 +5592,15 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
     {
         CValidationState state;
         CTransaction finalTx = mtx;
-        LOCK2(cs_main, mempool.cs);
-        // add to mem pool and relay
-        if (!myAddtomempool(finalTx, &state))
+        LOCK(cs_main);
+
+        bool relayTx;
+        {
+            LOCK2(smartTransactionCS, mempool.cs);
+            relayTx = myAddtomempool(finalTx, &state);
+        }
+
+        if (!relayTx)
         {
             throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Could not commit transaction - rejected");
         }
@@ -6142,8 +6378,8 @@ UniValue closeoffers(const UniValue& params, bool fHelp)
     std::map<std::pair<bool, uint256>, OfferInfo> myOffers;
     uint32_t height;
     {
-        LOCK2(cs_main, mempool.cs);
-        LOCK(pwalletMain->cs_wallet);
+        LOCK2(cs_main, pwalletMain->cs_wallet);
+        LOCK(mempool.cs);
         height = chainActive.Height();
         GetMyOffers(myOffers, height, txIds.size() != 0, true);
     }
@@ -6166,9 +6402,16 @@ UniValue closeoffers(const UniValue& params, bool fHelp)
             TransactionBuilderResult buildResult = tb.Build();
             oneTx = buildResult.GetTxOrThrow();
         }
+        LOCK(cs_main);
+
+        bool relayTx;
         CValidationState state;
-        LOCK2(cs_main, mempool.cs);
-        if (!myAddtomempool(oneTx, &state))
+        {
+            LOCK2(smartTransactionCS, mempool.cs);
+            relayTx = myAddtomempool(oneTx, &state);
+        }
+
+        if (!relayTx)
         {
             throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Close offer transaction rejected: " + state.GetRejectReason());
         }
@@ -6214,8 +6457,8 @@ UniValue listopenoffers(const UniValue& params, bool fHelp)
 
     std::map<std::pair<bool, uint256>, OfferInfo> myOffers;
 
-    LOCK2(cs_main, mempool.cs);
-    LOCK(pwalletMain->cs_wallet);
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+    LOCK(mempool.cs);
 
     uint32_t height = chainActive.Height();
 
@@ -6311,8 +6554,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     std::vector<CRecipient> outputs;
     std::set<libzcash::PaymentAddress> zaddrDestSet;
 
-    LOCK2(cs_main, mempool.cs);
-    LOCK(pwalletMain->cs_wallet);
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+    LOCK(mempool.cs);
 
     libzcash::PaymentAddress zaddress;
     bool hasZSource = !wildCardAddress && pwalletMain->GetAndValidateSaplingZAddress(sourceAddress, zaddress);
@@ -7999,8 +8242,7 @@ UniValue getsaplingtree(const UniValue& params, bool fHelp)
 
 extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);
 
-// TODO: HARDENING - add this check to validation in PrecheckCurrencyDefinition
-CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj, uint32_t height, const uint160 systemID, std::map<uint160, std::string> &requiredDefinitions)
+CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj, uint32_t height, const uint160 systemID, std::map<uint160, std::string> &requiredDefinitions, bool checkMempool)
 {
     CCurrencyDefinition newCurrency(uniObj);
 
@@ -8009,16 +8251,21 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency definition. see help.");
     }
 
-    LOCK2(cs_main, pwalletMain->cs_wallet);
-
     CCurrencyDefinition checkDef;
     int32_t defHeight;
-    if (GetCurrencyDefinition(newCurrency.GetID(), checkDef, &defHeight, true) && !(newCurrency.GetID() == ASSETCHAINS_CHAINID && !defHeight))
+    if (GetCurrencyDefinition(newCurrency.GetID(), checkDef, &defHeight, checkMempool) &&
+        defHeight < height &&
+        !(newCurrency.GetID() == ASSETCHAINS_CHAINID &&
+         !defHeight))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, newCurrency.name + " chain already defined. see help.");
     }
 
-    bool currentChainDefinition = newCurrency.GetID() == ASSETCHAINS_CHAINID && !defHeight && _IsVerusActive();
+    bool currentChainDefinition = newCurrency.GetID() == ASSETCHAINS_CHAINID && _IsVerusActive();
+    if (currentChainDefinition)
+    {
+        newCurrency = checkDef;
+    }
 
     if (newCurrency.parent.IsNull() && !currentChainDefinition)
     {
@@ -8027,11 +8274,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
 
     for (auto &oneID : newCurrency.preAllocation)
     {
-        if (currentChainDefinition)
-        {
-            newCurrency = checkDef;
-        }
-        else if (!CIdentity::LookupIdentity(CIdentityID(oneID.first)).IsValid())
+        if (!(newCurrency.IsPBaaSChain() && oneID.first.IsNull()) && !CIdentity::LookupIdentity(CIdentityID(oneID.first)).IsValid())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "attempting to pre-allocate currency to a non-existent ID.");
         }
@@ -8050,18 +8293,20 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             throw JSONRPCError(RPC_INVALID_PARAMETER, "currency cannot be both a token and also specify a mining and staking rewards schedule.");
         }
 
-        if (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH &&
-            !newCurrency.IsGateway())
+        if ((newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH && !newCurrency.IsGateway()) ||
+            newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT)
         {
-            if (newCurrency.IsFractional())
+            if (newCurrency.IsPBaaSChain() ||
+                !newCurrency.IsToken() ||
+                newCurrency.IsFractional())
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "currency cannot be both a mapped currency and fractional");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "mapped currency must be a token with no initial supply and cannot be otherwise functional");
             }
             if (newCurrency.proofProtocol != newCurrency.PROOF_ETHNOTARIZATION)
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Ethereum mapped currency must have \"proofprotocol\":%d", (int)newCurrency.PROOF_ETHNOTARIZATION));
             }
-            bool nonZeroSupply = newCurrency.conversions.size() && !newCurrency.maxPreconvert.size();
+            bool nonZeroSupply = (newCurrency.conversions.size() && !newCurrency.maxPreconvert.size()) || newCurrency.GetTotalPreallocation();
             for (auto oneVal : newCurrency.maxPreconvert)
             {
                 if (oneVal)
@@ -8069,15 +8314,15 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
                     nonZeroSupply = true;
                 }
             }
-            if (nonZeroSupply || newCurrency.GetTotalPreallocation())
+            if (nonZeroSupply)
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Mapped currency definition requires zero initial supply and no possible conversions");
             }
             CCurrencyDefinition systemCurrency = ConnectedChains.GetCachedCurrency(newCurrency.systemID);
-            if (!systemCurrency.IsValid() ||
-                !systemCurrency.IsGateway() ||
-                systemCurrency.launchSystemID != ASSETCHAINS_CHAINID ||
-                systemCurrency.proofProtocol != systemCurrency.PROOF_ETHNOTARIZATION)
+            if (systemCurrency.IsValid() &&
+                (!systemCurrency.IsGateway() ||
+                 systemCurrency.launchSystemID != ASSETCHAINS_CHAINID ||
+                 systemCurrency.proofProtocol != systemCurrency.PROOF_ETHNOTARIZATION))
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Ethereum protocol networks are the only mapped currency type currently supported");
             }
@@ -8157,6 +8402,18 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency " + oneCurName + " in \"currencies\" 1");
             }
+            if (requiredDefinitions.count(oneCurID))
+            {
+                oneCurName = requiredDefinitions[oneCurID];
+            }
+            else
+            {
+                printf("%s: currency not found: name(%s), ID(%s)\nstored names and IDs:\n", __func__, oneCurName.c_str(), EncodeDestination(CIdentityID(oneCurID)).c_str());
+                for (auto &onePair : requiredDefinitions)
+                {
+                    printf("ID(%s), name(%s)\n", EncodeDestination(CIdentityID(onePair.first)).c_str(), onePair.second.c_str());
+                }
+            }
             // if the new currency is a PBaaS or gateway converter, and this is the PBaaS chain or gateway,
             // it will be created in this tx as well
             if (newCurrency.IsGatewayConverter() && oneCurID == newCurrency.parent)
@@ -8171,8 +8428,12 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
 
             uint160 parent;
             std::string cleanName = CleanName(oneCurName + "@", parent);
+            if (cleanName.empty())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot decode currency name " + oneCurName + " in \"currencies\"");
+            }
 
-            // the parent of the currency does not require a new definition
+            // the parent of the currency cannot require a new definition
             if (oneCurID != newCurrency.parent)
             {
                 if (parent != newCurrency.parent || cleanName == "")
@@ -8181,6 +8442,10 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
                 }
                 requiredDefinitions[oneCurID] = oneCurName;
             }
+        }
+        else
+        {
+            requiredDefinitions.erase(oneCurID);
         }
         currencySet.insert(oneCurID);
     }
@@ -8364,7 +8629,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     }
 
     CCurrencyDefinition parentCurrency;
-    
+
     if (!newChain.parent.IsNull())
     {
         parentCurrency = ConnectedChains.GetCachedCurrency(newChain.parent);
@@ -8374,12 +8639,17 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
         parentCurrency = ConnectedChains.ThisChain();
     }
 
+    bool invalidUnlessNFT = false;
     if (newChain.parent != thisChainID &&
         !(isVerusActive && newChain.GetID() == ASSETCHAINS_CHAINID && newChain.parent.IsNull()) &&
         !(parentCurrency.IsGateway() && !parentCurrency.IsNameController() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID))
     {
-        // parent chain must be current chain or be VRSC or VRSCTEST registered by the owner of the associated ID
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Attempting to define a currency relative to a parent that is not a valid gateway or the current chain.");
+        invalidUnlessNFT = true;
+        if (!newChain.IsNFTToken() )
+        {
+            // parent chain must be current chain or be VRSC or VRSCTEST registered by the owner of the associated ID
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Attempting to define a currency relative to a parent that is not a valid gateway or the current chain.");
+        }
     }
 
     uint160 newChainID = newChain.GetID();
@@ -8405,6 +8675,11 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     if (!(launchIdentity = CIdentity::LookupIdentity(newChainID, 0, &idHeight, &idTxIn)).IsValidUnrevoked() || launchIdentity.HasActiveCurrency())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID " + newChain.name + " not found, is revoked, or already has an active currency defined");
+    }
+
+    if (launchIdentity.systemID != ASSETCHAINS_CHAINID)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot launch any currency or tokenized ID control unless the root identity is rooted on this system");
     }
 
     CTransaction idTx;
@@ -8666,6 +8941,10 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     // first, we need the identity output with currency activated
     launchIdentity.UpgradeVersion(height);
     launchIdentity.ActivateCurrency();
+    if (newChain.IsNFTToken())
+    {
+        launchIdentity.ActivateTokenizedControl();
+    }
     tb.AddTransparentOutput(launchIdentity.IdentityUpdateOutputScript(height + 1), 0);
 
     // now, create the currency definition output
@@ -9497,8 +9776,16 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     CTransaction commitTx = preResult.GetTxOrThrow();
 
     // add to mem pool and relay
+    LOCK(cs_main);
+
+    bool relayTx;
     CValidationState state;
-    if (!myAddtomempool(commitTx, &state))
+    {
+        LOCK2(smartTransactionCS, mempool.cs);
+        relayTx = myAddtomempool(commitTx, &state);
+    }
+
+    if (!relayTx)
     {
         throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Unable to prepare offer tx: " + state.GetRejectReason());
     }
@@ -9853,10 +10140,12 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     // must be present and in a mined block
     {
-        LOCK(mempool.cs);
-        if (!myGetTransaction(txid, txOut, hashBlk) || hashBlk.IsNull())
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or unconfirmed commitment transaction id");
+            LOCK(mempool.cs);
+            if (!myGetTransaction(txid, txOut, hashBlk) || hashBlk.IsNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or unconfirmed commitment transaction id");
+            }
         }
 
         auto indexIt = mapBlockIndex.find(hashBlk);
@@ -10326,8 +10615,17 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     else
     {
         // add to mem pool and relay
+        LOCK(cs_main);
+
+        bool relayTx;
         CValidationState state;
-        if (!myAddtomempool(commitTx, &state))
+        {
+            LOCK2(smartTransactionCS, mempool.cs);
+            relayTx = myAddtomempool(commitTx, &state);
+        }
+
+        // add to mem pool and relay
+        if (!relayTx)
         {
             throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Unable to commit identity registration transaction: " + state.GetRejectReason());
         }
@@ -10809,6 +11107,7 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
     }
 
     newID.flags &= ~CIdentity::FLAG_REVOKED;
+    newID.systemID = oldID.systemID;
     newID.UpgradeVersion(nHeight + 1);
 
     // create the identity definition transaction
@@ -11039,7 +11338,7 @@ UniValue listidentities(const UniValue& params, bool fHelp)
     if (fHelp || params.size() > 3)
     {
         throw runtime_error(
-            "listidentities (includecansign) (includewatchonly)\n"
+            "listidentities (includecanspend) (includecansign) (includewatchonly)\n"
             "\n\n"
 
             "\nArguments\n"
@@ -11177,6 +11476,243 @@ UniValue listidentities(const UniValue& params, bool fHelp)
     {
         return NullUniValue;
     }
+}
+
+UniValue getidentitieswithaddress(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "getidentitieswithaddress '{\"address\":\"validprimaryaddress\",\"fromheight\":height, \"toheight\":height, \"unspent\":false}'\n"
+            "\n\n"
+
+            "\nArguments\n"
+            "{\n"
+            "    \"address\":\"validaddress\"   (string, required) returns all identities that contain the specified address in its primary addresses\n"
+            "    \"fromheight\":n               (number, optional, default=0) Search for qualified identities modified from this height forward only\n"
+            "    \"toheight\":n                 (number, optional, default=0) Search for qualified identities only up until this height (0 == no limit)\n"
+            "    \"unspent\":bool               (bool, optional, default=false) if true, this will only return active ID UTXOs as of the current block height\n"
+            "}\n"
+
+            "\nResult:\n"
+            "[                                  (array) array of matching identities\n"
+            "  {identityobject},                (object) identity with additional member \"txout\" with txhash and output index\n"
+            "  ...\n"
+            "]\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getidentitieswithaddress", "\'{\"address\":\"validprimaryaddress\",\"fromheight\":height, \"toheight\":height, \"unspent\":false}\'")
+            + HelpExampleRpc("getidentitieswithaddress", "\'{\"address\":\"validprimaryaddress\",\"fromheight\":height, \"toheight\":height, \"unspent\":false}\'")
+        );
+    }
+
+    CheckIdentityAPIsValid();
+    if (!fIdIndex)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMS, "getidentitieswithaddress requires -idindex=1 when starting the daemon\n");
+    }
+    UniValue retVal(UniValue::VARR);
+
+    std::string addressString = uni_get_str(find_value(params[0], "address"));
+    CTxDestination addressDest = DecodeDestination(addressString);
+    if (addressDest.which() != COptCCParams::ADDRTYPE_PKH && addressDest.which() != COptCCParams::ADDRTYPE_PK)
+    {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "no valid PKH or PK address\n");
+    }
+    uint32_t fromHeight = uni_get_int64(find_value(params[0], "fromheight"));
+    uint32_t toHeight = uni_get_int64(find_value(params[0], "toheight"));
+
+    if (uni_get_bool(find_value(params[0], "unspent")))
+    {
+        std::map<uint160, std::pair<CAddressUnspentDbEntry, CIdentity>> identities;
+        if (CIdentity::GetActiveIdentitiesByPrimaryAddress(addressDest, identities))
+        {
+            for (auto &oneIdentity : identities)
+            {
+                if ((!fromHeight || oneIdentity.second.first.second.blockHeight >= fromHeight) &&
+                    (!toHeight || oneIdentity.second.first.second.blockHeight <= toHeight))
+                {
+                    UniValue idUni = oneIdentity.second.second.ToUniValue();
+                    idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
+                    retVal.push_back(idUni);
+                }
+            }
+        }
+    }
+    else
+    {
+        std::map<uint160, std::pair<CAddressIndexDbEntry, CIdentity>> identities;
+        if (CIdentity::GetIdentityOutsByPrimaryAddress(addressDest, identities, fromHeight, toHeight))
+        {
+            for (auto &oneIdentity : identities)
+            {
+                UniValue idUni = oneIdentity.second.second.ToUniValue();
+                idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
+                retVal.push_back(idUni);
+            }
+        }
+    }
+    return retVal;
+}
+ 
+UniValue getidentitieswithrevocation(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "getidentitieswithrevocation '{\"identityid\":\"idori-address\", \"fromheight\":height, \"toheight\":height, \"unspent\":false}'\n"
+            "\n\n"
+
+            "\nArguments\n"
+            "{\n"
+            "    \"identityid\":\"idori-address\" (string, required) returns all identities where this ID or i-address is the revocation authority\n"
+            "    \"fromheight\":n               (number, optional, default=0) Search for qualified identities modified from this height forward only\n"
+            "    \"toheight\":n                 (number, optional, default=0) Search for qualified identities only up until this height (0 == no limit)\n"
+            "    \"unspent\":bool               (bool, optional, default=false) if true, this will only return active ID UTXOs as of the current block height\n"
+            "}\n"
+
+            "\nResult:\n"
+            "[                                  (array) array of matching identities\n"
+            "  {identityobject},                (object) identity with additional member \"txout\" with txhash and output index\n"
+            "  ...\n"
+            "]\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getidentitieswithrevocation", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
+            + HelpExampleRpc("getidentitieswithrevocation", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
+        );
+    }
+
+    CheckIdentityAPIsValid();
+    if (!fIdIndex)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMS, "getidentitieswithrevocation requires -idindex=1 when starting the daemon\n");
+    }
+    UniValue retVal(UniValue::VARR);
+
+    std::string addressString = uni_get_str(find_value(params[0], "identityid"));
+    CTxDestination addressDest = DecodeDestination(addressString);
+    if (addressDest.which() != COptCCParams::ADDRTYPE_ID)
+    {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "no valid ID address\n");
+    }
+
+    CIdentityID idID = GetDestinationID(addressDest);
+
+    uint32_t fromHeight = uni_get_int64(find_value(params[0], "fromheight"));
+    uint32_t toHeight = uni_get_int64(find_value(params[0], "toheight"));
+
+    if (uni_get_bool(find_value(params[0], "unspent")))
+    {
+        std::map<uint160, std::pair<CAddressUnspentDbEntry, CIdentity>> identities;
+        if (CIdentity::GetActiveIdentitiesWithRevocationID(idID, identities))
+        {
+            for (auto &oneIdentity : identities)
+            {
+                if ((!fromHeight || oneIdentity.second.first.second.blockHeight >= fromHeight) &&
+                    (!toHeight || oneIdentity.second.first.second.blockHeight <= toHeight))
+                {
+                    UniValue idUni = oneIdentity.second.second.ToUniValue();
+                    idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
+                    retVal.push_back(idUni);
+                }
+            }
+        }
+    }
+    else
+    {
+        std::map<uint160, std::pair<CAddressIndexDbEntry, CIdentity>> identities;
+        if (CIdentity::GetIdentityOutsWithRevocationID(idID, identities, fromHeight, toHeight))
+        {
+            for (auto &oneIdentity : identities)
+            {
+                UniValue idUni = oneIdentity.second.second.ToUniValue();
+                idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
+                retVal.push_back(idUni);
+            }
+        }
+    }
+    return retVal;
+}
+
+UniValue getidentitieswithrecovery(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "getidentitieswithrecovery '{\"identityid\":\"idori-address\", \"fromheight\":height, \"toheight\":height, \"unspent\":false}'\n"
+            "\n\n"
+
+            "\nArguments\n"
+            "{\n"
+            "    \"identityid\":\"idori-address\" (string, required) returns all identities where this ID or i-address is the recovery authority\n"
+            "    \"fromheight\":n               (number, optional, default=0) Search for qualified identities modified from this height forward only\n"
+            "    \"toheight\":n                 (number, optional, default=0) Search for qualified identities only up until this height (0 == no limit)\n"
+            "    \"unspent\":bool               (bool, optional, default=false) if true, this will only return active ID UTXOs as of the current block height\n"
+            "}\n"
+
+            "\nResult:\n"
+            "[                                  (array) array of matching identities\n"
+            "  {identityobject},                (object) identity with additional member \"txout\" with txhash and output index\n"
+            "  ...\n"
+            "]\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getidentitieswithrecovery", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
+            + HelpExampleRpc("getidentitieswithrecovery", "\'{\"identityid\":\"idori-address\",\"fromheight\":height,\"toheight\":height,\"unspent\":false}\'")
+        );
+    }
+
+    CheckIdentityAPIsValid();
+    if (!fIdIndex)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMS, "getidentitieswithrecovery requires -idindex=1 when starting the daemon\n");
+    }
+    UniValue retVal(UniValue::VARR);
+
+    std::string addressString = uni_get_str(find_value(params[0], "identityid"));
+    CTxDestination addressDest = DecodeDestination(addressString);
+    if (addressDest.which() != COptCCParams::ADDRTYPE_ID)
+    {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "no valid ID address\n");
+    }
+
+    CIdentityID idID = GetDestinationID(addressDest);
+
+    uint32_t fromHeight = uni_get_int64(find_value(params[0], "fromheight"));
+    uint32_t toHeight = uni_get_int64(find_value(params[0], "toheight"));
+
+    if (uni_get_bool(find_value(params[0], "unspent")))
+    {
+        std::map<uint160, std::pair<CAddressUnspentDbEntry, CIdentity>> identities;
+        if (CIdentity::GetActiveIdentitiesWithRecoveryID(idID, identities))
+        {
+            for (auto &oneIdentity : identities)
+            {
+                if ((!fromHeight || oneIdentity.second.first.second.blockHeight >= fromHeight) &&
+                    (!toHeight || oneIdentity.second.first.second.blockHeight <= toHeight))
+                {
+                    UniValue idUni = oneIdentity.second.second.ToUniValue();
+                    idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
+                    retVal.push_back(idUni);
+                }
+            }
+        }
+    }
+    else
+    {
+        std::map<uint160, std::pair<CAddressIndexDbEntry, CIdentity>> identities;
+        if (CIdentity::GetIdentityOutsWithRecoveryID(idID, identities, fromHeight, toHeight))
+        {
+            for (auto &oneIdentity : identities)
+            {
+                UniValue idUni = oneIdentity.second.second.ToUniValue();
+                idUni.pushKV("txout", CUTXORef(oneIdentity.second.first.first.txhash, oneIdentity.second.first.first.index).ToUniValue());
+                retVal.push_back(idUni);
+            }
+        }
+    }
+    return retVal;
 }
 
 UniValue addmergedblock(const UniValue& params, bool fHelp)
@@ -11670,6 +12206,9 @@ static const CRPCCommand commands[] =
     { "identity",     "recoveridentity",              &recoveridentity,        true  },
     { "identity",     "getidentity",                  &getidentity,            true  },
     { "identity",     "listidentities",               &listidentities,         true  },
+    { "identity",     "getidentitieswithaddress",     &getidentitieswithaddress, true  },
+    { "identity",     "getidentitieswithrevocation",  &getidentitieswithrevocation, true  },
+    { "identity",     "getidentitieswithrecovery",    &getidentitieswithrecovery, true  },
     { "marketplace",  "makeoffer",                    &makeoffer,              true  },
     { "marketplace",  "takeoffer",                    &takeoffer,              true  },
     { "marketplace",  "getoffers",                    &getoffers,              true  },
