@@ -7064,7 +7064,6 @@ bool static LoadBlockIndexDB()
     {
         fAddressIndex = fInsightExplorer;
         fSpentIndex = fInsightExplorer;
-        fIdIndex = fInsightExplorer;
     }
     fTimestampIndex = fInsightExplorer;
 

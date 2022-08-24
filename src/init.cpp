@@ -1712,8 +1712,8 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             fReindex = true;
         }
 
-        fInsightExplorer = GetBoolArg("-insightexplorer", DEFAULT_INSIGHTEXPLORER);
         pblocktree->ReadFlag("insightexplorer", checkval);
+        fInsightExplorer = GetBoolArg("-insightexplorer", checkval);
         if ( checkval != fInsightExplorer )
         {
             pblocktree->WriteFlag("insightexplorer", fInsightExplorer);
@@ -1788,7 +1788,8 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                 }
 
                 // Check for changed -insightexplorer state
-                if (!fReindex && fInsightExplorer != GetBoolArg("-insightexplorer", DEFAULT_INSIGHTEXPLORER) ) {
+                pblocktree->ReadFlag("insightexplorer", fInsightExplorer);
+                if (!fReindex && fInsightExplorer != GetBoolArg("-insightexplorer", fInsightExplorer) ) {
                     strLoadError = _("You need to rebuild the database using -reindex to change -insightexplorer");
                     break;
                 }
