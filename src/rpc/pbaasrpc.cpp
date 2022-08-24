@@ -3161,6 +3161,10 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
         retVal.pushKV("laststableproofroot", lastConfirmedRoot.ToUniValue());
         retVal.pushKV("lastconfirmedindex", validRoots[lastConfirmedRoot.rootHeight]);
     }
+    else if (lastConfirmedRoot.IsValid())
+    {
+        retVal.pushKV("laststableproofroot", lastConfirmedRoot.ToUniValue());
+    }
     else
     {
         retVal.pushKV("laststableproofroot", CProofRoot::GetProofRoot((nHeight - COINBASE_MATURITY) > 0 ? (nHeight - COINBASE_MATURITY) : 1).ToUniValue());
