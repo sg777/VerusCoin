@@ -1680,9 +1680,6 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     LogPrintf("* Using %.1fMiB for chain state database\n", nCoinDBCache * (1.0 / 1024 / 1024));
     LogPrintf("* Using %.1fMiB for in-memory UTXO set\n", nCoinCacheUsage * (1.0 / 1024 / 1024));
 
-    bool startingInsightExplorer;
-    pblocktree->ReadFlag("insightexplorer", startingInsightExplorer);
-
     if ( fReindex == 0 )
     {
         bool checkval,fAddressIndex,fSpentIndex,fTimeStampIndex;
@@ -1715,7 +1712,8 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             fReindex = true;
         }
 
-        fInsightExplorer = GetBoolArg("-insightexplorer", startingInsightExplorer);
+        pblocktree->ReadFlag("insightexplorer", checkval);
+        fInsightExplorer = GetBoolArg("-insightexplorer", checkval);
         if ( checkval != fInsightExplorer )
         {
             pblocktree->WriteFlag("insightexplorer", fInsightExplorer);
@@ -1790,7 +1788,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                 }
 
                 // Check for changed -insightexplorer state
-                if (!fReindex && fInsightExplorer != GetBoolArg("-insightexplorer", startingInsightExplorer) ) {
+                if (!fReindex && fInsightExplorer != GetBoolArg("-insightexplorer", DEFAULT_INSIGHTEXPLORER) ) {
                     strLoadError = _("You need to rebuild the database using -reindex to change -insightexplorer");
                     break;
                 }
