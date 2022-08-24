@@ -1886,7 +1886,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                                            systemDef.proofProtocol == systemDef.PROOF_ETHNOTARIZATION &&
                                            newCurrency.maxPreconvert.size() == 1 &&
                                            newCurrency.maxPreconvert[0] == 0 &&
-                                           newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT &&
+                                           newCurrency.IsNFTToken() &&
                                            !(newCurrency.options &
                                                 newCurrency.OPTION_FRACTIONAL +
                                                 newCurrency.OPTION_ID_ISSUANCE +
@@ -1894,7 +1894,13 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                                                 newCurrency.OPTION_PBAAS +
                                                 newCurrency.OPTION_GATEWAY_CONVERTER) &&
                                            newCurrency.IsToken() &&
-                                           !newCurrency.GetTotalPreallocation();
+                                           newCurrency.GetTotalPreallocation() == 1;
+
+                if (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT &&
+                    !isNFTMappedCurrency)
+                {
+                    return state.Error("Tokenized ID currency or NFT mapped currency must have only 1 satoshi of supply and follow all definition rules");
+                }
 
                 if (newIdentity.parent != ASSETCHAINS_CHAINID &&
                     !isNFTMappedCurrency &&
