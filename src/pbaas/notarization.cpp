@@ -1270,12 +1270,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         if (tempState.IsPrelaunch())
         {
             tempState.reserveIn = tempState.AddVectors(tempState.reserveIn, this->currencyState.reserveIn);
-            if (!destCurrency.IsFractional() && !this->IsDefinitionNotarization())
+            if (!destCurrency.IsFractional() && !this->IsDefinitionNotarization() && !tempState.IsLaunchClear())
             {
-                if (this->currencyState.IsLaunchClear())
-                {
-                    tempState.supply += this->currencyState.supply - this->currencyState.emitted;
-                }
+                tempState.supply += this->currencyState.supply - this->currencyState.emitted;
                 tempState.preConvertedOut += this->currencyState.preConvertedOut;
                 tempState.primaryCurrencyOut += this->currencyState.primaryCurrencyOut;
             }
@@ -4281,38 +4278,40 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             confirmingIdx = crosschainCND.IsConfirmed() ? crosschainCND.lastConfirmed : 0;
             CObjectFinalization finalizationObj;
 
-            if (!isFirstLaunchingNotarization &&
-                !crosschainCND.vtx[confirmingIdx].second.FindEarnedNotarization(finalizationObj, &earnedNotarizationIndexEntry))
+            if (!isFirstLaunchingNotarization)
             {
-                return retVal;
-            }
-            else if (!finalizationObj.IsValid() || !finalizationObj.IsConfirmed())
-            {
-                // the notarization considered confirmed on the other
-                // chain must be in the same notarization chain as the one confirmed on this chain that would
-                // be true if it is on both chains, accurate on both, and behind this confirmed notarization
-                CTransaction notarizationTx;
-                CPBaaSNotarization checkNotarization1, checkNotarization2 = crosschainCND.vtx[confirmingIdx].second;
-                uint256 blkHash;
-                COptCCParams nP;
-                if (!myGetTransaction(earnedNotarizationIndexEntry.first.txhash, notarizationTx, blkHash) ||
-                    earnedNotarizationIndexEntry.first.index >= notarizationTx.vout.size() ||
-                    !(notarizationTx.vout[earnedNotarizationIndexEntry.first.index].scriptPubKey.IsPayToCryptoCondition(nP) &&
-                      nP.IsValid() &&
-                      nP.evalCode == EVAL_EARNEDNOTARIZATION &&
-                      nP.vData.size() &&
-                      (checkNotarization1 = CPBaaSNotarization(nP.vData[0])).IsValid() &&
-                      checkNotarization2.SetMirror(false) &&
-                      ::AsVector(checkNotarization1) == ::AsVector(checkNotarization2) &&
-                      checkNotarization1.proofRoots.count(ASSETCHAINS_CHAINID) &&
-                      checkNotarization2.proofRoots.count(ASSETCHAINS_CHAINID) &&
-                      checkNotarization1.proofRoots[ASSETCHAINS_CHAINID].rootHeight < checkNotarization2.proofRoots[ASSETCHAINS_CHAINID].rootHeight))
+                if (!crosschainCND.vtx[confirmingIdx].second.FindEarnedNotarization(finalizationObj, &earnedNotarizationIndexEntry))
                 {
-                    LogPrintf("Invalid notarization index entry for txid: %s\n", earnedNotarizationIndexEntry.first.txhash.GetHex().c_str());
-                    printf("Invalid notarization index entry for txid: %s\n", earnedNotarizationIndexEntry.first.txhash.GetHex().c_str());
                     return retVal;
                 }
-            }
+                else if (!finalizationObj.IsValid() || !finalizationObj.IsConfirmed())
+                {
+                    // the notarization considered confirmed on the other
+                    // chain must be in the same notarization chain as the one confirmed on this chain that would
+                    // be true if it is on both chains, accurate on both, and behind this confirmed notarization
+                    CTransaction notarizationTx;
+                    CPBaaSNotarization checkNotarization1, checkNotarization2 = crosschainCND.vtx[confirmingIdx].second;
+                    uint256 blkHash;
+                    COptCCParams nP;
+                    if (!myGetTransaction(earnedNotarizationIndexEntry.first.txhash, notarizationTx, blkHash) ||
+                        earnedNotarizationIndexEntry.first.index >= notarizationTx.vout.size() ||
+                        !(notarizationTx.vout[earnedNotarizationIndexEntry.first.index].scriptPubKey.IsPayToCryptoCondition(nP) &&
+                        nP.IsValid() &&
+                        nP.evalCode == EVAL_EARNEDNOTARIZATION &&
+                        nP.vData.size() &&
+                        (checkNotarization1 = CPBaaSNotarization(nP.vData[0])).IsValid() &&
+                        checkNotarization2.SetMirror(false) &&
+                        ::AsVector(checkNotarization1) == ::AsVector(checkNotarization2) &&
+                        checkNotarization1.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                        checkNotarization2.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                        checkNotarization1.proofRoots[ASSETCHAINS_CHAINID].rootHeight < checkNotarization2.proofRoots[ASSETCHAINS_CHAINID].rootHeight))
+                    {
+                        LogPrintf("Invalid notarization index entry for txid: %s\n", earnedNotarizationIndexEntry.first.txhash.GetHex().c_str());
+                        printf("Invalid notarization index entry for txid: %s\n", earnedNotarizationIndexEntry.first.txhash.GetHex().c_str());
+                        return retVal;
+                    }
+                }
+            } 
         }
 
         // if we have pending notarizations, see which of the possible ones we agree with
@@ -4462,6 +4461,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             }
         }
 
+        // TODO: HARDENING - ensure that notarizationTxInfo gets passed to the other side
         if (!isFirstLaunchingNotarization && !(notarizationTxInfo.second.IsValid() && notarizationTxInfo.second.components.size()))
         {
             LogPrintf("Cannot construct notarization proof for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
