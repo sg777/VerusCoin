@@ -1862,7 +1862,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
             {
                 return state.Error("Identity has not been set to defined currency status");
             }
-            if (!(newIdentity.GetID() == ASSETCHAINS_CHAINID && IsVerusActive()))
+            if (newIdentity.GetID() != ASSETCHAINS_CHAINID || !IsVerusActive())
             {
                 CCurrencyDefinition parentCurrency = ConnectedChains.GetCachedCurrency(newIdentity.parent);
                 if (!parentCurrency.IsValid())
@@ -1881,50 +1881,59 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                     systemDef = ConnectedChains.GetCachedCurrency(newCurrency.systemID);
                 }
 
-                bool isNFTMappedCurrency = systemDef.IsValid() &&
-                                           systemDef.IsGateway() &&
-                                           newCurrency.maxPreconvert.size() == 1 &&
-                                           newCurrency.maxPreconvert[0] == 0 &&
-                                           newCurrency.IsNFTToken() &&
+                bool isNFTMappedCurrency = newCurrency.IsNFTToken() &&
+                                           systemDef.IsValid() &&
                                            !(newCurrency.options &
                                                 newCurrency.OPTION_FRACTIONAL +
-                                                newCurrency.OPTION_ID_ISSUANCE +
                                                 newCurrency.OPTION_GATEWAY +
                                                 newCurrency.OPTION_PBAAS +
                                                 newCurrency.OPTION_GATEWAY_CONVERTER) &&
-                                           newCurrency.IsToken() &&
-                                           newCurrency.GetTotalPreallocation() == 1;
+                                           newCurrency.IsToken();
 
-                if ((newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT &&
-                     !(systemDef.proofProtocol == systemDef.PROOF_ETHNOTARIZATION && isNFTMappedCurrency)) ||
-                    (newCurrency.IsNFTToken() && !isNFTMappedCurrency))
+                if (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT &&
+                    !(isNFTMappedCurrency &&
+                      systemDef.proofProtocol == systemDef.PROOF_ETHNOTARIZATION &&
+                      systemDef.IsGateway() &&
+                      newCurrency.maxPreconvert.size() == 1 &&
+                      newCurrency.maxPreconvert[0] == 0 &&
+                      newCurrency.GetTotalPreallocation() == 0))
                 {
-                    return state.Error("Tokenized ID currency or NFT mapped currency must have only 1 satoshi of supply and follow all definition rules");
+                    return state.Error("NFT mapped currency must have only 0 satoshi of supply and follow all definition rules");
+                }
+                else if (newCurrency.IsNFTToken() &&
+                         !(isNFTMappedCurrency &&
+                           newCurrency.systemID == ASSETCHAINS_CHAINID &&
+                           ((newCurrency.GetTotalPreallocation() == 0 &&
+                             newCurrency.maxPreconvert.size() == 1 &&
+                             newCurrency.maxPreconvert[0] == 1) ||
+                            (newCurrency.GetTotalPreallocation() == 1 &&
+                             newCurrency.maxPreconvert.size() == 1 &&
+                             newCurrency.maxPreconvert[0] == 0))))
+                {
+                    return state.Error("Tokenized ID currency must have only 1 satoshi of supply as preallocation or convertible and follow all definition rules");
+                }
+
+                if (isNFTMappedCurrency && !newIdentity.HasTokenizedControl())
+                {
+                    return state.Error("Identity must be set for tokenized control when defining NFT token or tokenized control currency");
                 }
 
                 if (newIdentity.parent != ASSETCHAINS_CHAINID &&
                     !isNFTMappedCurrency &&
                     !(parentCurrency.IsGateway() && parentCurrency.launchSystemID == ASSETCHAINS_CHAINID && !parentCurrency.IsNameController()))
                 {
-                    return state.Error("Only gateway and PBaaS identities may create non-NFT currencies");
+                    return state.Error("Only gateway and root chain identities may create non-NFT currencies");
                 }
 
-                if (newIdentity.parent != ASSETCHAINS_CHAINID)
+                if (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH &&
+                    !(systemDef.proofProtocol == systemDef.PROOF_ETHNOTARIZATION &&
+                      newCurrency.maxPreconvert.size() == 1 &&
+                      newCurrency.maxPreconvert[0] == 0 &&
+                      newCurrency.GetTotalPreallocation() == 0)  &&
+                    !(newCurrency.systemID == newIdentity.parent ||
+                      newIdentity.parent == ASSETCHAINS_CHAINID))
                 {
-                    if (!(parentCurrency.proofProtocol == parentCurrency.PROOF_ETHNOTARIZATION &&
-                          newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH &&
-                          !newCurrency.IsFractional() &&
-                          !newCurrency.IsPBaaSChain() &&
-                          !newCurrency.IsGateway() &&
-                          newCurrency.IsToken() &&
-                          newCurrency.systemID == newIdentity.parent &&
-                          !newCurrency.GetTotalPreallocation() &&
-                          newCurrency.maxPreconvert.size() == 1 &&
-                          newCurrency.maxPreconvert[0] == 0) &&
-                        !isNFTMappedCurrency)
-                    {
-                        return state.Error("Gateway currencies must me mapped currencies via the gateway");
-                    }
+                    return state.Error("Invalid mapped currency definition");
                 }
             }
         }
