@@ -2002,7 +2002,15 @@ UniValue getaddressbalance(const UniValue& params, bool fHelp)
         if (it->first.txhash == curTx.GetHash() || myGetTransaction(it->first.txhash, curTx, blockHash))
         {
             if (it->first.spending) {
-                reserveBalance -= curTx.vout[it->first.index].ReserveOutValue();
+                CTransaction priorOutTx;
+                if (myGetTransaction(curTx.vin[it->first.index].prevout.hash, priorOutTx, blockHash))
+                {
+                    reserveBalance -= curTx.vout[curTx.vin[it->first.index].prevout.n].ReserveOutValue();
+                }
+                else
+                {
+                    throw JSONRPCError(RPC_DATABASE_ERROR, "Unable to retrieve data for reserve output value");
+                }
             }
             else
             {
