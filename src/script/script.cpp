@@ -580,21 +580,33 @@ bool CScript::IsPayToCryptoCondition(CScript *pCCSubScript, std::vector<std::vec
     vector<unsigned char> firstParam;
     vector<unsigned char> data;
     opcodetype opcode;
-    if (this->GetOp(pc, opcode, firstParam))
-        // Sha256 conditions are <76 bytes
-        if (opcode > OP_0 && opcode < OP_PUSHDATA1)
-            if (this->GetOp(pc, opcode, data))
-                if (opcode == OP_CHECKCRYPTOCONDITION)
+    try
+    {
+        if (this->GetOp(pc, opcode, firstParam))
+        {
+            // Sha256 conditions are <76 bytes
+            if (opcode > OP_0 && opcode < OP_PUSHDATA1)
+            {
+                if (this->GetOp(pc, opcode, data))
                 {
-                    const_iterator pcCCEnd = pc;
-                    if (GetBalancedData(pc, vParams))
+                    if (opcode == OP_CHECKCRYPTOCONDITION)
                     {
-                        if (pCCSubScript)
-                            *pCCSubScript = CScript(begin(), pcCCEnd);
-                        vParams.push_back(firstParam);
-                        return true;
+                        const_iterator pcCCEnd = pc;
+                        if (GetBalancedData(pc, vParams))
+                        {
+                            if (pCCSubScript)
+                                *pCCSubScript = CScript(begin(), pcCCEnd);
+                            vParams.push_back(firstParam);
+                            return true;
+                        }
                     }
                 }
+            }
+        }
+    }
+    catch(...)
+    {
+    }
     return false;
 }
 
