@@ -1007,8 +1007,8 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                                                        true,
                                                        evidenceProof,
                                                        CNotaryEvidence::TYPE_IMPORT_PROOF);
-            outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence))));
 
+            outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence))));
             outputs.insert(outputs.end(), importOutputs.begin(), importOutputs.end());
         }
         else
@@ -1083,7 +1083,26 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 printf("Invalid starting currency import for %s\n", ConnectedChains.ThisChain().name.c_str());
                 return false;
             }
+
+            // if fees are not converted, we will pay out original fees,
+            // less liquidity fees, which go into the currency reserves
+            bool feesConverted;
+            CCurrencyValueMap liquidityFees;
+            CCurrencyValueMap originalFees = 
+                newCurrencyState.CalculateConvertedFees(
+                    newCurrencyState.viaConversionPrice,
+                    newCurrencyState.viaConversionPrice,
+                    ASSETCHAINS_CHAINID,
+                    feesConverted,
+                    liquidityFees,
+                    additionalFees);
+
+            if (!feesConverted)
+            {
+                additionalFees += (originalFees - liquidityFees);
+            }
         }
+
         // export thread
         cp = CCinit(&CC, EVAL_CROSSCHAIN_EXPORT);
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
