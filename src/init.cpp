@@ -1787,6 +1787,12 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                     break;
                 }
 
+                pblocktree->ReadFlag("idindex", fIdIndex);
+                if (!fReindex && fIdIndex != GetBoolArg("-idindex", fIdIndex) ) {
+                    strLoadError = _("You need to rebuild the database using -reindex to change -idindex");
+                    break;
+                }
+
                 // Check for changed -insightexplorer state
                 pblocktree->ReadFlag("insightexplorer", fInsightExplorer);
                 if (!fReindex && fInsightExplorer != GetBoolArg("-insightexplorer", fInsightExplorer) ) {
