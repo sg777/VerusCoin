@@ -1303,7 +1303,10 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                          (CCurrencyValueMap(tempState.currencies, tempState.reserveIn) * -1).AsCurrencyVector(tempState.currencies));
             tempState.reserveIn = tempReserves.AsCurrencyVector(tempState.currencies);
         }
-
+        if (destCurrency.IsPBaaSChain() && tempState.IsLaunchClear() && this->currencyState.IsLaunchClear())
+        {
+            tempState.reserveIn = this->currencyState.reserveIn;
+        }
         newNotarization.currencyState = tempState;
         return retVal;
     }
