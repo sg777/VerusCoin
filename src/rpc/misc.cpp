@@ -1571,8 +1571,8 @@ bool timestampSort(std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta> a,
 }
 
 
-void CurrencyValuesAndNames(UniValue &output, bool spending, const CScript &script, CAmount satoshis, bool friendlyNames=false);
-void CurrencyValuesAndNames(UniValue &output, bool spending, const CScript &script, CAmount satoshis, bool friendlyNames)
+void CurrencyValuesAndNames(UniValue &output, bool spending, const CScript script, CAmount satoshis, bool friendlyNames=false);
+void CurrencyValuesAndNames(UniValue &output, bool spending, const CScript script, CAmount satoshis, bool friendlyNames)
 {
     if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) >= CActivationHeight::ACTIVATE_PBAAS)
     {
@@ -1607,6 +1607,29 @@ void CurrencyValuesAndNames(UniValue &output, bool spending, const CScript &scri
     }
 }
 
+void CurrencyValuesAndNames(UniValue &output, bool spending, const CTransaction &tx, int index, CAmount satoshis, bool friendlyNames=false);
+void CurrencyValuesAndNames(UniValue &output, bool spending, const CTransaction &tx, int index, CAmount satoshis, bool friendlyNames)
+{
+    CScript script;
+    if (spending) {
+        CTransaction priorOutTx;
+        uint256 blockHash;
+        if (myGetTransaction(tx.vin[index].prevout.hash, priorOutTx, blockHash))
+        {
+            script = priorOutTx.vout[tx.vin[index].prevout.n].scriptPubKey;
+        }
+        else
+        {
+            throw JSONRPCError(RPC_DATABASE_ERROR, "Unable to retrieve data to retrieve spending currency values");
+        }
+    }
+    else
+    {
+        script = tx.vout[index].scriptPubKey;
+    }
+    return CurrencyValuesAndNames(output, spending, script, satoshis, friendlyNames);
+}
+
 UniValue AddressMemPoolUni(const std::vector<std::pair<uint160, int>> &addresses, bool friendlyNames)
 {
     CTransaction curTx;
@@ -1634,7 +1657,7 @@ UniValue AddressMemPoolUni(const std::vector<std::pair<uint160, int>> &addresses
         delta.push_back(Pair("txid", it->first.txhash.GetHex()));
         delta.push_back(Pair("index", (int)it->first.index));
         delta.push_back(Pair("satoshis", it->second.amount));
-        CurrencyValuesAndNames(delta, it->first.spending, curTx.vout[it->first.index].scriptPubKey, it->second.amount, friendlyNames);
+        CurrencyValuesAndNames(delta, it->first.spending, curTx, it->first.index, it->second.amount, friendlyNames);
         delta.push_back(Pair("timestamp", it->second.time));
         if (it->second.amount < 0) {
             delta.push_back(Pair("prevtxid", it->second.prevhash.GetHex()));
@@ -1909,7 +1932,7 @@ UniValue getaddressdeltas(const UniValue& params, bool fHelp)
             uint256 blockHash;
             if (verbosity && (it->first.txhash == curTx.GetHash() || myGetTransaction(it->first.txhash, curTx, blockHash)))
             {
-                CurrencyValuesAndNames(delta, it->first.spending, curTx.vout[it->first.index].scriptPubKey, it->second, friendlyNames);
+                CurrencyValuesAndNames(delta, it->first.spending, curTx, it->first.index, it->second, friendlyNames);
             }
 
             deltas.push_back(delta);
@@ -2005,7 +2028,7 @@ UniValue getaddressbalance(const UniValue& params, bool fHelp)
                 CTransaction priorOutTx;
                 if (myGetTransaction(curTx.vin[it->first.index].prevout.hash, priorOutTx, blockHash))
                 {
-                    reserveBalance -= curTx.vout[curTx.vin[it->first.index].prevout.n].ReserveOutValue();
+                    reserveBalance -= priorOutTx.vout[curTx.vin[it->first.index].prevout.n].ReserveOutValue();
                 }
                 else
                 {
