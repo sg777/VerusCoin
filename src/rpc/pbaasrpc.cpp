@@ -3161,6 +3161,10 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
         retVal.pushKV("laststableproofroot", lastConfirmedRoot.ToUniValue());
         retVal.pushKV("lastconfirmedindex", validRoots[lastConfirmedRoot.rootHeight]);
     }
+    else if (lastConfirmedRoot.IsValid())
+    {
+        retVal.pushKV("laststableproofroot", lastConfirmedRoot.ToUniValue());
+    }
     else
     {
         retVal.pushKV("laststableproofroot", CProofRoot::GetProofRoot((nHeight - COINBASE_MATURITY) > 0 ? (nHeight - COINBASE_MATURITY) : 1).ToUniValue());
@@ -6742,9 +6746,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "To specify a fractional currency converter, \"currency\" and \"convertto\" must both be reserves of \"via\"");
                 }
-                if (burnCurrency || mintNew || preConvert)
+                if (mintNew || preConvert)
                 {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot combine reserve to reserve conversion with burning, minting, or preconversion");
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot combine reserve to reserve conversion with minting or preconversion");
                 }
                 if (convertToCurrencyID.IsNull())
                 {

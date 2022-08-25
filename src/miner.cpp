@@ -925,7 +925,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 gatewayDeposits += originalFees;
             }
 
-            gatewayDeposits.valueMap[newCurID] += gatewayDepositsUsed.valueMap[newCurID];
+            gatewayDeposits.valueMap[newCurID] += gatewayDepositsUsed.valueMap[newCurID] + newNotarization.currencyState.primaryCurrencyOut;
 
             printf("importedcurrency %s\nspentcurrencyout %s\ngatewaydeposits %s\n", 
                 importedCurrency.ToUniValue().write(1,2).c_str(),
