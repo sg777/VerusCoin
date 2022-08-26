@@ -3572,6 +3572,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     SetMaxScriptElementSize(nHeight);
 
+    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_PBAAS)
+    {
+        ConnectedChains.ConfigureEthBridge();
+    }
+
     bool fExpensiveChecks = true;
     if (fCheckpointsEnabled) {
         CBlockIndex *pindexLastCheckpoint = Checkpoints::GetLastCheckpoint(chainparams.Checkpoints());
@@ -6682,11 +6687,6 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
         cheatList.Prune(nHeight - 200);
 
     SetMaxScriptElementSize(nHeight + 1);
-
-    if (CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_PBAAS)
-    {
-        ConnectedChains.ConfigureEthBridge();
-    }
 
     return true;
 }

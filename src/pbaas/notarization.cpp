@@ -4937,6 +4937,10 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
     if (p.evalCode == EVAL_EARNEDNOTARIZATION &&
         !ConnectedChains.notarySystems.count(notarization.currencyID))
     {
+        if (!haveFullChain)
+        {
+            return true;
+        }
         return state.Error("Earned notarizations are only valid for notary systems");
     }
 
