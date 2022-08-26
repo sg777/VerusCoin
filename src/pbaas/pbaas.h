@@ -988,7 +988,7 @@ public:
     bool CheckVerusPBaaSAvailable();      // may use RPC to call Verus
     bool IsVerusPBaaSAvailable();
     bool IsNotaryAvailable(bool callToCheck=false);
-    bool ConfigureEthBridge();
+    bool ConfigureEthBridge(bool callToCheck=false);
 
     std::vector<CCurrencyDefinition> GetMergeMinedChains()
     {
