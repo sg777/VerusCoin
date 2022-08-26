@@ -7495,7 +7495,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         if (exportCurrency)
                         {
                             // get source price for export and dest price for import to ensure we have enough fee currency
-                            requiredFees = CCurrencyState::ReserveToNativeRaw(offChainDef.GetCurrencyImportFee(), reversePriceInFeeCur);
+                            requiredFees = 
+                                CCurrencyState::ReserveToNativeRaw(offChainDef.GetCurrencyImportFee(sourceCurrencyDef.ChainOptions() & sourceCurrencyDef.OPTION_NFT_TOKEN),
+                                                                   reversePriceInFeeCur);
                             flags |= CReserveTransfer::CURRENCY_EXPORT;
                         }
                         else if (exportId)
@@ -7598,7 +7600,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         if (exportCurrency)
                         {
                             // get source price for export and dest price for import to ensure we have enough fee currency
-                            requiredFees = CCurrencyState::ReserveToNativeRaw(offChainDef.GetCurrencyImportFee(), reversePriceInFeeCur);
+                            requiredFees = CCurrencyState::ReserveToNativeRaw(offChainDef.GetCurrencyImportFee(sourceCurrencyDef.ChainOptions() & sourceCurrencyDef.OPTION_NFT_TOKEN), reversePriceInFeeCur);
                             flags |= CReserveTransfer::CURRENCY_EXPORT;
                         }
                         else if (exportId)

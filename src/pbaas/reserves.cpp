@@ -2825,6 +2825,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
 {
     bool makeNormalOutput = true;
     CTxDestination dest = TransferDestinationToDestination(destination);
+    CCurrencyDefinition exportCurDef;
     if (HasNextLeg())
     {
         makeNormalOutput = false;
@@ -2864,7 +2865,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             // if this is a currency export, make the export
             if (IsCurrencyExport())
             {
-                CCurrencyDefinition exportCurDef = ConnectedChains.GetCachedCurrency(FirstCurrency());
+                exportCurDef = ConnectedChains.GetCachedCurrency(FirstCurrency());
                 if (exportCurDef.IsValid() &&
                     nextDest.IsMultiCurrency() &&
                     destination.gatewayID != ASSETCHAINS_CHAINID &&
@@ -2872,7 +2873,6 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 {
                     if (!IsValidExportCurrency(nextDest, FirstCurrency(), height))
                     {
-                        CCurrencyDefinition exportCurDef = ConnectedChains.GetCachedCurrency(FirstCurrency());
                         lastLegDest.type = lastLegDest.DEST_REGISTERCURRENCY;
                         lastLegDest.destination = ::AsVector(exportCurDef);
                         newFlags |= CURRENCY_EXPORT;
@@ -2984,7 +2984,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 LogPrintf("%s: Invalid fee currency for next leg of transfer %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str());
             }
             else if (nextLegTransfer.nFees < nextSys.GetTransactionImportFee() ||
-                     (IsCurrencyExport() && nextLegTransfer.nFees < nextSys.GetCurrencyImportFee()) ||
+                     (IsCurrencyExport() && nextLegTransfer.nFees < nextSys.GetCurrencyImportFee(exportCurDef.ChainOptions() & exportCurDef.OPTION_NFT_TOKEN)) ||
                      (IsIdentityExport() && nextLegTransfer.nFees < nextSys.IDImportFee()))
             {
                 LogPrintf("%s: Insufficient fee currency for next leg of transfer %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str());
@@ -3065,15 +3065,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 curHeight < height))
             {
                 std::string qualifiedName = ConnectedChains.GetFriendlyCurrencyName(FirstCurrency());
-
-                if (nFees < ConnectedChains.ThisChain().GetCurrencyImportFee())
-                {
-                    LogPrintf("%s: Currency already registered for %s\n", __func__, qualifiedName.c_str());
-                }
-                else
-                {
-                    LogPrint("crosschain", "%s: Currency already registered for %s\n", __func__, qualifiedName.c_str());
-                }
+                LogPrint("crosschain", "%s: Currency already registered for %s\n", __func__, qualifiedName.c_str());
 
                 // drop through and make an output that will not be added
                 nativeAmount = -1;
