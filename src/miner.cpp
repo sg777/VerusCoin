@@ -1813,7 +1813,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             }
             else
             {
-                notaryConnected = ConnectedChains.ConfigureEthBridge();
+                notaryConnected = ConnectedChains.ConfigureEthBridge(true);
             }
         }
 

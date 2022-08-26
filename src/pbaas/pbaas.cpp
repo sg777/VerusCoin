@@ -3381,7 +3381,7 @@ bool CConnectedChains::IsNotaryAvailable(bool callToCheck)
            CheckVerusPBaaSAvailable();
 }
 
-bool CConnectedChains::ConfigureEthBridge()
+bool CConnectedChains::ConfigureEthBridge(bool callToCheck)
 {
     // first time through, we initialize the VETH gateway config file
     if (!_IsVerusActive())
@@ -3395,7 +3395,7 @@ bool CConnectedChains::ConfigureEthBridge()
     LOCK(cs_main);
     if (FirstNotaryChain().IsValid())
     {
-        return IsNotaryAvailable(true);
+        return IsNotaryAvailable(callToCheck);
     }
 
     CRPCChainData vethNotaryChain;
@@ -3437,7 +3437,7 @@ bool CConnectedChains::ConfigureEthBridge()
                                                 cnd.vtx.size() ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second : CPBaaSNotarization(),
                                                 CNotarySystemInfo::TYPE_ETH,
                                                 CNotarySystemInfo::VERSION_CURRENT)));
-            return IsNotaryAvailable(true);
+            return IsNotaryAvailable(callToCheck);
         }
     }
     return false;
