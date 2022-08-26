@@ -576,9 +576,18 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     }
                     else if (oneTransfer.IsCurrencyExport())
                     {
+                        CCurrencyDefinition exportingDef = CCurrencyDefinition(oneTransfer.destination.destination);
+                        if (!exportingDef.IsValid())
+                        {
+                            return state.Error(strprintf("%s: Invalid currency import", __func__));
+                        }
+
+                        // TODO: HARDENING - imported currencies do need to conform to type constraints in order
+                        // to benefit from reduced import fees
+
                         if ((oneTransfer.HasNextLeg() && oneTransfer.destination.gatewayID != ASSETCHAINS_CHAINID ?
                                 nextLegFeeEquiv :
-                                feeEquivalent) < ConnectedChains.ThisChain().GetCurrencyImportFee())
+                                feeEquivalent) < ConnectedChains.ThisChain().GetCurrencyImportFee(exportingDef.ChainOptions() & exportingDef.OPTION_NFT_TOKEN))
                         {
                             return state.Error("Insufficient fee for currency import: " + cci.ToUniValue().write(1,2));
                         }
@@ -2561,7 +2570,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             }
 
             // ensure that we have enough fees for the currency definition import
-            if (feeEquivalentInNative < systemDest.GetCurrencyImportFee())
+            if (feeEquivalentInNative < systemDest.GetCurrencyImportFee(curToExport.ChainOptions() & curToExport.OPTION_NFT_TOKEN))
             {
                 return state.Error("Not enough fee for currency import in reserve transfer " + rt.ToUniValue().write(1,2));
             }
