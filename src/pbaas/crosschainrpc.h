@@ -908,14 +908,22 @@ public:
         {
             return pbaasSystemLaunchFee;
         }
+        else if (currencyOptions & OPTION_NFT_TOKEN)
+        {
+            return idImportFees;
+        }
         else
         {
             return currencyRegistrationFee;
         }
     }
 
-    int64_t GetCurrencyImportFee() const
+    int64_t GetCurrencyImportFee(bool isTokenizedControlCurrency=false) const
     {
+        if ((proofProtocol == PROOF_PBAASMMR || proofProtocol == PROOF_CHAINID) && isTokenizedControlCurrency)
+        {
+            return idImportFees;
+        }
         return currencyImportFee;
     }
 
