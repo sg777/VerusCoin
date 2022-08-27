@@ -1882,9 +1882,8 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                 // any ID with a gateway as its system ID can issue an NFT mapped currency with 0
                 // satoshi supply as its currency for the cost of an ID import, not a currency import
                 CCurrencyDefinition systemDef = newSystem;
-                if (newCurrency.systemID != ASSETCHAINS_CHAINID &&
-                    newCurrency.launchSystemID == ASSETCHAINS_CHAINID &&
-                    newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT &&
+                if (newCurrency.launchSystemID == ASSETCHAINS_CHAINID &&
+                    newCurrency.IsNFTToken() &&
                     !systemDef.IsValid())
                 {
                     systemDef = ConnectedChains.GetCachedCurrency(newCurrency.systemID);
