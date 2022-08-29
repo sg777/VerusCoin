@@ -1582,7 +1582,7 @@ public:
     void RevertReservesAndSupply();
 
     template <typename NUMBERVECTOR>
-    NUMBERVECTOR AddVectors(const NUMBERVECTOR &a, const NUMBERVECTOR &b) const
+    static NUMBERVECTOR AddVectors(const NUMBERVECTOR &a, const NUMBERVECTOR &b)
     {
         const NUMBERVECTOR *shortVec, *longVec;
         int64_t count, max;
