@@ -576,7 +576,9 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     }
                     else if (oneTransfer.IsCurrencyExport())
                     {
-                        CCurrencyDefinition exportingDef = CCurrencyDefinition(oneTransfer.destination.destination);
+                        CCurrencyDefinition exportingDef = oneTransfer.destination.HasGatewayLeg() && oneTransfer.destination.TypeNoFlags() != oneTransfer.destination.DEST_REGISTERCURRENCY ?
+                                                             ConnectedChains.GetCachedCurrency(oneTransfer.FirstCurrency()) :
+                                                             CCurrencyDefinition(oneTransfer.destination.destination);
                         if (!exportingDef.IsValid())
                         {
                             return state.Error(strprintf("%s: Invalid currency import", __func__));
