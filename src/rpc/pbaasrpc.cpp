@@ -6736,6 +6736,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     sourceCurrencyID.IsNull() ||
                     !secondCurrencyDef.IsFractional() ||
                     (!convertToCurrencyID.IsNull() &&
+                     !burnCurrency &&
                      (secondCurrencyID == sourceCurrencyID || 
                       secondCurrencyID == convertToCurrencyID ||
                       sourceCurrencyID == convertToCurrencyID ||
@@ -7697,7 +7698,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             }
                             std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
 
-                            if (burnCurrency)
+                            if (burnCurrency && sourceCurrencyID == convertToCurrencyID)
                             {
                                 flags |= CReserveTransfer::IMPORT_TO_SOURCE;
                             }
