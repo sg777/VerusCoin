@@ -7710,7 +7710,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                    convertToCurrencyID,
                                                                    DestinationToTransferDestination(destination));
                             rt.nFees = rt.CalculateTransferFee();
-                            oneOutput.nAmount = rt.CalculateTransferFee();
+                            oneOutput.nAmount = rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID];
                             oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                         }
                         else
