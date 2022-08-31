@@ -846,16 +846,14 @@ public:
 
     static uint160 IdentityPrimaryAddressKey(const CTxDestination &dest);
 
-    std::vector<uint160> IdentityPrimaryAddressKeys() const
+    std::set<CTxDestination> IdentityPrimaryAddressKeySet() const
     {
-        uint160 nameSpace;
-        std::vector<uint160> retVec;
-
+        std::set<CTxDestination> retVal;
         for (auto &oneDest : primaryAddresses)
         {
-            retVec.push_back(IdentityPrimaryAddressKey(oneDest));
+            retVal.insert(oneDest);
         }
-        return retVec;
+        return retVal;
     }
 
     static bool GetIdentityOutsByPrimaryAddress(const CTxDestination &address, std::map<uint160, std::pair<std::pair<CAddressIndexKey, CAmount>, CIdentity>> &identities, uint32_t start=0, uint32_t end=0);

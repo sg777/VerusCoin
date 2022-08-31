@@ -2068,8 +2068,14 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         COptCCParams master;
         if (identity.nVersion < identity.VERSION_VAULT)
         {
+            return state.Error("Inadequate identity version for post-Verus Vault activation");
+        }
+
+        if (isPBaaS && identity.nVersion < identity.VERSION_PBAAS)
+        {
             return state.Error("Inadequate identity version for post-PBaaS activation");
         }
+
         if (p.vData.size() < 3 ||
             !(master = COptCCParams(p.vData.back())).IsValid() ||
             master.evalCode != 0 ||
@@ -2145,11 +2151,54 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                 if (!recovery)
                 {
                     recovery = true;
-                    if (oneP.vKeys.size() == 1 &&
-                        oneP.m == 1 &&
-                        oneP.n == 1 &&
-                        oneP.vKeys[0].which() == COptCCParams::ADDRTYPE_ID &&
-                        identity.recoveryAuthority == GetDestinationID(oneP.vKeys[0]))
+                    // tokenized control must allow one output, in this case the recovery,
+                    // to be fulfilled. that means it must require only one signature to
+                    // fulfill signature requirements. if we only have one signature, and
+                    // it is from the publicly available key, ValidateIdentityRecover will
+                    // consider the signature unfulfilled
+                    if (height > TESTNET_FORK_HEIGHT && identity.HasTokenizedControl())
+                    {
+                        if (!(oneP.m == 1 && oneP.n > 1))
+                        {
+                            std::string errorOut = "Invalid spend condition for tokenized control in: \"" + identity.name + "\"";
+                            return state.Error(errorOut.c_str());
+                        }
+
+                        // now, make sure that we have both the key for recoveryAuthority
+                        // and the key for tokenized control, which anyone can sign, and which is further
+                        // validated in the ValidateIdentityRecover
+                        bool haveDefaultOutput = false;
+
+                        CCcontract_info CC;
+                        CCcontract_info *cp;
+
+                        // make a currency definition
+                        cp = CCinit(&CC, EVAL_IDENTITY_RECOVER);
+                        CTxDestination recoverDest(CPubKey(ParseHex(CC.CChexstr)).GetID());
+
+                        for (auto &oneKey : oneP.vKeys)
+                        {
+                            if (oneKey.which() == COptCCParams::ADDRTYPE_ID && identity.recoveryAuthority == GetDestinationID(oneKey))
+                            {
+                                recoveryValid = true;
+                            }
+                            else if (oneKey.which() == COptCCParams::ADDRTYPE_PKH &&
+                                     GetDestinationID(recoverDest) == GetDestinationID(oneKey))
+                            {
+                                haveDefaultOutput = true;
+                            }
+                        }
+                        if (!(recoveryValid && haveDefaultOutput))
+                        {
+                            std::string errorOut = "Invalid recovery spend condition for tokenized control in: \"" + identity.name + "\"";
+                            return state.Error(errorOut.c_str());
+                        }
+                    }
+                    else if (oneP.vKeys.size() == 1 &&
+                             oneP.m == 1 &&
+                             oneP.n == 1 &&
+                             oneP.vKeys[0].which() == COptCCParams::ADDRTYPE_ID &&
+                             identity.recoveryAuthority == GetDestinationID(oneP.vKeys[0]))
                     {
                         recoveryValid = true;
                     }
@@ -2594,22 +2643,59 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
         {
             return eval->Error("Missing recovery signature. All authorities must sign for currency or token definition");
         }
+    }
 
-        if (oldIdentity.HasTokenizedControl())
+    if (oldIdentity.HasTokenizedControl())
+    {
+        bool fulfilledWithToken = false;
+        if (spendingTx.vout.size() <= (idIndex + 1) || spendingTx.vin.size() <= (nIn + 1))
         {
-            if (spendingTx.vout.size() <= (idIndex + 1) || spendingTx.vin.size() <= (nIn + 1))
+            CAmount controlCurrencyVal = spendingTx.vout[idIndex + 1].ReserveOutValue().valueMap[identityID];
+            CTransaction tokenOutTx;
+            uint256 hashBlock;
+            COptCCParams tokenP;
+            if (controlCurrencyVal > 0 &&
+                myGetTransaction(spendingTx.vin[nIn + 1].prevout.hash, tokenOutTx, hashBlock) &&
+                tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].ReserveOutValue().valueMap[identityID] == controlCurrencyVal &&
+                tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].scriptPubKey == spendingTx.vout[idIndex + 1].scriptPubKey)
             {
-                CAmount controlCurrencyVal = spendingTx.vout[idIndex + 1].ReserveOutValue().valueMap[identityID];
-                CTransaction tokenOutTx;
-                uint256 hashBlock;
-                COptCCParams tokenP;
-                if (controlCurrencyVal > 0 &&
-                    myGetTransaction(spendingTx.vin[nIn + 1].prevout.hash, tokenOutTx, hashBlock) &&
-                    tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].ReserveOutValue().valueMap[identityID] == controlCurrencyVal &&
-                    tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].scriptPubKey == spendingTx.vout[idIndex + 1].scriptPubKey)
+                fulfilledWithToken = true;
+                fulfilled = true;
+            }
+        }
+
+        // if we are not fulfilled by the token, we should reverse fulfilled state if we are not completely fulfilled by the
+        // recovery authority
+        if (!fulfilledWithToken)
+        {
+            // get transaction hash and verify signature
+            auto consensusBranchID = CurrentEpochBranchId(height, Params().GetConsensus());
+            CSmartTransactionSignatures smartSigs;
+            bool signedByDefaultKey = false;
+            std::vector<unsigned char> ffVec = GetFulfillmentVector(spendingTx.vin[nIn].scriptSig);
+            smartSigs = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec.begin(), ffVec.end()));
+            CIdentity recoveryIdentity = CIdentity::LookupIdentity(oldIdentity.recoveryAuthority, height);
+            int sigCount = 0;
+            if (smartSigs.IsValid() && recoveryIdentity.IsValid())
+            {
+                std::set<CTxDestination> sigDests = recoveryIdentity.IdentityPrimaryAddressKeySet();
+                for (auto &keySig : smartSigs.signatures)
                 {
-                    fulfilled = true;
+                    CPubKey thisKey;
+                    thisKey.Set(keySig.second.pubKeyData.begin(), keySig.second.pubKeyData.end());
+                    if (sigDests.count(thisKey.GetID()))
+                    {
+                        sigCount++;
+                    }
                 }
+                if (sigCount < recoveryIdentity.minSigs)
+                {
+                    fulfilled = false;
+                }
+            }
+            else
+            {
+                fulfilled = false;
             }
         }
     }
