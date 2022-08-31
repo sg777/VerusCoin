@@ -2674,28 +2674,52 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
             bool signedByDefaultKey = false;
             std::vector<unsigned char> ffVec = GetFulfillmentVector(spendingTx.vin[nIn].scriptSig);
             smartSigs = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec.begin(), ffVec.end()));
-            CIdentity recoveryIdentity = CIdentity::LookupIdentity(oldIdentity.recoveryAuthority, height);
+
+            CIdentity recoveryIdentity = oldIdentity.recoveryAuthority == identityID ? oldIdentity : CIdentity::LookupIdentity(oldIdentity.recoveryAuthority, height);
+            CIdentity revocationIdentity = oldIdentity.revocationAuthority == identityID ? oldIdentity : CIdentity::LookupIdentity(oldIdentity.recoveryAuthority, height);
+
+            std::set<CTxDestination> recoverySigDests = recoveryIdentity.IdentityPrimaryAddressKeySet();
+            std::set<CTxDestination> revocationSigDests = revocationIdentity.IdentityPrimaryAddressKeySet();
+            std::set<CTxDestination> primarySigDests = oldIdentity.IdentityPrimaryAddressKeySet();
+
+            int numIDSigsValid = 0;
+            int recSigsValid = 0;
+            int revSigsValid = 0;
+            int priSigsValid = 0;
+
             int sigCount = 0;
-            if (smartSigs.IsValid() && recoveryIdentity.IsValid())
+            if (smartSigs.IsValid())
             {
-                std::set<CTxDestination> sigDests = recoveryIdentity.IdentityPrimaryAddressKeySet();
                 for (auto &keySig : smartSigs.signatures)
                 {
                     CPubKey thisKey;
                     thisKey.Set(keySig.second.pubKeyData.begin(), keySig.second.pubKeyData.end());
-                    if (sigDests.count(thisKey.GetID()))
+                    if (recoveryIdentity.IsValid() && recoverySigDests.count(thisKey.GetID()))
                     {
-                        sigCount++;
+                        recSigsValid++;
+                    }
+                    if (revocationIdentity.IsValid() && revocationSigDests.count(thisKey.GetID()))
+                    {
+                        revSigsValid++;
+                    }
+                    if (oldIdentity.IsValid() && primarySigDests.count(thisKey.GetID()))
+                    {
+                        priSigsValid++;
                     }
                 }
-                if (sigCount < recoveryIdentity.minSigs)
+                if (!recoveryIdentity.IsValid() || recSigsValid < recoveryIdentity.minSigs)
                 {
                     fulfilled = false;
+                }
+                // one of the three authorities must be satisfied if no token fulfilled, or we should fail
+                if ((!revocationIdentity.IsValid() || revSigsValid < revocationIdentity.minSigs) && priSigsValid < oldIdentity.minSigs)
+                {
+                    return eval->Error("Neither valid authority signature nor token authorization for ID update");
                 }
             }
             else
             {
-                fulfilled = false;
+                return eval->Error("Invalid signature for ID update");
             }
         }
     }
