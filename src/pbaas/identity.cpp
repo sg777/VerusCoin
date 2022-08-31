@@ -19,6 +19,8 @@
 #include "identity.h"
 #include "txdb.h"
 
+uint32_t TESTNET_FORK_HEIGHT = 1;
+
 extern CTxMemPool mempool;
 
 CCommitmentHash::CCommitmentHash(const CTransaction &tx)
@@ -2374,6 +2376,12 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
         }
     }
 
+    if (!fulfilled &&
+        !oldIdentity.HasActiveCurrency() &&
+        newIdentity.HasActiveCurrency())
+    {
+        return eval->Error("Unauthorized currency or token definition");
+    }
     return true;
 }
 
@@ -2381,6 +2389,7 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
 {
     CTransaction sourceTx;
     CIdentity oldIdentity = GetOldIdentity(spendingTx, nIn, &sourceTx);
+
     if (!oldIdentity.IsValid())
     {
         return eval->Error("Invalid source identity");
@@ -2391,6 +2400,8 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
         return eval->Error("unable to find chain tip");
     }
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
+
+    bool currencySigEnforcement = PBAAS_TESTMODE && height > TESTNET_FORK_HEIGHT;
 
     bool advancedIdentity = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
 
@@ -2425,22 +2436,29 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
 
     uint160 identityID = oldIdentity.GetID();
 
-    // before we start conditioning decisions on fulfilled status,
-    // check to see if it has been fulfilled by using a control token/NFT
-    if (!fulfilled && oldIdentity.HasTokenizedControl())
+    if (!fulfilled)
     {
-        if (spendingTx.vout.size() <= (idIndex + 1) || spendingTx.vin.size() <= (nIn + 1))
+        if (!oldIdentity.HasActiveCurrency() &&
+            newIdentity.HasActiveCurrency())
         {
-            CAmount controlCurrencyVal = spendingTx.vout[idIndex + 1].ReserveOutValue().valueMap[identityID];
-            CTransaction tokenOutTx;
-            uint256 hashBlock;
-            COptCCParams tokenP;
-            if (controlCurrencyVal > 0 &&
-                myGetTransaction(spendingTx.vin[nIn + 1].prevout.hash, tokenOutTx, hashBlock) &&
-                tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].ReserveOutValue().valueMap[identityID] == controlCurrencyVal &&
-                tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].scriptPubKey == spendingTx.vout[idIndex + 1].scriptPubKey)
+            return eval->Error("Missing revocation signature. All authorities must sign for currency or token definition");
+        }
+
+        if (oldIdentity.HasTokenizedControl())
+        {
+            if (spendingTx.vout.size() <= (idIndex + 1) || spendingTx.vin.size() <= (nIn + 1))
             {
-                fulfilled = true;
+                CAmount controlCurrencyVal = spendingTx.vout[idIndex + 1].ReserveOutValue().valueMap[identityID];
+                CTransaction tokenOutTx;
+                uint256 hashBlock;
+                COptCCParams tokenP;
+                if (controlCurrencyVal > 0 &&
+                    myGetTransaction(spendingTx.vin[nIn + 1].prevout.hash, tokenOutTx, hashBlock) &&
+                    tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].ReserveOutValue().valueMap[identityID] == controlCurrencyVal &&
+                    tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].scriptPubKey == spendingTx.vout[idIndex + 1].scriptPubKey)
+                {
+                    fulfilled = true;
+                }
             }
         }
     }
@@ -2493,7 +2511,7 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
     {
         sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p);
 
-        if (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity, height))
+        if (currencySigEnforcement && (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity, height)))
         {
             return eval->Error("Unauthorized modification of revocation information");
         }
@@ -2536,6 +2554,8 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
     }
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
 
+    bool currencySigEnforcement = PBAAS_TESTMODE && height > TESTNET_FORK_HEIGHT;
+
     bool advancedIdentity = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
 
     int idIndex;
@@ -2566,20 +2586,28 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
 
     // before we start conditioning decisions on fulfilled status,
     // check to see if it has been fulfilled by using a control token/NFT
-    if (!fulfilled && oldIdentity.HasTokenizedControl())
+    if (!fulfilled)
     {
-        if (spendingTx.vout.size() <= (idIndex + 1) || spendingTx.vin.size() <= (nIn + 1))
+        if (currencySigEnforcement && (!oldIdentity.HasActiveCurrency() && newIdentity.HasActiveCurrency()))
         {
-            CAmount controlCurrencyVal = spendingTx.vout[idIndex + 1].ReserveOutValue().valueMap[identityID];
-            CTransaction tokenOutTx;
-            uint256 hashBlock;
-            COptCCParams tokenP;
-            if (controlCurrencyVal > 0 &&
-                myGetTransaction(spendingTx.vin[nIn + 1].prevout.hash, tokenOutTx, hashBlock) &&
-                tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].ReserveOutValue().valueMap[identityID] == controlCurrencyVal &&
-                tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].scriptPubKey == spendingTx.vout[idIndex + 1].scriptPubKey)
+            return eval->Error("Missing recovery signature. All authorities must sign for currency or token definition");
+        }
+
+        if (oldIdentity.HasTokenizedControl())
+        {
+            if (spendingTx.vout.size() <= (idIndex + 1) || spendingTx.vin.size() <= (nIn + 1))
             {
-                fulfilled = true;
+                CAmount controlCurrencyVal = spendingTx.vout[idIndex + 1].ReserveOutValue().valueMap[identityID];
+                CTransaction tokenOutTx;
+                uint256 hashBlock;
+                COptCCParams tokenP;
+                if (controlCurrencyVal > 0 &&
+                    myGetTransaction(spendingTx.vin[nIn + 1].prevout.hash, tokenOutTx, hashBlock) &&
+                    tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].ReserveOutValue().valueMap[identityID] == controlCurrencyVal &&
+                    tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].scriptPubKey == spendingTx.vout[idIndex + 1].scriptPubKey)
+                {
+                    fulfilled = true;
+                }
             }
         }
     }
