@@ -2497,7 +2497,7 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
 
         if (oldIdentity.HasTokenizedControl())
         {
-            if (spendingTx.vout.size() <= (idIndex + 1) || spendingTx.vin.size() <= (nIn + 1))
+            if (spendingTx.vout.size() <= (idIndex + 1) && spendingTx.vin.size() <= (nIn + 1))
             {
                 CAmount controlCurrencyVal = spendingTx.vout[idIndex + 1].ReserveOutValue().valueMap[identityID];
                 CTransaction tokenOutTx;
@@ -2648,7 +2648,7 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
     if (oldIdentity.HasTokenizedControl())
     {
         bool fulfilledWithToken = false;
-        if (spendingTx.vout.size() <= (idIndex + 1) || spendingTx.vin.size() <= (nIn + 1))
+        if (spendingTx.vout.size() <= (idIndex + 1) && spendingTx.vin.size() <= (nIn + 1))
         {
             CAmount controlCurrencyVal = spendingTx.vout[idIndex + 1].ReserveOutValue().valueMap[identityID];
             CTransaction tokenOutTx;
