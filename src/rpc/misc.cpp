@@ -1657,6 +1657,7 @@ UniValue AddressMemPoolUni(const std::vector<std::pair<uint160, int>> &addresses
         delta.push_back(Pair("txid", it->first.txhash.GetHex()));
         delta.push_back(Pair("index", (int)it->first.index));
         delta.push_back(Pair("satoshis", it->second.amount));
+        delta.push_back(Pair("spending", (bool)it->first.spending));
         CurrencyValuesAndNames(delta, it->first.spending, curTx, it->first.index, it->second.amount, friendlyNames);
         delta.push_back(Pair("timestamp", it->second.time));
         if (it->second.amount < 0) {

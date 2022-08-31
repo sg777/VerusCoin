@@ -10850,7 +10850,8 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         {
             if (!it->nValue)
             {
-                mtx.vout.insert(it + 1, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
+                mtx.vout.insert(it++, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
+                break;
             }
         }
     }
@@ -11045,14 +11046,17 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
     if (tokenizedIDControl)
     {
         COptCCParams tcP;
-        std::map<uint160, int64_t> reserveMap;
+        CCurrencyValueMap reserveMap;
         pwalletMain->AvailableReserveCoins(controlTokenOuts, true, nullptr, false, false, nullptr, &tokenCurrencyControlMap, false);
         if (!controlTokenOuts.size() != 1 ||
-            !controlTokenOuts[0].fSpendable ||
-            !(reserveMap = controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue().valueMap).count(idID) ||
-            reserveMap[idID] != 1)
+            !controlTokenOuts[0].fSpendable)
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot locate spendable tokenized ID control currency in wallet - if present, may require rescan");
+            reserveMap = controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue();
+            if (!controlTokenOuts[0].fSpendable || !reserveMap.valueMap.count(idID) || reserveMap.valueMap[idID] != 1)
+            {
+                LogPrint("tokenizedidcontrol", "%s: controlTokenOuts.size(): %d, controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue(): %s, reserveMap: %s, reserveMap.valueMap[idID]: %ld\n", __func__, (int)controlTokenOuts.size(), controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue().ToUniValue().write().c_str(), reserveMap.ToUniValue().write().c_str(), reserveMap.valueMap[idID]);
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot locate spendable tokenized ID control currency in wallet - if present, may require rescan");
+            }
         }
     }
 
@@ -11087,7 +11091,8 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
         {
             if (!it->nValue)
             {
-                mtx.vout.insert(it + 1, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
+                mtx.vout.insert(it++, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
+                break;
             }
         }
     }
@@ -11258,7 +11263,8 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
         {
             if (!it->nValue)
             {
-                mtx.vout.insert(it + 1, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
+                mtx.vout.insert(it++, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
+                break;
             }
         }
     }
