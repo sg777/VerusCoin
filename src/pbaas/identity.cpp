@@ -19,6 +19,8 @@
 #include "identity.h"
 #include "txdb.h"
 
+// TODO: HARDENING - remove and dependencies below when 0.9.4 testnet is reset, after this height,
+// all authorities of an ID are required to create currencies
 uint32_t TESTNET_FORK_HEIGHT = 1;
 
 extern CTxMemPool mempool;
@@ -2417,7 +2419,7 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
         return eval->Error("Invalid identity modification");
     }
 
-    if (oldIdentity.IsRevocation(newIdentity) && oldIdentity.recoveryAuthority == oldIdentity.GetID())
+    if (oldIdentity.IsRevocation(newIdentity) && oldIdentity.recoveryAuthority == oldIdentity.GetID() && !oldIdentity.HasTokenizedControl())
     {
         return eval->Error("Cannot revoke an identity with self as the recovery authority");
     }
