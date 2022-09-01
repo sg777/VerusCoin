@@ -366,7 +366,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                     conditions.push_back(CConditionObj<COptCCParams>(oneP.evalCode, oneP.vKeys, oneP.m));
 
                     CCcontract_info C;
-                    if (p.evalCode && CCinit(&C, p.evalCode))
+                    if (oneP.evalCode && CCinit(&C, oneP.evalCode))
                     {
                         CPubKey evalPK(ParseHex(C.CChexstr));
                         CKey priv;
@@ -376,7 +376,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                     }
                     else
                     {
-                        if (p.evalCode)
+                        if (oneP.evalCode)
                         {
                             return false;
                         }

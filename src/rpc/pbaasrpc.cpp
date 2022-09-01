@@ -10758,6 +10758,8 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     UniValue newUniID = MapToUniObject(uniOldID);
     CIdentity newID(newUniID);
 
+    newID.flags |= (oldID.flags & (oldID.FLAG_ACTIVECURRENCY + oldID.FLAG_TOKENIZED_CONTROL));
+
     if (!newID.IsValid(true))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid JSON ID parameter");
@@ -10810,14 +10812,19 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     if (tokenizedIDControl)
     {
         COptCCParams tcP;
-        std::map<uint160, int64_t> reserveMap;
+        CCurrencyValueMap reserveMap;
+
+
         pwalletMain->AvailableReserveCoins(controlTokenOuts, true, nullptr, false, false, nullptr, &tokenCurrencyControlMap, false);
         if (!controlTokenOuts.size() != 1 ||
-            !controlTokenOuts[0].fSpendable ||
-            !(reserveMap = controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue().valueMap).count(newIDID) ||
-            reserveMap[newIDID] != 1)
+            !controlTokenOuts[0].fSpendable)
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot locate spendable tokenized ID control currency in wallet - if present, may require rescan");
+            reserveMap = controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue();
+            if (!controlTokenOuts[0].fSpendable || !reserveMap.valueMap.count(newIDID) || reserveMap.valueMap[newIDID] != 1)
+            {
+                LogPrint("tokenizedidcontrol", "%s: controlTokenOuts.size(): %d, controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue(): %s, reserveMap: %s, reserveMap.valueMap[idID]: %ld\n", __func__, (int)controlTokenOuts.size(), controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue().ToUniValue().write().c_str(), reserveMap.ToUniValue().write().c_str(), reserveMap.valueMap[newIDID]);
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot locate spendable tokenized ID control currency in wallet - if present, may require rescan");
+            }
         }
     }
 
@@ -10850,13 +10857,21 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         {
             if (!it->nValue)
             {
-                mtx.vout.insert(it++, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
+                it++;
+                mtx.vout.insert(it, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
                 break;
             }
         }
     }
 
     *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
+
+    if (tokenizedIDControl && LogAcceptCategory("tokenizedidcontrol"))
+    {
+        UniValue jsonTx(UniValue::VOBJ);
+        TxToUniv(wtx, uint256(), jsonTx);
+        LogPrintf("%s: updateidtx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+    }
 
     // now sign
     CCoinsViewCache view(pcoinsTip);
@@ -10877,8 +10892,8 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
         if (!signSuccess && !returnTx)
         {
-            LogPrintf("%s: failure to sign identity recovery tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
-            printf("%s: failure to sign identity recovery tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            LogPrintf("%s: failure to sign identity update tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            printf("%s: failure to sign identity update tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
             throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
         } else if (sigdata.scriptSig.size()) {
             UpdateTransaction(mtx, i, sigdata);
@@ -11091,13 +11106,20 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
         {
             if (!it->nValue)
             {
-                mtx.vout.insert(it++, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
+                it++;
+                mtx.vout.insert(it, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
                 break;
             }
         }
     }
 
     *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
+    if (tokenizedIDControl && LogAcceptCategory("tokenizedidcontrol"))
+    {
+        UniValue jsonTx(UniValue::VOBJ);
+        TxToUniv(wtx, uint256(), jsonTx);
+        LogPrintf("%s: revokeidtx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+    }
 
     // now sign
     CCoinsViewCache view(pcoinsTip);
@@ -11140,7 +11162,7 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
 
 UniValue recoveridentity(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 1 || params.size() > 2)
+    if (fHelp || params.size() < 1 || params.size() > 3)
     {
         throw runtime_error(
             "recoveridentity \"jsonidentity\" (returntx) (tokenrecover)\n"
@@ -11220,17 +11242,23 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
     if (tokenizedIDControl)
     {
         COptCCParams tcP;
-        std::map<uint160, int64_t> reserveMap;
+
+
+        CCurrencyValueMap reserveMap;
         pwalletMain->AvailableReserveCoins(controlTokenOuts, true, nullptr, false, false, nullptr, &tokenCurrencyControlMap, false);
         if (!controlTokenOuts.size() != 1 ||
-            !controlTokenOuts[0].fSpendable ||
-            !(reserveMap = controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue().valueMap).count(newIDID) ||
-            reserveMap[newIDID] != 1)
+            !controlTokenOuts[0].fSpendable)
         {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot locate spendable tokenized ID control currency in wallet - if present, may require rescan");
+            reserveMap = controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue();
+            if (!controlTokenOuts[0].fSpendable || !reserveMap.valueMap.count(newIDID) || reserveMap.valueMap[newIDID] != 1)
+            {
+                LogPrint("tokenizedidcontrol", "%s: controlTokenOuts.size(): %d, controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue(): %s, reserveMap: %s, reserveMap.valueMap[idID]: %ld\n", __func__, (int)controlTokenOuts.size(), controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue().ToUniValue().write().c_str(), reserveMap.ToUniValue().write().c_str(), reserveMap.valueMap[newIDID]);
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot locate spendable tokenized ID control currency in wallet - if present, may require rescan");
+            }
         }
     }
 
+    newID.flags |= (oldID.flags & (oldID.FLAG_ACTIVECURRENCY + oldID.FLAG_TOKENIZED_CONTROL));
     newID.flags &= ~CIdentity::FLAG_REVOKED;
     newID.systemID = oldID.systemID;
     newID.UpgradeVersion(nHeight + 1);
@@ -11263,13 +11291,21 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
         {
             if (!it->nValue)
             {
-                mtx.vout.insert(it++, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
+                it++;
+                mtx.vout.insert(it, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
                 break;
             }
         }
     }
 
     *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
+
+    if (tokenizedIDControl && LogAcceptCategory("tokenizedidcontrol"))
+    {
+        UniValue jsonTx(UniValue::VOBJ);
+        TxToUniv(wtx, uint256(), jsonTx);
+        LogPrintf("%s: recoveridtx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+    }
 
     // now sign
     CCoinsViewCache view(pcoinsTip);
