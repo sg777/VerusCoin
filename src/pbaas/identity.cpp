@@ -2654,8 +2654,9 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
             CTransaction tokenOutTx;
             uint256 hashBlock;
             COptCCParams tokenP;
-            if (controlCurrencyVal > 0 &&
+            if (controlCurrencyVal == 1 &&
                 myGetTransaction(spendingTx.vin[nIn + 1].prevout.hash, tokenOutTx, hashBlock) &&
+                tokenOutTx.vout.size() > spendingTx.vin[nIn + 1].prevout.n &&
                 tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].ReserveOutValue().valueMap[identityID] == controlCurrencyVal &&
                 tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].scriptPubKey == spendingTx.vout[idIndex + 1].scriptPubKey)
             {
