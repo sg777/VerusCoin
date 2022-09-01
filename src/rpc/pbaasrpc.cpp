@@ -10816,7 +10816,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
 
         pwalletMain->AvailableReserveCoins(controlTokenOuts, true, nullptr, false, false, nullptr, &tokenCurrencyControlMap, false);
-        if (!controlTokenOuts.size() != 1 ||
+        if (controlTokenOuts.size() != 1 ||
             !controlTokenOuts[0].fSpendable)
         {
             reserveMap = controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue();
@@ -11063,7 +11063,7 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
         COptCCParams tcP;
         CCurrencyValueMap reserveMap;
         pwalletMain->AvailableReserveCoins(controlTokenOuts, true, nullptr, false, false, nullptr, &tokenCurrencyControlMap, false);
-        if (!controlTokenOuts.size() != 1 ||
+        if (controlTokenOuts.size() != 1 ||
             !controlTokenOuts[0].fSpendable)
         {
             reserveMap = controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue();
@@ -11246,7 +11246,7 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
 
         CCurrencyValueMap reserveMap;
         pwalletMain->AvailableReserveCoins(controlTokenOuts, true, nullptr, false, false, nullptr, &tokenCurrencyControlMap, false);
-        if (!controlTokenOuts.size() != 1 ||
+        if (controlTokenOuts.size() != 1 ||
             !controlTokenOuts[0].fSpendable)
         {
             reserveMap = controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue();
