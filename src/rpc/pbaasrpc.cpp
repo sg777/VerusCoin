@@ -10818,7 +10818,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         if (controlTokenOuts.size() == 1 && controlTokenOuts[0].fSpendable)
         {
             reserveMap = controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue();
-            if (!controlTokenOuts[0].fSpendable || !reserveMap.valueMap.count(newIDID) || reserveMap.valueMap[newIDID] != 1)
+            if (!reserveMap.valueMap.count(newIDID) || reserveMap.valueMap[newIDID] != 1)
             {
                 LogPrint("tokenizedidcontrol", "%s: controlTokenOuts.size(): %d, controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue(): %s, reserveMap: %s, reserveMap.valueMap[idID]: %ld\n", __func__, (int)controlTokenOuts.size(), controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue().ToUniValue().write().c_str(), reserveMap.ToUniValue().write().c_str(), reserveMap.valueMap[newIDID]);
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot locate spendable tokenized ID control currency in wallet - if present, may require rescan");
@@ -11068,7 +11068,7 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
         if (controlTokenOuts.size() == 1 && controlTokenOuts[0].fSpendable)
         {
             reserveMap = controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue();
-            if (!controlTokenOuts[0].fSpendable || !reserveMap.valueMap.count(idID) || reserveMap.valueMap[idID] != 1)
+            if (!reserveMap.valueMap.count(idID) || reserveMap.valueMap[idID] != 1)
             {
                 LogPrint("tokenizedidcontrol", "%s: controlTokenOuts.size(): %d, controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue(): %s, reserveMap: %s, reserveMap.valueMap[idID]: %ld\n", __func__, (int)controlTokenOuts.size(), controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue().ToUniValue().write().c_str(), reserveMap.ToUniValue().write().c_str(), reserveMap.valueMap[idID]);
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot locate spendable tokenized ID control currency in wallet - if present, may require rescan");
@@ -11253,7 +11253,7 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
         if (controlTokenOuts.size() == 1 && controlTokenOuts[0].fSpendable)
         {
             reserveMap = controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue();
-            if (!controlTokenOuts[0].fSpendable || !reserveMap.valueMap.count(newIDID) || reserveMap.valueMap[newIDID] != 1)
+            if (!reserveMap.valueMap.count(newIDID) || reserveMap.valueMap[newIDID] != 1)
             {
                 LogPrint("tokenizedidcontrol", "%s: controlTokenOuts.size(): %d, controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue(): %s, reserveMap: %s, reserveMap.valueMap[idID]: %ld\n", __func__, (int)controlTokenOuts.size(), controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue().ToUniValue().write().c_str(), reserveMap.ToUniValue().write().c_str(), reserveMap.valueMap[newIDID]);
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot locate spendable tokenized ID control currency in wallet - if present, may require rescan");
