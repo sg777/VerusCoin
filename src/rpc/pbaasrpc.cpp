@@ -10775,6 +10775,10 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Can only used ID control token for ID that has tokenized ID control on this chain");
         }
+        if (IsVerusActive() && chainActive.Height() < TESTNET_FORK_HEIGHT)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Tokenized ID control has not yet activated on testnet");
+        }
     }
 
     if (!revocationAuth.IsValid() || !recoveryAuth.IsValid())
@@ -11062,6 +11066,10 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
 
     if (tokenizedIDControl)
     {
+        if (IsVerusActive() && chainActive.Height() < TESTNET_FORK_HEIGHT)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Tokenized ID control has not yet activated on testnet");
+        }
         COptCCParams tcP;
         CCurrencyValueMap reserveMap;
         pwalletMain->AvailableReserveCoins(controlTokenOuts, true, nullptr, false, false, nullptr, &tokenCurrencyControlMap, false);
@@ -11246,6 +11254,11 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
 
     if (tokenizedIDControl)
     {
+        if (IsVerusActive() && chainActive.Height() < TESTNET_FORK_HEIGHT)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Tokenized ID control has not yet activated on testnet");
+        }
+
         COptCCParams tcP;
 
         CCurrencyValueMap reserveMap;

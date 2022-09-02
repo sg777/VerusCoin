@@ -19,10 +19,6 @@
 #include "identity.h"
 #include "txdb.h"
 
-// TODO: HARDENING - remove and dependencies below when 0.9.4 testnet is reset, after this height,
-// all authorities of an ID are required to create currencies
-uint32_t TESTNET_FORK_HEIGHT = 1;
-
 extern CTxMemPool mempool;
 
 CCommitmentHash::CCommitmentHash(const CTransaction &tx)
