@@ -44,15 +44,12 @@ bool RunCCEval(const CC *cond, const CTransaction &tx, unsigned int nIn, bool fu
 
     if (eval->state.IsValid()) return true;
 
-    /*
-    std::string lvl = eval->state.IsInvalid() ? "Invalid" : "Error!";
-    fprintf(stderr, "CC Eval %s %s: %s spending tx %s\n",
-            EvalToStr(cond->code[0]).data(),
-            lvl.data(),
-            eval->state.GetRejectReason().data(),
-            tx.vin[nIn].prevout.hash.GetHex().data());
-    if (eval->state.IsError()) fprintf(stderr, "Culprit: %s\n", EncodeHexTx(tx).data());
-    */
+    LogPrint("smarttransactionevalerrors", "%s: eval code: %s\nreason: %s\ntxid: %s, outnum: %u\n",
+                __func__,
+                EvalToStr(cond->code[0]).c_str(),
+                eval->state.GetRejectReason().c_str(),
+                tx.vin[nIn].prevout.hash.GetHex().c_str(),
+                nIn);
     return false;
 }
 
