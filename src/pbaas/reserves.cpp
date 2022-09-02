@@ -4598,7 +4598,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     }
 
     // burn both change price and weight
-    if (burnedChangePrice > 0 || burnedChangeWeight > 0)
+    if (burnedChangePrice > 0 || burnedChangeWeight > 0 || burnedReserves > CCurrencyValueMap())
     {
         if ((burnedChangePrice + burnedChangeWeight) > newCurrencyState.supply)
         {
@@ -4607,11 +4607,24 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             return false;
         }
 
+        if (burnedReserves.HasNegative())
+        {
+            printf("%s: Invalid burn amount %s\n", __func__, burnedReserves.ToUniValue().write(1,2).c_str());
+            LogPrintf("%s: Invalid burn amount %s\n", __func__, burnedReserves.ToUniValue().write(1,2).c_str());
+            return false;
+        }
+
         // TODO: HARDENING - if we remove the supply entirely, we need to output any remaining reserves
 
         if (burnedChangePrice > 0)
         {
             newCurrencyState.supply -= burnedChangePrice;
+        }
+
+        // if we burned reserves, they go straight into reserves in the currency
+        if (burnedReserves > CCurrencyValueMap())
+        {
+            newCurrencyState.reserves = CCoinbaseCurrencyState::AddVectors(newCurrencyState.reserves, burnedReserves.AsCurrencyVector(newCurrencyState.currencies));
         }
 
         // if we burn to change the weight, update weights
@@ -4634,6 +4647,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         if (burnedChangePrice > 0)
         {
             scratchCurrencyState.supply -= burnedChangePrice;
+        }
+
+        // if we burned reserves, they go straight into reserves in the currency
+        if (burnedReserves > CCurrencyValueMap())
+        {
+            scratchCurrencyState.reserves = CCoinbaseCurrencyState::AddVectors(scratchCurrencyState.reserves, burnedReserves.AsCurrencyVector(scratchCurrencyState.currencies));
         }
 
         // if we burned to change the weight, update weights
@@ -4772,6 +4791,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             netPrimaryOut += vFracOutConverted[i];
             totalNewFrac += vFracOutConverted[i];
 
+            auto cIT = burnedReserves.valueMap.find(newCurrencyState.currencies[i]);
+            if (cIT != burnedReserves.valueMap.end())
+            {
+                newCurrencyState.reserveIn[i] += cIT->second;
+            }
         }
         newCurrencyState.supply += (netPrimaryOut - netPrimaryIn);
         netPrimaryIn += totalNewFrac;

@@ -1199,11 +1199,19 @@ CScript CIdentity::IdentityUpdateOutputScript(uint32_t height, const std::vector
     if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT)
     {
         std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
+        if (HasTokenizedControl())
+        {
+            CCcontract_info CC;
+            CCcontract_info *cp;
+
+            // make a currency definition
+            cp = CCinit(&CC, EVAL_IDENTITY_RECOVER);
+            dests3.push_back(CPubKey(ParseHex(CC.CChexstr)).GetID());
+        }
         CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
+
         if (IsRevoked())
         {
-            std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
-            CConditionObj<CIdentity> recovery(EVAL_IDENTITY_RECOVER, dests3, 1);
             ret = MakeMofNCCScript(1, primary, recovery, indexDests);
         }
         else

@@ -2064,8 +2064,14 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         COptCCParams master;
         if (identity.nVersion < identity.VERSION_VAULT)
         {
+            return state.Error("Inadequate identity version for post-Verus Vault activation");
+        }
+
+        if (isPBaaS && identity.nVersion < identity.VERSION_PBAAS)
+        {
             return state.Error("Inadequate identity version for post-PBaaS activation");
         }
+
         if (p.vData.size() < 3 ||
             !(master = COptCCParams(p.vData.back())).IsValid() ||
             master.evalCode != 0 ||
@@ -2141,11 +2147,54 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                 if (!recovery)
                 {
                     recovery = true;
-                    if (oneP.vKeys.size() == 1 &&
-                        oneP.m == 1 &&
-                        oneP.n == 1 &&
-                        oneP.vKeys[0].which() == COptCCParams::ADDRTYPE_ID &&
-                        identity.recoveryAuthority == GetDestinationID(oneP.vKeys[0]))
+                    // tokenized control must allow one output, in this case the recovery,
+                    // to be fulfilled. that means it must require only one signature to
+                    // fulfill signature requirements. if we only have one signature, and
+                    // it is from the publicly available key, ValidateIdentityRecover will
+                    // consider the signature unfulfilled
+                    if ((PBAAS_TESTMODE && (!(IsVerusActive() || ConnectedChains.ThisChain().name == "Gravity") || height >= TESTNET_FORK_HEIGHT)) && identity.HasTokenizedControl())
+                    {
+                        if (!(oneP.m == 1 && oneP.n > 1))
+                        {
+                            std::string errorOut = "Invalid spend condition for tokenized control in: \"" + identity.name + "\"";
+                            return state.Error(errorOut.c_str());
+                        }
+
+                        // now, make sure that we have both the key for recoveryAuthority
+                        // and the key for tokenized control, which anyone can sign, and which is further
+                        // validated in the ValidateIdentityRecover
+                        bool haveDefaultOutput = false;
+
+                        CCcontract_info CC;
+                        CCcontract_info *cp;
+
+                        // make a currency definition
+                        cp = CCinit(&CC, EVAL_IDENTITY_RECOVER);
+                        CTxDestination recoverDest(CPubKey(ParseHex(CC.CChexstr)).GetID());
+
+                        for (auto &oneKey : oneP.vKeys)
+                        {
+                            if (oneKey.which() == COptCCParams::ADDRTYPE_ID && identity.recoveryAuthority == GetDestinationID(oneKey))
+                            {
+                                recoveryValid = true;
+                            }
+                            else if (oneKey.which() == COptCCParams::ADDRTYPE_PKH &&
+                                     GetDestinationID(recoverDest) == GetDestinationID(oneKey))
+                            {
+                                haveDefaultOutput = true;
+                            }
+                        }
+                        if (!(recoveryValid && haveDefaultOutput))
+                        {
+                            std::string errorOut = "Invalid recovery spend condition for tokenized control in: \"" + identity.name + "\"";
+                            return state.Error(errorOut.c_str());
+                        }
+                    }
+                    else if (oneP.vKeys.size() == 1 &&
+                             oneP.m == 1 &&
+                             oneP.n == 1 &&
+                             oneP.vKeys[0].which() == COptCCParams::ADDRTYPE_ID &&
+                             identity.recoveryAuthority == GetDestinationID(oneP.vKeys[0]))
                     {
                         recoveryValid = true;
                     }
@@ -2374,6 +2423,12 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
         }
     }
 
+    if (!fulfilled &&
+        !oldIdentity.HasActiveCurrency() &&
+        newIdentity.HasActiveCurrency())
+    {
+        return eval->Error("Unauthorized currency or token definition");
+    }
     return true;
 }
 
@@ -2381,6 +2436,7 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
 {
     CTransaction sourceTx;
     CIdentity oldIdentity = GetOldIdentity(spendingTx, nIn, &sourceTx);
+
     if (!oldIdentity.IsValid())
     {
         return eval->Error("Invalid source identity");
@@ -2391,6 +2447,8 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
         return eval->Error("unable to find chain tip");
     }
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
+
+    bool currencySigEnforcement = PBAAS_TESTMODE && (!(IsVerusActive() || ConnectedChains.ThisChain().name == "Gravity") || height >= TESTNET_FORK_HEIGHT);
 
     bool advancedIdentity = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
 
@@ -2406,7 +2464,7 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
         return eval->Error("Invalid identity modification");
     }
 
-    if (oldIdentity.IsRevocation(newIdentity) && oldIdentity.recoveryAuthority == oldIdentity.GetID())
+    if (oldIdentity.IsRevocation(newIdentity) && oldIdentity.recoveryAuthority == oldIdentity.GetID() && !oldIdentity.HasTokenizedControl())
     {
         return eval->Error("Cannot revoke an identity with self as the recovery authority");
     }
@@ -2425,22 +2483,29 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
 
     uint160 identityID = oldIdentity.GetID();
 
-    // before we start conditioning decisions on fulfilled status,
-    // check to see if it has been fulfilled by using a control token/NFT
-    if (!fulfilled && oldIdentity.HasTokenizedControl())
+    if (!fulfilled)
     {
-        if (spendingTx.vout.size() <= (idIndex + 1) || spendingTx.vin.size() <= (nIn + 1))
+        if (!oldIdentity.HasActiveCurrency() &&
+            newIdentity.HasActiveCurrency())
         {
-            CAmount controlCurrencyVal = spendingTx.vout[idIndex + 1].ReserveOutValue().valueMap[identityID];
-            CTransaction tokenOutTx;
-            uint256 hashBlock;
-            COptCCParams tokenP;
-            if (controlCurrencyVal > 0 &&
-                myGetTransaction(spendingTx.vin[nIn + 1].prevout.hash, tokenOutTx, hashBlock) &&
-                tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].ReserveOutValue().valueMap[identityID] == controlCurrencyVal &&
-                tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].scriptPubKey == spendingTx.vout[idIndex + 1].scriptPubKey)
+            return eval->Error("Missing revocation signature. All authorities must sign for currency or token definition");
+        }
+
+        if (oldIdentity.HasTokenizedControl())
+        {
+            if (spendingTx.vout.size() > (idIndex + 1) && spendingTx.vin.size() > (nIn + 1))
             {
-                fulfilled = true;
+                CAmount controlCurrencyVal = spendingTx.vout[idIndex + 1].ReserveOutValue().valueMap[identityID];
+                CTransaction tokenOutTx;
+                uint256 hashBlock;
+                COptCCParams tokenP;
+                if (controlCurrencyVal > 0 &&
+                    myGetTransaction(spendingTx.vin[nIn + 1].prevout.hash, tokenOutTx, hashBlock) &&
+                    tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].ReserveOutValue().valueMap[identityID] == controlCurrencyVal &&
+                    tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].scriptPubKey == spendingTx.vout[idIndex + 1].scriptPubKey)
+                {
+                    fulfilled = true;
+                }
             }
         }
     }
@@ -2493,7 +2558,7 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
     {
         sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p);
 
-        if (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity, height))
+        if (currencySigEnforcement && (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity, height)))
         {
             return eval->Error("Unauthorized modification of revocation information");
         }
@@ -2536,6 +2601,8 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
     }
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
 
+    bool currencySigEnforcement = PBAAS_TESTMODE && (!(IsVerusActive() || ConnectedChains.ThisChain().name == "Gravity") || height >= TESTNET_FORK_HEIGHT);
+
     bool advancedIdentity = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
 
     int idIndex;
@@ -2566,20 +2633,90 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
 
     // before we start conditioning decisions on fulfilled status,
     // check to see if it has been fulfilled by using a control token/NFT
-    if (!fulfilled && oldIdentity.HasTokenizedControl())
+    if (!fulfilled)
     {
-        if (spendingTx.vout.size() <= (idIndex + 1) || spendingTx.vin.size() <= (nIn + 1))
+        if (currencySigEnforcement && (!oldIdentity.HasActiveCurrency() && newIdentity.HasActiveCurrency()))
+        {
+            return eval->Error("Missing recovery signature. All authorities must sign for currency or token definition");
+        }
+    }
+
+    if (oldIdentity.HasTokenizedControl())
+    {
+        bool fulfilledWithToken = false;
+        if (spendingTx.vout.size() > (idIndex + 1) && spendingTx.vin.size() > (nIn + 1))
         {
             CAmount controlCurrencyVal = spendingTx.vout[idIndex + 1].ReserveOutValue().valueMap[identityID];
             CTransaction tokenOutTx;
             uint256 hashBlock;
             COptCCParams tokenP;
-            if (controlCurrencyVal > 0 &&
+            if (controlCurrencyVal == 1 &&
                 myGetTransaction(spendingTx.vin[nIn + 1].prevout.hash, tokenOutTx, hashBlock) &&
+                tokenOutTx.vout.size() > spendingTx.vin[nIn + 1].prevout.n &&
                 tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].ReserveOutValue().valueMap[identityID] == controlCurrencyVal &&
                 tokenOutTx.vout[spendingTx.vin[nIn + 1].prevout.n].scriptPubKey == spendingTx.vout[idIndex + 1].scriptPubKey)
             {
+                fulfilledWithToken = true;
                 fulfilled = true;
+            }
+        }
+
+        // if we are not fulfilled by the token, we should reverse fulfilled state if we are not completely fulfilled by the
+        // recovery authority
+        if (!fulfilledWithToken)
+        {
+            // get transaction hash and verify signature
+            auto consensusBranchID = CurrentEpochBranchId(height, Params().GetConsensus());
+            CSmartTransactionSignatures smartSigs;
+            bool signedByDefaultKey = false;
+            std::vector<unsigned char> ffVec = GetFulfillmentVector(spendingTx.vin[nIn].scriptSig);
+            smartSigs = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec.begin(), ffVec.end()));
+
+            CIdentity recoveryIdentity = oldIdentity.recoveryAuthority == identityID ? oldIdentity : CIdentity::LookupIdentity(oldIdentity.recoveryAuthority, height);
+            CIdentity revocationIdentity = oldIdentity.revocationAuthority == identityID ? oldIdentity : CIdentity::LookupIdentity(oldIdentity.recoveryAuthority, height);
+
+            std::set<CTxDestination> recoverySigDests = recoveryIdentity.IdentityPrimaryAddressKeySet();
+            std::set<CTxDestination> revocationSigDests = revocationIdentity.IdentityPrimaryAddressKeySet();
+            std::set<CTxDestination> primarySigDests = oldIdentity.IdentityPrimaryAddressKeySet();
+
+            int numIDSigsValid = 0;
+            int recSigsValid = 0;
+            int revSigsValid = 0;
+            int priSigsValid = 0;
+
+            int sigCount = 0;
+            if (smartSigs.IsValid())
+            {
+                for (auto &keySig : smartSigs.signatures)
+                {
+                    CPubKey thisKey;
+                    thisKey.Set(keySig.second.pubKeyData.begin(), keySig.second.pubKeyData.end());
+                    if (recoveryIdentity.IsValid() && recoverySigDests.count(thisKey.GetID()))
+                    {
+                        recSigsValid++;
+                    }
+                    if (revocationIdentity.IsValid() && revocationSigDests.count(thisKey.GetID()))
+                    {
+                        revSigsValid++;
+                    }
+                    if (oldIdentity.IsValid() && primarySigDests.count(thisKey.GetID()))
+                    {
+                        priSigsValid++;
+                    }
+                }
+                if (!recoveryIdentity.IsValid() || recSigsValid < recoveryIdentity.minSigs)
+                {
+                    fulfilled = false;
+                }
+                // one of the three authorities must be satisfied if no token fulfilled, or we should fail
+                if ((!revocationIdentity.IsValid() || revSigsValid < revocationIdentity.minSigs) && priSigsValid < oldIdentity.minSigs)
+                {
+                    return eval->Error("Neither valid authority signature nor token authorization for ID update");
+                }
+            }
+            else
+            {
+                return eval->Error("Invalid signature for ID update");
             }
         }
     }

@@ -35,6 +35,10 @@
 
 std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false, bool addVerus=true);
 
+// TODO: HARDENING - remove and all dependencies below when 0.9.4 testnet is reset, after this height,
+// all authorities of an ID are required to create currencies
+static const uint32_t TESTNET_FORK_HEIGHT = 11600;
+
 class CCommitmentHash : public CTokenOutput
 {
 public:
@@ -846,16 +850,14 @@ public:
 
     static uint160 IdentityPrimaryAddressKey(const CTxDestination &dest);
 
-    std::vector<uint160> IdentityPrimaryAddressKeys() const
+    std::set<CTxDestination> IdentityPrimaryAddressKeySet() const
     {
-        uint160 nameSpace;
-        std::vector<uint160> retVec;
-
+        std::set<CTxDestination> retVal;
         for (auto &oneDest : primaryAddresses)
         {
-            retVec.push_back(IdentityPrimaryAddressKey(oneDest));
+            retVal.insert(oneDest);
         }
-        return retVec;
+        return retVal;
     }
 
     static bool GetIdentityOutsByPrimaryAddress(const CTxDestination &address, std::map<uint160, std::pair<std::pair<CAddressIndexKey, CAmount>, CIdentity>> &identities, uint32_t start=0, uint32_t end=0);

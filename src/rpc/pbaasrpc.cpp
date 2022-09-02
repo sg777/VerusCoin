@@ -6736,6 +6736,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     sourceCurrencyID.IsNull() ||
                     !secondCurrencyDef.IsFractional() ||
                     (!convertToCurrencyID.IsNull() &&
+                     !burnCurrency &&
                      (secondCurrencyID == sourceCurrencyID || 
                       secondCurrencyID == convertToCurrencyID ||
                       sourceCurrencyID == convertToCurrencyID ||
@@ -7697,7 +7698,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             }
                             std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
 
-                            if (burnCurrency)
+                            if (burnCurrency && sourceCurrencyID == convertToCurrencyID)
                             {
                                 flags |= CReserveTransfer::IMPORT_TO_SOURCE;
                             }
@@ -7710,7 +7711,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                    convertToCurrencyID,
                                                                    DestinationToTransferDestination(destination));
                             rt.nFees = rt.CalculateTransferFee();
-                            oneOutput.nAmount = rt.CalculateTransferFee();
+                            oneOutput.nAmount = rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID];
                             oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
                         }
                         else
@@ -10672,14 +10673,17 @@ UniValue MapToUniObject(const std::map<std::string, UniValue> &uniMap)
 
 UniValue updateidentity(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 1 || params.size() > 2)
+    if (fHelp || params.size() < 1 || params.size() > 3)
     {
         throw runtime_error(
-            "updateidentity \"jsonidentity\" (returntx)\n"
+            "updateidentity \"jsonidentity\" (returntx) (tokenupdate)\n"
             "\n\n"
 
             "\nArguments\n"
             "       \"returntx\"                        (bool,   optional) defaults to false and transaction is sent, if true, transaction is signed by this wallet and returned\n"
+            "       \"tokenupdate\"                     (bool,   optional) defaults to false, if true, the tokenized ID control token, if one exists, will be used to update\n"
+            "                                                              which enables changing the revocation or recovery IDs, even if the wallet holding the token does not\n"
+            "                                                              control either.\n"
 
             "\nResult:\n"
             "   hex string of either the txid if returnhex is false or the hex serialized transaction if returntx is true\n"
@@ -10693,9 +10697,16 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     CheckIdentityAPIsValid();
 
     bool returnTx = false;
+    bool tokenizedIDControl = false;
+
     if (params.size() > 1)
     {
         returnTx = uni_get_bool(params[1], false);
+    }
+
+    if (params.size() > 2)
+    {
+        tokenizedIDControl = uni_get_bool(params[2], false);
     }
 
     uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(params[0], "parent")))));
@@ -10747,6 +10758,8 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     UniValue newUniID = MapToUniObject(uniOldID);
     CIdentity newID(newUniID);
 
+    newID.flags |= (oldID.flags & (oldID.FLAG_ACTIVECURRENCY + oldID.FLAG_TOKENIZED_CONTROL));
+
     if (!newID.IsValid(true))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid JSON ID parameter");
@@ -10756,14 +10769,21 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     CIdentity revocationAuth = newID.revocationAuthority == newIDID ? newID : newID.LookupIdentity(newID.revocationAuthority);
     CIdentity recoveryAuth = newID.recoveryAuthority == newIDID ? newID : newID.LookupIdentity(newID.recoveryAuthority);
 
+    if (tokenizedIDControl)
+    {
+        if (!oldID.HasTokenizedControl())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Can only used ID control token for ID that has tokenized ID control on this chain");
+        }
+        if (PBAAS_TESTMODE && (IsVerusActive() || ConnectedChains.ThisChain().name == "Gravity") && chainActive.Height() < TESTNET_FORK_HEIGHT)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Tokenized ID control has not yet activated on testnet");
+        }
+    }
+
     if (!revocationAuth.IsValid() || !recoveryAuth.IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid revocation or recovery authority");
-    }
-
-    if (!recoveryAuth.IsValidUnrevoked() || !revocationAuth.IsValidUnrevoked())
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid or revoked recovery, or revocation identity.");
     }
 
     CMutableTransaction txNew = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight + 1);
@@ -10789,6 +10809,31 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         }
     }
 
+    // if we are supposed to get our authority from the token, make sure it is present and prepare to spend it
+    std::vector<COutput> controlTokenOuts;
+    CCurrencyValueMap tokenCurrencyControlMap(std::vector<uint160>({newIDID}), std::vector<int64_t>({1}));
+
+    if (tokenizedIDControl)
+    {
+        COptCCParams tcP;
+        CCurrencyValueMap reserveMap;
+
+        pwalletMain->AvailableReserveCoins(controlTokenOuts, true, nullptr, false, false, nullptr, &tokenCurrencyControlMap, false);
+        if (controlTokenOuts.size() == 1 && controlTokenOuts[0].fSpendable)
+        {
+            reserveMap = controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue();
+            if (!reserveMap.valueMap.count(newIDID) || reserveMap.valueMap[newIDID] != 1)
+            {
+                LogPrint("tokenizedidcontrol", "%s: controlTokenOuts.size(): %d, controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue(): %s, reserveMap: %s, reserveMap.valueMap[idID]: %ld\n", __func__, (int)controlTokenOuts.size(), controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue().ToUniValue().write().c_str(), reserveMap.ToUniValue().write().c_str(), reserveMap.valueMap[newIDID]);
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot locate spendable tokenized ID control currency in wallet - if present, may require rescan");
+            }
+        }
+        else
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "No spendable tokenized ID control currency for update in wallet");
+        }
+    }
+
     // create the identity definition transaction
     std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(nHeight + 1), 0, false}});
     CWalletTx wtx;
@@ -10807,7 +10852,32 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
     // add the spend of the last ID transaction output
     mtx.vin.push_back(idTxIn);
+
+    // if we are using tokenized ID control, add the input and output to the transaction before signing
+    if (tokenizedIDControl)
+    {
+        mtx.vin.push_back(CTxIn(controlTokenOuts[0].tx->GetHash(), controlTokenOuts[0].i));
+        // just in case a change output was inserted, we loop to find the first output with zero out
+        // and put the spend just after
+        for (auto it = mtx.vout.begin(); it != mtx.vout.end(); it++)
+        {
+            if (!it->nValue)
+            {
+                it++;
+                mtx.vout.insert(it, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
+                break;
+            }
+        }
+    }
+
     *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
+
+    if (tokenizedIDControl && LogAcceptCategory("tokenizedidcontrol"))
+    {
+        UniValue jsonTx(UniValue::VOBJ);
+        TxToUniv(wtx, uint256(), jsonTx);
+        LogPrintf("%s: updateidtx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+    }
 
     // now sign
     CCoinsViewCache view(pcoinsTip);
@@ -10828,8 +10898,8 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
         if (!signSuccess && !returnTx)
         {
-            LogPrintf("%s: failure to sign identity recovery tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
-            printf("%s: failure to sign identity recovery tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            LogPrintf("%s: failure to sign identity update tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
+            printf("%s: failure to sign identity update tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
             throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
         } else if (sigdata.scriptSig.size()) {
             UpdateTransaction(mtx, i, sigdata);
@@ -10936,14 +11006,15 @@ UniValue setidentitytimelock(const UniValue& params, bool fHelp)
 
 UniValue revokeidentity(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 1 || params.size() > 2)
+    if (fHelp || params.size() < 1 || params.size() > 3)
     {
         throw runtime_error(
-            "revokeidentity \"nameorID\" (returntx)\n"
+            "revokeidentity \"nameorID\" (returntx) (tokenrevoke)\n"
             "\n\n"
 
             "\nArguments\n"
             "       \"returntx\"                        (bool,   optional) defaults to false and transaction is sent, if true, transaction is signed by this wallet and returned\n"
+            "       \"tokenrevoke\"                     (bool,   optional) defaults to false, if true, the tokenized ID control token, if one exists, will be used to revoke\n"
 
             "\nResult:\n"
 
@@ -10957,6 +11028,8 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
 
     // get identity
     bool returnTx = false;
+    bool tokenizedIDControl = false;
+
     CTxDestination idDest = DecodeDestination(uni_get_str(params[0]));
 
     if (idDest.which() != COptCCParams::ADDRTYPE_ID)
@@ -10971,6 +11044,11 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
         returnTx = uni_get_bool(params[1], false);
     }
 
+    if (params.size() > 2)
+    {
+        tokenizedIDControl = uni_get_bool(params[2], false);
+    }
+
     CTxIn idTxIn;
     CIdentity oldID;
     uint32_t idHeight;
@@ -10980,6 +11058,34 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
     if (!(oldID = CIdentity::LookupIdentity(idID, 0, &idHeight, &idTxIn)).IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID not found " + EncodeDestination(idID));
+    }
+
+    // if we are supposed to get our authority from the token, make sure it is present and prepare to spend it
+    std::vector<COutput> controlTokenOuts;
+    CCurrencyValueMap tokenCurrencyControlMap(std::vector<uint160>({idID}), std::vector<int64_t>({1}));
+
+    if (tokenizedIDControl)
+    {
+        if (PBAAS_TESTMODE && (IsVerusActive() || ConnectedChains.ThisChain().name == "Gravity") && chainActive.Height() < TESTNET_FORK_HEIGHT)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Tokenized ID control has not yet activated on testnet");
+        }
+        COptCCParams tcP;
+        CCurrencyValueMap reserveMap;
+        pwalletMain->AvailableReserveCoins(controlTokenOuts, true, nullptr, false, false, nullptr, &tokenCurrencyControlMap, false);
+        if (controlTokenOuts.size() == 1 && controlTokenOuts[0].fSpendable)
+        {
+            reserveMap = controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue();
+            if (!reserveMap.valueMap.count(idID) || reserveMap.valueMap[idID] != 1)
+            {
+                LogPrint("tokenizedidcontrol", "%s: controlTokenOuts.size(): %d, controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue(): %s, reserveMap: %s, reserveMap.valueMap[idID]: %ld\n", __func__, (int)controlTokenOuts.size(), controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue().ToUniValue().write().c_str(), reserveMap.ToUniValue().write().c_str(), reserveMap.valueMap[idID]);
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot locate spendable tokenized ID control currency in wallet - if present, may require rescan");
+            }
+        }
+        else
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "No spendable tokenized ID control currency for revoke in wallet");
+        }
     }
 
     CIdentity newID(oldID);
@@ -11003,8 +11109,30 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
     // add the spend of the last ID transaction output
     mtx.vin.push_back(idTxIn);
 
-    // all of the reservation output is actually the fee offer, so zero the output
+    // if we are using tokenized ID control, add the input and output to the transaction before signing
+    if (tokenizedIDControl)
+    {
+        mtx.vin.push_back(CTxIn(controlTokenOuts[0].tx->GetHash(), controlTokenOuts[0].i));
+        // just in case a change output was inserted, we loop to find the first output with zero out
+        // and put the spend just after
+        for (auto it = mtx.vout.begin(); it != mtx.vout.end(); it++)
+        {
+            if (!it->nValue)
+            {
+                it++;
+                mtx.vout.insert(it, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
+                break;
+            }
+        }
+    }
+
     *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
+    if (tokenizedIDControl && LogAcceptCategory("tokenizedidcontrol"))
+    {
+        UniValue jsonTx(UniValue::VOBJ);
+        TxToUniv(wtx, uint256(), jsonTx);
+        LogPrintf("%s: revokeidtx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+    }
 
     // now sign
     CCoinsViewCache view(pcoinsTip);
@@ -11047,14 +11175,15 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
 
 UniValue recoveridentity(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 1 || params.size() > 2)
+    if (fHelp || params.size() < 1 || params.size() > 3)
     {
         throw runtime_error(
-            "recoveridentity \"jsonidentity\" (returntx)\n"
+            "recoveridentity \"jsonidentity\" (returntx) (tokenrecover)\n"
             "\n\n"
 
             "\nArguments\n"
             "       \"returntx\"                        (bool,   optional) defaults to false and transaction is sent, if true, transaction is signed by this wallet and returned\n"
+            "       \"tokenrecover\"                    (bool,   optional) defaults to false, if true, the tokenized ID control token, if one exists, will be used to recover\n"
 
             "\nResult:\n"
 
@@ -11067,6 +11196,7 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
 
     // get identity
     bool returnTx = false;
+    bool tokenizedIDControl = false;
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
@@ -11087,6 +11217,7 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
     }
 
     CIdentity newID(newUniIdentity);
+    uint160 newIDID = newID.GetID();
 
     if (!newID.IsValid(true))
     {
@@ -11098,11 +11229,16 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
         returnTx = uni_get_bool(params[1], false);
     }
 
+    if (params.size() > 2)
+    {
+        tokenizedIDControl = uni_get_bool(params[2], false);
+    }
+
     CTxIn idTxIn;
     CIdentity oldID;
     uint32_t idHeight;
 
-    if (!(oldID = CIdentity::LookupIdentity(newID.GetID(), 0, &idHeight, &idTxIn)).IsValid())
+    if (!(oldID = CIdentity::LookupIdentity(newIDID, 0, &idHeight, &idTxIn)).IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID not found " + newID.ToUniValue().write());
     }
@@ -11112,6 +11248,37 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity must be revoked in order to recover : " + newID.name);
     }
 
+    // if we are supposed to get our authority from the token, make sure it is present and prepare to spend it
+    std::vector<COutput> controlTokenOuts;
+    CCurrencyValueMap tokenCurrencyControlMap(std::vector<uint160>({newIDID}), std::vector<int64_t>({1}));
+
+    if (tokenizedIDControl)
+    {
+        if (PBAAS_TESTMODE && (IsVerusActive() || ConnectedChains.ThisChain().name == "Gravity") && chainActive.Height() < TESTNET_FORK_HEIGHT)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Tokenized ID control has not yet activated on testnet");
+        }
+
+        COptCCParams tcP;
+
+        CCurrencyValueMap reserveMap;
+        pwalletMain->AvailableReserveCoins(controlTokenOuts, true, nullptr, false, false, nullptr, &tokenCurrencyControlMap, false);
+        if (controlTokenOuts.size() == 1 && controlTokenOuts[0].fSpendable)
+        {
+            reserveMap = controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue();
+            if (!reserveMap.valueMap.count(newIDID) || reserveMap.valueMap[newIDID] != 1)
+            {
+                LogPrint("tokenizedidcontrol", "%s: controlTokenOuts.size(): %d, controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue(): %s, reserveMap: %s, reserveMap.valueMap[idID]: %ld\n", __func__, (int)controlTokenOuts.size(), controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue().ToUniValue().write().c_str(), reserveMap.ToUniValue().write().c_str(), reserveMap.valueMap[newIDID]);
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot locate spendable tokenized ID control currency in wallet - if present, may require rescan");
+            }
+        }
+        else
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "No spendable tokenized ID control currency for recover in wallet");
+        }
+    }
+
+    newID.flags |= (oldID.flags & (oldID.FLAG_ACTIVECURRENCY + oldID.FLAG_TOKENIZED_CONTROL));
     newID.flags &= ~CIdentity::FLAG_REVOKED;
     newID.systemID = oldID.systemID;
     newID.UpgradeVersion(nHeight + 1);
@@ -11134,8 +11301,31 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
     // add the spend of the last ID transaction output
     mtx.vin.push_back(idTxIn);
 
-    // all of the reservation output is actually the fee offer, so zero the output
+    // if we are using tokenized ID control, add the input and output to the transaction before signing
+    if (tokenizedIDControl)
+    {
+        mtx.vin.push_back(CTxIn(controlTokenOuts[0].tx->GetHash(), controlTokenOuts[0].i));
+        // just in case a change output was inserted, we loop to find the first output with zero out
+        // and put the spend just after
+        for (auto it = mtx.vout.begin(); it != mtx.vout.end(); it++)
+        {
+            if (!it->nValue)
+            {
+                it++;
+                mtx.vout.insert(it, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
+                break;
+            }
+        }
+    }
+
     *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
+
+    if (tokenizedIDControl && LogAcceptCategory("tokenizedidcontrol"))
+    {
+        UniValue jsonTx(UniValue::VOBJ);
+        TxToUniv(wtx, uint256(), jsonTx);
+        LogPrintf("%s: recoveridtx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+    }
 
     // now sign
     CCoinsViewCache view(pcoinsTip);

@@ -576,7 +576,9 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     }
                     else if (oneTransfer.IsCurrencyExport())
                     {
-                        CCurrencyDefinition exportingDef = CCurrencyDefinition(oneTransfer.destination.destination);
+                        CCurrencyDefinition exportingDef = oneTransfer.destination.HasGatewayLeg() && oneTransfer.destination.TypeNoFlags() != oneTransfer.destination.DEST_REGISTERCURRENCY ?
+                                                             ConnectedChains.GetCachedCurrency(oneTransfer.FirstCurrency()) :
+                                                             CCurrencyDefinition(oneTransfer.destination.destination);
                         if (!exportingDef.IsValid())
                         {
                             return state.Error(strprintf("%s: Invalid currency import", __func__));
@@ -1919,6 +1921,12 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                              newCurrency.maxPreconvert[0] == 0))))
                 {
                     return state.Error("Tokenized ID currency must have only 1 satoshi of supply as preallocation or convertible and follow all definition rules");
+                }
+
+                // TODO: HARDENING - add hardening to ensure that no more than one satoshi at a time ever comes in from a bridge for an NFT mapped currency
+                if (isNFTMappedCurrency && newCurrency.proofProtocol == newCurrency.PROOF_CHAINID)
+                {
+                    return state.Error("Identity must be set for tokenized control when defining NFT token or tokenized control currency");
                 }
 
                 if (isNFTMappedCurrency && !newIdentity.HasTokenizedControl())
