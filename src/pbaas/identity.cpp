@@ -2152,7 +2152,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                     // fulfill signature requirements. if we only have one signature, and
                     // it is from the publicly available key, ValidateIdentityRecover will
                     // consider the signature unfulfilled
-                    if (height > TESTNET_FORK_HEIGHT && identity.HasTokenizedControl())
+                    if ((PBAAS_TESTMODE && (!IsVerusActive() || height >= TESTNET_FORK_HEIGHT)) && identity.HasTokenizedControl())
                     {
                         if (!(oneP.m == 1 && oneP.n > 1))
                         {
@@ -2448,7 +2448,7 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
     }
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
 
-    bool currencySigEnforcement = PBAAS_TESTMODE && height > TESTNET_FORK_HEIGHT;
+    bool currencySigEnforcement = PBAAS_TESTMODE && (!IsVerusActive() || height >= TESTNET_FORK_HEIGHT);
 
     bool advancedIdentity = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
 
@@ -2601,7 +2601,7 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
     }
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
 
-    bool currencySigEnforcement = PBAAS_TESTMODE && height > TESTNET_FORK_HEIGHT;
+    bool currencySigEnforcement = PBAAS_TESTMODE && (!IsVerusActive() || height >= TESTNET_FORK_HEIGHT);
 
     bool advancedIdentity = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
 

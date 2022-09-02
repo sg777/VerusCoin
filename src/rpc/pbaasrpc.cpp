@@ -10775,7 +10775,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Can only used ID control token for ID that has tokenized ID control on this chain");
         }
-        if (IsVerusActive() && chainActive.Height() < TESTNET_FORK_HEIGHT)
+        if (PBAAS_TESTMODE && IsVerusActive() && chainActive.Height() < TESTNET_FORK_HEIGHT)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Tokenized ID control has not yet activated on testnet");
         }
@@ -11066,7 +11066,7 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
 
     if (tokenizedIDControl)
     {
-        if (IsVerusActive() && chainActive.Height() < TESTNET_FORK_HEIGHT)
+        if (PBAAS_TESTMODE && IsVerusActive() && chainActive.Height() < TESTNET_FORK_HEIGHT)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Tokenized ID control has not yet activated on testnet");
         }
@@ -11254,7 +11254,7 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
 
     if (tokenizedIDControl)
     {
-        if (IsVerusActive() && chainActive.Height() < TESTNET_FORK_HEIGHT)
+        if (PBAAS_TESTMODE && IsVerusActive() && chainActive.Height() < TESTNET_FORK_HEIGHT)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Tokenized ID control has not yet activated on testnet");
         }
