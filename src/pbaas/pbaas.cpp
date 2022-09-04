@@ -584,8 +584,8 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                             return state.Error(strprintf("%s: Invalid currency import", __func__));
                         }
 
-                        // TODO: HARDENING - imported currencies do need to conform to type constraints in order
-                        // to benefit from reduced import fees
+                        // imported currencies do need to conform to type constraints in order
+                        // to benefit from reduced import fees. this happens on the precheck for currency definition
 
                         if ((oneTransfer.HasNextLeg() && oneTransfer.destination.gatewayID != ASSETCHAINS_CHAINID ?
                                 nextLegFeeEquiv :
@@ -4589,20 +4589,19 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             newLocalDepositsRequired.valueMap[destCurID] -= newPrimaryCurrency;
         }
 
-        /*printf("%s: newNotarization:\n%s\n", __func__, newNotarization.ToUniValue().write(1,2).c_str());
-        printf("%s: ccx.totalAmounts: %s\ngatewayDepositsUsed: %s\nimportedCurrency: %s\nspentCurrencyOut: %s\n",
+        LogPrint("crosschainimports", "%s: newNotarization:\n%s\n", __func__, newNotarization.ToUniValue().write(1,2).c_str());
+        LogPrint("crosschainimports", "%s: ccx.totalAmounts: %s\ngatewayDepositsUsed: %s\nimportedCurrency: %s\nspentCurrencyOut: %s\n",
             __func__,
             ccx.totalAmounts.ToUniValue().write(1,2).c_str(),
             gatewayDepositsUsed.ToUniValue().write(1,2).c_str(),
             importedCurrency.ToUniValue().write(1,2).c_str(),
             spentCurrencyOut.ToUniValue().write(1,2).c_str());
 
-        printf("%s: incomingCurrency: %s\ncurrencyChange: %s\nnewLocalDepositsRequired: %s\n",
+        LogPrint("crosschainimports", "%s: incomingCurrency: %s\ncurrencyChange: %s\nnewLocalDepositsRequired: %s\n",
             __func__,
             incomingCurrency.ToUniValue().write(1,2).c_str(),
             newLocalReserveDeposits.ToUniValue().write(1,2).c_str(),
             newLocalDepositsRequired.ToUniValue().write(1,2).c_str());
-        //*/
 
         // create the import
         CCrossChainImport cci = CCrossChainImport(sourceSystemID,
@@ -4825,9 +4824,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             gatewayChange = (totalDepositsInput - gatewayDepositsUsed).CanonicalMap();
 
-            /*printf("%s: gatewayDepositsUsed: %s\n", __func__, gatewayDepositsUsed.ToUniValue().write(1,2).c_str());
-            printf("%s: gatewayChange: %s\n", __func__, gatewayChange.ToUniValue().write(1,2).c_str());
-            //*/
+            LogPrint("crosschainimports", "%s: gatewayDepositsUsed: %s\n", __func__, gatewayDepositsUsed.ToUniValue().write(1,2).c_str());
+            LogPrint("crosschainimports", "%s: gatewayChange: %s\n", __func__, gatewayChange.ToUniValue().write(1,2).c_str());
 
             // we should always be able to fulfill
             // gateway despoit requirements, or this is an error
@@ -4867,15 +4865,14 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             }
         }
 
-        /* printf("%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
-        printf("%s: cci: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
-        printf("%s: spentcurrencyout: %s\n", __func__, spentCurrencyOut.ToUniValue().write(1,2).c_str());
-        printf("%s: newcurrencyin: %s\n", __func__, incomingCurrency.ToUniValue().write(1,2).c_str());
-        printf("%s: importedCurrency: %s\n", __func__, importedCurrency.ToUniValue().write(1,2).c_str());
-        printf("%s: localdepositrequirements: %s\n", __func__, newLocalDepositsRequired.ToUniValue().write(1,2).c_str());
-        printf("%s: checkImportedCurrency: %s\n", __func__, checkImportedCurrency.ToUniValue().write(1,2).c_str());
-        printf("%s: checkRequiredDeposits: %s\n", __func__, checkRequiredDeposits.ToUniValue().write(1,2).c_str());
-        //*/
+        LogPrint("crosschainimports", "%s: newNotarization.currencyState: %s\n", __func__, newNotarization.currencyState.ToUniValue().write(1,2).c_str());
+        LogPrint("crosschainimports", "%s: cci: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
+        LogPrint("crosschainimports", "%s: spentcurrencyout: %s\n", __func__, spentCurrencyOut.ToUniValue().write(1,2).c_str());
+        LogPrint("crosschainimports", "%s: newcurrencyin: %s\n", __func__, incomingCurrency.ToUniValue().write(1,2).c_str());
+        LogPrint("crosschainimports", "%s: importedCurrency: %s\n", __func__, importedCurrency.ToUniValue().write(1,2).c_str());
+        LogPrint("crosschainimports", "%s: localdepositrequirements: %s\n", __func__, newLocalDepositsRequired.ToUniValue().write(1,2).c_str());
+        LogPrint("crosschainimports", "%s: checkImportedCurrency: %s\n", __func__, checkImportedCurrency.ToUniValue().write(1,2).c_str());
+        LogPrint("crosschainimports", "%s: checkRequiredDeposits: %s\n", __func__, checkRequiredDeposits.ToUniValue().write(1,2).c_str());
 
         // add local reserve deposit inputs and determine change
         if (newLocalDepositsRequired.valueMap.size() ||
@@ -4901,7 +4898,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             newLocalReserveDeposits = ((totalDepositsInput + incomingCurrency) - spentCurrencyOut).CanonicalMap();
 
-            /* printf("%s: totalDepositsInput: %s\nincomingPlusDepositsMinusSpent: %s\n", 
+            LogPrint("crosschainimports", "%s: totalDepositsInput: %s\nincomingPlusDepositsMinusSpent: %s\n", 
                 __func__, 
                 totalDepositsInput.ToUniValue().write(1,2).c_str(),
                 newLocalReserveDeposits.ToUniValue().write(1,2).c_str()); //*/
@@ -4974,12 +4971,12 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         // ins and outs are correct. now calculate the fee correctly here and set the transaction builder accordingly
         // to prevent an automatic change output. we could just let it go and have a setting to stop creation of a change output,
         // but this is a nice doublecheck requirement
-        /*printf("%s: reserveInMap:\n%s\nspentCurrencyOut:\n%s\nccx.totalAmounts:\n%s\nccx.totalFees:\n%s\n",
+        LogPrint("crosschainimports", "%s: reserveInMap:\n%s\nspentCurrencyOut:\n%s\nccx.totalAmounts:\n%s\nccx.totalFees:\n%s\n",
                 __func__,
                 reserveInMap.ToUniValue().write(1,2).c_str(),
                 spentCurrencyOut.ToUniValue().write(1,2).c_str(),
                 ccx.totalAmounts.ToUniValue().write(1,2).c_str(),
-                ccx.totalFees.ToUniValue().write(1,2).c_str()); //*/
+                ccx.totalFees.ToUniValue().write(1,2).c_str());
 
         // pay the fee out to the miner
         CReserveTransactionDescriptor rtxd(tb.mtx, view, nHeight + 1);
@@ -4990,7 +4987,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             tb.SetReserveFee(reserveFees);
         }
 
-        if (LogAcceptCategory("imports"))
+        if (LogAcceptCategory("crosschainimports"))
         {
             UniValue jsonTx(UniValue::VOBJ);
             uint256 hashBlk;

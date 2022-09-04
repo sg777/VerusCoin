@@ -4590,7 +4590,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
  */
 bool ValidateAcceptedNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
-    // TODO: this validates the spending transaction
+    // TODO: HARDENING
+    // the spending transaction must be a notarization in the same thread of notarizations
     // check the following things:
     // 1. It represents a valid PoS or merge mined block on the other chain, and contains the header in the opret
     // 2. The MMR and proof provided for the currently asserted block can prove the provided header. The provided
@@ -5117,6 +5118,7 @@ bool IsAcceptedNotarizationInput(const CScript &scriptSig)
 bool ValidateEarnedNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
     // TODO: HARDENING ensure that earned notarization UTXOs are spent appropriately
+    // the spending transaction must be a finalization that either confirms or invalidates this notarization
     return true;
 }
 

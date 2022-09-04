@@ -2502,6 +2502,9 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             checkState.SetLaunchCompleteMarker(false);
                         }
 
+                        // TODO: HARDENING - ensure that we match notarization state to account for burns and
+                        // transactions that affect state without outputs
+
                         if (!rtxd.AddReserveTransferImportOutputs(sourceSystemDef,
                                                                   ConnectedChains.thisChain,
                                                                   importCurrencyDef,
