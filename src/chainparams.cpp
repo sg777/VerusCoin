@@ -91,7 +91,7 @@ public:
     CMainParams()
     {
         strNetworkID = "main";
-        strCurrencyUnits = "KMD";
+        strCurrencyUnits = "VRSC";
         bip44CoinType = 133; // As registered in https://github.com/satoshilabs/slips/blob/master/slip-0044.md (ZCASH, should be VRSC)
         consensus.fCoinbaseMustBeProtected = false; // true this is only true wuth Verus and enforced after block 12800 (enforcement ending at solution V3)
         consensus.nSubsidySlowStartInterval = 20000;

@@ -1766,7 +1766,7 @@ void komodo_args(char *argv0)
     */
 
     // either the testmode parameter or calling this chain VRSCTEST will put us into testmode
-    PBAAS_TESTMODE = GetBoolArg("-testmode", false);
+    PBAAS_TESTMODE = GetBoolArg("-testnet", false);
 
     // setting test mode also prevents the name of this chain from being set to VRSC
 
