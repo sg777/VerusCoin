@@ -997,7 +997,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         hashType = (CCurrencyDefinition::EProofProtocol)externalSystemDef.proofProtocol;
     }
 
-    CNativeHashWriter hwPrevNotarization(hashType);
+    CNativeHashWriter hwPrevNotarization;
     hwPrevNotarization << *this;
     newNotarization.hashPrevNotarization = hwPrevNotarization.GetHash();
 
@@ -2913,6 +2913,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     notarization.nodes = GetGoodNodes(CPBaaSNotarization::MAX_NODES);
 
     notarization.prevNotarization = cnd.vtx[notaryIdx].first;
+
     CNativeHashWriter hw;
     hw << cnd.vtx[notaryIdx].second;
     notarization.hashPrevNotarization = hw.GetHash();
