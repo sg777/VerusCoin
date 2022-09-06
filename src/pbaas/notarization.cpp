@@ -2872,9 +2872,12 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         for (prevNotarizationIdx = crosschainCND.vtx.size() - 1; prevNotarizationIdx >= 0; prevNotarizationIdx--)
         {
             lastPBN = crosschainCND.vtx[prevNotarizationIdx].second;
+
             // TODO: HARDENING check all currency states on this chain in last valid as well
             std::map<uint160, CProofRoot>::iterator pIT = lastPBN.proofRoots.find(ASSETCHAINS_CHAINID);
             if (pIT != lastPBN.proofRoots.end() &&
+                (!priorNotarization.proofRoots.count(ASSETCHAINS_CHAINID) ||
+                 pIT->second.rootHeight <= priorNotarization.proofRoots.find(ASSETCHAINS_CHAINID)->second.rootHeight) &&
                 CProofRoot::GetProofRoot(pIT->second.rootHeight) == pIT->second)
             {
                 break;
