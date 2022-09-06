@@ -4397,7 +4397,9 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 uint256 blockHash;
                 CTransaction confirmedNTx;
                 CBlockIndex *pIndex;
-                if (!myGetTransaction(cnd.vtx[confirmingIdx].first.hash, confirmedNTx, blockHash) ||
+                if (crosschainCND.vtx[confirmingIdx].second.proofRoots.count(ASSETCHAINS_CHAINID) ||
+                    earnedNotarizationIndexEntry.first.txhash.IsNull() ||
+                    !myGetTransaction(earnedNotarizationIndexEntry.first.txhash, confirmedNTx, blockHash) ||
                     !mapBlockIndex.count(blockHash) ||
                     !chainActive.Contains(pIndex = mapBlockIndex[blockHash]))
                 {
@@ -4405,14 +4407,14 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                     printf("Unable to get confirmed notarization transaction for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
                     return retVal;
                 }
-                CPartialTransactionProof firstProof(notarizationTxes[confirmingIdx].first,
+                CPartialTransactionProof firstProof(confirmedNTx,
                                                     std::vector<int>(),
-                                                    std::vector<int>({(int)cnd.vtx[confirmingIdx].first.n}),
+                                                    std::vector<int>({(int)earnedNotarizationIndexEntry.first.index}),
                                                     pIndex,
-                                                    cnd.vtx[cnd.lastConfirmed].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight);
-                notarizationTxInfo = std::make_pair(CInputDescriptor(notarizationTxes[confirmingIdx].first.vout[cnd.vtx[confirmingIdx].first.n].scriptPubKey,
-                                                                    notarizationTxes[confirmingIdx].first.vout[cnd.vtx[confirmingIdx].first.n].nValue,
-                                                                    CTxIn(cnd.vtx[confirmingIdx].first)),
+                                                    crosschainCND.vtx[confirmingIdx].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight);
+                notarizationTxInfo = std::make_pair(CInputDescriptor(confirmedNTx.vout[earnedNotarizationIndexEntry.first.index].scriptPubKey,
+                                                                     confirmedNTx.vout[earnedNotarizationIndexEntry.first.index].nValue,
+                                                                     CTxIn(earnedNotarizationIndexEntry.first.txhash, earnedNotarizationIndexEntry.first.index)),
                                                     firstProof);
             }
         }
