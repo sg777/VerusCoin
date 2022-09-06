@@ -2838,6 +2838,24 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         return state.Error(errorPrefix + "invalid or missing currency state data from notary");
     }
 
+    params = UniValue(UniValue::VARR);
+    params.push_back(EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)));
+    try
+    {
+        result = find_value(RPCCallRoot("getnotarizationdata", params), "result");
+    } catch (exception e)
+    {
+        result = NullUniValue;
+    }
+    CChainNotarizationData crosschainCND;
+    if (result.isNull() ||
+        !(crosschainCND = CChainNotarizationData(result)).IsValid() ||
+        (!externalSystem.chainDefinition.IsGateway() && !crosschainCND.IsConfirmed()))
+    {
+        LogPrint("notarization", "Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(externalSystem.GetID())).c_str());
+        return state.Error("invalid crosschain notarization data");
+    }
+
     // take the lock again, now that we're back from calling out
     LOCK2(cs_main, mempool.cs);
 
@@ -2845,6 +2863,42 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     if (height != chainActive.Height())
     {
         return state.Error("stale-block");
+    }
+
+    if (crosschainCND.vtx.size())
+    {
+        int prevNotarizationIdx;
+        CPBaaSNotarization lastPBN;
+        for (prevNotarizationIdx = crosschainCND.vtx.size() - 1; prevNotarizationIdx >= 0; prevNotarizationIdx--)
+        {
+            lastPBN = crosschainCND.vtx[prevNotarizationIdx].second;
+            // TODO: HARDENING check all currency states on this chain in last valid as well
+            std::map<uint160, CProofRoot>::iterator pIT = lastPBN.proofRoots.find(ASSETCHAINS_CHAINID);
+            if (pIT != lastPBN.proofRoots.end() &&
+                CProofRoot::GetProofRoot(pIT->second.rootHeight) == pIT->second)
+            {
+                break;
+            }
+            else if (pIT == crosschainCND.vtx[prevNotarizationIdx].second.proofRoots.end() &&
+                     !prevNotarizationIdx &&
+                     (crosschainCND.vtx[prevNotarizationIdx].second.IsDefinitionNotarization() || crosschainCND.vtx[prevNotarizationIdx].second.IsLaunchCleared()))
+            {
+                // use the 0th element if no proof root and it is definition or start, since it has no proof root to be wrong
+                break;
+            }
+        }
+        if (prevNotarizationIdx >= 0 &&
+            lastPBN.SetMirror(false) &&
+            !lastPBN.IsMirror())
+        {
+            CNativeHashWriter hw;
+            hw << lastPBN;
+            notarization.hashPrevNotarization = hw.GetHash();
+        }
+        else
+        {
+            notarization.hashPrevNotarization.SetNull();
+        }
     }
 
     notarization.currencyStates.clear();
@@ -2913,10 +2967,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     notarization.nodes = GetGoodNodes(CPBaaSNotarization::MAX_NODES);
 
     notarization.prevNotarization = cnd.vtx[notaryIdx].first;
-
-    CNativeHashWriter hw;
-    hw << cnd.vtx[notaryIdx].second;
-    notarization.hashPrevNotarization = hw.GetHash();
     notarization.prevHeight = cnd.vtx[notaryIdx].second.notarizationHeight;
 
     CCcontract_info CC;

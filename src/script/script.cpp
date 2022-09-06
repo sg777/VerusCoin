@@ -1146,7 +1146,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                     }
                     if (!checkNotarization.IsMirror())
                     {
-                        // TODO: POST-HARDENING consider whether this can use the native hash writer with an alternate hash
+                        // TODO: POST HARDENING consider whether this can use the native hash writer with an alternate hash
                         CNativeHashWriter hw;
                         hw << checkNotarization;
                         uint256 objHash = hw.GetHash();
