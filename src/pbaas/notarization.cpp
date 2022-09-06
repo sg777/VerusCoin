@@ -727,7 +727,7 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
     notarizationHeight = (uint32_t)uni_get_int64(find_value(obj, "notarizationheight"));
     currencyState = CCoinbaseCurrencyState(find_value(obj, "currencystate"));
     prevNotarization = CUTXORef(uint256S(uni_get_str(find_value(obj, "prevnotarizationtxid"))), (uint32_t)uni_get_int(find_value(obj, "prevnotarizationout")));
-    hashPrevNotarization = uint256S(uni_get_str(find_value(obj, "hashprevnotarizationobject")));
+    hashPrevCrossNotarization = uint256S(uni_get_str(find_value(obj, "hashprevcrossnotarization")));
     prevHeight = (uint32_t)uni_get_int64(find_value(obj, "prevheight"));
 
     auto curStateArr = find_value(obj, "currencystates");
@@ -999,7 +999,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
     CNativeHashWriter hwPrevNotarization;
     hwPrevNotarization << *this;
-    newNotarization.hashPrevNotarization = hwPrevNotarization.GetHash();
+    newNotarization.hashPrevCrossNotarization = hwPrevNotarization.GetHash();
 
     CNativeHashWriter hw(hashType);
 
@@ -2893,11 +2893,11 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         {
             CNativeHashWriter hw;
             hw << lastPBN;
-            notarization.hashPrevNotarization = hw.GetHash();
+            notarization.hashPrevCrossNotarization = hw.GetHash();
         }
         else
         {
-            notarization.hashPrevNotarization.SetNull();
+            notarization.hashPrevCrossNotarization.SetNull();
         }
     }
 

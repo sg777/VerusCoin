@@ -839,7 +839,7 @@ UniValue CPBaaSNotarization::ToUniValue() const
     obj.push_back(Pair("currencystate", currencyState.ToUniValue()));
     obj.push_back(Pair("prevnotarizationtxid", prevNotarization.hash.GetHex()));
     obj.push_back(Pair("prevnotarizationout", (int64_t)prevNotarization.n));
-    obj.push_back(Pair("hashprevnotarizationobject", hashPrevNotarization.GetHex()));
+    obj.push_back(Pair("hashprevcrossnotarization", hashPrevCrossNotarization.GetHex()));
     obj.push_back(Pair("prevheight", (int64_t)prevHeight));
 
     // now get states and roots, of which there may be multiple
