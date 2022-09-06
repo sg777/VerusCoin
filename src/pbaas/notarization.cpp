@@ -4379,7 +4379,9 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             {
                 CAddressIndexDbEntry tmpIndexEntry;
                 CObjectFinalization finalizationObj;
-                if (crosschainCND.vtx[i].second.FindEarnedNotarization(finalizationObj, &tmpIndexEntry) && finalizationObj.IsConfirmed())
+                if (crosschainCND.vtx[i].second.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                    crosschainCND.vtx[i].second.FindEarnedNotarization(finalizationObj, &tmpIndexEntry) &&
+                    finalizationObj.IsConfirmed())
                 {
                     earnedNotarizationIndexEntry = tmpIndexEntry;
                     confirmingIdx = i;
@@ -4397,8 +4399,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 uint256 blockHash;
                 CTransaction confirmedNTx;
                 CBlockIndex *pIndex;
-                if (crosschainCND.vtx[confirmingIdx].second.proofRoots.count(ASSETCHAINS_CHAINID) ||
-                    earnedNotarizationIndexEntry.first.txhash.IsNull() ||
+                if (earnedNotarizationIndexEntry.first.txhash.IsNull() ||
                     !myGetTransaction(earnedNotarizationIndexEntry.first.txhash, confirmedNTx, blockHash) ||
                     !mapBlockIndex.count(blockHash) ||
                     !chainActive.Contains(pIndex = mapBlockIndex[blockHash]))
