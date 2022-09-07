@@ -3428,33 +3428,32 @@ bool CConnectedChains::ConfigureEthBridge(bool callToCheck)
         map<string, vector<string>> settingsmulti;
 
         // create config file for our notary chain if one does not exist already
-        if (ReadConfigFile("veth", settings, settingsmulti))
-        {
-            // the Ethereum bridge, "VETH", serves as the root currency to VRSC and for Rinkeby to VRSCTEST
-            vethNotaryChain.rpcUserPass = PBAAS_USERPASS = settingsmulti.find("-rpcuser")->second[0] + ":" + settingsmulti.find("-rpcpassword")->second[0];
-            vethNotaryChain.rpcPort = PBAAS_PORT = atoi(settingsmulti.find("-rpcport")->second[0]);
-            PBAAS_HOST = settingsmulti.find("-rpchost")->second[0];
-            if (!PBAAS_HOST.size())
-            {
-                PBAAS_HOST = "127.0.0.1";
-            }
-            vethNotaryChain.rpcHost = PBAAS_HOST;
-            CNotarySystemInfo notarySystem;
-            CChainNotarizationData cnd;
-            if (!GetNotarizationData(gatewayID, cnd))
-            {
-                LogPrintf("%s: Failed to get notarization data for notary chain %s\n", __func__, vethNotaryChain.chainDefinition.name.c_str());
-                return false;
-            }
+        ReadConfigFile("veth", settings, settingsmulti);
 
-            notarySystems.insert(std::make_pair(gatewayID, 
-                                                CNotarySystemInfo(cnd.IsConfirmed() ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : 0, 
-                                                vethNotaryChain,
-                                                cnd.vtx.size() ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second : CPBaaSNotarization(),
-                                                CNotarySystemInfo::TYPE_ETH,
-                                                CNotarySystemInfo::VERSION_CURRENT)));
-            return IsNotaryAvailable(callToCheck);
+        // the Ethereum bridge, "VETH", serves as the root currency to VRSC and for Rinkeby to VRSCTEST
+        vethNotaryChain.rpcUserPass = PBAAS_USERPASS = settingsmulti.find("-rpcuser")->second[0] + ":" + settingsmulti.find("-rpcpassword")->second[0];
+        vethNotaryChain.rpcPort = PBAAS_PORT = atoi(settingsmulti.find("-rpcport")->second[0]);
+        PBAAS_HOST = settingsmulti.find("-rpchost")->second[0];
+        if (!PBAAS_HOST.size())
+        {
+            PBAAS_HOST = "127.0.0.1";
         }
+        vethNotaryChain.rpcHost = PBAAS_HOST;
+        CNotarySystemInfo notarySystem;
+        CChainNotarizationData cnd;
+        if (!GetNotarizationData(gatewayID, cnd))
+        {
+            LogPrintf("%s: Failed to get notarization data for notary chain %s\n", __func__, vethNotaryChain.chainDefinition.name.c_str());
+            return false;
+        }
+
+        notarySystems.insert(std::make_pair(gatewayID, 
+                                            CNotarySystemInfo(cnd.IsConfirmed() ? cnd.vtx[cnd.lastConfirmed].second.notarizationHeight : 0, 
+                                            vethNotaryChain,
+                                            cnd.vtx.size() ? cnd.vtx[cnd.forks[cnd.bestChain].back()].second : CPBaaSNotarization(),
+                                            CNotarySystemInfo::TYPE_ETH,
+                                            CNotarySystemInfo::VERSION_CURRENT)));
+        return IsNotaryAvailable(callToCheck);
     }
     return false;
 }

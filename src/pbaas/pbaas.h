@@ -257,7 +257,7 @@ public:
 
     CUTXORef prevNotarization;              // reference of the prior notarization on this system with which we agree
     uint256 hashPrevCrossNotarization;      // (this is not the same notarization as the prev notarization or prev height)
-                                            //  it is the hash of the prior notarization on the other chain with which we agree, even one not accepted yet
+                                            //  it is the hash of the prior notarization on the other chain with which we agree, even one not yet confirmed
     uint32_t prevHeight;                    // height of previous notarization we agree with
 
     std::map<uint160, CCoinbaseCurrencyState> currencyStates; // currency state of other currencies to be co-notarized for gateways
