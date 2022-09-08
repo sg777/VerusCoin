@@ -533,7 +533,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                 int32_t nextOutput;
                 CPBaaSNotarization xNotarization;
                 int primaryOutNumOut;
-                if (!ccx.GetExportInfo(importTx, evidenceOutStart, primaryOutNumOut, nextOutput, xNotarization, reserveTransfers, hashType))
+                if (!ccx.GetExportInfo(exportTx, evidenceOutStart, primaryOutNumOut, nextOutput, xNotarization, reserveTransfers, hashType))
                 {
                     //UniValue jsonTx(UniValue::VOBJ);
                     //TxToUniv(importTx, uint256(), jsonTx);
