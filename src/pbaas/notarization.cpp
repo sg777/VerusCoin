@@ -1318,13 +1318,16 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         }
         newNotarization.currencyState.SetLaunchClear(false);
 
+        CCurrencyDefinition destSystem = newNotarization.IsRefunding() ? ConnectedChains.GetCachedCurrency(destCurrency.launchSystemID) : 
+                                                                         ConnectedChains.GetCachedCurrency(destCurrency.SystemOrGatewayID());
+
         // calculate new state from processing all transfers
         // we are not refunding, and it is possible that we also have
         // normal conversions in addition to pre-conversions. add any conversions that may 
         // be present into the new currency state
         CCoinbaseCurrencyState intermediateState = newNotarization.currencyState;
-        bool isValidExport = rtxd.AddReserveTransferImportOutputs(newNotarization.IsRefunding() ? externalSystemDef : sourceSystem,
-                                                                  newNotarization.IsRefunding() ? sourceSystem : externalSystemDef,
+        bool isValidExport = rtxd.AddReserveTransferImportOutputs(sourceSystem,
+                                                                  destSystem,
                                                                   destCurrency, 
                                                                   intermediateState, 
                                                                   exportTransfers, 
@@ -1349,8 +1352,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             tempCurState.conversionPrice = newNotarization.currencyState.conversionPrice;
             tempCurState.viaConversionPrice = newNotarization.currencyState.viaConversionPrice;
             rtxd = CReserveTransactionDescriptor();
-            isValidExport = rtxd.AddReserveTransferImportOutputs(newNotarization.IsRefunding() ? externalSystemDef : sourceSystem,
-                                                                 newNotarization.IsRefunding() ? sourceSystem : externalSystemDef,
+            isValidExport = rtxd.AddReserveTransferImportOutputs(sourceSystem,
+                                                                 destSystem,
                                                                  destCurrency, 
                                                                  tempCurState, 
                                                                  exportTransfers, 
