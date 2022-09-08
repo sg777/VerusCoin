@@ -437,7 +437,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                 for (auto &oneCur : ConnectedChains.notarySystems)
                 {
                     if (pBaseImport->importCurrencyID == oneCur.second.notaryChain.chainDefinition.GatewayConverterID() &&
-                        oneCur.second.notaryChain.chainDefinition.systemID == ASSETCHAINS_CHAINID)
+                        oneCur.second.notaryChain.chainDefinition.IsGateway())
                     {
                         passedCheck = true;
                         break;
