@@ -962,7 +962,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
     uint160 externalSystemID = sourceSystem.SystemOrGatewayID() == ASSETCHAINS_CHAINID ? 
                                 ((destSystemID == ASSETCHAINS_CHAINID) ? uint160() : destSystemID) : 
-                                ASSETCHAINS_CHAINID;
+                                sourceSystem.GetID();
 
     CCurrencyDefinition externalSystemDef;
     if (externalSystemID.IsNull() || externalSystemID == ASSETCHAINS_CHAINID)
