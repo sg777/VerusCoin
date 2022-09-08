@@ -552,36 +552,42 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
     }
 
     // if we may have an arbitrage reserve transfer, look for it
-    if (importNotarization.IsValid() &&
-        importNotarization.IsLaunchComplete() &&
-        !importNotarization.IsRefunding() &&
-        importNotarization.currencyState.IsValid() &&
-        importNotarization.currencyState.IsFractional() &&
-        ccx.IsValid() &&
-        hashReserveTransfers != ccx.hashReserveTransfers)
+    if (hashReserveTransfers != ccx.hashReserveTransfers)
     {
-        // if we don't have an arbitrage reserve transfer, this is an error that the hashes don't match
-        // if we do, they cannot match, so get it
-        CReserveTransfer arbitrageTransfer = GetArbitrageTransfer(importTx, numImportOut, state, nHeight);
-        if (!arbitrageTransfer.IsValid())
+        if (importNotarization.IsValid() &&
+            importNotarization.IsLaunchComplete() &&
+            !importNotarization.IsRefunding() &&
+            importNotarization.currencyState.IsValid() &&
+            importNotarization.currencyState.IsFractional() &&
+            ccx.IsValid())
         {
-            return state.Error(strprintf("%s: export and import hash mismatch without valid arbitrage transfer",__func__));
-        }
-        reserveTransfers.push_back(arbitrageTransfer);
-        CNativeHashWriter nhw1(hashType);
-        CNativeHashWriter nhw2(hashType);
-        for (int i = 0; i < reserveTransfers.size(); i++)
-        {
-            nhw1 << reserveTransfers[i];
-            // if this is not the last, add it into the 2nd hash, which should then match the export
-            if (i + 1 < reserveTransfers.size())
+            // if we don't have an arbitrage reserve transfer, this is an error that the hashes don't match
+            // if we do, they cannot match, so get it
+            CReserveTransfer arbitrageTransfer = GetArbitrageTransfer(importTx, numImportOut, state, nHeight);
+            if (!arbitrageTransfer.IsValid())
             {
-                nhw2 << reserveTransfers[i];
+                return state.Error(strprintf("%s: export and import hash mismatch without valid arbitrage transfer",__func__));
+            }
+            reserveTransfers.push_back(arbitrageTransfer);
+            CNativeHashWriter nhw1(hashType);
+            CNativeHashWriter nhw2(hashType);
+            for (int i = 0; i < reserveTransfers.size(); i++)
+            {
+                nhw1 << reserveTransfers[i];
+                // if this is not the last, add it into the 2nd hash, which should then match the export
+                if (i + 1 < reserveTransfers.size())
+                {
+                    nhw2 << reserveTransfers[i];
+                }
+            }
+            if (hashReserveTransfers != nhw1.GetHash() || ccx.hashReserveTransfers != nhw2.GetHash())
+            {
+                return state.Error(strprintf("%s: import hash of transfers does not match actual transfers with arbitrage",__func__));
             }
         }
-        if (hashReserveTransfers != nhw1.GetHash() || ccx.hashReserveTransfers != nhw2.GetHash())
+        else
         {
-            return state.Error(strprintf("%s: import hash of transfers does not match actual transfers with arbitrage",__func__));
+            return state.Error(strprintf("%s: import hash of transfers does not match export transfers",__func__));
         }
     }
 
