@@ -135,7 +135,7 @@ std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> Serve
                         }
                         if (id.IsValidUnrevoked() && (isStake || sourceIsSelf || !id.IsLocked(spendHeight)))
                         {
-                            // TODO: HARDENING - in next upgrade, consider adding limits on what can be modified in an ID
+                            // TODO: POST HARDENING - in next upgrade, consider adding limits on what can be modified in an ID
 
                             std::vector<std::vector<unsigned char>> idAddrBytes;
                             for (auto &oneAddr : id.primaryAddresses)

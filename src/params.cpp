@@ -92,15 +92,6 @@ static int xferinfo(void *p,
 void initalizeMapParamBootstrap() {
   mapParams.clear();
 
-  ParamFile bootFile;
-  bootFile.name = "bootstrap";
-  bootFile.URL = "https://bootstrap.verus.io/VRSC-bootstrap.tar.gz";
-  bootFile.verified = false;
-  bootFile.path = GetDataDir() / "VRSC-bootstrap.tar.gz";
-  bootFile.dlnow = 0;
-  bootFile.dltotal = 0;
-  mapParams[bootFile.URL] = bootFile;
-
   ParamFile bootSigFile;
   bootSigFile.name = "bootstrap-signature";
   bootSigFile.URL = "https://bootstrap.verus.io/VRSC-bootstrap.tar.gz.verusid";
@@ -109,6 +100,15 @@ void initalizeMapParamBootstrap() {
   bootSigFile.dlnow = 0;
   bootSigFile.dltotal = 0;
   mapParams[bootSigFile.URL] = bootSigFile;
+
+  ParamFile bootFile;
+  bootFile.name = "bootstrap";
+  bootFile.URL = "https://bootstrap.verus.io/VRSC-bootstrap.tar.gz";
+  bootFile.verified = false;
+  bootFile.path = GetDataDir() / "VRSC-bootstrap.tar.gz";
+  bootFile.dlnow = 0;
+  bootFile.dltotal = 0;
+  mapParams[bootFile.URL] = bootFile;
 }
 
 

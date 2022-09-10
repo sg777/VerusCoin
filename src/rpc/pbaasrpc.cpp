@@ -8252,6 +8252,10 @@ extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& 
 CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj, uint32_t height, const uint160 systemID, std::map<uint160, std::string> &requiredDefinitions, bool checkMempool)
 {
     CCurrencyDefinition newCurrency(uniObj);
+    if (find_value(uniObj, "launchsystemid").isNull() && newCurrency.GetID() != ASSETCHAINS_CHAINID && newCurrency.parent != ASSETCHAINS_CHAINID)
+    {
+        newCurrency.launchSystemID = systemID;
+    }
 
     if (!newCurrency.IsValid())
     {

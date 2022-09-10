@@ -1474,7 +1474,7 @@ private:
         CKeccack256Writer *hw_keccack;
     };
     nativeHashWriter state;
-    
+
 public:
     CNativeHashWriter(CCurrencyDefinition::EProofProtocol proofProtocol=CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR,
                       const unsigned char *personal=nullptr)

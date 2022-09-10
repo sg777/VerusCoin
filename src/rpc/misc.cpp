@@ -2075,7 +2075,7 @@ UniValue getaddressbalance(const UniValue& params, bool fHelp)
         {
             UniValue currencyBal(UniValue::VOBJ);
             UniValue currencyNames(UniValue::VOBJ);
-            for (auto &oneBalance : reserveBalance.valueMap)
+            for (auto &oneBalance : reserveReceived.valueMap)
             {
                 std::string name = EncodeDestination(CIdentityID(oneBalance.first));
                 currencyBal.push_back(make_pair(name, ValueFromAmount(oneBalance.second)));

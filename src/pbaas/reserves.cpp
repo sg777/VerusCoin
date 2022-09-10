@@ -426,141 +426,168 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
         }
 
         // TODO: HARDENING - review to ensure that if this is skipped an error is thrown when appropriate
-        if (!isPBaaSDefinitionOrLaunch &&
-            (pBaseImport->importCurrencyID == ASSETCHAINS_CHAINID ||
-             (!pBaseImport->importCurrencyID.IsNull() && pBaseImport->importCurrencyID == ConnectedChains.ThisChain().GatewayConverterID())))
+        // for example, if we are coming in from ETH to the Verus / ETH converter
+        bool passedCheck = isPBaaSDefinitionOrLaunch;
+        if (!passedCheck)
         {
-            // next output should be export in evidence output followed by supplemental reserve transfers for the export
-            evidenceOutStart = importNotarizationOut + 1;
-            int afterEvidence;
-            CNotaryEvidence evidence(importTx, evidenceOutStart, afterEvidence, CNotaryEvidence::TYPE_IMPORT_PROOF);
-
-            if (!evidence.IsValid())
+            passedCheck = pBaseImport->importCurrencyID == ASSETCHAINS_CHAINID || 
+                          (!pBaseImport->importCurrencyID.IsNull() && pBaseImport->importCurrencyID == ConnectedChains.ThisChain().GatewayConverterID());
+            if (!passedCheck && !pBaseImport->importCurrencyID.IsNull())
             {
-                // TODO: remove the line assigning evidence just below, as it is only for debugging
-                evidence = CNotaryEvidence(importTx, evidenceOutStart, afterEvidence);
-
-                return state.Error(strprintf("%s: cannot retrieve export evidence for import", __func__));
-            }
-
-            std::set<int> validEvidenceTypes;
-            validEvidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
-            CNotaryEvidence transactionProof(sysCCITemp.sourceSystemID, evidence.output, evidence.state, evidence.GetSelectEvidence(validEvidenceTypes), CNotaryEvidence::TYPE_IMPORT_PROOF);
-
-            /*
-            // reconstruct evidence if necessary 
-            if (evidence.IsPartialTxProof() &&
-                evidence.evidence.size())
-
-            // reconstruct multipart evidence if necessary
-            if (evidence.IsMultipartProof())
-            {
-                COptCCParams eP;
-                CNotaryEvidence supplementalEvidence;
-                while (importTx.vout.size() > (evidenceOutStart + 1) &&
-                       importTx.vout[evidenceOutStart + 1].scriptPubKey.IsPayToCryptoCondition(eP) &&
-                       eP.IsValid() &&
-                       eP.evalCode == EVAL_NOTARY_EVIDENCE &&
-                       eP.vData.size() &&
-                       (supplementalEvidence = CNotaryEvidence(eP.vData[0])).IsValid() &&
-                       supplementalEvidence.IsPartialTxProof() &&
-                       supplementalEvidence.evidence.size() == 1)
+                for (auto &oneCur : ConnectedChains.notarySystems)
                 {
-                    evidenceOutStart++;
-                    evidence.evidence.push_back(supplementalEvidence.evidence[0]);
-                }
-                if (!eP.IsValid())
-                {
-                    return state.Error(strprintf("%s: cannot reconstruct export evidence for import", __func__));
-                }
-                evidence.evidence = std::vector<CPartialTransactionProof>({CPartialTransactionProof(evidence.evidence)});
-            }
-            */
-
-            CTransaction exportTx;
-            p = COptCCParams();
-            if (!(transactionProof.evidence.chainObjects.size() &&
-                  !((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.GetPartialTransaction(exportTx).IsNull() &&
-                  ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.TransactionHash() == pBaseImport->exportTxId &&
-                  exportTx.vout.size() > pBaseImport->exportTxOutNum &&
-                  exportTx.vout[pBaseImport->exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
-                  p.IsValid() &&
-                  p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
-                  p.vData.size() &&
-                  (ccx = CCrossChainExport(p.vData[0])).IsValid()))
-            {
-                return state.Error(strprintf("%s: invalid export evidence for import", __func__));
-            }
-
-            uint160 externalSystemID = ccx.sourceSystemID == ASSETCHAINS_CHAINID ? 
-                                       ((ccx.destSystemID == ASSETCHAINS_CHAINID) ? uint160() : ccx.destSystemID) : 
-                                       ccx.sourceSystemID;
-
-            std::map<uint160, CProofRoot>::iterator proofIt;
-            if (!externalSystemID.IsNull() &&
-                (proofIt = importNotarization.proofRoots.find(externalSystemID)) != importNotarization.proofRoots.end())
-            {
-                switch (proofIt->second.type)
-                {
-                    case CProofRoot::TYPE_ETHEREUM:
+                    if (oneCur.second.notaryChain.chainDefinition.IsGateway() &&
+                        pBaseImport->importCurrencyID == oneCur.second.notaryChain.chainDefinition.GatewayConverterID())
                     {
-                        hashType = CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION;
+                        passedCheck = true;
                         break;
                     }
                 }
             }
-            else if (!externalSystemID.IsNull())
+            if (passedCheck)
             {
-                return state.Error(strprintf("%s: no proof root to validate export for external system %s", __func__, EncodeDestination(CIdentityID(externalSystemID)).c_str()));
-            }
+                // next output should be export in evidence output followed by supplemental reserve transfers for the export
+                evidenceOutStart = importNotarizationOut + 1;
+                int afterEvidence;
+                CNotaryEvidence evidence(importTx, evidenceOutStart, afterEvidence, CNotaryEvidence::TYPE_IMPORT_PROOF);
 
-            int32_t nextOutput;
-            CPBaaSNotarization xNotarization;
-            int primaryOutNumOut;
-            if (!ccx.GetExportInfo(importTx, evidenceOutStart, primaryOutNumOut, nextOutput, xNotarization, reserveTransfers, hashType))
-            {
-                //UniValue jsonTx(UniValue::VOBJ);
-                //TxToUniv(importTx, uint256(), jsonTx);
-                //printf("%s: importTx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
-                return state.Error(strprintf("%s: invalid export evidence for import 1",__func__));
-            }
+                if (!evidence.IsValid())
+                {
+                    // TODO: remove the line assigning evidence just below, as it is only for debugging
+                    evidence = CNotaryEvidence(importTx, evidenceOutStart, afterEvidence);
 
-            // evidence out end points to the last evidence out, not beyond
-            evidenceOutEnd = nextOutput - 1;
+                    return state.Error(strprintf("%s: cannot retrieve export evidence for import", __func__));
+                }
+
+                std::set<int> validEvidenceTypes;
+                validEvidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
+                CNotaryEvidence transactionProof(sysCCITemp.sourceSystemID, evidence.output, evidence.state, evidence.GetSelectEvidence(validEvidenceTypes), CNotaryEvidence::TYPE_IMPORT_PROOF);
+
+                /*
+                // reconstruct evidence if necessary 
+                if (evidence.IsPartialTxProof() &&
+                    evidence.evidence.size())
+
+                // reconstruct multipart evidence if necessary
+                if (evidence.IsMultipartProof())
+                {
+                    COptCCParams eP;
+                    CNotaryEvidence supplementalEvidence;
+                    while (importTx.vout.size() > (evidenceOutStart + 1) &&
+                        importTx.vout[evidenceOutStart + 1].scriptPubKey.IsPayToCryptoCondition(eP) &&
+                        eP.IsValid() &&
+                        eP.evalCode == EVAL_NOTARY_EVIDENCE &&
+                        eP.vData.size() &&
+                        (supplementalEvidence = CNotaryEvidence(eP.vData[0])).IsValid() &&
+                        supplementalEvidence.IsPartialTxProof() &&
+                        supplementalEvidence.evidence.size() == 1)
+                    {
+                        evidenceOutStart++;
+                        evidence.evidence.push_back(supplementalEvidence.evidence[0]);
+                    }
+                    if (!eP.IsValid())
+                    {
+                        return state.Error(strprintf("%s: cannot reconstruct export evidence for import", __func__));
+                    }
+                    evidence.evidence = std::vector<CPartialTransactionProof>({CPartialTransactionProof(evidence.evidence)});
+                }
+                */
+
+                CTransaction exportTx;
+                p = COptCCParams();
+                if (!(transactionProof.evidence.chainObjects.size() &&
+                    !((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.GetPartialTransaction(exportTx).IsNull() &&
+                    ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.TransactionHash() == pBaseImport->exportTxId &&
+                    exportTx.vout.size() > pBaseImport->exportTxOutNum &&
+                    exportTx.vout[pBaseImport->exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
+                    p.vData.size() &&
+                    (ccx = CCrossChainExport(p.vData[0])).IsValid()))
+                {
+                    return state.Error(strprintf("%s: invalid export evidence for import", __func__));
+                }
+
+                uint160 externalSystemID = ccx.sourceSystemID == ASSETCHAINS_CHAINID ? 
+                                        ((ccx.destSystemID == ASSETCHAINS_CHAINID) ? uint160() : ccx.destSystemID) : 
+                                        ccx.sourceSystemID;
+
+                std::map<uint160, CProofRoot>::iterator proofIt;
+                if (!externalSystemID.IsNull() &&
+                    (proofIt = importNotarization.proofRoots.find(externalSystemID)) != importNotarization.proofRoots.end())
+                {
+                    switch (proofIt->second.type)
+                    {
+                        case CProofRoot::TYPE_ETHEREUM:
+                        {
+                            hashType = CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION;
+                            break;
+                        }
+                    }
+                }
+                else if (!externalSystemID.IsNull())
+                {
+                    return state.Error(strprintf("%s: no proof root to validate export for external system %s", __func__, EncodeDestination(CIdentityID(externalSystemID)).c_str()));
+                }
+
+                int32_t nextOutput;
+                CPBaaSNotarization xNotarization;
+                int primaryOutNumOut;
+                if (!ccx.GetExportInfo(importTx, evidenceOutStart, primaryOutNumOut, nextOutput, xNotarization, reserveTransfers, hashType))
+                {
+                    //UniValue jsonTx(UniValue::VOBJ);
+                    //TxToUniv(importTx, uint256(), jsonTx);
+                    //printf("%s: importTx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+                    return state.Error(strprintf("%s: invalid export evidence for import 1",__func__));
+                }
+
+                // evidence out end points to the last evidence out, not beyond
+                evidenceOutEnd = nextOutput - 1;
+            }
+        }
+        if (!passedCheck)
+        {
+            return state.Error(strprintf("%s: unable to verify cross-chain export as valid",__func__));
         }
     }
 
     // if we may have an arbitrage reserve transfer, look for it
-    if (importNotarization.IsValid() &&
-        importNotarization.IsLaunchComplete() &&
-        !importNotarization.IsRefunding() &&
-        importNotarization.currencyState.IsValid() &&
-        importNotarization.currencyState.IsFractional() &&
-        ccx.IsValid() &&
-        hashReserveTransfers != ccx.hashReserveTransfers)
+    if (hashReserveTransfers != ccx.hashReserveTransfers)
     {
-        // if we don't have an arbitrage reserve transfer, this is an error that the hashes don't match
-        // if we do, they cannot match, so get it
-        CReserveTransfer arbitrageTransfer = GetArbitrageTransfer(importTx, numImportOut, state, nHeight);
-        if (!arbitrageTransfer.IsValid())
+        if (importNotarization.IsValid() &&
+            importNotarization.IsLaunchComplete() &&
+            !importNotarization.IsRefunding() &&
+            importNotarization.currencyState.IsValid() &&
+            importNotarization.currencyState.IsFractional() &&
+            ccx.IsValid())
         {
-            return state.Error(strprintf("%s: export and import hash mismatch without valid arbitrage transfer",__func__));
-        }
-        reserveTransfers.push_back(arbitrageTransfer);
-        CNativeHashWriter nhw1(hashType);
-        CNativeHashWriter nhw2(hashType);
-        for (int i = 0; i < reserveTransfers.size(); i++)
-        {
-            nhw1 << reserveTransfers[i];
-            // if this is not the last, add it into the 2nd hash, which should then match the export
-            if (i + 1 < reserveTransfers.size())
+            // if we don't have an arbitrage reserve transfer, this is an error that the hashes don't match
+            // if we do, they cannot match, so get it
+            CReserveTransfer arbitrageTransfer = GetArbitrageTransfer(importTx, numImportOut, state, nHeight);
+            if (!arbitrageTransfer.IsValid())
             {
-                nhw2 << reserveTransfers[i];
+                return state.Error(strprintf("%s: export and import hash mismatch without valid arbitrage transfer",__func__));
+            }
+            reserveTransfers.push_back(arbitrageTransfer);
+            CNativeHashWriter nhw1(hashType);
+            CNativeHashWriter nhw2(hashType);
+            for (int i = 0; i < reserveTransfers.size(); i++)
+            {
+                nhw1 << reserveTransfers[i];
+                // if this is not the last, add it into the 2nd hash, which should then match the export
+                if (i + 1 < reserveTransfers.size())
+                {
+                    nhw2 << reserveTransfers[i];
+                }
+            }
+            if (hashReserveTransfers != nhw1.GetHash() || ccx.hashReserveTransfers != nhw2.GetHash())
+            {
+                return state.Error(strprintf("%s: import hash of transfers does not match actual transfers with arbitrage",__func__));
             }
         }
-        if (hashReserveTransfers != nhw1.GetHash() || ccx.hashReserveTransfers != nhw2.GetHash())
+        else
         {
-            return state.Error(strprintf("%s: import hash of transfers does not match actual transfers with arbitrage",__func__));
+            return state.Error(strprintf("%s: import hash of transfers does not match export transfers",__func__));
         }
     }
 
@@ -2501,6 +2528,9 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         {
                             checkState.SetLaunchCompleteMarker(false);
                         }
+
+                        // TODO: HARDENING - ensure that we match notarization state to account for burns and
+                        // transactions that affect state without outputs
 
                         if (!rtxd.AddReserveTransferImportOutputs(sourceSystemDef,
                                                                   ConnectedChains.thisChain,

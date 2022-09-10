@@ -178,16 +178,30 @@ void TxToJSONExpanded(const CTransaction& tx, const uint256 hashBlock, UniValue&
                 uint256 hash; CTransaction txFrom;
                 if (GetTransaction(txin.prevout.hash,txFrom,hash,false))
                 {
-                    if (LogAcceptCategory("signaturehash"))
+                    COptCCParams p;
+                    BlockMap::iterator blockIdxIt = mapBlockIndex.find(hash);
+                    if (!hash.IsNull() &&
+                        blockIdxIt != mapBlockIndex.end() &&
+                        LogAcceptCategory("signaturehash") &&
+                        chainActive.Contains(blockIdxIt->second) &&
+                        txFrom.vout[txin.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid())
                     {
-                        // TODO: HARDENING - it would be good to add the signature hash for every input, but we need
-                        // to reliably retrieve the hashtype (ie. SIGHASH_ALL, SIGHASH_SINGLE, etc.) from all transaction input types
-                        // for now, this is temporary for debugging
+                        // TODO: POST HARDENING - it would be good to add the signature hash for every input and improve
+                        // description of signing and eval conditions, decoding the COptCCParams
+
+                        // get signature hash and verify signature
+                        auto consensusBranchID = CurrentEpochBranchId(blockIdxIt->second->GetHeight(), Params().GetConsensus());
+                        CSmartTransactionSignatures smartSigs;
+                        bool signedByDefaultKey = false;
+                        std::vector<unsigned char> ffVec = GetFulfillmentVector(tx.vin[i].scriptSig);
+                        smartSigs = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec.begin(), ffVec.end()));
+
                         UniValue signatureHashInfo(UniValue::VOBJ);
                         SignatureHash(txFrom.vout[txin.prevout.n].scriptPubKey, 
                                       tx, 
                                       i, 
-                                      SIGHASH_ALL, 
+                                      smartSigs.sigHashType, 
                                       txFrom.vout[txin.prevout.n].nValue,
                                       CurrentEpochBranchId(nHeight, Params().GetConsensus()),
                                       nullptr,
