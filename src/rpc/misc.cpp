@@ -1829,6 +1829,10 @@ UniValue getaddressutxos(const UniValue& params, bool fHelp)
         CurrencyValuesAndNames(output, false, it->second.script, it->second.satoshis, friendlyNames);
         output.push_back(Pair("satoshis", it->second.satoshis));
         output.push_back(Pair("height", it->second.blockHeight));
+        if (chainActive.Height() >= it->second.blockHeight)
+        {
+            output.push_back(Pair("blocktime", chainActive[it->second.blockHeight]->GetBlockTime()));
+        }
         utxos.push_back(output);
     }
 
@@ -1943,6 +1947,10 @@ UniValue getaddressdeltas(const UniValue& params, bool fHelp)
             delta.push_back(Pair("blockindex", (int)it->first.txindex));
             delta.push_back(Pair("height", it->first.blockHeight));
             delta.push_back(Pair("address", address));
+            if (chainActive.Height() >= it->first.blockHeight)
+            {
+                delta.push_back(Pair("blocktime", chainActive[it->first.blockHeight]->GetBlockTime()));
+            }
 
             uint256 blockHash;
             if (verbosity && (it->first.txhash == curTx.GetHash() || myGetTransaction(it->first.txhash, curTx, blockHash)))
