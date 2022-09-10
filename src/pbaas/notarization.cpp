@@ -2897,6 +2897,13 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             lastPBN.SetMirror(false) &&
             !lastPBN.IsMirror())
         {
+            if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
+            {
+                std::vector<unsigned char> checkHex = ::AsVector(lastPBN);
+                LogPrintf("%s: hex of notarization: %s\n", __func__, HexBytes(&(checkHex[0]), checkHex.size()).c_str());
+                printf("%s: hex of notarization: %s\n", __func__, HexBytes(&(checkHex[0]), checkHex.size()).c_str());
+            }
+
             CNativeHashWriter hw;
             hw << lastPBN;
             notarization.hashPrevCrossNotarization = hw.GetHash();
