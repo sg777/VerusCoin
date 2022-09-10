@@ -2758,7 +2758,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         oneParam.push_back(Pair("lastconfirmed", cnd.lastConfirmed));
     }
     params.push_back(oneParam);
- 
+
     //printf("%s: about to get cross notarization with %lu notarizations found\n", __func__, cnd.vtx.size());
 
     UniValue result;
@@ -4077,6 +4077,13 @@ bool CPBaaSNotarization::FindEarnedNotarization(CObjectFinalization &confirmedFi
             printf("Unable to interpret notarization data for notarization:\n%s\n", checkNotarization.ToUniValue().write(1,2).c_str());
             return retVal;
         }
+    }
+
+    if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
+    {
+        std::vector<unsigned char> checkHex = ::AsVector(checkNotarization);
+        LogPrintf("%s: hex of notarization: %s\n", __func__, HexBytes(&(checkHex[0]), checkHex.size()).c_str());
+        printf("%s: hex of notarization: %s\n", __func__, HexBytes(&(checkHex[0]), checkHex.size()).c_str());
     }
 
     CNativeHashWriter hw;
