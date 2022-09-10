@@ -908,13 +908,14 @@ UniValue getvdxfid(const UniValue& params, bool fHelp)
 
 UniValue hashdata(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 1 || params.size() > 2)
+    if (fHelp || params.size() < 1 || params.size() > 3)
         throw runtime_error(
-            "hashdata \"hexmessage\"\n"
+            "hashdata \"hexdata\" \"hashtype\" \"personalstring\"\n"
             "\nReturns the hash of the data in a hex message\n"
             "\nArguments:\n"
             "  \"hexdata\"            (string, required) This message is converted from hex, the data is hashed, then returned\n"
             "  \"hashtype\"           (string, optional) one of (\"sha256rev\", \"sha256D\", \"blake2b\", \"blake2bnopersonal\", \"keccak256\", \"verushash2\", \"verushash2b\", \"verushash2.1\"), defaults to sha256\n"
+            "  \"personalstring\"     (string, optional) For hashes with personalization string, such as blake2b, this is optional and will default to daemon default if not specified\n"
             "\nResult:\n"
             "  \"hashresult\"         (hexstring) 32 byte hash in hex of the data passed in using the hash of the specific blockheight\n"
             "\nExamples:\n"
@@ -963,17 +964,30 @@ UniValue hashdata(const UniValue& params, bool fHelp)
     }
     else if (hashType == "blake2b")
     {
-        CBLAKE2bWriter hw(SER_GETHASH, PROTOCOL_VERSION);
-        hw.write((const char *)vmsg.data(), vmsg.size());
-        result = hw.GetHash();
+        std::string personalString;
+        if (params.size() > 2)
+        {
+            personalString = uni_get_str(params[2]);
+            std::vector<unsigned char> personalVec(personalString[0], personalString[0] + personalString.size());
+            personalVec.resize(crypto_generichash_blake2b_PERSONALBYTES);
+            CBLAKE2bWriter hw(SER_GETHASH, PROTOCOL_VERSION, &(personalVec[0]));
+            hw.write((const char *)vmsg.data(), vmsg.size());
+            result = hw.GetHash();
+        }
+        else
+        {
+            CBLAKE2bWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+            hw.write((const char *)vmsg.data(), vmsg.size());
+            result = hw.GetHash();
+        }
     }
     else if (hashType == "blake2bnopersonal")
     {
-        CBLAKE2bWriter hw(SER_GETHASH, PROTOCOL_VERSION, {0});
+        CBLAKE2bWriter hw(SER_GETHASH, PROTOCOL_VERSION, nullptr);
         hw.write((const char *)vmsg.data(), vmsg.size());
         result = hw.GetHash();
     }
-    else if (hashType == "keccack256")
+    else if (hashType == "keccak256")
     {
         CKeccack256Writer hw;
         hw.write((const char *)vmsg.data(), vmsg.size());
@@ -999,7 +1013,7 @@ UniValue hashdata(const UniValue& params, bool fHelp)
     }
     else
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Hash type " + hashType + " must be one of (\"sha256\", \"sha256D\",  \"keccak256\", \"verushash2\", \"verushash2b\", \"verushash2.1\")");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Hash type " + hashType + " must be one of (\"sha256rev\", \"sha256D\", \"blake2b\", \"blake2bnopersonal\", \"keccak256\", \"verushash2\", \"verushash2b\", \"verushash2.1\")");
     }
     return result.GetHex();
 }
@@ -1815,6 +1829,10 @@ UniValue getaddressutxos(const UniValue& params, bool fHelp)
         CurrencyValuesAndNames(output, false, it->second.script, it->second.satoshis, friendlyNames);
         output.push_back(Pair("satoshis", it->second.satoshis));
         output.push_back(Pair("height", it->second.blockHeight));
+        if (chainActive.Height() >= it->second.blockHeight)
+        {
+            output.push_back(Pair("blocktime", chainActive[it->second.blockHeight]->GetBlockTime()));
+        }
         utxos.push_back(output);
     }
 
@@ -1929,6 +1947,10 @@ UniValue getaddressdeltas(const UniValue& params, bool fHelp)
             delta.push_back(Pair("blockindex", (int)it->first.txindex));
             delta.push_back(Pair("height", it->first.blockHeight));
             delta.push_back(Pair("address", address));
+            if (chainActive.Height() >= it->first.blockHeight)
+            {
+                delta.push_back(Pair("blocktime", chainActive[it->first.blockHeight]->GetBlockTime()));
+            }
 
             uint256 blockHash;
             if (verbosity && (it->first.txhash == curTx.GetHash() || myGetTransaction(it->first.txhash, curTx, blockHash)))
