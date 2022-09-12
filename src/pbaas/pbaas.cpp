@@ -1917,7 +1917,14 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                         newCurrency.maxPreconvert.size() == 1 &&
                         newCurrency.maxPreconvert[0] == 0))))
                 {
-                    return state.Error("NFT mapped currency must have only " + std::string(newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT ? "0" : "1") + " satoshi of supply and follow all definition rules");
+                    if (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT)
+                    {
+                        return state.Error("Ethereum NFT mapped currency must have 0 satoshis of supply, maxpreconversions of [0], and follow all definition rules");
+                    }
+                    else
+                    {
+                        return state.Error("Tokenized ID control currency must have 1 satoshi of supply, and follow all definition rules");
+                    }
                 }
 
                 // TODO: HARDENING - add hardening to ensure that no more than one satoshi at a time ever comes in from a bridge for an NFT mapped currency
