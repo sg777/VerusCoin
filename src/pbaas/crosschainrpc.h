@@ -161,6 +161,27 @@ public:
     }
 };
 
+class CETHNFTAddress
+{
+public:
+    uint160 contractID;
+    uint256 tokenID;
+
+    CETHNFTAddress() {}
+    CETHNFTAddress(const UniValue &uni);
+    CETHNFTAddress(const uint160 &contract, const uint256 &token) : contractID(contract), tokenID(token) {}
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(contractID);
+        READWRITE(tokenID);
+    }
+
+    UniValue ToUniValue() const;
+};
+
 class CTransferDestination
 {
 public:
@@ -346,27 +367,6 @@ public:
     static uint160 CurrencyExportKeyToSystem(const uint160 &exportToSystemID);
     static uint160 GetBoundCurrencyExportKey(const uint160 &exportToSystemID, const uint160 &curToExportID);
     uint160 GetBoundCurrencyExportKey(const uint160 &exportToSystemID) const;
-
-    UniValue ToUniValue() const;
-};
-
-class CETHNFTAddress
-{
-public:
-    uint160 contractID;
-    uint256 tokenID;
-
-    CETHNFTAddress() {}
-    CETHNFTAddress(const UniValue &uni);
-    CETHNFTAddress(const uint160 &contract, const uint256 &token) : contractID(contract), tokenID(token) {}
-
-    ADD_SERIALIZE_METHODS;
-
-    template <typename Stream, typename Operation>
-    inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(contractID);
-        READWRITE(tokenID);
-    }
 
     UniValue ToUniValue() const;
 };
