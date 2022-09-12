@@ -745,7 +745,7 @@ CETHNFTAddress::CETHNFTAddress(const UniValue &uni)
     std::string contractAddrStr = uni_get_str(find_value(uni, "contract"));
     std::string TokenIDStr = uni_get_str(find_value(uni, "tokenid"));
 
-    if (!(contractID = DecodeEthDestination(contractAddrStr)).IsNull() &&
+    if (!(contractID = CTransferDestination::DecodeEthDestination(contractAddrStr)).IsNull() &&
         TokenIDStr.length() == 66 &&
         TokenIDStr.substr(0,2) == "0x" &&
         IsHex(TokenIDStr.substr(2,64)))
