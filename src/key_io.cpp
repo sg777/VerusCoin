@@ -1233,6 +1233,7 @@ CScript CIdentity::IdentityUpdateOutputScript(uint32_t height, const std::vector
 
         if (IsRevoked())
         {
+            // TODO: HARDENING for next testnet reset and mainnet release version, remove primary when revoked
             ret = MakeMofNCCScript(1, primary, recovery, indexDests);
         }
         else

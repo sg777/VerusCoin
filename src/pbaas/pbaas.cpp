@@ -1900,27 +1900,24 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                                                 newCurrency.OPTION_GATEWAY_CONVERTER) &&
                                            newCurrency.IsToken();
 
-                if (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT &&
-                    !(isNFTMappedCurrency &&
+                if (!(newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT &&
+                      isNFTMappedCurrency &&
                       systemDef.proofProtocol == systemDef.PROOF_ETHNOTARIZATION &&
                       systemDef.IsGateway() &&
                       newCurrency.maxPreconvert.size() == 1 &&
                       newCurrency.maxPreconvert[0] == 0 &&
-                      newCurrency.GetTotalPreallocation() == 0))
+                      newCurrency.GetTotalPreallocation() == 0) &&
+                    !(newCurrency.IsNFTToken() &&
+                      isNFTMappedCurrency &&
+                      newCurrency.systemID == ASSETCHAINS_CHAINID &&
+                      ((newCurrency.GetTotalPreallocation() == 0 &&
+                        newCurrency.maxPreconvert.size() == 1 &&
+                        newCurrency.maxPreconvert[0] == 1) ||
+                       (newCurrency.GetTotalPreallocation() == 1 &&
+                        newCurrency.maxPreconvert.size() == 1 &&
+                        newCurrency.maxPreconvert[0] == 0))))
                 {
-                    return state.Error("NFT mapped currency must have only 0 satoshi of supply and follow all definition rules");
-                }
-                else if (newCurrency.IsNFTToken() &&
-                         !(isNFTMappedCurrency &&
-                           newCurrency.systemID == ASSETCHAINS_CHAINID &&
-                           ((newCurrency.GetTotalPreallocation() == 0 &&
-                             newCurrency.maxPreconvert.size() == 1 &&
-                             newCurrency.maxPreconvert[0] == 1) ||
-                            (newCurrency.GetTotalPreallocation() == 1 &&
-                             newCurrency.maxPreconvert.size() == 1 &&
-                             newCurrency.maxPreconvert[0] == 0))))
-                {
-                    return state.Error("Tokenized ID currency must have only 1 satoshi of supply as preallocation or convertible and follow all definition rules");
+                    return state.Error("NFT mapped currency must have only " + std::string(newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT ? "0" : "1") + " satoshi of supply and follow all definition rules");
                 }
 
                 // TODO: HARDENING - add hardening to ensure that no more than one satoshi at a time ever comes in from a bridge for an NFT mapped currency
