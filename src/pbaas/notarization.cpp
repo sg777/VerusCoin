@@ -2802,6 +2802,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 else if (it->second.rootHeight == lastStableProofRoot.rootHeight &&
                          it->second == lastStableProofRoot && notaryIdx != i)
                 {
+                    LogPrintf("%s: notarization was rejected with identical proof root to last stable: %s\n", __func__, cnd.vtx[i].second.ToUniValue().write(1,2).c_str());
                     notaryIdx = i;
                 }
             }
