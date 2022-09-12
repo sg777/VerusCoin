@@ -1891,39 +1891,41 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                     systemDef = ConnectedChains.GetCachedCurrency(newCurrency.systemID);
                 }
 
-                bool isNFTMappedCurrency = newCurrency.IsNFTToken() &&
-                                           systemDef.IsValid() &&
-                                           !(newCurrency.options &
-                                                newCurrency.OPTION_FRACTIONAL +
-                                                newCurrency.OPTION_GATEWAY +
-                                                newCurrency.OPTION_PBAAS +
-                                                newCurrency.OPTION_GATEWAY_CONVERTER) &&
-                                           newCurrency.IsToken();
-
-                if (!(newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT &&
-                      isNFTMappedCurrency &&
-                      systemDef.proofProtocol == systemDef.PROOF_ETHNOTARIZATION &&
-                      systemDef.IsGateway() &&
-                      newCurrency.maxPreconvert.size() == 1 &&
-                      newCurrency.maxPreconvert[0] == 0 &&
-                      newCurrency.GetTotalPreallocation() == 0) &&
-                    !(newCurrency.IsNFTToken() &&
-                      isNFTMappedCurrency &&
-                      newCurrency.systemID == ASSETCHAINS_CHAINID &&
-                      ((newCurrency.GetTotalPreallocation() == 0 &&
-                        newCurrency.maxPreconvert.size() == 1 &&
-                        newCurrency.maxPreconvert[0] == 1) ||
-                       (newCurrency.GetTotalPreallocation() == 1 &&
-                        newCurrency.maxPreconvert.size() == 1 &&
-                        newCurrency.maxPreconvert[0] == 0))))
+                bool isNFTMappedCurrency = false;
+                if (newCurrency.IsNFTToken())
                 {
-                    if (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT)
+                    isNFTMappedCurrency = newCurrency.IsNFTToken() &&
+                                          systemDef.IsValid() &&
+                                          !(newCurrency.options &
+                                            newCurrency.OPTION_FRACTIONAL +
+                                            newCurrency.OPTION_GATEWAY +
+                                            newCurrency.OPTION_PBAAS +
+                                            newCurrency.OPTION_GATEWAY_CONVERTER) &&
+                                          newCurrency.IsToken();
+
+                    if (!isNFTMappedCurrency ||
+                        (!(newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT &&
+                           systemDef.proofProtocol == systemDef.PROOF_ETHNOTARIZATION &&
+                           systemDef.IsGateway() &&
+                           newCurrency.maxPreconvert.size() == 1 &&
+                           newCurrency.maxPreconvert[0] == 0 &&
+                           newCurrency.GetTotalPreallocation() == 0) &&
+                         !(newCurrency.systemID == ASSETCHAINS_CHAINID &&
+                           ((newCurrency.GetTotalPreallocation() == 0 &&
+                             newCurrency.maxPreconvert.size() == 1 &&
+                             newCurrency.maxPreconvert[0] == 1) ||
+                           (newCurrency.GetTotalPreallocation() == 1 &&
+                             newCurrency.maxPreconvert.size() == 1 &&
+                             newCurrency.maxPreconvert[0] == 0)))))
                     {
-                        return state.Error("Ethereum NFT mapped currency must have 0 satoshis of supply, maxpreconversions of [0], and follow all definition rules");
-                    }
-                    else
-                    {
-                        return state.Error("Tokenized ID control currency must have 1 satoshi of supply, and follow all definition rules");
+                        if (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT)
+                        {
+                            return state.Error("Ethereum NFT mapped currency must have 0 satoshis of supply, maxpreconversions of [0], and follow all definition rules");
+                        }
+                        else
+                        {
+                            return state.Error("Tokenized ID control currency must have 1 satoshi of supply, and follow all definition rules");
+                        }
                     }
                 }
 
