@@ -3339,7 +3339,9 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
             if (!chainInfo.isNull())
             {
                 params.push_back(EncodeDestination(CIdentityID(FirstNotaryChain().chainDefinition.GetID())));
-                chainDef = find_value(RPCCallRoot("getcurrency", params), "result");
+                chainDef = FirstNotaryChain().chainDefinition.launchSystemID == ASSETCHAINS_CHAINID ?
+                            FirstNotaryChain().chainDefinition.ToUniValue() :
+                            find_value(RPCCallRoot("getcurrency", params), "result");
 
                 if (!chainDef.isNull() && CheckVerusPBaaSAvailable(chainInfo, chainDef))
                 {
