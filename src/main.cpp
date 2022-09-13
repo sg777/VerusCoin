@@ -5384,7 +5384,7 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
     {
         CBlockIndex *tipindex;
         fprintf(stderr,">>>>>>>>>>> rewind start ht.%d -> KOMODO_REWIND.%d\n",chainActive.LastTip()->GetHeight(),KOMODO_REWIND);
-        while ( KOMODO_REWIND > 0 && (tipindex= chainActive.LastTip()) != 0 && tipindex->GetHeight() > KOMODO_REWIND )
+        while ( KOMODO_REWIND > 0 && (tipindex = chainActive.LastTip()) != 0 && tipindex->GetHeight() > KOMODO_REWIND )
         {
             fBlocksDisconnected = true;
             fprintf(stderr,"%d ",(int32_t)tipindex->GetHeight());
@@ -5396,7 +5396,11 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
         sleep(20);
         fprintf(stderr,"resuming normal operations\n");
         KOMODO_REWIND = 0;
-        //return(true);
+        if (pindexMostWork->GetHeight() > chainActive.Height())
+        {
+            pindexMostWork = pindexMostWork->GetAncestor(chainActive.Height());
+        }
+        pindexFork = chainActive.FindFork(pindexMostWork);
     }
     // Build list of new blocks to connect.
     std::vector<CBlockIndex*> vpindexToConnect;
