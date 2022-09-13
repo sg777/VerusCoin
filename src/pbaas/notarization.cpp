@@ -3682,10 +3682,28 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     bool retVal = false;
     int firstNotarizationIndex = -1;
 
-    // look from the latest notarization that may qualify
-    for (int i = proofRootArr.size() - 1; i >= 0; i--)
+    LogPrint("notarization", "%s: proofRootArr: %s\n", __func__, proofRootArr.write().c_str());
+
+    // we seem to be getting an extra element at times
+    // TODO: HARDENING - fix this in bridgekeeper
+    if (proofRootArr.size() > bestFork.size())
     {
-        int idx = bestFork[uni_get_int(proofRootArr[i])];
+        UniValue tempArr(UniValue::VARR);
+        for (int i = 0; i < bestFork.size(); i++)
+        {
+            tempArr.push_back(proofRootArr[i]);
+        }
+    }
+
+    // look from the latest notarization that may qualify
+    for (int i = (proofRootArr.size() - 1); i >= 0; i--)
+    {
+        int idx = uni_get_int(proofRootArr[i]);
+        if (idx >= bestFork.size())
+        {
+            continue;
+        }
+        idx = bestFork[idx];
 
         auto proofIt = cnd.vtx[idx].second.proofRoots.find(ASSETCHAINS_CHAINID);
 
