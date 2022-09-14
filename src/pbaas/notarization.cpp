@@ -5336,7 +5336,7 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
         {
             UniValue jsonNTx(UniValue::VOBJ);
             TxToUniv(tx, uint256(), jsonNTx);
-            LogPrintf("%s: transaction removed from mempool due to conflicts:\n%s\n", __func__, jsonNTx.write(1,2).c_str());
+            LogPrintf("%s: Invalid spend of confirmed finalization on transaction:\n%s\n", __func__, jsonNTx.write(1,2).c_str());
         }
         return eval->Error("Invalid spend of confirmed finalization to transaction with no confirmed output");
     }
