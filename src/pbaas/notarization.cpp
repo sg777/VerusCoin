@@ -3967,8 +3967,20 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                     {
                         COptCCParams tP;
                         if (oneEvidenceSpend.scriptPubKey.IsPayToCryptoCondition(tP) &&
+                            tP.IsValid() &&
                             tP.evalCode == EVAL_NOTARY_EVIDENCE || tP.evalCode == EVAL_FINALIZE_NOTARIZATION)
                         {
+                            // if our evidence include an already confirmed finalization for the same output,
+                            // abort with nothing to do
+                            CObjectFinalization tPOF;
+                            if (tP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                                tP.vData.size() &&
+                                (tPOF = CObjectFinalization(tP.vData[0])).IsValid() &&
+                                tPOF.output == of.output &&
+                                tPOF.IsConfirmed())
+                            {
+                                return state.Error(errorPrefix + "target notarization already confirmed");
+                            }
                             of.evidenceInputs.push_back(txBuilder.mtx.vin.size());
                             if (!inputSet.count(oneEvidenceSpend.txIn.prevout))
                             {
@@ -4021,8 +4033,27 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                             auto newTxBuilder = TransactionBuilder(Params().GetConsensus(), nHeight, pWallet);
                             TransactionBuilder &oneConfirmedBuilder = makeInputTx ? newTxBuilder : txBuilder;
 
+                            bool isConfirmed = false;
                             for (auto &oneInput : spendsToClose[oneConfirmedIdx])
                             {
+                                COptCCParams tP;
+                                if (oneInput.scriptPubKey.IsPayToCryptoCondition(tP) &&
+                                    tP.IsValid() &&
+                                    tP.evalCode == EVAL_NOTARY_EVIDENCE || tP.evalCode == EVAL_FINALIZE_NOTARIZATION)
+                                {
+                                    // if our evidence include an already confirmed finalization for the same output,
+                                    // abort with nothing to do
+                                    CObjectFinalization tPOF;
+                                    if (tP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                                        tP.vData.size() &&
+                                        (tPOF = CObjectFinalization(tP.vData[0])).IsValid() &&
+                                        tPOF.output == of.output &&
+                                        tPOF.IsConfirmed())
+                                    {
+                                        isConfirmed = true;
+                                    }
+                                }
+
                                 if (!inputSet.count(oneInput.txIn.prevout))
                                 {
                                     inputSet.insert(oneInput.txIn.prevout);
@@ -4038,11 +4069,14 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
                             if (makeInputTx)
                             {
-                                CObjectFinalization oneConfirmedFinalization = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION,
-                                                                                                SystemID,
-                                                                                                cnd.vtx[oneConfirmedIdx].first.hash,
-                                                                                                cnd.vtx[oneConfirmedIdx].first.n,
-                                                                                                height);
+                                CObjectFinalization oneConfirmedFinalization = 
+                                    CObjectFinalization(isConfirmed ? 
+                                                            CObjectFinalization::FINALIZE_NOTARIZATION + CObjectFinalization::FINALIZE_CONFIRMED :
+                                                            CObjectFinalization::FINALIZE_NOTARIZATION,
+                                                        SystemID,
+                                                        cnd.vtx[oneConfirmedIdx].first.hash,
+                                                        cnd.vtx[oneConfirmedIdx].first.n,
+                                                        height);
                                 //oneConfirmedFinalization.evidenceInputs = evidenceInputs;
 
                                 cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
