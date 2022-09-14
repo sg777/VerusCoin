@@ -4047,7 +4047,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                                     if (tP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
                                         tP.vData.size() &&
                                         (tPOF = CObjectFinalization(tP.vData[0])).IsValid() &&
-                                        tPOF.output == of.output &&
+                                        ((tPOF.output.hash.IsNull() &&
+                                          oneInput.txIn.prevout.hash == cnd.vtx[oneConfirmedIdx].first.hash &&
+                                          tPOF.output.n == cnd.vtx[oneConfirmedIdx].first.n) ||
+                                         tPOF.output == cnd.vtx[oneConfirmedIdx].first) &&
                                         tPOF.IsConfirmed())
                                     {
                                         isConfirmed = true;
