@@ -1977,11 +1977,11 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                 mempool.removeConflicts(notarizationTx, removedTxVec);
                                 CValidationState mempoolState;
                                 relayTx = myAddtomempool(notarizationTx, &state);
-                                if (LogAcceptCategory("notarizationverbose") || LogAcceptCategory("notarization"))
+                                if (LogAcceptCategory("notarization"))
                                 {
                                     for (auto oneTx : removedTxVec)
                                     {
-                                        if (LogAcceptCategory("notarizationverbose"))
+                                        if (LogAcceptCategory("verbose"))
                                         {
                                             UniValue jsonNTx(UniValue::VOBJ);
                                             TxToUniv(oneTx, uint256(), jsonNTx);

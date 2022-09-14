@@ -2124,7 +2124,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             ContextualCheckInputs(tx, state, view, nextBlockHeight, true, MANDATORY_SCRIPT_VERIFY_FLAGS, true, txdata, Params().GetConsensus(), consensusBranchId);
             if ( flag != 0 )
                 KOMODO_CONNECTING = -1;
-            return error("AcceptToMemoryPool: BUG! PLEASE REPORT THIS! ConnectInputs failed against MANDATORY but not STANDARD flags %s", hash.ToString());
+            return error("AcceptToMemoryPool: ConnectInputs failed against MANDATORY but not STANDARD flags %s", hash.ToString());
         }
 
         // if this is a valid stake transaction, don't put it in the mempool
