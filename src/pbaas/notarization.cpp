@@ -4031,7 +4031,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                             // then is spent into the main transaction
                             std::vector<int> evidenceInputs;
                             auto newTxBuilder = TransactionBuilder(Params().GetConsensus(), nHeight, pWallet);
-                            TransactionBuilder &oneConfirmedBuilder = makeInputTx ? newTxBuilder : txBuilder;
+                            TransactionBuilder &oneConfirmedBuilder = (oneConfirmedIdx != cnd.lastConfirmed && makeInputTx) ? newTxBuilder : txBuilder;
 
                             bool isConfirmed = false;
                             for (auto &oneInput : spendsToClose[oneConfirmedIdx])
@@ -4047,13 +4047,14 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                                     if (tP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
                                         tP.vData.size() &&
                                         (tPOF = CObjectFinalization(tP.vData[0])).IsValid() &&
+                                        tPOF.IsConfirmed() &&
                                         ((tPOF.output.hash.IsNull() &&
                                           oneInput.txIn.prevout.hash == cnd.vtx[oneConfirmedIdx].first.hash &&
                                           tPOF.output.n == cnd.vtx[oneConfirmedIdx].first.n) ||
-                                         tPOF.output == cnd.vtx[oneConfirmedIdx].first) &&
-                                        tPOF.IsConfirmed())
+                                         tPOF.output == cnd.vtx[oneConfirmedIdx].first))
                                     {
                                         isConfirmed = true;
+                                        makeInputTx = false;
                                     }
                                 }
 
@@ -4080,7 +4081,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                                                         cnd.vtx[oneConfirmedIdx].first.hash,
                                                         cnd.vtx[oneConfirmedIdx].first.n,
                                                         height);
-                                //oneConfirmedFinalization.evidenceInputs = evidenceInputs;
 
                                 cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
                                 dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
