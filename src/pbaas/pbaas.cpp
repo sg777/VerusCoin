@@ -634,7 +634,8 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         return state.Error("Multi-currency operation before PBaaS activation");
     }
 
-    // TODO: HARDENING - ensure that we have confirmed all totals and fees are correct, then convert all warnings to errors
+    // TODO: HARDENING - ensure that we have confirmed all totals and fees are correct, especially cross-chain fees
+    // then convert all warnings to errors
     // ensure that this transaction has the appropriate finalization outputs, as required
 
     // check that all reserve transfers are matched to this export, and no others are mined in to the block that should be included

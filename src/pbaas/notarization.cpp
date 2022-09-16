@@ -2834,6 +2834,28 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
          (ConnectedChains.ThisChain().notarizationProtocol == CCurrencyDefinition::NOTARIZATION_AUTO &&
          ((isStake && mapBlockIt->second->IsVerusPOSBlock()) || (!isStake && !mapBlockIt->second->IsVerusPOSBlock())))))
     {
+        if (LogAcceptCategory("notarization"))
+        {
+            LogPrintf("%s: block period #%d, prior block period #%d, height: %u, notarization protocol: %d, isPoS: %s, is last notarization PoS: %s\n",
+                    __func__,
+                    blockPeriodNumber,
+                    priorBlockPeriod,
+                    height,
+                    ConnectedChains.ThisChain().notarizationProtocol,
+                    isStake ? "true" : "false",
+                    mapBlockIt->second->IsVerusPOSBlock() ? "true" : "false");
+            if (LogAcceptCategory("verbose"))
+            {
+                printf("%s: block period #%d, prior block period #%d, height: %u, notarization protocol: %d, isPoS: %s, is last notarization PoS: %s\n",
+                        __func__,
+                        blockPeriodNumber,
+                        priorBlockPeriod,
+                        height,
+                        ConnectedChains.ThisChain().notarizationProtocol,
+                        isStake ? "true" : "false",
+                        mapBlockIt->second->IsVerusPOSBlock() ? "true" : "false");
+            }
+        }
         return state.Error("ineligible");
     }
 
@@ -2925,8 +2947,8 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
             {
                 std::vector<unsigned char> checkHex = ::AsVector(lastPBN);
-                LogPrintf("%s: hex of notarization: %s\n", __func__, HexBytes(&(checkHex[0]), checkHex.size()).c_str());
-                printf("%s: hex of notarization: %s\n", __func__, HexBytes(&(checkHex[0]), checkHex.size()).c_str());
+                LogPrintf("%s: hex of notarization: %s\nnotarization: %s\n", __func__, HexBytes(&(checkHex[0]), checkHex.size()).c_str(), lastPBN.ToUniValue().write(1,2).c_str());
+                printf("%s: notarization: %s\n", __func__, lastPBN.ToUniValue().write(1,2).c_str());
             }
 
             CNativeHashWriter hw;
@@ -4031,7 +4053,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                             // then is spent into the main transaction
                             std::vector<int> evidenceInputs;
                             auto newTxBuilder = TransactionBuilder(Params().GetConsensus(), nHeight, pWallet);
-                            TransactionBuilder &oneConfirmedBuilder = makeInputTx ? newTxBuilder : txBuilder;
+                            TransactionBuilder &oneConfirmedBuilder = (oneConfirmedIdx != cnd.lastConfirmed && makeInputTx) ? newTxBuilder : txBuilder;
 
                             bool isConfirmed = false;
                             for (auto &oneInput : spendsToClose[oneConfirmedIdx])
@@ -4047,13 +4069,14 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                                     if (tP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
                                         tP.vData.size() &&
                                         (tPOF = CObjectFinalization(tP.vData[0])).IsValid() &&
+                                        tPOF.IsConfirmed() &&
                                         ((tPOF.output.hash.IsNull() &&
                                           oneInput.txIn.prevout.hash == cnd.vtx[oneConfirmedIdx].first.hash &&
                                           tPOF.output.n == cnd.vtx[oneConfirmedIdx].first.n) ||
-                                         tPOF.output == cnd.vtx[oneConfirmedIdx].first) &&
-                                        tPOF.IsConfirmed())
+                                         tPOF.output == cnd.vtx[oneConfirmedIdx].first))
                                     {
                                         isConfirmed = true;
+                                        makeInputTx = false;
                                     }
                                 }
 
@@ -4080,7 +4103,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                                                         cnd.vtx[oneConfirmedIdx].first.hash,
                                                         cnd.vtx[oneConfirmedIdx].first.n,
                                                         height);
-                                //oneConfirmedFinalization.evidenceInputs = evidenceInputs;
 
                                 cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
                                 dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});

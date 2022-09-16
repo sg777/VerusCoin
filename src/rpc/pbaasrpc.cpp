@@ -3179,7 +3179,14 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("invalid currency state request for %s", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
     }
-    currencyStatesUni.push_back(ConnectedChains.GetCurrencyState(targetCur, nHeight).ToUniValue());
+    if (lastConfirmedRoot.IsValid())
+    {
+        confirmedCurrencyStatesUni.push_back(ConnectedChains.GetCurrencyState(targetCur, lastConfirmedRoot.rootHeight).ToUniValue());
+    }
+    else
+    {
+        currencyStatesUni.push_back(ConnectedChains.GetCurrencyState(targetCur, nHeight).ToUniValue());
+    }
 
     for (int i = 0; i < currenciesUni.size(); i++)
     {

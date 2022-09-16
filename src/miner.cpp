@@ -3745,14 +3745,6 @@ void static BitcoinMiner_noeq()
                                 }
                                 break;
                             }
-                            else if ((i + 1) < count)
-                            {
-                                // if we'll not drop through, update hashcount
-                                {
-                                    miningTimer += totalDone;
-                                    totalDone = 0;
-                                }
-                            }
                         }
                         else
                         {
@@ -3804,13 +3796,18 @@ void static BitcoinMiner_noeq()
                             SetThreadPriority(THREAD_PRIORITY_LOWEST);
                             break;
                         }
+
+                        if ((i + 1) < count)
+                        {
+                            // if we haven't broken out and will not drop through, update hashcount
+                            {
+                                miningTimer += totalDone;
+                            }
+                        }
                     }
 
-                    {
-                        miningTimer += totalDone;
-                    }
+                    miningTimer += totalDone;
                 }
-                
 
                 // Check for stop or if block needs to be rebuilt
                 boost::this_thread::interruption_point();

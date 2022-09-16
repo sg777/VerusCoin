@@ -1628,7 +1628,7 @@ void CurrencyValuesAndNames(UniValue &output, bool spending, const CTransaction 
     if (spending) {
         CTransaction priorOutTx;
         uint256 blockHash;
-        if (myGetTransaction(tx.vin[index].prevout.hash, priorOutTx, blockHash))
+        if (tx.vin.size() > index && index >= 0 && myGetTransaction(tx.vin[index].prevout.hash, priorOutTx, blockHash))
         {
             script = priorOutTx.vout[tx.vin[index].prevout.n].scriptPubKey;
         }
