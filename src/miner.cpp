@@ -2075,13 +2075,17 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                 CValidationState state;
                 CPBaaSNotarization earnedNotarization;
 
+                int numOuts = coinbaseTx.vout.size();
                 if (CPBaaSNotarization::CreateEarnedNotarization(ConnectedChains.FirstNotaryChain(),
                                                                  DestinationToTransferDestination(proposer),
                                                                  isStake,
                                                                  state,
                                                                  coinbaseTx.vout,
-                                                                 earnedNotarization))
+                                                                 earnedNotarization) &&
+                    numOuts != coinbaseTx.vout.size() &&
+                    LogAcceptCategory("notarization"))
                 {
+                    LogPrintf("%s: entering earned notarization into block %u, notarization: %s\n", __func__, Mining_height, earnedNotarization.ToUniValue().write(1,2).c_str());
                 }
                 CPBaaSNotarization lastImportNotarization;
                 CUTXORef lastImportNotarizationUTXO;
