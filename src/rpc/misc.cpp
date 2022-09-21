@@ -1831,10 +1831,6 @@ UniValue getaddressutxos(const UniValue& params, bool fHelp)
         {
             CurrencyValuesAndNames(output, false, it->second.script, it->second.satoshis, friendlyNames);
         }
-        else
-        {
-            UniValue 
-        }
         output.push_back(Pair("satoshis", it->second.satoshis));
         output.push_back(Pair("height", it->second.blockHeight));
         if (chainActive.Height() >= it->second.blockHeight)
