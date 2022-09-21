@@ -9739,7 +9739,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
 
     if (!success)
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Insufficient funds for identity registration");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Insufficient funds for identity commitment registration");
     }
 
     // aggregate all inputs into one output with only the offer coins and offer indexes
