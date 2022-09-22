@@ -1639,7 +1639,14 @@ void CurrencyValuesAndNames(UniValue &output, bool spending, const CTransaction 
     }
     else
     {
-        script = tx.vout[index].scriptPubKey;
+        if (tx.vout.size() > index && index >= 0)
+        {
+            script = tx.vout[index].scriptPubKey;
+        }
+        else
+        {
+            throw JSONRPCError(RPC_DATABASE_ERROR, "Unable to retrieve data to for currency output values");
+        }
     }
     return CurrencyValuesAndNames(output, spending, script, satoshis, friendlyNames);
 }
@@ -1672,7 +1679,10 @@ UniValue AddressMemPoolUni(const std::vector<std::pair<uint160, int>> &addresses
         delta.push_back(Pair("index", (int)it->first.index));
         delta.push_back(Pair("satoshis", it->second.amount));
         delta.push_back(Pair("spending", (bool)it->first.spending));
-        CurrencyValuesAndNames(delta, it->first.spending, curTx, it->first.index, it->second.amount, friendlyNames);
+        if (!it->first.txhash.IsNull() && it->first.txhash == curTx.GetHash() || mempool.lookup(it->first.txhash, curTx))
+        {
+            CurrencyValuesAndNames(delta, it->first.spending, curTx, it->first.index, it->second.amount, friendlyNames);
+        }
         delta.push_back(Pair("timestamp", it->second.time));
         if (it->second.amount < 0) {
             delta.push_back(Pair("prevtxid", it->second.prevhash.GetHex()));
@@ -1957,7 +1967,7 @@ UniValue getaddressdeltas(const UniValue& params, bool fHelp)
             }
 
             uint256 blockHash;
-            if (verbosity && (it->first.txhash == curTx.GetHash() || myGetTransaction(it->first.txhash, curTx, blockHash)))
+            if (verbosity && !it->first.txhash.IsNull() && (it->first.txhash == curTx.GetHash() || myGetTransaction(it->first.txhash, curTx, blockHash)))
             {
                 CurrencyValuesAndNames(delta, it->first.spending, curTx, it->first.index, it->second, friendlyNames);
             }
@@ -2049,7 +2059,7 @@ UniValue getaddressbalance(const UniValue& params, bool fHelp)
 
     for (std::vector<std::pair<CAddressIndexKey, CAmount> >::const_iterator it=addressIndex.begin(); it!=addressIndex.end(); it++) {
         uint256 blockHash;
-        if (it->first.txhash == curTx.GetHash() || myGetTransaction(it->first.txhash, curTx, blockHash))
+        if (!it->first.txhash.IsNull() && (it->first.txhash == curTx.GetHash() || myGetTransaction(it->first.txhash, curTx, blockHash)))
         {
             if (it->first.spending) {
                 CTransaction priorOutTx;
