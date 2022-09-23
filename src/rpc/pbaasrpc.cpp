@@ -8587,6 +8587,10 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             "         \"preallocations\" : \"[{\"identity\":xx.xx}..]\", (list, optional)  list of identities and amounts from pre-allocation\n"
             "         \"gatewayconvertername\" : \"name\", (string, optional) if this is a PBaaS chain, this names a co-launched gateway converter currency\n"
 
+            "         \"blocktime\"          : n, (int, optional) target time in seconds to average between blocks\n"
+            "         \"powaveragingwindow\" : n, (int, optional) total number of blocks to look back when averaging for DAA\n"
+            "         \"notarizationperiod\" : n, (int, optional) minimum period miners and stakers must wait to post notarizations to notary chain/system\n"
+
             "         \"eras\"          : \"objarray\", (array, optional) data specific to each era, maximum 3\n"
             "         {\n"
             "            \"reward\"     : n,           (int64,  required) native initial block rewards in each period\n"

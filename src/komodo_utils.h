@@ -1464,11 +1464,19 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
 
                     if (!mapArgs["-blocktime"].empty() || !mapArgs["-powaveragingwindow"].empty() || !mapArgs["-notarizationperiod"].empty())
                     {
-                        int paramBlockTime = GetArg("-blocktime", (int64_t)CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET);
-                        fprintf(fp,"blocktime=%s\n", std::to_string(paramBlockTime));
-                        fprintf(fp,"powaveragingwindow=%s\n", std::to_string(GetArg("-powaveragingwindow", (int64_t)CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW)));
-                        fprintf(fp,"notarizationperiod=%s\n", std::to_string(GetArg("-notarizationperiod", 
-                                                                                    std::max((int64_t)(CCurrencyDefinition::DEFAULT_BLOCK_NOTARIZATION_TIME / paramBlockTime), (int64_t)CCurrencyDefinition::MIN_BLOCK_NOTARIZATION_BLOCKS))));
+                        int paramBlockTime = GetArg("-blocktime", CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET);
+                        int powAveragingWindow = GetArg("-powaveragingwindow", CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW);
+                        int notarizationPeriod = GetArg("-notarizationperiod", 
+                                                        std::max((CCurrencyDefinition::DEFAULT_BLOCK_NOTARIZATION_TIME / paramBlockTime),
+                                                                 CCurrencyDefinition::MIN_BLOCK_NOTARIZATION_BLOCKS))
+                        if (paramBlockTime != CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET ||
+                            powAveragingWindow != CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW ||
+                            notarizationPeriod != CCurrencyDefinition::BLOCK_NOTARIZATION_MODULO)
+                        {
+                            fprintf(fp,"blocktime=%s\n", std::to_string(paramBlockTime));
+                            fprintf(fp,"powaveragingwindow=%s\n", std::to_string(powAveragingWindow));
+                            fprintf(fp,"notarizationperiod=%s\n", std::to_string(notarizationPeriod));
+                        }
                     }
 
                     if (GetArg("-port", 0))
