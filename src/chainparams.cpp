@@ -238,22 +238,38 @@ void *chainparams_commandline(void *ptr)
         mainParams.pchMessageStart[3] = (ASSETCHAINS_MAGIC >> 24) & 0xff;
         fprintf(stderr,">>>>>>>>>> %s: p2p.%u rpc.%u magic.%08x %u %lu coins\n",ASSETCHAINS_SYMBOL,ASSETCHAINS_P2PPORT,ASSETCHAINS_RPCPORT,ASSETCHAINS_MAGIC,ASSETCHAINS_MAGIC,ASSETCHAINS_SUPPLY / COIN);
 
-        int64_t nBlockTime = GetArg("-blocktime",DEFAULT_BLOCKTIME_TARGET);
+        bool isVerusActive = _IsVerusActive();
+
+        int64_t nBlockTime = isVerusActive ? DEFAULT_BLOCKTIME_TARGET : GetArg("-blocktime", DEFAULT_BLOCKTIME_TARGET);
         mainParams.SetBlockTime(nBlockTime);
 
         if (ASSETCHAINS_ALGO != ASSETCHAINS_EQUIHASH)
         {
             // this is only good for 60 second blocks with an averaging window of 45. for other parameters, use:
             // nLwmaAjustedWeight = (N+1)/2 * (0.9989^(500/nPowAveragingWindow)) * nPowTargetSpacing
-            int64_t PowAveragingWindow = GetArg("-averagingwindow",DEFAULT_AVERAGING_WINDOW);
+            int64_t PowAveragingWindow = isVerusActive ? DEFAULT_AVERAGING_WINDOW : GetArg("-averagingwindow", DEFAULT_AVERAGING_WINDOW);
             mainParams.consensus.nPowAveragingWindow = PowAveragingWindow;
             mainParams.consensus.powAlternate = uint256S("00000f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
 
-            if (mainParams.consensus.nBlockTime != DEFAULT_BLOCKTIME_TARGET)
+            if (!isVerusActive && mainParams.consensus.nBlockTime != DEFAULT_BLOCKTIME_TARGET)
             {
-                float weight = (float)((mainParams.consensus.nPowAveragingWindow+1)/2) * std::pow(0.9989f,(500.0f/((float)mainParams.consensus.nPowAveragingWindow))) * (float)mainParams.consensus.nBlockTime;
-                mainParams.consensus.nLwmaAjustedWeight = (((int)weight)/10)*10; // int conversion, round down to nearest mutiple of 10
-                //LogPrintf(">>> nLwmaAjustedWeight = %ld\n",mainParams.consensus.nLwmaAjustedWeight);
+                cpp_dec_float_50 averagingFactor(std::to_string((mainParams.consensus.nPowAveragingWindow+1)/2));
+                cpp_dec_float_50 factorBase("0.9989");
+                cpp_dec_float_50 factorExponent = cpp_dec_float_50("500") / cpp_dec_float_50(std::to_string(mainParams.consensus.nPowAveragingWindow));
+                cpp_dec_float_50 blockTime(std::to_string(mainParams.consensus.nBlockTime));
+
+                cpp_dec_float_50 weight = averagingFactor * std::pow(factorBase, factorExponent) * blockTime;
+                std::stringstream ss(weight.str(0, std::ios_base::fmtflags::_S_fixed));
+                try
+                {
+                    ss >> mainParams.consensus.nLwmaAjustedWeight;
+                }
+                catch(const std::exception& e)
+                {
+                    fprintf(stderr,"%s: error calculating adjusted blocktime weight\n", __func__);
+                    assert(false);
+                }
+                LogPrint("blocktime", "nLwmaAjustedWeight = %ld\n", mainParams.consensus.nLwmaAjustedWeight);
             } else {
                 mainParams.consensus.nLwmaAjustedWeight = 1350;
             }
@@ -272,7 +288,7 @@ void *chainparams_commandline(void *ptr)
         }
 
         // this includes VRSCTEST, unlike the checkpoints and changes below
-        if (_IsVerusActive())
+        if (isVerusActive)
         {
             mainParams.consensus.fCoinbaseMustBeProtected = true;
         }
