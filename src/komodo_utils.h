@@ -1462,6 +1462,15 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
                     fprintf(fp,"ac_end=%s\n", (charPtr = mapArgs["-ac_end"].c_str())[0] == 0 ? "0" : charPtr);
                     fprintf(fp,"ac_options=%s\n", (charPtr = mapArgs["-ac_options"].c_str())[0] == 0 ? "0" : charPtr);
 
+                    if (!mapArgs["-blocktime"].empty() || !mapArgs["-powaveragingwindow"].empty() || !mapArgs["-notarizationperiod"].empty())
+                    {
+                        int paramBlockTime = GetArg("-blocktime", (int64_t)CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET);
+                        fprintf(fp,"blocktime=%s\n", std::to_string(paramBlockTime));
+                        fprintf(fp,"powaveragingwindow=%s\n", std::to_string(GetArg("-powaveragingwindow", (int64_t)CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW)));
+                        fprintf(fp,"notarizationperiod=%s\n", std::to_string(GetArg("-notarizationperiod", 
+                                                                                    std::max((int64_t)(CCurrencyDefinition::DEFAULT_BLOCK_NOTARIZATION_TIME / paramBlockTime), (int64_t)CCurrencyDefinition::MIN_BLOCK_NOTARIZATION_BLOCKS))));
+                    }
+
                     if (GetArg("-port", 0))
                     {
                         fprintf(fp,"port=%s\n", mapArgs["-port"].c_str());
@@ -2220,6 +2229,12 @@ void komodo_args(char *argv0)
                 obj.push_back(Pair("launchsystemid", GetArg("-launchsystemid","")));
                 obj.push_back(Pair("systemid", GetArg("-systemid","")));
                 obj.push_back(Pair("parent", GetArg("-parentid","")));
+
+                int paramBlockTime = GetArg("-blocktime", (int64_t)CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET);
+                obj.pushKV("blocktime", paramBlockTime);
+                obj.pushKV("powaveragingwindow", GetArg("-powaveragingwindow", (int64_t)CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW));
+                obj.pushKV("notarizationperiod", GetArg("-notarizationperiod", 
+                                                        std::max((int64_t)(CCurrencyDefinition::DEFAULT_BLOCK_NOTARIZATION_TIME / paramBlockTime), (int64_t)CCurrencyDefinition::MIN_BLOCK_NOTARIZATION_BLOCKS)));
 
                 UniValue eras(UniValue::VARR);
                 for (int i = 0; i <= ASSETCHAINS_LASTERA; i++)

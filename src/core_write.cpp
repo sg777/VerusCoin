@@ -369,6 +369,11 @@ UniValue CCurrencyDefinition::ToUniValue() const
             arith_uint256 target;
             target.SetCompact(initialBits);
             obj.push_back(Pair("initialtarget", ArithToUint256(target).GetHex()));
+
+            obj.pushKV("blocktime", (int64_t)blockTime);
+            obj.pushKV("powaveragingwindow", (int64_t)powAveragingWindow);
+            obj.pushKV("notarizationperiod", (int)blockNotarizationModulo);
+
             UniValue eraArr(UniValue::VARR);
             for (int i = 0; i < rewards.size(); i++)
             {

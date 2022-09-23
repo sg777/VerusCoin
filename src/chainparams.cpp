@@ -240,18 +240,18 @@ void *chainparams_commandline(void *ptr)
 
         bool isVerusActive = _IsVerusActive();
 
-        int64_t nBlockTime = isVerusActive ? DEFAULT_BLOCKTIME_TARGET : GetArg("-blocktime", DEFAULT_BLOCKTIME_TARGET);
+        int64_t nBlockTime = isVerusActive ? CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET : GetArg("-blocktime", CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET);
         mainParams.SetBlockTime(nBlockTime);
 
         if (ASSETCHAINS_ALGO != ASSETCHAINS_EQUIHASH)
         {
             // this is only good for 60 second blocks with an averaging window of 45. for other parameters, use:
             // nLwmaAjustedWeight = (N+1)/2 * (0.9989^(500/nPowAveragingWindow)) * nPowTargetSpacing
-            int64_t PowAveragingWindow = isVerusActive ? DEFAULT_AVERAGING_WINDOW : GetArg("-averagingwindow", DEFAULT_AVERAGING_WINDOW);
+            int64_t PowAveragingWindow = isVerusActive ? CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW : GetArg("-powaveragingwindow", CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW);
             mainParams.consensus.nPowAveragingWindow = PowAveragingWindow;
             mainParams.consensus.powAlternate = uint256S("00000f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
 
-            if (!isVerusActive && mainParams.consensus.nBlockTime != DEFAULT_BLOCKTIME_TARGET)
+            if (!isVerusActive && mainParams.consensus.nBlockTime != CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET)
             {
                 cpp_dec_float_50 averagingFactor(std::to_string((mainParams.consensus.nPowAveragingWindow+1)/2));
                 cpp_dec_float_50 factorBase("0.9989");

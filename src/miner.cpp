@@ -1838,7 +1838,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         }
 
         // if we are a notary, notarize
-        if (nHeight > CPBaaSNotarization::MIN_BLOCKS_BEFORE_NOTARY_FINALIZED && !VERUS_NOTARYID.IsNull())
+        if (nHeight > ConnectedChains.ThisChain().GetMinBlocksToNotarize() && !VERUS_NOTARYID.IsNull())
         {
             CValidationState state;
             std::vector<TransactionBuilder> notarizationBuilders;

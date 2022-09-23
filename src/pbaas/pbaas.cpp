@@ -2018,7 +2018,7 @@ std::set<uint160> ValidExportCurrencies(const CCurrencyDefinition &systemDest, u
         // now look for exported currency definitions
         std::vector<CAddressIndexDbEntry> addresses;
         // this will always validate correctly, even if the index for this block is present, as we only look up to height - 1
-        if (GetAddressIndex(CTransferDestination::CurrencyExportKeyToSystem(sysID), CScript::P2IDX, addresses, 0, height - 1) &&
+        if (GetAddressIndex(CTransferDestination::CurrencyDefinitionExportKeyToSystem(sysID), CScript::P2IDX, addresses, 0, height - 1) &&
             addresses.size())
         {
             for (auto &oneIdx : addresses)
@@ -2134,7 +2134,7 @@ bool IsValidExportCurrency(const CCurrencyDefinition &systemDest, const uint160 
         // now look for exported currency definitions
         std::vector<CAddressIndexDbEntry> addresses;
         // this will always validate correctly, even if the index for this block is present, as we only look up to height - 1
-        if (GetAddressIndex(CTransferDestination::GetBoundCurrencyExportKey(sysID, exportCurrencyID),
+        if (GetAddressIndex(CTransferDestination::GetBoundCurrencyDefinitionExportKey(sysID, exportCurrencyID),
                             CScript::P2IDX,
                             addresses, 0, height - 1) &&
             addresses.size())
@@ -7351,7 +7351,7 @@ void CConnectedChains::SubmissionThread()
             uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
 
             // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
-            if (height > (CPBaaSNotarization::BLOCK_NOTARIZATION_MODULO + CPBaaSNotarization::MIN_BLOCKS_BEFORE_NOTARY_FINALIZED) &&
+            if (height > ((ConnectedChains.ThisChain().GetMinBlocksToNotarize() << 1) + 1) &&
                 IsNotaryAvailable(true) &&
                 lastImportTime < (GetAdjustedTime() - 30))
             {

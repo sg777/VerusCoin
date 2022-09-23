@@ -352,21 +352,21 @@ public:
         return "{\"contract\":\"0x" + HexBytes(ethContractID.begin(), ethContractID.size()) + "\", \"tokenid\":\"0x" + HexBytes(tokenID.begin(), tokenID.size()) + "\"}";
     }
 
-    static std::string CurrencyExportKeyName()
+    static std::string CurrencyDefinitionExportKeyName()
     {
-        return "vrsc::system.currency.export";
+        return "vrsc::system.currency.definitionexport";
     }
 
-    static uint160 UnboundCurrencyExportKey()
+    static uint160 UnboundCurrencyDefinitionExportKey()
     {
         static uint160 nameSpace;
-        static uint160 exportKey = CVDXF::GetDataKey(CurrencyExportKeyName(), nameSpace);
+        static uint160 exportKey = CVDXF::GetDataKey(CurrencyDefinitionExportKeyName(), nameSpace);
         return exportKey;
     }
 
-    static uint160 CurrencyExportKeyToSystem(const uint160 &exportToSystemID);
-    static uint160 GetBoundCurrencyExportKey(const uint160 &exportToSystemID, const uint160 &curToExportID);
-    uint160 GetBoundCurrencyExportKey(const uint160 &exportToSystemID) const;
+    static uint160 CurrencyDefinitionExportKeyToSystem(const uint160 &exportToSystemID);
+    static uint160 GetBoundCurrencyDefinitionExportKey(const uint160 &exportToSystemID, const uint160 &curToExportID);
+    uint160 GetBoundCurrencyDefinitionExportKey(const uint160 &exportToSystemID) const;
 
     UniValue ToUniValue() const;
 };
@@ -467,7 +467,13 @@ public:
         MAX_TRANSFER_EXPORTS_PER_BLOCK = 200,
         MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 1,
         MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK = 0,
-        MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK = 50
+        MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK = 50,
+        DEFAULT_BLOCK_NOTARIZATION_TIME = 600, // default target time for block notarizations
+        MIN_BLOCK_NOTARIZATION_BLOCKS = 2,  // minimum target blocks for notarization period
+        MAX_NOTARIZATION_CONVERSION_PRICING_INTERVAL = 100,  // there must be a notarization with conversion at least 100 blocks before reserve transfer
+        DEFAULT_BLOCKTIME_TARGET = 60,      // default block time target for difficulty adjustment, in seconds
+        DEFAULT_AVERAGING_WINDOW = 45,      // default target spacing (blocks) for difficulty adjustment
+        BLOCK_NOTARIZATION_MODULO = (DEFAULT_BLOCK_NOTARIZATION_TIME / DEFAULT_BLOCKTIME_TARGET) // default min notarization spacing (10 minutes)
     };
 
     enum ECurrencyOptions
@@ -561,6 +567,8 @@ public:
     // notaries, if present on a gateway or PBaaS chain, have the power to finalize notarizations on either blockchain. notarizations can be 
     // used as anchors to prove transactions on other currency systems that may import/export tokens, IDs or other things from other networks
     std::vector<uint160> notaries;          // a list of notary IDs, which if present, are the only identities capable of confirming notarizations
+
+    // TODO: HARDENING - make sure this is at least a majority to be valid & avoid forks
     int32_t minNotariesConfirm;             // requires this many unique notaries to confirm a notarization
 
     // costs to register and import IDs
@@ -582,6 +590,11 @@ public:
     // people can participate in to have access to the currency itself. pre-mine to a NULL address
     // puts it into the initial gateway currency reserves.
     uint32_t initialBits;                   // initial starting difficulty
+
+    uint32_t blockTime;                     // block time target in seconds between blocks
+    uint32_t powAveragingWindow;            // averaging window in number of blocks for DAA
+    uint16_t blockNotarizationModulo;       // periodicity of notarizations that can finalize against the notary chain
+
     std::vector<int64_t> rewards;           // initial reward in each of native coin, if this is a reserve the number represents percentage of supply w/satoshis
     std::vector<int64_t> rewardsDecay;      // decay of rewards at halvings during the era
     std::vector<int32_t> halving;           // number of blocks between halvings
@@ -607,7 +620,10 @@ public:
                             currencyImportFee(CURRENCY_IMPORT_FEE),
                             transactionImportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
                             transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
-                            initialBits(DEFAULT_START_TARGET)
+                            initialBits(DEFAULT_START_TARGET),
+                            blockTime(DEFAULT_BLOCKTIME_TARGET),
+                            powAveragingWindow(DEFAULT_AVERAGING_WINDOW),
+                            blockNotarizationModulo(BLOCK_NOTARIZATION_MODULO)
     {}
 
     CCurrencyDefinition(const UniValue &obj);
@@ -636,6 +652,9 @@ public:
                         int64_t CurrencyImportFee=CURRENCY_IMPORT_FEE, int64_t IDRegistrationAmount=IDENTITY_REGISTRATION_FEE, 
                         int32_t IDReferralLevels=DEFAULT_ID_REFERRAL_LEVELS, int64_t IDImportFee=IDENTITY_IMPORT_FEE,
                         uint32_t InitialBits=DEFAULT_START_TARGET,
+                        uint32_t BlockTime=DEFAULT_BLOCKTIME_TARGET,
+                        uint32_t PowAveragingWindow=DEFAULT_AVERAGING_WINDOW,
+                        uint32_t BlockNotarizationModulo=BLOCK_NOTARIZATION_MODULO,
                         uint32_t Version=VERSION_CURRENT) :
                         nVersion(Version),
                         options(Options),
@@ -672,6 +691,9 @@ public:
                         transactionImportFee(TransactionTransferFee >> 1),
                         transactionExportFee(TransactionTransferFee >> 1),
                         initialBits(InitialBits),
+                        blockTime(BlockTime),
+                        powAveragingWindow(PowAveragingWindow),
+                        blockNotarizationModulo(BlockNotarizationModulo),
                         rewards(chainRewards),
                         rewardsDecay(chainRewardsDecay),
                         halving(chainHalving),
@@ -735,6 +757,9 @@ public:
             if (IsPBaaSChain())
             {
                 READWRITE(initialBits);
+                READWRITE(blockTime);
+                READWRITE(powAveragingWindow);
+                READWRITE(blockNotarizationModulo);
                 READWRITE(rewards);
                 READWRITE(rewardsDecay);
                 READWRITE(halving);
@@ -800,6 +825,12 @@ public:
         {
             return minNotariesConfirm;
         }
+    }
+
+    // minimum blocks to notarize 1.5 x notarization period
+    int32_t GetMinBlocksToNotarize() const
+    {
+        return blockNotarizationModulo + (blockNotarizationModulo >> 1);
     }
 
     uint160 GatewayConverterID() const

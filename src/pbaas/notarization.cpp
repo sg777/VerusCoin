@@ -2824,8 +2824,8 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     }
 
     // first determine if the prior notarization we agree with would make this one moot
-    int blockPeriodNumber = (height + 1) / BLOCK_NOTARIZATION_MODULO;
-    int priorBlockPeriod = mapBlockIt->second->GetHeight() / BLOCK_NOTARIZATION_MODULO;
+    int blockPeriodNumber = (height + 1) / ConnectedChains.ThisChain().blockNotarizationModulo;
+    int priorBlockPeriod = mapBlockIt->second->GetHeight() / ConnectedChains.ThisChain().blockNotarizationModulo;
 
     // for decentralized notarization, we must alternate between proof of stake and proof of work blocks
     // to confirm a prior earned notarization
@@ -3523,7 +3523,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
         return state.Error("no-unconfirmed");
     }
 
-    if (height <= ((CPBaaSNotarization::MIN_BLOCKS_BEFORE_NOTARY_FINALIZED << 1) + 1))
+    if (height <= ((ConnectedChains.ThisChain().GetMinBlocksToNotarize() << 1) + 1))
     {
         return state.Error(errorPrefix + "too early");
     }
@@ -3618,7 +3618,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
     // any valid earned notarization that we choose to use for our proof, which will determine
     // the signing height, enabling all of them to match without additional coordination
-    uint32_t eligibleHeight = height - CPBaaSNotarization::MIN_BLOCKS_BEFORE_NOTARY_FINALIZED;
+    uint32_t eligibleHeight = height - ConnectedChains.ThisChain().GetMinBlocksToNotarize();
 
     // all we really want is the system proof roots for each notarization to make the JSON for the API smaller
     UniValue proofRootsUni(UniValue::VARR);

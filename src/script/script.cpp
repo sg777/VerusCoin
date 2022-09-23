@@ -184,17 +184,17 @@ uint160 GetConditionID(uint160 cid, int32_t condition)
     return Hash160(chainHash.begin(), chainHash.end());
 }
 
-uint160 CTransferDestination::CurrencyExportKeyToSystem(const uint160 &exportToSystemID)
+uint160 CTransferDestination::CurrencyDefinitionExportKeyToSystem(const uint160 &exportToSystemID)
 {
-    return CCrossChainRPCData::GetConditionID(UnboundCurrencyExportKey(), exportToSystemID);
+    return CCrossChainRPCData::GetConditionID(UnboundCurrencyDefinitionExportKey(), exportToSystemID);
 }
 
-uint160 CTransferDestination::GetBoundCurrencyExportKey(const uint160 &exportToSystemID, const uint160 &curToExportID)
+uint160 CTransferDestination::GetBoundCurrencyDefinitionExportKey(const uint160 &exportToSystemID, const uint160 &curToExportID)
 {
-    return CCrossChainRPCData::GetConditionID(CurrencyExportKeyToSystem(exportToSystemID), curToExportID);;
+    return CCrossChainRPCData::GetConditionID(CurrencyDefinitionExportKeyToSystem(exportToSystemID), curToExportID);;
 }
 
-uint160 CTransferDestination::GetBoundCurrencyExportKey(const uint160 &exportToSystemID) const
+uint160 CTransferDestination::GetBoundCurrencyDefinitionExportKey(const uint160 &exportToSystemID) const
 {
     uint160 retVal;
     if (TypeNoFlags() == DEST_REGISTERCURRENCY)
@@ -202,7 +202,7 @@ uint160 CTransferDestination::GetBoundCurrencyExportKey(const uint160 &exportToS
         CCurrencyDefinition curDef(destination);
         if (curDef.IsValid())
         {
-            retVal = CCrossChainRPCData::GetConditionID(CurrencyExportKeyToSystem(exportToSystemID), curDef.GetID());
+            retVal = CCrossChainRPCData::GetConditionID(CurrencyDefinitionExportKeyToSystem(exportToSystemID), curDef.GetID());
         }
     }
     return retVal;
@@ -1298,8 +1298,8 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 !rt.destSystemID.IsNull() &&
                 rt.destination.TypeNoFlags() == rt.destination.DEST_REGISTERCURRENCY)
             {
-                destinations.insert(rt.destination.CurrencyExportKeyToSystem(rt.destSystemID));
-                destinations.insert(rt.destination.GetBoundCurrencyExportKey(rt.destSystemID));
+                destinations.insert(rt.destination.CurrencyDefinitionExportKeyToSystem(rt.destSystemID));
+                destinations.insert(rt.destination.GetBoundCurrencyDefinitionExportKey(rt.destSystemID));
             }
             break;
         }
@@ -1333,8 +1333,8 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                             {
                                 // store the unbound and bound currency export index
                                 // for each currency
-                                destinations.insert(CTransferDestination::GetBoundCurrencyExportKey(ccx.sourceSystemID, oneRT.FirstCurrency()));
-                                destinations.insert(CTransferDestination::CurrencyExportKeyToSystem(ccx.sourceSystemID));
+                                destinations.insert(CTransferDestination::GetBoundCurrencyDefinitionExportKey(ccx.sourceSystemID, oneRT.FirstCurrency()));
+                                destinations.insert(CTransferDestination::CurrencyDefinitionExportKeyToSystem(ccx.sourceSystemID));
                             }
                         }
                     }

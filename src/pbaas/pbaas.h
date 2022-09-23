@@ -224,9 +224,6 @@ public:
         VERSION_CURRENT = 1,
         FINAL_CONFIRMATIONS = 9,
         DEFAULT_NOTARIZATION_FEE = 10000,               // price of a notarization fee in native or launch system currency
-        BLOCK_NOTARIZATION_MODULO = 10,                 // incentive to earn one valid notarization during this many blocks
-        MIN_BLOCKS_BEFORE_NOTARY_FINALIZED = 15,        // 15 blocks must go by before notary signatures or confirming evidence can be provided
-        MAX_NOTARIZATION_CONVERSION_PRICING_INTERVAL = 100,  // there must be a notarization with conversion at least 100 blocks before reserve transfer
         MAX_NODES = 2,                                  // only provide 2 nodes per notarization
         MIN_NOTARIZATION_OUTPUT = 0,                    // minimum amount for notarization output
     };
