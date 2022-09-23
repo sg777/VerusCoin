@@ -3780,7 +3780,7 @@ std::string CConnectedChains::GetFriendlyCurrencyName(const uint160 &currencyID)
     std::string retName;
     uint160 curID = currencyID;
     CCurrencyDefinition curDef;
-    for (curDef = GetCachedCurrency(curID); curDef.IsValid(); curDef = GetCachedCurrency(curID))
+    for (curDef = GetCachedCurrency(curID); curDef.IsValid(); curDef = curID.IsNull() ? CCurrencyDefinition() : GetCachedCurrency(curID))
     {
         if (curDef.parent.IsNull())
         {
