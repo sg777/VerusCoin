@@ -258,7 +258,7 @@ void *chainparams_commandline(void *ptr)
                 cpp_dec_float_50 factorExponent = cpp_dec_float_50("500") / cpp_dec_float_50(std::to_string(mainParams.consensus.nPowAveragingWindow));
                 cpp_dec_float_50 blockTime(std::to_string(mainParams.consensus.nBlockTime));
 
-                cpp_dec_float_50 weight = averagingFactor * std::pow(factorBase, factorExponent) * blockTime;
+                cpp_dec_float_50 weight = averagingFactor * pow(factorBase, factorExponent) * blockTime;
                 std::stringstream ss(weight.str(0, std::ios_base::fmtflags::_S_fixed));
                 try
                 {
