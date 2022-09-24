@@ -1234,7 +1234,7 @@ CScript CIdentity::IdentityUpdateOutputScript(uint32_t height, const std::vector
 
         if (IsRevoked())
         {
-            ret = MakeMofNCCScript(1, recovery, indexDests);
+            ret = MakeMofNCCScript(recovery, indexDests);
         }
         else
         {
