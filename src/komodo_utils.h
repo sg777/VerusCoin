@@ -1473,9 +1473,9 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
                             powAveragingWindow != CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW ||
                             notarizationPeriod != CCurrencyDefinition::BLOCK_NOTARIZATION_MODULO)
                         {
-                            fprintf(fp,"blocktime=%s\n", std::to_string(paramBlockTime));
-                            fprintf(fp,"powaveragingwindow=%s\n", std::to_string(powAveragingWindow));
-                            fprintf(fp,"notarizationperiod=%s\n", std::to_string(notarizationPeriod));
+                            fprintf(fp,"blocktime=%s\n", std::to_string(paramBlockTime).c_str());
+                            fprintf(fp,"powaveragingwindow=%s\n", std::to_string(powAveragingWindow).c_str());
+                            fprintf(fp,"notarizationperiod=%s\n", std::to_string(notarizationPeriod).c_str());
                         }
                     }
 
