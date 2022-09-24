@@ -857,14 +857,6 @@ CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p, bool spendableOnly) 
                 if (ch.IsValid())
                 {
                     retVal = ch.reserveValues;
-
-                    // TODO: HARDENING - once Verus Vault activates on mainnet, support currencies and remove this if statement just below
-                    // until PBaaS, we should have no valid currency outputs on mainnet
-                    if (_IsVerusMainnetActive() && retVal.valueMap.size())
-                    {
-                        LogPrintf("%s: invalid identity commitment output detected\n", __func__);
-                        printf("%s: invalid identity commitment output detected\n", __func__);
-                    }
                 }
             }
         }

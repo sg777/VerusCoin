@@ -181,6 +181,10 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
                 {
                     return state.Error(strprintf("%s: invalid reserve transfer for export",__func__));
                 }
+                if (rt.IsArbitrageOnly())
+                {
+                    return state.Error(strprintf("%s:1 invalid arbitrage reserve transfer in export",__func__));
+                }
                 hw << rt;
                 reserveTransfers.push_back(rt);
             }
@@ -197,6 +201,10 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
             COptCCParams p;
             for (auto &oneRt : rtExport.reserveTransfers)
             {
+                if (oneRt.IsArbitrageOnly())
+                {
+                    return state.Error(strprintf("%s:2 invalid arbitrage reserve transfer in export",__func__));
+                }
                 hw << oneRt;
                 reserveTransfers.push_back(oneRt);
             }
@@ -3812,9 +3820,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         LogPrint("reservetransfers", "%s: invalid arbitrage transaction for %s\n", __func__, importCurrencyDef.name.c_str());
                         return false;
                     }
-                    // TODO: HARDENING - ensure that the reserve transfers coming from an export cannot contain arbitrage
-                    // transfers, which may be checked on GetExportInfo. they are only allowed on imports and only one conversion.
-                    // note is here, but to resolve this, add the check on getexportinfo
                 }
 
                 // enforce maximum if there is one
@@ -4134,18 +4139,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         }
                         feeEquivalent = importCurrencyState.NativeToReserveRaw(feeEquivalent, importCurrencyState.viaConversionPrice[systemDestIdx]);
                     }
-
-                    /* if (!systemDest.IsGateway() && feeEquivalent < curTransfer.CalculateTransferFee())
-                    {
-                        // TODO: HARDENING - this refund check is only here because there was an issue in preconversions being sent without
-                        // having a base transfer fee, both on the same chain and cross chain
-                        if (!curTransfer.IsRefund())
-                        {
-                            printf("%s: Incorrect fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
-                            LogPrintf("%s: Incorrect fee sent with export %s\n", __func__, curTransfer.ToUniValue().write().c_str());
-                            return false;
-                        }
-                    } // */
 
                     if (curTransfer.FirstCurrency() == systemDestID && !curTransfer.IsMint())
                     {

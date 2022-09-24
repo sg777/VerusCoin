@@ -3527,7 +3527,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     {
         return state.Error(errorPrefix + "too early");
     }
-    // TODO: HARDENING - make sure we can spend all outputs we need to, even if there gets to be too many for 1 tx
+    // spend all outputs we need to, even if there gets to be too many for 1 tx
     // rules to confirm or reject an earned notarization
     // 1) Notaries may confirm an earned notarization if and only if the following is true:
     //   a) There is no previous, valid notarization in the same eligible period with which the notarization agrees and should confirm

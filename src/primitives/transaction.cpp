@@ -409,7 +409,10 @@ CCurrencyValueMap CTransaction::GetReserveValueOut() const
             if (oneCur.second &&
                 (retVal.valueMap[oneCur.first] += oneCur.second) < 0)
             {
-                // TODO: HARDENING - confirm this is correct overflow behavior
+                // TODO: HARDENING - confirm this is correct overflow behavior. unfortunately, this does not
+                // actually prevent the outputs that could total > INT64_MAX to exist on the tx. it only
+                // ensures that a total on the tx will be capped at the max. it may still overflow when added
+                // to other values.
                 printf("%s: currency value overflow total: %ld, adding: %ld - pegging to max\n", __func__, retVal.valueMap[oneCur.first], oneCur.second);
                 LogPrintf("%s: currency value overflow total: %ld, adding: %ld - pegging to max\n", __func__, retVal.valueMap[oneCur.first], oneCur.second);
                 retVal.valueMap[oneCur.first] = INT64_MAX;

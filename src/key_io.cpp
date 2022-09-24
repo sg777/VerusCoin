@@ -1217,7 +1217,8 @@ CScript CIdentity::IdentityUpdateOutputScript(uint32_t height, const std::vector
     CConditionObj<CIdentity> primary(EVAL_IDENTITY_PRIMARY, dests1, 1, this);
 
     // when PBaaS activates, we no longer need redundant entries, so reduce the size a bit
-    if (CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT)
+    uint32_t consensusVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
+    if (consensusVersion >= CActivationHeight::ACTIVATE_VERUSVAULT)
     {
         std::vector<CTxDestination> dests3({CTxDestination(CIdentityID(recoveryAuthority))});
         if (HasTokenizedControl())
@@ -1233,8 +1234,7 @@ CScript CIdentity::IdentityUpdateOutputScript(uint32_t height, const std::vector
 
         if (IsRevoked())
         {
-            // TODO: HARDENING for next testnet reset and mainnet release version, remove primary when revoked
-            ret = MakeMofNCCScript(1, primary, recovery, indexDests);
+            ret = MakeMofNCCScript(1, recovery, indexDests);
         }
         else
         {
