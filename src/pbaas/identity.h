@@ -35,10 +35,6 @@
 
 std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false, bool addVerus=true);
 
-// TODO: HARDENING - remove and all dependencies below when 0.9.4 testnet is reset, after this height,
-// all authorities of an ID are required to create currencies
-static const uint32_t TESTNET_FORK_HEIGHT = 11600;
-
 class CCommitmentHash : public CTokenOutput
 {
 public:

@@ -10719,11 +10719,6 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         returnTx = uni_get_bool(params[1], false);
     }
 
-    if (params.size() > 2)
-    {
-        tokenizedIDControl = uni_get_bool(params[2], false);
-    }
-
     uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(params[0], "parent")))));
     if (parentID.IsNull())
     {
@@ -10740,10 +10735,17 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
     uint32_t nHeight = chainActive.Height();
 
+    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_PBAAS;
+    if (isPBaaS && params.size() > 2)
+    {
+        tokenizedIDControl = uni_get_bool(params[2], false);
+    }
+
     if (!(oldID = CIdentity::LookupIdentity(newIDID, 0, &idHeight, &idTxIn)).IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + nameStr + " (" +EncodeDestination(CIdentityID(newIDID)) + "), not found ");
     }
+
     uint256 blkHash;
     CTransaction oldIdTx;
     if (!myGetTransaction(idTxIn.prevout.hash, oldIdTx, blkHash))
@@ -10789,10 +10791,6 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         if (!oldID.HasTokenizedControl())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Can only used ID control token for ID that has tokenized ID control on this chain");
-        }
-        if (PBAAS_TESTMODE && (IsVerusActive() || ConnectedChains.ThisChain().name == "Gravity") && chainActive.Height() < TESTNET_FORK_HEIGHT)
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Tokenized ID control has not yet activated on testnet");
         }
     }
 
@@ -11059,11 +11057,6 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
         returnTx = uni_get_bool(params[1], false);
     }
 
-    if (params.size() > 2)
-    {
-        tokenizedIDControl = uni_get_bool(params[2], false);
-    }
-
     CTxIn idTxIn;
     CIdentity oldID;
     uint32_t idHeight;
@@ -11075,16 +11068,19 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "ID not found " + EncodeDestination(idID));
     }
 
+    uint32_t nHeight = chainActive.Height();
+    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_PBAAS;
+    if (isPBaaS && params.size() > 2)
+    {
+        tokenizedIDControl = uni_get_bool(params[2], false);
+    }
+
     // if we are supposed to get our authority from the token, make sure it is present and prepare to spend it
     std::vector<COutput> controlTokenOuts;
     CCurrencyValueMap tokenCurrencyControlMap(std::vector<uint160>({idID}), std::vector<int64_t>({1}));
 
     if (tokenizedIDControl)
     {
-        if (PBAAS_TESTMODE && (IsVerusActive() || ConnectedChains.ThisChain().name == "Gravity") && chainActive.Height() < TESTNET_FORK_HEIGHT)
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Tokenized ID control has not yet activated on testnet");
-        }
         COptCCParams tcP;
         CCurrencyValueMap reserveMap;
         pwalletMain->AvailableReserveCoins(controlTokenOuts, true, nullptr, false, false, nullptr, &tokenCurrencyControlMap, false);
@@ -11216,6 +11212,7 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
     uint32_t nHeight = chainActive.Height();
+    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_PBAAS;
 
     UniValue newUniIdentity = params[0];
     if (uni_get_int(find_value(newUniIdentity,"version")) == 0)
@@ -11244,7 +11241,7 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
         returnTx = uni_get_bool(params[1], false);
     }
 
-    if (params.size() > 2)
+    if (isPBaaS && params.size() > 2)
     {
         tokenizedIDControl = uni_get_bool(params[2], false);
     }
@@ -11269,11 +11266,6 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
 
     if (tokenizedIDControl)
     {
-        if (PBAAS_TESTMODE && (IsVerusActive() || ConnectedChains.ThisChain().name == "Gravity") && chainActive.Height() < TESTNET_FORK_HEIGHT)
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Tokenized ID control has not yet activated on testnet");
-        }
-
         COptCCParams tcP;
 
         CCurrencyValueMap reserveMap;
