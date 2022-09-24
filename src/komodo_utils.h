@@ -1467,8 +1467,8 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
                         int paramBlockTime = GetArg("-blocktime", CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET);
                         int powAveragingWindow = GetArg("-powaveragingwindow", CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW);
                         int notarizationPeriod = GetArg("-notarizationperiod", 
-                                                        std::max((CCurrencyDefinition::DEFAULT_BLOCK_NOTARIZATION_TIME / paramBlockTime),
-                                                                 CCurrencyDefinition::MIN_BLOCK_NOTARIZATION_BLOCKS))
+                                                        std::max((int)(CCurrencyDefinition::DEFAULT_BLOCK_NOTARIZATION_TIME / paramBlockTime),
+                                                                 (int)CCurrencyDefinition::MIN_BLOCK_NOTARIZATION_BLOCKS));
                         if (paramBlockTime != CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET ||
                             powAveragingWindow != CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW ||
                             notarizationPeriod != CCurrencyDefinition::BLOCK_NOTARIZATION_MODULO)
