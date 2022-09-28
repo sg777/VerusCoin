@@ -70,16 +70,16 @@ public:
     virtual bool GetFirstIdentity(const CIdentityID &idID, std::pair<CIdentityMapKey, CIdentityMapValue> &keyAndIdentity, uint32_t gteHeight=0) const =0;
 
     //! Support for trust and ratings for currencies
-    virtual void ClearCurrencyTrust();
-    virtual bool RemoveCurrencyTrust(const uint160 &currencyID);
-    virtual CRating GetCurrencyTrust(const uint160 &currencyID) const;
-    virtual bool SetCurrencyTrust(const uint160 &currencyID, const CRating &trust);
+    virtual void ClearCurrencyTrust() = 0;
+    virtual bool RemoveCurrencyTrust(const uint160 &currencyID) = 0;
+    virtual CRating GetCurrencyTrust(const uint160 &currencyID) const = 0;
+    virtual bool SetCurrencyTrust(const uint160 &currencyID, const CRating &trust) = 0;
 
     //! Support for trust and ratings for identities
-    virtual void ClearIdentityTrust();
-    virtual bool RemoveIdentityTrust(const CIdentityID &idID);
-    virtual CRating GetIdentityTrust(const CIdentityID &idID) const;
-    virtual bool SetIdentityTrust(const CIdentityID &idID, const CRating &trust);
+    virtual void ClearIdentityTrust() = 0;
+    virtual bool RemoveIdentityTrust(const CIdentityID &idID) = 0;
+    virtual CRating GetIdentityTrust(const CIdentityID &idID) const = 0;
+    virtual bool SetIdentityTrust(const CIdentityID &idID, const CRating &trust) = 0;
 
     //! Add a spending key to the store.
     virtual bool AddSproutSpendingKey(const libzcash::SproutSpendingKey &sk) =0;
