@@ -720,6 +720,52 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
             }
         }
     }
+
+    if (nVersion >= VERSION_PBAAS)
+    {
+        UniValue multiMapUni = find_value(uni, "contentmultimap");
+        if (multiMapUni.isObject())
+        {
+            std::vector<std::string> keys = hashesUni.getKeys();
+            std::vector<UniValue> values = hashesUni.getValues();
+            for (int i = 0; i < keys.size(); i++)
+            {
+                try
+                {
+                    uint160 key;
+                    key.SetHex(keys[i]);
+                    if (!key.IsNull() && i < values.size())
+                    {
+                        if (values[i].isArray())
+                        {
+                            for (int j = 0; j < values[i].size(); j++)
+                            {
+                                std::string valueString = uni_get_str(values[i][j]);
+                                if (IsHex(valueString))
+                                {
+                                    contentMultiMap.insert(std::make_pair(key, ParseHex(valueString)));
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        nVersion = VERSION_INVALID;
+                    }
+                }
+                catch (const std::exception &e)
+                {
+                    nVersion = VERSION_INVALID;
+                }
+                if (nVersion == VERSION_INVALID)
+                {
+                    LogPrintf("%s: contentmultimap entry is not valid keys: %s, values: %s\n", __func__, keys[i].c_str(), values[i].write().c_str());
+                    break;
+                }
+            }
+        }
+    }
+
     std::string revocationStr = uni_get_str(find_value(uni, "revocationauthority"));
     std::string recoveryStr = uni_get_str(find_value(uni, "recoveryauthority"));
 

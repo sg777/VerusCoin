@@ -1003,6 +1003,7 @@ bool CConnectedChains::GetNotaryIDs(const CRPCChainData notaryChain, const std::
         }
     }
     // if we have a currency converter, create a new ID as a clone of the main chain ID with revocation and recovery as main chain ID
+    // TODO: HARDENING - harden ID
     if (!ConnectedChains.ThisChain().GatewayConverterID().IsNull())
     {
         CIdentity newConverterIdentity = identities[ASSETCHAINS_CHAINID];
@@ -11447,13 +11448,16 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     {
         std::vector<CTxDestination> primary({CTxDestination(CKeyID(uint160()))});
         std::vector<std::pair<uint160, uint256>> contentmap;
-        identity = CIdentity(CIdentity::VERSION_VAULT, 
+        std::multimap<uint160, std::vector<unsigned char>> contentmultimap;
+
+        identity = CIdentity(CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS ? CIdentity::VERSION_PBAAS : CIdentity::VERSION_VAULT, 
                              CIdentity::FLAG_ACTIVECURRENCY,
                              primary, 
                              1, 
                              ConnectedChains.ThisChain().parent,
                              VERUS_CHAINNAME,
                              contentmap,
+                             contentmultimap,
                              ConnectedChains.ThisChain().GetID(),
                              ConnectedChains.ThisChain().GetID(),
                              std::vector<libzcash::SaplingPaymentAddress>());
@@ -11589,13 +11593,17 @@ UniValue listidentities(const UniValue& params, bool fHelp)
                         }
                         std::vector<CTxDestination> primary({CTxDestination(CKeyID(uint160()))});
                         std::vector<std::pair<uint160, uint256>> contentmap;
-                        oneIdentity = CIdentity(CIdentity::VERSION_VAULT, 
+                        std::multimap<uint160, std::vector<unsigned char>> contentmultimap;
+                        oneIdentity = CIdentity(CConstVerusSolutionVector::GetVersionByHeight(oneIdentityHeight) >= CActivationHeight::ACTIVATE_PBAAS ? 
+                                                                                                        CIdentity::VERSION_PBAAS :
+                                                                                                        CIdentity::VERSION_VAULT, 
                                                 CIdentity::FLAG_ACTIVECURRENCY,
                                                 primary, 
                                                 1, 
                                                 ConnectedChains.ThisChain().parent,
                                                 VERUS_CHAINNAME,
                                                 contentmap,
+                                                contentmultimap,
                                                 ConnectedChains.ThisChain().GetID(),
                                                 ConnectedChains.ThisChain().GetID(),
                                                 std::vector<libzcash::SaplingPaymentAddress>());
@@ -11624,13 +11632,17 @@ UniValue listidentities(const UniValue& params, bool fHelp)
                         }
                         std::vector<CTxDestination> primary({CTxDestination(CKeyID(uint160()))});
                         std::vector<std::pair<uint160, uint256>> contentmap;
-                        oneIdentity = CIdentity(CIdentity::VERSION_VAULT, 
+                        std::multimap<uint160, std::vector<unsigned char>> contentmultimap;
+                        oneIdentity = CIdentity(CConstVerusSolutionVector::GetVersionByHeight(oneIdentityHeight) >= CActivationHeight::ACTIVATE_PBAAS ? 
+                                                                                                        CIdentity::VERSION_PBAAS :
+                                                                                                        CIdentity::VERSION_VAULT, 
                                                 CIdentity::FLAG_ACTIVECURRENCY,
                                                 primary, 
                                                 1, 
                                                 ConnectedChains.ThisChain().parent,
                                                 VERUS_CHAINNAME,
                                                 contentmap,
+                                                contentmultimap,
                                                 ConnectedChains.ThisChain().GetID(),
                                                 ConnectedChains.ThisChain().GetID(),
                                                 std::vector<libzcash::SaplingPaymentAddress>());
@@ -11657,13 +11669,17 @@ UniValue listidentities(const UniValue& params, bool fHelp)
                         }
                         std::vector<CTxDestination> primary({CTxDestination(CKeyID(uint160()))});
                         std::vector<std::pair<uint160, uint256>> contentmap;
-                        oneIdentity = CIdentity(CIdentity::VERSION_VAULT, 
+                        std::multimap<uint160, std::vector<unsigned char>> contentmultimap;
+                        oneIdentity = CIdentity(CConstVerusSolutionVector::GetVersionByHeight(oneIdentityHeight) >= CActivationHeight::ACTIVATE_PBAAS ? 
+                                                                                                        CIdentity::VERSION_PBAAS :
+                                                                                                        CIdentity::VERSION_VAULT, 
                                                 CIdentity::FLAG_ACTIVECURRENCY,
                                                 primary, 
                                                 1, 
                                                 ConnectedChains.ThisChain().parent,
                                                 VERUS_CHAINNAME,
                                                 contentmap,
+                                                contentmultimap,
                                                 ConnectedChains.ThisChain().GetID(),
                                                 ConnectedChains.ThisChain().GetID(),
                                                 std::vector<libzcash::SaplingPaymentAddress>());
@@ -12412,6 +12428,8 @@ static const CRPCCommand commands[] =
     { "identity",     "getidentitieswithaddress",     &getidentitieswithaddress, true  },
     { "identity",     "getidentitieswithrevocation",  &getidentitieswithrevocation, true  },
     { "identity",     "getidentitieswithrecovery",    &getidentitieswithrecovery, true  },
+
+
     { "marketplace",  "makeoffer",                    &makeoffer,              true  },
     { "marketplace",  "takeoffer",                    &takeoffer,              true  },
     { "marketplace",  "getoffers",                    &getoffers,              true  },

@@ -302,14 +302,7 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(*(CVDXF *)this);
-        if (key == STRUCTURED_DATA_KEY)
-        {
-            version = VERSION_INVALID;
-        }
-        else
-        {
-            READWRITE(data);
-        }
+        READWRITE(data);
     }
     static std::string StructuredDataKeyName()
     {
@@ -332,6 +325,7 @@ public:
             {
                 
             }
+            return true;
         }
         return false;
     }

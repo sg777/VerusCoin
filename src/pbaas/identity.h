@@ -412,6 +412,7 @@ public:
 
     // content hashes, key value, where key is 20 byte ripemd160
     std::map<uint160, uint256> contentMap;
+    std::multimap<uint160, std::vector<unsigned char>> contentMultiMap;
 
     // revocation authority - can only invalidate identity or update revocation
     uint160 revocationAuthority;
@@ -433,6 +434,7 @@ public:
               const uint160 &Parent,
               const std::string &Name,
               const std::vector<std::pair<uint160, uint256>> &hashes,
+              const std::multimap<uint160, std::vector<unsigned char>> &kvContent,
               const uint160 &Revocation,
               const uint160 &Recovery,
               const std::vector<libzcash::SaplingPaymentAddress> &PrivateAddresses = std::vector<libzcash::SaplingPaymentAddress>(),
@@ -447,6 +449,10 @@ public:
               systemID(SystemID),
               unlockAfter(unlockTime)
     {
+        if (nVersion >= VERSION_PBAAS)
+        {
+            contentMultiMap = kvContent;
+        }
         for (auto &entry : hashes)
         {
             if (!entry.first.IsNull())
@@ -477,33 +483,88 @@ public:
         READWRITE(parent);
         READWRITE(LIMITED_STRING(name, MAX_NAME_LEN));
 
-        std::vector<std::pair<uint160, uint256>> kvContent;
-        if (ser_action.ForRead())
+        if (nVersion >= VERSION_PBAAS)
         {
-            READWRITE(kvContent);
-            for (auto &entry : kvContent)
+            std::vector<std::pair<uint160, std::vector<std::vector<unsigned char>>>> kvContent;
+            if (ser_action.ForRead())
             {
-                if (!entry.first.IsNull())
+                READWRITE(kvContent);
+                for (auto &entry : kvContent)
                 {
-                    contentMap[entry.first] = entry.second;
-                }
-                else
-                {
-                    // any recognizable error should make this invalid
-                    nVersion = VERSION_INVALID;
+                    if (!entry.first.IsNull())
+                    {
+                        for (auto &oneContent : entry.second)
+                        {
+                            contentMultiMap.insert(std::make_pair(entry.first, oneContent));
+                        }
+                    }
+                    else
+                    {
+                        // any recognizable error should make this invalid
+                        nVersion = VERSION_INVALID;
+                    }
                 }
             }
-        }
-        else
-        {
-            for (auto entry : contentMap)
+            else
             {
-                kvContent.push_back(entry);
+                std::vector<std::vector<unsigned char>> entryVec;
+                uint160 lastHash;
+                for (auto &entry : contentMultiMap)
+                {
+                    if (entry.first.IsNull())
+                    {
+                        continue;
+                    }
+                    else if (entry.first == lastHash)
+                    {
+                        entryVec.push_back(entry.second);
+                        continue;
+                    }
+                    else if (!lastHash.IsNull())
+                    {
+                        kvContent.push_back(make_pair(lastHash, entryVec));
+                        entryVec.resize(0);
+                    }
+                    lastHash = entry.first;
+                    entryVec.push_back(entry.second);
+                }
+                if (!lastHash.IsNull())
+                {
+                    kvContent.push_back(make_pair(lastHash, entryVec));
+                }
+                READWRITE(kvContent);
             }
-            READWRITE(kvContent);
         }
-
+        if (nVersion < VERSION_PBAAS)
+        {
+            std::vector<std::pair<uint160, uint256>> kvContent;
+            if (ser_action.ForRead())
+            {
+                READWRITE(kvContent);
+                for (auto &entry : kvContent)
+                {
+                    if (!entry.first.IsNull())
+                    {
+                        contentMap[entry.first] = entry.second;
+                    }
+                    else
+                    {
+                        // any recognizable error should make this invalid
+                        nVersion = VERSION_INVALID;
+                    }
+                }
+            }
+            else
+            {
+                for (auto entry : contentMap)
+                {
+                    kvContent.push_back(entry);
+                }
+                READWRITE(kvContent);
+            }
+        }
         READWRITE(contentMap);
+
         READWRITE(revocationAuthority);
         READWRITE(recoveryAuthority);
         READWRITE(privateAddresses);
@@ -746,6 +807,8 @@ public:
 
     bool IsPrimaryMutation(const CIdentity &newIdentity, uint32_t height) const
     {
+        // TODO: HARDENING account for a change to content maps to multimap for PBaaS
+
         auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
         bool isPBaaS = nSolVersion >= CActivationHeight::ACTIVATE_PBAAS;
         bool isRevokedExempt = isPBaaS || nSolVersion >= CActivationHeight::ACTIVATE_VERUSVAULT && newIdentity.IsRevoked();
@@ -952,6 +1015,125 @@ public:
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(*(CIdentity *)this);
         READWRITE(txid);
+    }
+};
+
+class CRating
+{
+public:
+    enum ECoreRatingTypes
+    {
+        VERSION_INVALID = 0,
+        VERSION_FIRST = 1,
+        VERSION_LAST = 1,
+        VERSION_CURRENT = 1,
+
+        TRUST_UNKNOWN = 0,                  // unknown and can be included in exploration
+        TRUST_WHITEHAT = 1,                 // explicitly believed to be trustworthy enough to interact with
+        TRUST_BLACKHAT = 2,                 // suspected or known to be untrustworthy and should not be interacted with
+        TRUST_FIRST = 0,
+        TRUST_LAST = 2,
+
+        // core rating definitions
+        RATING_UNKNOWN = 0,                 // unknown rating
+        RATING_1 = 1,                       // ratings 1 - 10
+        RATING_2 = 2,
+        RATING_3 = 3,
+        RATING_4 = 4,
+        RATING_5 = 5,
+        RATING_6 = 6,
+        RATING_7 = 7,
+        RATING_8 = 8,
+        RATING_9 = 9,
+        RATING_10 = 10,
+        RATING_G = 11,                      // acceptable for all audiences
+        RATING_PG = 12,                     // MPAA equiv
+        RATING_PG13 = 13,                   // MPAA equiv
+        RATING_R = 14,                      // MPAA equiv
+        RATING_X = 15,                      // MPAA equiv
+        RATING_HSEX = 16,                   // healthy sexuality (use MPAA to determine target age)
+        RATING_HHEALTH = 17,                // healthy discussion of suicide (use MPAA to determine age recommendation)
+        RATING_DRUGS = 18,                  // drug use
+        RATING_SMOKING = 19,                // drug use
+        RATING_VIOLENCE = 20,               // excessive or extreme violence as perceived by users
+        RATING_1STAR = 21,
+        RATING_2STAR = 22,
+        RATING_3STAR = 23,
+        RATING_4STAR = 24,
+        RATING_5STAR = 25,
+        RATING_BAD = 26,
+        RATING_POOR = 27,
+        RATING_OK = 28,
+        RATING_GOOD = 29,
+        RATING_EXCELLENT = 30,
+    };
+
+    uint32_t version;
+    uint8_t trustLevel;
+    std::map<uint160, std::vector<unsigned char>> ratings;          // VDXF rating type and vector of ratings
+
+    CRating(uint32_t Version=VERSION_INVALID, uint8_t TrustLevel=TRUST_UNKNOWN, const std::map<uint160, std::vector<unsigned char>> &Ratings=std::map<uint160, std::vector<unsigned char>>()) :
+                version(Version), trustLevel(TrustLevel), ratings(Ratings) {}
+    CRating(const std::vector<unsigned char> &vch)
+    {
+        bool success;
+        ::FromVector(vch, *this, &success);
+        if (!success)
+        {
+            version = VERSION_INVALID;
+            ratings.clear();
+        }
+    }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(version);
+        READWRITE(trustLevel);
+        READWRITE(ratings);
+    }
+
+    bool IsValid()
+    {
+        return version >= VERSION_FIRST && version <= VERSION_LAST && 
+                trustLevel >= TRUST_FIRST && trustLevel <= TRUST_LAST;
+    }
+
+    static std::string CoreRatingTypeKeyName()
+    {
+        return "vrsc::system.ratings.coreratings";
+    }
+
+    static uint160 CoreRatingTypeKey(const uint160 &idID)
+    {
+        static uint160 nameSpace;
+        static uint160 ratingTypeKey = CVDXF::GetDataKey(CoreRatingTypeKeyName(), nameSpace);
+        return ratingTypeKey;
+    }
+
+    std::map<uint160, std::vector<unsigned char>> SetRating(const uint160 &ratingKey, const std::vector<unsigned char> &ratingVec)
+    {
+        if (!ratingKey.IsNull())
+        {
+            ratings[ratingKey] = ratingVec;
+        }
+        return ratings;
+    }
+
+    std::map<uint160, std::vector<unsigned char>> GetRatings(const uint160 &ratingKey=uint160())
+    {
+        if (!ratingKey.IsNull())
+        {
+            std::map<uint160, std::vector<unsigned char>> retVal;
+            auto it = ratings.find(ratingKey);
+            if (it != ratings.end())
+            {
+                retVal[ratingKey] = it->second;
+            }
+            return retVal;
+        }
+        return ratings;
     }
 };
 

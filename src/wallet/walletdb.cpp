@@ -235,6 +235,28 @@ bool CWalletDB::EraseIdentity(const CIdentityMapKey &mapKey)
     return Erase(std::make_pair(std::string("identity"), mapKey));
 }
 
+bool CWalletDB::WriteCurrencyTrust(const uint160 &currencyID, const CRating &trust)
+{
+    nWalletDBUpdated++;
+    return Write(std::make_pair(std::string("curtrust"), currencyID), trust);
+}
+bool CWalletDB::EraseCurrencyTrust(const uint160 &currencyID)
+{
+    nWalletDBUpdated++;
+    return Erase(std::make_pair(std::string("curtrust"), currencyID));
+}
+
+bool CWalletDB::WriteIDTrust(const uint160 &idID, const CRating &trust)
+{
+    nWalletDBUpdated++;
+    return Write(std::make_pair(std::string("idtrust"), idID), trust);
+}
+bool CWalletDB::EraseIDTrust(const uint160 &idID)
+{
+    nWalletDBUpdated++;
+    return Erase(std::make_pair(std::string("idtrust"), idID));
+}
+
 bool CWalletDB::WriteBestBlock(const CBlockLocator& locator)
 {
     nWalletDBUpdated++;
@@ -856,6 +878,40 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
             CHDChain chain;
             ssValue >> chain;
             pwallet->SetHDChain(chain, true);
+        }
+        else if (strType == "blockutxo")
+        {
+            uint256 txID;
+            int32_t outNum;
+            ssValue >> txID;
+            ssValue >> outNum;
+            // TODO: HARDENING - store this in the UTXO blacklist of a wallet (add one)
+        }
+        else if (strType == "curtrust")
+        {
+            uint160 currencyID;
+            CRating trust;
+            ssValue >> currencyID;
+            ssValue >> trust;
+            if (currencyID.IsNull() || !trust.IsValid())
+            {
+                strErr = "Error reading wallet database: invalid currency trust score entry";
+                return false;
+            }
+            pwallet->LoadCurrencyTrust(currencyID, trust);
+        }
+        else if (strType == "idtrust")
+        {
+            uint160 idID;
+            CRating trust;
+            ssValue >> idID;
+            ssValue >> trust;
+            if (idID.IsNull() || !trust.IsValid())
+            {
+                strErr = "Error reading wallet database: invalid identity trust score entry";
+                return false;
+            }
+            pwallet->LoadIdentityTrust(idID, trust);
         }
     } catch (...)
     {

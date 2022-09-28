@@ -441,6 +441,64 @@ std::set<CKeyID> CBasicKeyStore::GetIdentityKeyIDs()
     return ret;
 }
 
+void CBasicKeyStore::ClearCurrencyTrust()
+{
+    mapCurrencyTrust.clear();
+}
+
+bool CBasicKeyStore::RemoveCurrencyTrust(const uint160 &currencyID)
+{
+    return (bool)mapCurrencyTrust.erase(currencyID);
+}
+
+CRating CBasicKeyStore::GetCurrencyTrust(const uint160 &currencyID) const
+{
+    auto it = mapCurrencyTrust.find(currencyID);
+    if (it == mapCurrencyTrust.end())
+    {
+        return CRating();
+    }
+    else
+    {
+        return it->second;
+    }
+}
+
+bool CBasicKeyStore::SetCurrencyTrust(const uint160 &currencyID, const CRating &trust)
+{
+    mapCurrencyTrust[currencyID] = trust;
+    return true;
+}
+
+void CBasicKeyStore::ClearIdentityTrust()
+{
+    mapIdentityTrust.clear();
+}
+
+bool CBasicKeyStore::RemoveIdentityTrust(const CIdentityID &idID)
+{
+    return (bool)mapIdentityTrust.erase(idID);
+}
+
+CRating CBasicKeyStore::GetIdentityTrust(const CIdentityID &idID) const
+{
+    auto it = mapIdentityTrust.find(idID);
+    if (it == mapIdentityTrust.end())
+    {
+        return CRating();
+    }
+    else
+    {
+        return it->second;
+    }
+}
+
+bool CBasicKeyStore::SetIdentityTrust(const CIdentityID &idID, const CRating &trust)
+{
+    mapIdentityTrust[idID] = trust;
+    return true;
+}
+
 bool CBasicKeyStore::AddWatchOnly(const CScript &dest)
 {
     LOCK(cs_KeyStore);

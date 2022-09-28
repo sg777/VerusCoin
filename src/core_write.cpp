@@ -1184,6 +1184,36 @@ UniValue CIdentity::ToUniValue() const
     }
     obj.push_back(Pair("contentmap", hashes));
 
+    if (nVersion >= VERSION_PBAAS)
+    {
+        hashes = UniValue(UniValue::VOBJ);
+        UniValue entryArr(UniValue::VARR);
+        uint160 lastHash;
+        for (auto &entry : contentMultiMap)
+        {
+            if (entry.first.IsNull())
+            {
+                continue;
+            }
+            else if (entry.first == lastHash)
+            {
+                entryArr.push_back(HexBytes(&(entry.second[0]), entry.second.size()));
+            }
+            else if (!lastHash.IsNull())
+            {
+                hashes.push_back(Pair(lastHash.GetHex(), entryArr));
+                entryArr = UniValue(UniValue::VARR);
+                lastHash = entry.first;
+                entryArr.push_back(HexBytes(&(entry.second[0]), entry.second.size()));
+            }
+        }
+        if (!lastHash.IsNull())
+        {
+            hashes.push_back(Pair(lastHash.GetHex(), entryArr));
+        }
+        obj.push_back(Pair("contentmultimap", hashes));
+    }
+
     obj.push_back(Pair("revocationauthority", EncodeDestination(CTxDestination(CIdentityID(revocationAuthority)))));
     obj.push_back(Pair("recoveryauthority", EncodeDestination(CTxDestination(CIdentityID(recoveryAuthority)))));
     if (privateAddresses.size())

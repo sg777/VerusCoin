@@ -1136,6 +1136,16 @@ public:
     bool RemoveIdentity(const CIdentityMapKey &mapKey, const uint256 &txid=uint256());
     bool LoadIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
 
+    void ClearCurrencyTrust();
+    bool RemoveCurrencyTrust(const uint160 &currencyID);
+    bool SetCurrencyTrust(const uint160 &currencyID, const CRating &trust);
+    bool LoadCurrencyTrust(const uint160 &currencyID, const CRating &trust);
+
+    void ClearIdentityTrust();
+    bool RemoveIdentityTrust(const CIdentityID &idID);
+    bool SetIdentityTrust(const CIdentityID &idID, const CRating &trust);
+    bool LoadIdentityTrust(const CIdentityID &idID, const CRating &trust);
+
     virtual std::set<CKeyID> GetTransactionDestinationIDs();
 
     //! Adds a destination data tuple to the store, and saves it to disk

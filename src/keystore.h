@@ -69,6 +69,18 @@ public:
     virtual bool GetIdentity(const CIdentityMapKey &mapKey, const uint256 &txid, std::pair<CIdentityMapKey, CIdentityMapValue> &keyAndIdentity) const =0;
     virtual bool GetFirstIdentity(const CIdentityID &idID, std::pair<CIdentityMapKey, CIdentityMapValue> &keyAndIdentity, uint32_t gteHeight=0) const =0;
 
+    //! Support for trust and ratings for currencies
+    virtual void ClearCurrencyTrust();
+    virtual bool RemoveCurrencyTrust(const uint160 &currencyID);
+    virtual CRating GetCurrencyTrust(const uint160 &currencyID) const;
+    virtual bool SetCurrencyTrust(const uint160 &currencyID, const CRating &trust);
+
+    //! Support for trust and ratings for identities
+    virtual void ClearIdentityTrust();
+    virtual bool RemoveIdentityTrust(const CIdentityID &idID);
+    virtual CRating GetIdentityTrust(const CIdentityID &idID) const;
+    virtual bool SetIdentityTrust(const CIdentityID &idID, const CRating &trust);
+
     //! Add a spending key to the store.
     virtual bool AddSproutSpendingKey(const libzcash::SproutSpendingKey &sk) =0;
 
@@ -115,6 +127,8 @@ public:
 typedef std::map<CKeyID, CKey> KeyMap;
 typedef std::map<CScriptID, CScript> ScriptMap;
 typedef std::multimap<arith_uint256, CIdentityMapValue> IdentityMap;
+typedef std::map<uint160, CRating> CurrencyTrustMap;
+typedef std::map<uint160, CRating> IdentityTrustMap;
 typedef std::set<CScript> WatchOnlySet;
 typedef std::map<libzcash::SproutPaymentAddress, libzcash::SproutSpendingKey> SproutSpendingKeyMap;
 typedef std::map<libzcash::SproutPaymentAddress, libzcash::SproutViewingKey> SproutViewingKeyMap;
@@ -135,6 +149,8 @@ protected:
     KeyMap mapKeys;
     ScriptMap mapScripts;
     IdentityMap mapIdentities;
+    CurrencyTrustMap mapCurrencyTrust;
+    IdentityTrustMap mapIdentityTrust;
 
     WatchOnlySet setWatchOnly;
     SproutSpendingKeyMap mapSproutSpendingKeys;
@@ -209,6 +225,16 @@ public:
                                std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> &imsigner, 
                                std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> &notmine) const;
     virtual std::set<CKeyID> GetIdentityKeyIDs();
+
+    virtual void ClearCurrencyTrust();
+    virtual bool RemoveCurrencyTrust(const uint160 &currencyID);
+    virtual CRating GetCurrencyTrust(const uint160 &currencyID) const;
+    virtual bool SetCurrencyTrust(const uint160 &currencyID, const CRating &trust);
+
+    virtual void ClearIdentityTrust();
+    virtual bool RemoveIdentityTrust(const CIdentityID &idID);
+    virtual CRating GetIdentityTrust(const CIdentityID &idID) const;
+    virtual bool SetIdentityTrust(const CIdentityID &idID, const CRating &trust);
 
     virtual bool AddWatchOnly(const CScript &dest);
     virtual bool RemoveWatchOnly(const CScript &dest);

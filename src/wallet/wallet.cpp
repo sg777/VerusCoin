@@ -653,6 +653,76 @@ bool CWallet::LoadIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValu
     return CCryptoKeyStore::AddUpdateIdentity(mapKey, identity);
 }
 
+void CWallet::ClearIdentityTrust()
+{
+    if (fFileBacked)
+    {
+        for (auto &idTrustPair : mapIdentityTrust)
+        {
+            CWalletDB(strWalletFile).EraseIDTrust(idTrustPair.first);
+        }    
+    }
+    CCryptoKeyStore::ClearIdentityTrust();
+}
+
+bool CWallet::SetIdentityTrust(const CIdentityID &idID, const CRating &trust)
+{
+    if (!CCryptoKeyStore::SetIdentityTrust(idID, trust))
+        return false;
+    if (!fFileBacked)
+        return true;
+    return CWalletDB(strWalletFile).WriteIDTrust(idID, trust);
+}
+
+bool CWallet::RemoveIdentityTrust(const CIdentityID &idID)
+{
+    if (!CCryptoKeyStore::RemoveIdentityTrust(idID))
+        return false;
+    if (!fFileBacked)
+        return true;
+    return CWalletDB(strWalletFile).EraseIDTrust(idID);
+}
+
+bool CWallet::LoadIdentityTrust(const CIdentityID &idID, const CRating &trust)
+{
+    return CCryptoKeyStore::SetIdentityTrust(idID, trust);
+}
+
+void CWallet::ClearCurrencyTrust()
+{
+    if (fFileBacked)
+    {
+        for (auto &currencyTrustPair : mapCurrencyTrust)
+        {
+            CWalletDB(strWalletFile).EraseCurrencyTrust(currencyTrustPair.first);
+        }    
+    }
+    CCryptoKeyStore::ClearCurrencyTrust();
+}
+
+bool CWallet::SetCurrencyTrust(const uint160 &currencyID, const CRating &trust)
+{
+    if (!CCryptoKeyStore::SetCurrencyTrust(currencyID, trust))
+        return false;
+    if (!fFileBacked)
+        return true;
+    return CWalletDB(strWalletFile).WriteCurrencyTrust(currencyID, trust);
+}
+
+bool CWallet::RemoveCurrencyTrust(const uint160 &currencyID)
+{
+    if (!CCryptoKeyStore::RemoveCurrencyTrust(currencyID))
+        return false;
+    if (!fFileBacked)
+        return true;
+    return CWalletDB(strWalletFile).EraseCurrencyTrust(currencyID);
+}
+
+bool CWallet::LoadCurrencyTrust(const uint160 &currencyID, const CRating &trust)
+{
+    return CCryptoKeyStore::SetCurrencyTrust(currencyID, trust);
+}
+
 // returns all key IDs that are destinations for UTXOs in the wallet
 std::set<CKeyID> CWallet::GetTransactionDestinationIDs()
 {

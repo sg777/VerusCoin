@@ -190,6 +190,12 @@ public:
     bool WriteIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &id);
     bool EraseIdentity(const CIdentityMapKey &mapKey);
 
+    bool WriteCurrencyTrust(const uint160 &currencyID, const CRating &trust);
+    bool EraseCurrencyTrust(const uint160 &currencyID);
+
+    bool WriteIDTrust(const uint160 &idID, const CRating &trust);
+    bool EraseIDTrust(const uint160 &idID);
+
     bool WriteBestBlock(const CBlockLocator& locator);
     bool ReadBestBlock(CBlockLocator& locator);
 
