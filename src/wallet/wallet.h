@@ -1139,12 +1139,18 @@ public:
     void ClearCurrencyTrust();
     bool RemoveCurrencyTrust(const uint160 &currencyID);
     bool SetCurrencyTrust(const uint160 &currencyID, const CRating &trust);
+    bool SetCurrencyTrustMode(int trustMode=CRating::TRUSTMODE_NORESTRICTION);
     bool LoadCurrencyTrust(const uint160 &currencyID, const CRating &trust);
+    bool LoadCurrencyTrustMode(int trustMode);
+    CCurrencyValueMap RemoveBlockedCurrencies(const CCurrencyValueMap inputMap) const;
 
     void ClearIdentityTrust();
     bool RemoveIdentityTrust(const CIdentityID &idID);
     bool SetIdentityTrust(const CIdentityID &idID, const CRating &trust);
+    bool SetIdentityTrustMode(int trustMode=CRating::TRUSTMODE_NORESTRICTION);
     bool LoadIdentityTrust(const CIdentityID &idID, const CRating &trust);
+    bool LoadIdentityTrustMode(int trustMode);
+    bool IsBlockedIdentity(const CIdentityID &idID) const;
 
     virtual std::set<CKeyID> GetTransactionDestinationIDs();
 

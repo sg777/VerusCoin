@@ -1034,6 +1034,12 @@ public:
         TRUST_FIRST = 0,
         TRUST_LAST = 2,
 
+        TRUSTMODE_NORESTRICTION = 0,        // ignore whitelist and blacklist data
+        TRUSTMODE_WHITELISTONLY = 1,        // default to displaying white list only, segregate all non-white list utxos when possible
+        TRUSTMODE_BLACKLISTONLY = 2,        // default to displaying everything except the blacklist, segregate blacklist
+        TRUSTMODE_FIRST = 0,
+        TRUSTMODE_LAST = 2,
+
         // core rating definitions
         RATING_UNKNOWN = 0,                 // unknown rating
         RATING_1 = 1,                       // ratings 1 - 10

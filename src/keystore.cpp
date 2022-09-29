@@ -470,6 +470,24 @@ bool CBasicKeyStore::SetCurrencyTrust(const uint160 &currencyID, const CRating &
     return true;
 }
 
+bool CBasicKeyStore::SetCurrencyTrustMode(int trustMode)
+{
+    if (trustMode >= CRating::TRUSTMODE_FIRST && trustMode <= CRating::TRUSTMODE_LAST)
+    {
+        currencyTrustMode = trustMode;
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+int CBasicKeyStore::GetCurrencyTrustMode() const
+{
+    return currencyTrustMode;
+}
+
 void CBasicKeyStore::ClearIdentityTrust()
 {
     mapIdentityTrust.clear();
@@ -497,6 +515,24 @@ bool CBasicKeyStore::SetIdentityTrust(const CIdentityID &idID, const CRating &tr
 {
     mapIdentityTrust[idID] = trust;
     return true;
+}
+
+bool CBasicKeyStore::SetIdentityTrustMode(int trustMode)
+{
+    if (trustMode >= CRating::TRUSTMODE_FIRST && trustMode <= CRating::TRUSTMODE_LAST)
+    {
+        identityTrustMode = trustMode;
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+int CBasicKeyStore::GetIdentityTrustMode() const
+{
+    return identityTrustMode;
 }
 
 bool CBasicKeyStore::AddWatchOnly(const CScript &dest)

@@ -74,12 +74,16 @@ public:
     virtual bool RemoveCurrencyTrust(const uint160 &currencyID) = 0;
     virtual CRating GetCurrencyTrust(const uint160 &currencyID) const = 0;
     virtual bool SetCurrencyTrust(const uint160 &currencyID, const CRating &trust) = 0;
+    virtual bool SetCurrencyTrustMode(int trustMode=CRating::TRUSTMODE_NORESTRICTION) = 0;
+    virtual int GetCurrencyTrustMode() const = 0;
 
     //! Support for trust and ratings for identities
     virtual void ClearIdentityTrust() = 0;
     virtual bool RemoveIdentityTrust(const CIdentityID &idID) = 0;
     virtual CRating GetIdentityTrust(const CIdentityID &idID) const = 0;
     virtual bool SetIdentityTrust(const CIdentityID &idID, const CRating &trust) = 0;
+    virtual bool SetIdentityTrustMode(int trustMode=CRating::TRUSTMODE_NORESTRICTION) = 0;
+    virtual int GetIdentityTrustMode() const = 0;
 
     //! Add a spending key to the store.
     virtual bool AddSproutSpendingKey(const libzcash::SproutSpendingKey &sk) =0;
@@ -150,7 +154,9 @@ protected:
     ScriptMap mapScripts;
     IdentityMap mapIdentities;
     CurrencyTrustMap mapCurrencyTrust;
+    int currencyTrustMode;
     IdentityTrustMap mapIdentityTrust;
+    int identityTrustMode;
 
     WatchOnlySet setWatchOnly;
     SproutSpendingKeyMap mapSproutSpendingKeys;
@@ -230,11 +236,15 @@ public:
     virtual bool RemoveCurrencyTrust(const uint160 &currencyID);
     virtual CRating GetCurrencyTrust(const uint160 &currencyID) const;
     virtual bool SetCurrencyTrust(const uint160 &currencyID, const CRating &trust);
+    virtual bool SetCurrencyTrustMode(int trustMode=CRating::TRUSTMODE_NORESTRICTION);
+    virtual int GetCurrencyTrustMode() const;
 
     virtual void ClearIdentityTrust();
     virtual bool RemoveIdentityTrust(const CIdentityID &idID);
     virtual CRating GetIdentityTrust(const CIdentityID &idID) const;
     virtual bool SetIdentityTrust(const CIdentityID &idID, const CRating &trust);
+    virtual bool SetIdentityTrustMode(int trustMode=CRating::TRUSTMODE_NORESTRICTION);
+    virtual int GetIdentityTrustMode() const;
 
     virtual bool AddWatchOnly(const CScript &dest);
     virtual bool RemoveWatchOnly(const CScript &dest);

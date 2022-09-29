@@ -659,7 +659,7 @@ void CWallet::ClearIdentityTrust()
     {
         for (auto &idTrustPair : mapIdentityTrust)
         {
-            CWalletDB(strWalletFile).EraseIDTrust(idTrustPair.first);
+            CWalletDB(strWalletFile).EraseIdentityTrust(idTrustPair.first);
         }    
     }
     CCryptoKeyStore::ClearIdentityTrust();
@@ -671,7 +671,7 @@ bool CWallet::SetIdentityTrust(const CIdentityID &idID, const CRating &trust)
         return false;
     if (!fFileBacked)
         return true;
-    return CWalletDB(strWalletFile).WriteIDTrust(idID, trust);
+    return CWalletDB(strWalletFile).WriteIdentityTrust(idID, trust);
 }
 
 bool CWallet::RemoveIdentityTrust(const CIdentityID &idID)
@@ -680,12 +680,26 @@ bool CWallet::RemoveIdentityTrust(const CIdentityID &idID)
         return false;
     if (!fFileBacked)
         return true;
-    return CWalletDB(strWalletFile).EraseIDTrust(idID);
+    return CWalletDB(strWalletFile).EraseIdentityTrust(idID);
 }
 
 bool CWallet::LoadIdentityTrust(const CIdentityID &idID, const CRating &trust)
 {
     return CCryptoKeyStore::SetIdentityTrust(idID, trust);
+}
+
+bool CWallet::SetIdentityTrustMode(int trustMode)
+{
+    if (!CCryptoKeyStore::SetIdentityTrustMode(trustMode))
+        return false;
+    if (!fFileBacked)
+        return true;
+    return CWalletDB(strWalletFile).WriteIdentityTrustMode(trustMode);
+}
+
+bool CWallet::LoadIdentityTrustMode(int trustMode)
+{
+    return CCryptoKeyStore::SetIdentityTrustMode(trustMode);
 }
 
 void CWallet::ClearCurrencyTrust()
@@ -721,6 +735,20 @@ bool CWallet::RemoveCurrencyTrust(const uint160 &currencyID)
 bool CWallet::LoadCurrencyTrust(const uint160 &currencyID, const CRating &trust)
 {
     return CCryptoKeyStore::SetCurrencyTrust(currencyID, trust);
+}
+
+bool CWallet::SetCurrencyTrustMode(int trustMode)
+{
+    if (!CCryptoKeyStore::SetCurrencyTrustMode(trustMode))
+        return false;
+    if (!fFileBacked)
+        return true;
+    return CWalletDB(strWalletFile).WriteCurrencyTrustMode(trustMode);
+}
+
+bool CWallet::LoadCurrencyTrustMode(int trustMode)
+{
+    return CCryptoKeyStore::SetCurrencyTrustMode(trustMode);
 }
 
 // returns all key IDs that are destinations for UTXOs in the wallet
@@ -2673,9 +2701,11 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                         if (pblock)
                         {
                             // if we used to be able to sign with this identity, can now, or we put it on a manual hold, and it's not invalid or blacklisted, store it
-                            if ((wasCanSignCanSpend.first || canSignCanSpend.first || (idHistory.first.flags & idHistory.first.MANUAL_HOLD)) && !(idHistory.first.flags & idHistory.first.BLACKLIST))
+                            if ((wasCanSignCanSpend.first || canSignCanSpend.first || (idHistory.first.flags & idHistory.first.MANUAL_HOLD)) &&
+                                !(idHistory.first.flags & idHistory.first.BLACKLIST) &&
+                                !IsBlockedIdentity(idID))
                             {
-                                idMapKey = CIdentityMapKey(identity.GetID(), 
+                                idMapKey = CIdentityMapKey(idID, 
                                                             nHeight, 
                                                             blockOrder, 
                                                             idHistory.first.VALID | 
@@ -2694,6 +2724,11 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                             std::pair<bool, bool> swapBools = canSignCanSpend;
                             canSignCanSpend = wasCanSignCanSpend;
                             wasCanSignCanSpend = swapBools;
+                        }
+
+                        if (IsBlockedIdentity(idID))
+                        {
+                            canSignCanSpend = std::make_pair(false, false);
                         }
 
                         // store transitions as needed in the wallet
@@ -3465,7 +3500,7 @@ CCurrencyValueMap CWallet::GetReserveDebit(const CTxIn &txin, const isminefilter
             const CWalletTx& prev = (*mi).second;
             if (txin.prevout.n < prev.vout.size())
                 if (::IsMine(*this, prev.vout[txin.prevout.n].scriptPubKey, nHeight) & filter)
-                    return prev.vout[txin.prevout.n].ReserveOutValue();
+                    return RemoveBlockedCurrencies(prev.vout[txin.prevout.n].ReserveOutValue());
         }
     }
     return CCurrencyValueMap();
@@ -3773,9 +3808,70 @@ CAmount CWallet::GetCredit(const CTransaction& tx, const int32_t &voutNum, const
     return ((IsMine(tx.vout[voutNum], nHeight) & filter) ? tx.vout[voutNum].nValue : 0);
 }
 
+bool CWallet::IsBlockedIdentity(const CIdentityID &idID) const
+{
+    if (identityTrustMode != CRating::TRUSTMODE_NORESTRICTION)
+    {
+        if (identityTrustMode == CRating::TRUSTMODE_WHITELISTONLY)
+        {
+            if (GetIdentityTrust(idID).trustLevel != CRating::TRUST_WHITEHAT)
+            {
+                return true;
+            }
+        }
+        else
+        {
+            if (GetIdentityTrust(idID).trustLevel == CRating::TRUST_BLACKHAT)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+CCurrencyValueMap CWallet::RemoveBlockedCurrencies(const CCurrencyValueMap inputMap) const
+{
+    CCurrencyValueMap retVal = inputMap;
+    if (currencyTrustMode != CRating::TRUSTMODE_NORESTRICTION)
+    {
+        if (currencyTrustMode == CRating::TRUSTMODE_WHITELISTONLY)
+        {
+            // remove all currencies that aren't on the white list
+            for (auto &oneCurVal : inputMap.valueMap)
+            {
+                if (GetCurrencyTrust(oneCurVal.first).trustLevel != CRating::TRUST_WHITEHAT)
+                {
+                    retVal.valueMap.erase(oneCurVal.first);
+                    if (!retVal.valueMap.size())
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+        else
+        {
+            // remove all currencies on the black list
+            for (auto &oneCurVal : inputMap.valueMap)
+            {
+                if (GetCurrencyTrust(oneCurVal.first).trustLevel == CRating::TRUST_BLACKHAT)
+                {
+                    retVal.valueMap.erase(oneCurVal.first);
+                    if (!retVal.valueMap.size())
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    return retVal;
+}
+
 CCurrencyValueMap CWallet::GetReserveCredit(const CTransaction& tx, int32_t voutNum, const isminefilter& filter) const
 {
-    return ((IsMine(tx.vout[voutNum]) & filter) ? tx.vout[voutNum].ReserveOutValue() : CCurrencyValueMap());
+    return ((IsMine(tx.vout[voutNum]) & filter) ? RemoveBlockedCurrencies(tx.vout[voutNum].ReserveOutValue()) : CCurrencyValueMap());
 }
 
 CCurrencyValueMap CWallet::GetReserveCredit(const CTransaction& tx, const isminefilter& filter) const
@@ -5300,6 +5396,15 @@ void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed
                           (fIncludeNative && pcoin->vout[i].nValue)))
                     {
                         continue;
+                    }
+
+                    if (currencyTrustMode != CRating::TRUSTMODE_NORESTRICTION)
+                    {
+                        // if no currencies we will pay attention to and no native, don't return this output
+                        if (!RemoveBlockedCurrencies(rOut).valueMap.size() && !(fIncludeNative && pcoin->vout[i].nValue))
+                        {
+                            continue;
+                        }
                     }
 
                     if (pOnlyFromDest)

@@ -240,18 +240,28 @@ bool CWalletDB::WriteCurrencyTrust(const uint160 &currencyID, const CRating &tru
     nWalletDBUpdated++;
     return Write(std::make_pair(std::string("curtrust"), currencyID), trust);
 }
+bool CWalletDB::WriteCurrencyTrustMode(int32_t trustMode)
+{
+    nWalletDBUpdated++;
+    return Write(std::string("curtrustmode"), trustMode);
+}
 bool CWalletDB::EraseCurrencyTrust(const uint160 &currencyID)
 {
     nWalletDBUpdated++;
     return Erase(std::make_pair(std::string("curtrust"), currencyID));
 }
 
-bool CWalletDB::WriteIDTrust(const uint160 &idID, const CRating &trust)
+bool CWalletDB::WriteIdentityTrust(const uint160 &idID, const CRating &trust)
 {
     nWalletDBUpdated++;
     return Write(std::make_pair(std::string("idtrust"), idID), trust);
 }
-bool CWalletDB::EraseIDTrust(const uint160 &idID)
+bool CWalletDB::WriteIdentityTrustMode(int32_t trustMode)
+{
+    nWalletDBUpdated++;
+    return Write(std::string("idtrustmode"), trustMode);
+}
+bool CWalletDB::EraseIdentityTrust(const uint160 &idID)
 {
     nWalletDBUpdated++;
     return Erase(std::make_pair(std::string("idtrust"), idID));
@@ -913,6 +923,28 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
             }
             pwallet->LoadIdentityTrust(idID, trust);
         }
+        else if (strType == "curtrustmode")
+        {
+            int32_t trustMode;
+            ssValue >> trustMode;
+            if (trustMode < CRating::TRUSTMODE_FIRST || trustMode > CRating::TRUSTMODE_LAST)
+            {
+                strErr = "Error reading wallet database: invalid currency trust mode entry";
+                return false;
+            }
+            pwallet->LoadCurrencyTrustMode(trustMode);
+        }
+        else if (strType == "idtrustmode")
+        {
+            int32_t trustMode;
+            ssValue >> trustMode;
+            if (trustMode < CRating::TRUSTMODE_FIRST || trustMode > CRating::TRUSTMODE_LAST)
+            {
+                strErr = "Error reading wallet database: invalid identity trust mode entry";
+                return false;
+            }
+            pwallet->LoadIdentityTrustMode(trustMode);
+        }
     } catch (...)
     {
         return false;
@@ -1048,6 +1080,9 @@ DBErrors CWalletDB::LoadWallet(CWallet* pwallet)
             LogPrintf("Error getting wallet database cursor\n");
             return DB_CORRUPT;
         }
+
+        pwallet->LoadCurrencyTrustMode(CRating::TRUSTMODE_NORESTRICTION);
+        pwallet->LoadIdentityTrustMode(CRating::TRUSTMODE_NORESTRICTION);
 
         while (true)
         {
