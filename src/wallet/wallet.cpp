@@ -2700,24 +2700,64 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 
                     if (!doneWithID)
                     {
+                        int identityTrustLevel = CRating::TRUST_UNKNOWN;
+                        int identityTrustMode = CRating::TRUSTMODE_NORESTRICTION;
                         if (pblock)
                         {
+                            identityTrustLevel = GetIdentityTrust(idID).trustLevel;
+                            identityTrustMode = GetIdentityTrustMode();
+
                             // if we used to be able to sign with this identity, can now, or we put it on a manual hold, and it's not invalid or blacklisted, store it
                             if ((wasCanSignCanSpend.first || canSignCanSpend.first || (idHistory.first.flags & idHistory.first.MANUAL_HOLD)) &&
                                 !(idHistory.first.flags & idHistory.first.BLACKLIST) &&
-                                !IsBlockedIdentity(idID))
+                                (identityTrustMode == CRating::TRUSTMODE_NORESTRICTION || identityTrustLevel != CRating::TRUST_BLOCKED))
                             {
-                                idMapKey = CIdentityMapKey(idID, 
-                                                            nHeight, 
-                                                            blockOrder, 
-                                                            idHistory.first.VALID | 
-                                                                ((idHistory.second.IsValid() ? idHistory.first.flags : 0) & idHistory.first.MANUAL_HOLD) | 
-                                                                (canSignCanSpend.first ? idHistory.first.CAN_SIGN : 0) | 
-                                                                (canSignCanSpend.second ? idHistory.first.CAN_SPEND : 0));
-                                AddUpdateIdentity(idMapKey, identity);
-                                if (canSignCanSpend.first)
+                                bool approvedForSync = true;
+                                if (identityTrustMode == CRating::TRUSTMODE_WHITELISTONLY && identityTrustLevel < CRating::TRUST_APPROVED)
                                 {
-                                    isNewID = true;
+                                    // are both revocation and recovery whitelisted/not blocked in white list mode?
+                                    bool revocationAndRecoveryApproved = GetIdentityTrust(identity.revocationAuthority).trustLevel == CRating::TRUST_APPROVED &&
+                                                                         GetIdentityTrust(identity.recoveryAuthority).trustLevel == CRating::TRUST_APPROVED;
+                                    bool approvedOrSelf = (identity.revocationAuthority == identity.recoveryAuthority ||
+                                                           GetIdentityTrust(identity.revocationAuthority).trustLevel == CRating::TRUST_APPROVED) &&
+                                                           (identity.recoveryAuthority == idID ||
+                                                           GetIdentityTrust(identity.recoveryAuthority).trustLevel == CRating::TRUST_APPROVED);
+
+                                    if (!identity.HasTokenizedControl() &&
+                                        (revocationAndRecoveryApproved ||
+                                         (approvedOrSelf &&
+                                          canSignCanSpend.second == true &&
+                                          identity.minSigs > (identity.primaryAddresses.size() >> 1))))
+                                    {
+                                        // if this is an ID that is not on the block list and has:
+                                        // 1) no separate revocation/recovery
+                                        // 2) no tokenized ID control
+                                        // 3) can spend is true, &
+                                        // 4) we either have whitelisted revocation and recovery or control a majority or 
+                                        //    greater of primary addresses & majority or greater are needed for spend
+                                        // -- we add it to the white list and continue, as it cannot be taken back from us
+                                        // in any way without someone controlling keys from this wallet anyhow
+                                        SetIdentityTrust(idID, CRating(CRating::VERSION_CURRENT, CRating::TRUST_APPROVED));
+                                    }
+                                    else
+                                    {
+                                        approvedForSync = false;
+                                    }
+                                }
+                                if (approvedForSync)
+                                {
+                                    idMapKey = CIdentityMapKey(idID, 
+                                                                nHeight, 
+                                                                blockOrder, 
+                                                                idHistory.first.VALID | 
+                                                                    ((idHistory.second.IsValid() ? idHistory.first.flags : 0) & idHistory.first.MANUAL_HOLD) | 
+                                                                    (canSignCanSpend.first ? idHistory.first.CAN_SIGN : 0) | 
+                                                                    (canSignCanSpend.second ? idHistory.first.CAN_SPEND : 0));
+                                    AddUpdateIdentity(idMapKey, identity);
+                                    if (canSignCanSpend.first)
+                                    {
+                                        isNewID = true;
+                                    }
                                 }
                             }
                         }
@@ -3816,14 +3856,14 @@ bool CWallet::IsBlockedIdentity(const CIdentityID &idID) const
     {
         if (identityTrustMode == CRating::TRUSTMODE_WHITELISTONLY)
         {
-            if (GetIdentityTrust(idID).trustLevel != CRating::TRUST_WHITEHAT)
+            if (GetIdentityTrust(idID).trustLevel != CRating::TRUST_APPROVED)
             {
                 return true;
             }
         }
         else
         {
-            if (GetIdentityTrust(idID).trustLevel == CRating::TRUST_BLACKHAT)
+            if (GetIdentityTrust(idID).trustLevel == CRating::TRUST_BLOCKED)
             {
                 return true;
             }
@@ -3842,7 +3882,7 @@ CCurrencyValueMap CWallet::RemoveBlockedCurrencies(const CCurrencyValueMap input
             // remove all currencies that aren't on the white list
             for (auto &oneCurVal : inputMap.valueMap)
             {
-                if (GetCurrencyTrust(oneCurVal.first).trustLevel != CRating::TRUST_WHITEHAT)
+                if (GetCurrencyTrust(oneCurVal.first).trustLevel != CRating::TRUST_APPROVED)
                 {
                     retVal.valueMap.erase(oneCurVal.first);
                     if (!retVal.valueMap.size())
@@ -3857,7 +3897,7 @@ CCurrencyValueMap CWallet::RemoveBlockedCurrencies(const CCurrencyValueMap input
             // remove all currencies on the black list
             for (auto &oneCurVal : inputMap.valueMap)
             {
-                if (GetCurrencyTrust(oneCurVal.first).trustLevel == CRating::TRUST_BLACKHAT)
+                if (GetCurrencyTrust(oneCurVal.first).trustLevel == CRating::TRUST_BLOCKED)
                 {
                     retVal.valueMap.erase(oneCurVal.first);
                     if (!retVal.valueMap.size())

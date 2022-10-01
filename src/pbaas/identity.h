@@ -1029,8 +1029,8 @@ public:
         VERSION_CURRENT = 1,
 
         TRUST_UNKNOWN = 0,                  // unknown and can be included in exploration
-        TRUST_WHITEHAT = 1,                 // explicitly believed to be trustworthy enough to interact with
-        TRUST_BLACKHAT = 2,                 // suspected or known to be untrustworthy and should not be interacted with
+        TRUST_BLOCKED = 1,                  // suspected or known to be untrustworthy and should not be interacted with
+        TRUST_APPROVED = 2,                 // explicitly believed to be trustworthy enough to interact with
         TRUST_FIRST = 0,
         TRUST_LAST = 2,
 
