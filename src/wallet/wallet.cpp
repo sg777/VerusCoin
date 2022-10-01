@@ -2713,12 +2713,14 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                 (identityTrustMode == CRating::TRUSTMODE_NORESTRICTION || identityTrustLevel != CRating::TRUST_BLOCKED))
                             {
                                 bool approvedForSync = true;
-                                if (identityTrustMode == CRating::TRUSTMODE_WHITELISTONLY && identityTrustLevel < CRating::TRUST_APPROVED)
+                                // are both revocation and recovery whitelisted/not blocked in white list mode?
+                                bool revocationAndRecoveryApproved = GetIdentityTrust(identity.revocationAuthority).trustLevel == CRating::TRUST_APPROVED &&
+                                                                     GetIdentityTrust(identity.recoveryAuthority).trustLevel == CRating::TRUST_APPROVED;
+                                if ((revocationAndRecoveryApproved || identityTrustMode == CRating::TRUSTMODE_WHITELISTONLY) &&
+                                    identityTrustLevel < CRating::TRUST_APPROVED)
                                 {
-                                    // are both revocation and recovery whitelisted/not blocked in white list mode?
-                                    bool revocationAndRecoveryApproved = GetIdentityTrust(identity.revocationAuthority).trustLevel == CRating::TRUST_APPROVED &&
-                                                                         GetIdentityTrust(identity.recoveryAuthority).trustLevel == CRating::TRUST_APPROVED;
-                                    bool approvedOrSelf = (identity.revocationAuthority == identity.recoveryAuthority ||
+                                    bool approvedOrSelf = revocationAndRecoveryApproved ||
+                                                          (identity.revocationAuthority == identity.recoveryAuthority ||
                                                            GetIdentityTrust(identity.revocationAuthority).trustLevel == CRating::TRUST_APPROVED) &&
                                                            (identity.recoveryAuthority == idID ||
                                                            GetIdentityTrust(identity.recoveryAuthority).trustLevel == CRating::TRUST_APPROVED);
@@ -2741,7 +2743,7 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                     }
                                     else
                                     {
-                                        approvedForSync = false;
+                                        approvedForSync = identityTrustMode != CRating::TRUSTMODE_WHITELISTONLY;
                                     }
                                 }
                                 if (approvedForSync)
