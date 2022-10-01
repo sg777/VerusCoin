@@ -769,9 +769,7 @@ bool CScript::IsSpendableOutputType() const
     {
         return IsSpendableOutputType(p);
     }
-    // default for non-CC outputs is true, this is to protect from accidentally spending specific CC output types, 
-    // even though they could be spent
-    return true;
+    return !IsOpReturn();
 }
 
 CCurrencyValueMap CReserveTransfer::TotalCurrencyOut() const

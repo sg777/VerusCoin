@@ -76,6 +76,8 @@ public:
     virtual bool SetCurrencyTrust(const uint160 &currencyID, const CRating &trust) = 0;
     virtual bool SetCurrencyTrustMode(int trustMode=CRating::TRUSTMODE_NORESTRICTION) = 0;
     virtual int GetCurrencyTrustMode() const = 0;
+    virtual const std::map<uint160, CRating> &GetCurrencyTrustMap() const = 0;
+    virtual const std::map<uint160, CRating> &GetIdentityTrustMap() const = 0;
 
     //! Support for trust and ratings for identities
     virtual void ClearIdentityTrust() = 0;
@@ -131,8 +133,6 @@ public:
 typedef std::map<CKeyID, CKey> KeyMap;
 typedef std::map<CScriptID, CScript> ScriptMap;
 typedef std::multimap<arith_uint256, CIdentityMapValue> IdentityMap;
-typedef std::map<uint160, CRating> CurrencyTrustMap;
-typedef std::map<uint160, CRating> IdentityTrustMap;
 typedef std::set<CScript> WatchOnlySet;
 typedef std::map<libzcash::SproutPaymentAddress, libzcash::SproutSpendingKey> SproutSpendingKeyMap;
 typedef std::map<libzcash::SproutPaymentAddress, libzcash::SproutViewingKey> SproutViewingKeyMap;
@@ -153,9 +153,10 @@ protected:
     KeyMap mapKeys;
     ScriptMap mapScripts;
     IdentityMap mapIdentities;
-    CurrencyTrustMap mapCurrencyTrust;
+
+    std::map<uint160, CRating> mapCurrencyTrust;
     int currencyTrustMode;
-    IdentityTrustMap mapIdentityTrust;
+    std::map<uint160, CRating> mapIdentityTrust;
     int identityTrustMode;
 
     WatchOnlySet setWatchOnly;
@@ -238,6 +239,10 @@ public:
     virtual bool SetCurrencyTrust(const uint160 &currencyID, const CRating &trust);
     virtual bool SetCurrencyTrustMode(int trustMode=CRating::TRUSTMODE_NORESTRICTION);
     virtual int GetCurrencyTrustMode() const;
+    virtual const std::map<uint160, CRating> &GetCurrencyTrustMap() const
+    {
+        return mapCurrencyTrust;
+    }
 
     virtual void ClearIdentityTrust();
     virtual bool RemoveIdentityTrust(const CIdentityID &idID);
@@ -245,6 +250,10 @@ public:
     virtual bool SetIdentityTrust(const CIdentityID &idID, const CRating &trust);
     virtual bool SetIdentityTrustMode(int trustMode=CRating::TRUSTMODE_NORESTRICTION);
     virtual int GetIdentityTrustMode() const;
+    virtual const std::map<uint160, CRating> &GetIdentityTrustMap() const
+    {
+        return mapIdentityTrust;
+    }
 
     virtual bool AddWatchOnly(const CScript &dest);
     virtual bool RemoveWatchOnly(const CScript &dest);

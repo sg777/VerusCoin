@@ -61,7 +61,8 @@ uint256 GetChainObjectHash(const CBaseChainObject &bo)
         const CChainObject<CProofRoot> *pNewProofRoot;
         const CChainObject<CReserveTransfer> *pExport;
         const CChainObject<CCrossChainProof> *pCrossChainProof;
-        const CChainObject<CCompositeChainObject> *pCompositeChainObject;
+        const CChainObject<CNotarySignature> *pNotarySignature;
+        const CChainObject<CEvidenceData> *pBytes;
     };
 
     retPtr = &bo;
@@ -89,8 +90,11 @@ uint256 GetChainObjectHash(const CBaseChainObject &bo)
         case CHAINOBJ_CROSSCHAINPROOF:
             return pCrossChainProof->GetHash();
 
-        case CHAINOBJ_COMPOSITEOBJECT:
-            return pCrossChainProof->GetHash();
+        case CHAINOBJ_NOTARYSIGNATURE:
+            return pNotarySignature->GetHash();
+
+        case CHAINOBJ_EVIDENCEDATA:
+            return pBytes->GetHash();
 
     }
     return uint256();
@@ -1467,6 +1471,16 @@ int8_t ObjTypeCode(const CCrossChainProof &obj)
 int8_t ObjTypeCode(const CCompositeChainObject &obj)
 {
     return CHAINOBJ_COMPOSITEOBJECT;
+}
+
+int8_t ObjTypeCode(const CNotarySignature &obj)
+{
+    return CHAINOBJ_NOTARYSIGNATURE;
+}
+
+int8_t ObjTypeCode(const CEvidenceData &obj)
+{
+    return CHAINOBJ_EVIDENCEDATA;
 }
 
 // this adds an opret to a mutable transaction that provides the necessary evidence of a signed, cheating stake transaction

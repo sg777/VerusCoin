@@ -11934,6 +11934,258 @@ UniValue getidentitieswithrecovery(const UniValue& params, bool fHelp)
     return retVal;
 }
 
+UniValue setidentitytrust(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "setidentitytrust '{\"clearall\": bool, \"setratings\":{\"id\":JSONRatingObject,...}, \"removeratings\":[\"id\",...], \"identitytrustmode\":<n>}'\n"
+            "\n\n"
+
+            "\nArguments\n"
+            "{\n"
+            "    \"clearall\": bool                             (bool, optional) clears all wallet identity trust lists before adding, removing, or trust mode operations\n"
+            "    \"setratings\":{\"id\":JSONRatingObject,...}   (obj, optional) replaces ratings for specified IDs with those given\n"
+            "    \"removeratings\":[\"id\",...]                 (strarray, optional) erases ratings for IDs specified\n"
+            "    \"identitytrustmode\": <n>                     (number, optional) 0 = no restriction on sync, 1 = only sync to IDs rated approved, 2 = sync to all IDs but those on block list\n"
+            "}\n"
+
+            "\nResult:\n"
+            "no return on success, else error\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("setidentitytrust", "\'{\"clearall\": bool, \"setratings\":{\"id\":JSONRatingObject,...}, \"removeratings\":[\"id\",...], \"identitytrustmode\":<n>}\'")
+            + HelpExampleRpc("setidentitytrust", "\'{\"clearall\": bool, \"setratings\":{\"id\":JSONRatingObject,...}, \"removeratings\":[\"id\",...], \"identitytrustmode\":<n>}\'")
+        );
+    }
+
+    bool clearAll = uni_get_bool(find_value(params[0], "clearall"));
+    UniValue setRatings = find_value(params[0], "setratings");
+    UniValue removeRatingArr = find_value(params[0], "removeratings");
+    UniValue identityTrustMode = find_value(params[0], "identitytrustmode");
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+    if (clearAll)
+    {
+        pwalletMain->ClearIdentityTrust();
+    }
+    
+    // if we have ratings to set, do it
+    if (setRatings.isObject())
+    {
+        auto keys = setRatings.getKeys();
+        auto values = setRatings.getValues();
+        for (int i = 0; i < keys.size(); i++)
+        {
+            auto &oneKey = keys[i];
+            auto destKey = DecodeDestination(oneKey);
+            CRating oneRating(values[i]);
+            uint160 nameSpaceKey;
+            uint160 vdxfKey;
+            if (oneKey.empty() ||
+                (destKey.which() != COptCCParams::ADDRTYPE_ID && ((vdxfKey = CVDXF::GetDataKey(oneKey, nameSpaceKey)).IsNull() || nameSpaceKey.IsNull())) ||
+                !oneRating.IsValid())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "keys for setting identity trust ratings must be valid IDs and rating must be valid");
+            }
+            if (destKey.which() == COptCCParams::ADDRTYPE_ID)
+            {
+                vdxfKey = GetDestinationID(destKey);
+            }
+            pwalletMain->SetIdentityTrust(GetDestinationID(destKey), oneRating);
+        }
+    }
+
+    // if we have ratings to set, do it
+    if (removeRatingArr.isArray())
+    {
+        for (int i = 0; i < removeRatingArr.size(); i++)
+        {
+            auto oneKey = uni_get_str(removeRatingArr[i]);
+            auto destKey = DecodeDestination(oneKey);
+            uint160 nameSpaceKey;
+            uint160 vdxfKey;
+            if (oneKey.empty() ||
+                (destKey.which() != COptCCParams::ADDRTYPE_ID && ((vdxfKey = CVDXF::GetDataKey(oneKey, nameSpaceKey)).IsNull() || nameSpaceKey.IsNull())))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "keys for removing identity trust ratings must be valid IDs and rating must be valid");
+            }
+            if (destKey.which() == COptCCParams::ADDRTYPE_ID)
+            {
+                vdxfKey = GetDestinationID(destKey);
+            }
+            pwalletMain->RemoveIdentityTrust(vdxfKey);
+        }
+    }
+
+    return NullUniValue;
+}
+
+UniValue getidentitytrust(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "getidentitytrust '[\"id\",...]'\n"
+            "\n\n"
+
+            "\nArguments\n"
+            "\"[\"id\",...]\"                                       (strarray, optional) if specified, only returns rating values for specified IDs, otherwise all\n"
+
+            "\nResult:\n"
+            "{\n"
+            "  \"setratings\":{\"id\":JSONRatingObject,...},        (jsonobj) an ID/ratings key/value object\n"
+            "  \"identitytrustmode\":<n>                            (int) 0 = no restriction on sync, 1 = only sync to IDs rated approved, 2 = sync to all IDs but those on block list\n"
+            "}\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getidentitytrust", "\'[\"id\",...]\'")
+            + HelpExampleRpc("getidentitytrust", "\'[\"id\",...]\'")
+        );
+    }
+
+    UniValue retVal;
+    UniValue setRatings;
+
+    LOCK(pwalletMain->cs_wallet);
+    auto identityTrustMap = pwalletMain->GetIdentityTrustMap();
+    for (auto &oneEntry : identityTrustMap)
+    {
+        setRatings.pushKV(EncodeDestination(CIdentityID(oneEntry.first)), oneEntry.second.ToUniValue());
+    }
+    retVal.pushKV("setratings", setRatings);
+    retVal.pushKV("identitytrustmode", pwalletMain->GetIdentityTrustMode());
+    
+    return retVal;
+}
+
+UniValue setcurrencytrust(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "setcurrencytrust '{\"clearall\": bool, \"setratings\":[{\"currencyid\":JSONRatingObject},...], \"removeratings\":[\"currencyid\",...], \"currencytrustmode\":<n>}'\n"
+            "\n\n"
+
+            "\nArguments\n"
+            "{\n"
+            "    \"clearall\": bool                             (bool, optional) clears all wallet currency trust lists before adding, removing, or trust mode operations\n"
+            "    \"setratings\":[{\"currencyid\":JSONRatingObject},...] (objarray, optional) replaces ratings for specified currencies with those given\n"
+            "    \"removeratings\":[\"currencyid\",...]                 (strarray, optional) erases ratings for currencies specified\n"
+            "    \"currencytrustmode\": <n>                     (number, optional) 0 = spend/list all currencies, 1 = only spend/list those rated approved, 2 = spend/list all but those on block list\n"
+            "}\n"
+
+            "\nResult:\n"
+            "no return on success, else error\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("setcurrencytrust", "\'{\"clearall\": bool, \"setratings\":[{\"currencyid\":JSONRatingObject},...], \"removeratings\":[\"currencyid\",...], \"currencytrustmode\":<n>}\'")
+            + HelpExampleRpc("setcurrencytrust", "\'{\"clearall\": bool, \"setratings\":[{\"currencyid\":JSONRatingObject},...], \"removeratings\":[\"currencyid\",...], \"currencytrustmode\":<n>}\'")
+        );
+    }
+    CheckPBaaSAPIsValid();
+
+    bool clearAll = uni_get_bool(find_value(params[0], "clearall"));
+    UniValue setRatings = find_value(params[0], "setratings");
+    UniValue removeRatingArr = find_value(params[0], "removeratings");
+    UniValue currencyTrustMode = find_value(params[0], "currencytrustmode");
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+    if (clearAll)
+    {
+        pwalletMain->ClearCurrencyTrust();
+    }
+    
+    // if we have ratings to set, do it
+    if (setRatings.isObject())
+    {
+        auto keys = setRatings.getKeys();
+        auto values = setRatings.getValues();
+        for (int i = 0; i < keys.size(); i++)
+        {
+            auto &oneKey = keys[i];
+            auto destKey = DecodeDestination(oneKey);
+            CRating oneRating(values[i]);
+            uint160 nameSpaceKey;
+            uint160 vdxfKey;
+            if (oneKey.empty() ||
+                (destKey.which() != COptCCParams::ADDRTYPE_ID && ((vdxfKey = CVDXF::GetDataKey(oneKey, nameSpaceKey)).IsNull() || nameSpaceKey.IsNull())) ||
+                !oneRating.IsValid())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "keys for setting currency trust ratings must be valid currency IDs and rating must be valid");
+            }
+            if (destKey.which() == COptCCParams::ADDRTYPE_ID)
+            {
+                vdxfKey = GetDestinationID(destKey);
+            }
+            pwalletMain->SetCurrencyTrust(GetDestinationID(destKey), oneRating);
+        }
+    }
+
+    // if we have ratings to set, do it
+    if (removeRatingArr.isArray())
+    {
+        for (int i = 0; i < removeRatingArr.size(); i++)
+        {
+            auto oneKey = uni_get_str(removeRatingArr[i]);
+            auto destKey = DecodeDestination(oneKey);
+            uint160 nameSpaceKey;
+            uint160 vdxfKey;
+            if (oneKey.empty() ||
+                (destKey.which() != COptCCParams::ADDRTYPE_ID && ((vdxfKey = CVDXF::GetDataKey(oneKey, nameSpaceKey)).IsNull() || nameSpaceKey.IsNull())))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "keys for removing currency trust ratings must be valid currency IDs and rating must be valid");
+            }
+            if (destKey.which() == COptCCParams::ADDRTYPE_ID)
+            {
+                vdxfKey = GetDestinationID(destKey);
+            }
+            pwalletMain->RemoveCurrencyTrust(vdxfKey);
+        }
+    }
+
+    return NullUniValue;
+}
+
+UniValue getcurrencytrust(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "getcurrencytrust '[\"currencyid\",...]'\n"
+            "\n\n"
+
+            "\nArguments\n"
+            "\"[\"currencyid\",...]\"                                       (strarray, optional) if specified, only returns rating values for specified currencies, otherwise all\n"
+
+            "\nResult:\n"
+            "{\n"
+            "  \"setratings\":{\"id\":JSONRatingObject,...},        (jsonobj) an ID/ratings key/value object\n"
+            "  \"currencytrustmode\":<n>                            (int) 0 = no restriction on sync, 1 = only sync to IDs rated approved, 2 = sync to all IDs but those on block list\n"
+            "}\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getcurrencytrust", "\'[\"currencyid\",...]\'")
+            + HelpExampleRpc("getcurrencytrust", "\'[\"currencyid\",...]\'")
+        );
+    }
+    CheckPBaaSAPIsValid();
+
+    UniValue retVal;
+    UniValue setRatings;
+
+    LOCK(pwalletMain->cs_wallet);
+    auto currencyTrustMap = pwalletMain->GetCurrencyTrustMap();
+    for (auto &oneEntry : currencyTrustMap)
+    {
+        setRatings.pushKV(EncodeDestination(CIdentityID(oneEntry.first)), oneEntry.second.ToUniValue());
+    }
+    retVal.pushKV("setratings", setRatings);
+    retVal.pushKV("currencytrustmode", pwalletMain->GetCurrencyTrustMode());
+    
+    return retVal;
+}
+
 UniValue addmergedblock(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 5)
@@ -12428,8 +12680,10 @@ static const CRPCCommand commands[] =
     { "identity",     "getidentitieswithaddress",     &getidentitieswithaddress, true  },
     { "identity",     "getidentitieswithrevocation",  &getidentitieswithrevocation, true  },
     { "identity",     "getidentitieswithrecovery",    &getidentitieswithrecovery, true  },
-
-
+    { "identity",     "setidentitytrust",             &setidentitytrust,       true  },
+    { "identity",     "getidentitytrust",             &getidentitytrust,       true  },
+    { "multichain",   "setcurrencytrust",             &setcurrencytrust,       true  },
+    { "multichain",   "getcurrencytrust",             &getcurrencytrust,       true  },
     { "marketplace",  "makeoffer",                    &makeoffer,              true  },
     { "marketplace",  "takeoffer",                    &takeoffer,              true  },
     { "marketplace",  "getoffers",                    &getoffers,              true  },

@@ -1854,6 +1854,7 @@ CBaseChainObject *RehydrateChainObject(OStream &s)
         CChainObject<CReserveTransfer> *pExport;
         CChainObject<CCrossChainProof> *pCrossChainProof;
         CChainObject<CCompositeChainObject> *pCompositeChainObject;
+        CChainObject<CNotarySignature> *pNotarySig;
         CChainObject<CEvidenceData> *pBytes;
         CBaseChainObject *retPtr;
     };
@@ -1934,6 +1935,16 @@ CBaseChainObject *RehydrateChainObject(OStream &s)
             {
                 s >> pBytes->object;
                 pBytes->objectType = objType;
+            }
+            break;
+        }
+        case CHAINOBJ_NOTARYSIGNATURE:
+        {
+            pNotarySig = new CChainObject<CNotarySignature>();
+            if (pNotarySig)
+            {
+                s >> pNotarySig->object;
+                pNotarySig->objectType = objType;
             }
             break;
         }
@@ -2021,6 +2032,10 @@ int8_t ObjTypeCode(const CReserveTransfer &obj);
 int8_t ObjTypeCode(const CCrossChainProof &obj);
 
 int8_t ObjTypeCode(const CCompositeChainObject &obj);
+
+int8_t ObjTypeCode(const CNotarySignature &obj);
+
+int8_t ObjTypeCode(const CEvidenceData &obj);
 
 // this adds an opret to a mutable transaction that provides the necessary evidence of a signed, cheating stake transaction
 CScript StoreOpRetArray(const std::vector<CBaseChainObject *> &objPtrs);

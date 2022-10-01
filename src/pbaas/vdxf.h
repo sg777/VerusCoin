@@ -373,10 +373,10 @@ std::string TrimSpaces(const std::string &Name);
 VDXFData DeserializeVDXFData(const std::vector<unsigned char> &sourceVector);
 std::vector<unsigned char> SerializeVDXFData(const VDXFData &vdxfData);
 
-bool uni_get_bool(UniValue uv, bool def=false);
-int32_t uni_get_int(UniValue uv, int32_t def=0);
-int64_t uni_get_int64(UniValue uv, int64_t def =0);
-std::string uni_get_str(UniValue uv, std::string def="");
-std::vector<UniValue> uni_getValues(UniValue uv, std::vector<UniValue> def=std::vector<UniValue>());
+bool uni_get_bool(const UniValue &uv, bool def=false);
+int32_t uni_get_int(const UniValue &uv, int32_t def=0);
+int64_t uni_get_int64(const UniValue &uv, int64_t def =0);
+std::string uni_get_str(const UniValue &uv, std::string def="");
+std::vector<UniValue> uni_getValues(const UniValue &uv, std::vector<UniValue> def=std::vector<UniValue>());
 
 #endif // VDXF_H

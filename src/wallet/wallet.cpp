@@ -661,6 +661,7 @@ void CWallet::ClearIdentityTrust()
         {
             CWalletDB(strWalletFile).EraseIdentityTrust(idTrustPair.first);
         }    
+        CWalletDB(strWalletFile).WriteIdentityTrustMode(CRating::TRUSTMODE_NORESTRICTION);
     }
     CCryptoKeyStore::ClearIdentityTrust();
 }
@@ -710,6 +711,7 @@ void CWallet::ClearCurrencyTrust()
         {
             CWalletDB(strWalletFile).EraseCurrencyTrust(currencyTrustPair.first);
         }    
+        CWalletDB(strWalletFile).WriteCurrencyTrustMode(CRating::TRUSTMODE_NORESTRICTION);
     }
     CCryptoKeyStore::ClearCurrencyTrust();
 }

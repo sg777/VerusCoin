@@ -491,6 +491,7 @@ int CBasicKeyStore::GetCurrencyTrustMode() const
 void CBasicKeyStore::ClearIdentityTrust()
 {
     mapIdentityTrust.clear();
+    identityTrustMode = CRating::TRUSTMODE_NORESTRICTION;
 }
 
 bool CBasicKeyStore::RemoveIdentityTrust(const CIdentityID &idID)

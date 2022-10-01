@@ -394,6 +394,52 @@ uint160 CIdentity::IdentityPrimaryAddressKey(const CTxDestination &dest)
     return CCrossChainRPCData::GetConditionID(CVDXF::GetDataKey(IdentityPrimaryAddressKeyName(), nameSpace), hw.GetHash());
 }
 
+CRating::CRating(const UniValue uni) :
+    version(VERSION_CURRENT),
+    trustLevel(TRUST_UNKNOWN)
+{
+    version = uni_get_int64(find_value(uni, "version"), version);
+    trustLevel = uni_get_int(find_value(uni, "trustlevel"), trustLevel);
+    UniValue ratingsObj = find_value(uni, "ratingsmap");
+    if (ratingsObj.isObject())
+    {
+        auto keys = ratingsObj.getKeys();
+        auto values = ratingsObj.getValues();
+
+        for (int i = 0; i < keys.size(); i++)
+        {
+            auto &oneKey = keys[i];
+            std::string oneRatingStr = uni_get_str(values[i]);
+            auto destKey = DecodeDestination(oneKey);
+
+            uint160 vdxfKey;
+            uint160 vdxfNameSpace;
+            if ((destKey.which() == COptCCParams::ADDRTYPE_INVALID && !oneKey.empty() && ((vdxfKey = CVDXF::GetDataKey(oneKey, vdxfNameSpace)).IsNull() || vdxfNameSpace.IsNull())) ||
+                (destKey.which() != COptCCParams::ADDRTYPE_INVALID && destKey.which() != COptCCParams::ADDRTYPE_ID))
+            {
+                LogPrint("ratings", "%s: invalid json rating key: %s\n", __func__, oneKey.c_str());
+                version = VERSION_INVALID;
+                return;
+            }
+
+            std::vector<unsigned char> oneRatingVec;
+            if (!oneRatingStr.empty() || !IsHex(oneRatingStr) || !(oneRatingVec = ParseHex(oneRatingStr)).size())
+            {
+                LogPrint("ratings", "%s: invalid rating string: %s\n", __func__, oneRatingStr.c_str());
+                version = VERSION_INVALID;
+                return;
+            }
+
+            if (destKey.which() == COptCCParams::ADDRTYPE_ID)
+            {
+                vdxfKey = GetDestinationID(destKey);
+            }
+
+            ratings[vdxfKey] = oneRatingVec;
+        }
+    }
+}
+
 bool CIdentity::GetIdentityOutsByPrimaryAddress(const CTxDestination &address, std::map<uint160, std::pair<CAddressIndexDbEntry, CIdentity>> &identities, uint32_t start, uint32_t end)
 {
     if (!fIdIndex)

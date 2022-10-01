@@ -1080,6 +1080,7 @@ public:
 
     CRating(uint32_t Version=VERSION_INVALID, uint8_t TrustLevel=TRUST_UNKNOWN, const std::map<uint160, std::vector<unsigned char>> &Ratings=std::map<uint160, std::vector<unsigned char>>()) :
                 version(Version), trustLevel(TrustLevel), ratings(Ratings) {}
+
     CRating(const std::vector<unsigned char> &vch)
     {
         bool success;
@@ -1090,6 +1091,8 @@ public:
             ratings.clear();
         }
     }
+
+    CRating(const UniValue uni);
 
     ADD_SERIALIZE_METHODS;
 
@@ -1141,6 +1144,8 @@ public:
         }
         return ratings;
     }
+
+    UniValue ToUniValue() const;
 };
 
 struct CCcontract_info;

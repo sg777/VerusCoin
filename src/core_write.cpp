@@ -1226,6 +1226,25 @@ UniValue CIdentity::ToUniValue() const
     return obj;
 }
 
+UniValue CRating::ToUniValue() const
+{
+    UniValue retVal(UniValue::VOBJ);
+    retVal.pushKV("version", (int64_t)version);
+    retVal.pushKV("trustlevel", (int)trustLevel);
+
+    UniValue ratingsMapUni(UniValue::VOBJ);
+
+    for (auto &oneMapEntry : ratings)
+    {
+        ratingsMapUni.pushKV(EncodeDestination(CIdentityID(oneMapEntry.first)), HexBytes(&(oneMapEntry.second[0]), oneMapEntry.second.size()));
+    }
+    if (ratings.size())
+    {
+        retVal.pushKV("ratingsmap", ratingsMapUni);
+    }
+    return retVal;
+}
+
 UniValue CMMRProof::ToUniValue() const
 {
     UniValue retObj(UniValue::VOBJ);
