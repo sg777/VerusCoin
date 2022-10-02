@@ -6613,9 +6613,6 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                 if (reserveChange > nullCurrencyMap || nChange > 0)
                 {
                     // Make a vout to ourself
-                    // TODO: HARDENING - ensure that down below, if this will not make an output due to native
-                    // dust, that we do not lose reserve currency in the process. Also, we need to separate any
-                    // blocked currencies from non-blocked currencies into separate change outputs.
                     //
                     // pass in scriptChange instead of reservekey so
                     // change transaction isn't always pay-to-bitcoin-address
@@ -6715,7 +6712,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                     else
                     {
                         nChangePosRet = txNew.vout.size() - 1; // dont change first or last
-                        vector<CTxOut>::iterator position = txNew.vout.begin()+nChangePosRet;
+                        vector<CTxOut>::iterator position = txNew.vout.begin() + nChangePosRet;
                         txNew.vout.insert(position, newTxOut);
                     }
                 } else reservekey.ReturnKey();

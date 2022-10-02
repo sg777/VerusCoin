@@ -1727,6 +1727,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "getidentitieswithaddress", 0},
     { "getidentitieswithrevocation", 0},
     { "getidentitieswithrecovery", 0},
+    { "estimateconversion", 1},
     { "makeoffer", 1},
     { "takeoffer", 1},
     { "closeoffers", 0},

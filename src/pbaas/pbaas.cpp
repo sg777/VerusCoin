@@ -3505,7 +3505,8 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
                                                                  const CCoinbaseCurrencyState &_currencyState,
                                                                  int32_t fromHeight,
                                                                  int32_t height,
-                                                                 int32_t curDefHeight)
+                                                                 int32_t curDefHeight,
+                                                                 const std::vector<CReserveTransfer> &extraConversions)
 {
     CCoinbaseCurrencyState currencyState = _currencyState;
     bool firstUpdate = fromHeight <= curDefHeight;
@@ -3536,9 +3537,9 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
     std::map<uint160, int32_t> currencyIndexes = currencyState.GetReserveMap();
 
     if (GetUnspentChainTransfers(unspentTransfers, curDef.GetID()) &&
-        unspentTransfers.size())
+        (unspentTransfers.size() || extraConversions.size()))
     {
-        std::vector<CReserveTransfer> transfers;
+        std::vector<CReserveTransfer> transfers = extraConversions;
         for (auto &oneTransfer : unspentTransfers)
         {
             if (std::get<0>(oneTransfer.second) < curDef.startBlock)
@@ -3567,6 +3568,59 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
                                                      importedCurrency,
                                                      gatewayDepositsUsed,
                                                      spentCurrencyOut))
+        {
+            return newNotarization.currencyState;
+        }
+    }
+    return currencyState;
+}
+
+CCoinbaseCurrencyState CConnectedChains::AddPendingConversions(CCurrencyDefinition &curDef,
+                                                               const CPBaaSNotarization &_lastNotarization,
+                                                               int32_t fromHeight,
+                                                               int32_t height,
+                                                               int32_t curDefHeight,
+                                                               const std::vector<CReserveTransfer> &extraConversions)
+{
+    if (curDef.launchSystemID == ASSETCHAINS_CHAINID && fromHeight < curDef.startBlock)
+    {
+        return AddPrelaunchConversions(curDef, _lastNotarization.currencyState, fromHeight, height, curDefHeight, extraConversions);
+    }
+
+    CCoinbaseCurrencyState currencyState = _lastNotarization.currencyState;
+
+    // get chain transfers that should apply before the start block
+    // until there is a post-start block notarization, we always consider the
+    // currency state to be up to just before the start block
+    std::multimap<uint160, ChainTransferData> unspentTransfers;
+    std::map<uint160, int32_t> currencyIndexes = currencyState.GetReserveMap();
+
+    if (GetUnspentChainTransfers(unspentTransfers, curDef.GetID()) &&
+        (unspentTransfers.size() || extraConversions.size()))
+    {
+        std::vector<CReserveTransfer> transfers = extraConversions;
+        for (auto &oneTransfer : unspentTransfers)
+        {
+            if (std::get<0>(oneTransfer.second) < curDef.startBlock)
+            {
+                transfers.push_back(std::get<2>(oneTransfer.second));
+            }
+        }
+        uint256 transferHash;
+        CPBaaSNotarization newNotarization;
+        std::vector<CTxOut> importOutputs;
+        CCurrencyValueMap importedCurrency, gatewayDepositsUsed, spentCurrencyOut;
+        if (_lastNotarization.NextNotarizationInfo(ConnectedChains.ThisChain(),
+                                                    curDef,
+                                                    fromHeight,
+                                                    std::min(height, curDef.startBlock - 1),
+                                                    transfers,
+                                                    transferHash,
+                                                    newNotarization,
+                                                    importOutputs,
+                                                    importedCurrency,
+                                                    gatewayDepositsUsed,
+                                                    spentCurrencyOut))
         {
             return newNotarization.currencyState;
         }

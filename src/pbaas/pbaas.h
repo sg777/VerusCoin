@@ -974,7 +974,15 @@ public:
                                                    const CCoinbaseCurrencyState &currencyState,
                                                    int32_t fromHeight,
                                                    int32_t height,
-                                                   int32_t curDefHeight);
+                                                   int32_t curDefHeight,
+                                                   const std::vector<CReserveTransfer> &extraConversions=std::vector<CReserveTransfer>());
+
+    CCoinbaseCurrencyState AddPendingConversions(CCurrencyDefinition &curDef,
+                                                 const CPBaaSNotarization &currencyState,
+                                                 int32_t fromHeight,
+                                                 int32_t height,
+                                                 int32_t curDefHeight,
+                                                 const std::vector<CReserveTransfer> &extraConversions=std::vector<CReserveTransfer>());
 
     CCoinbaseCurrencyState GetCurrencyState(int32_t height);                                // gets this chain's native currency state by block height
     CCoinbaseCurrencyState GetCurrencyState(CCurrencyDefinition &curDef, int32_t height, int32_t curDefHeight=0); // gets currency state

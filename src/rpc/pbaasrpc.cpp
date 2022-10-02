@@ -3499,10 +3499,7 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
 
             "\nResult:\n"
             "   {\n"
-            "      \"estimatereceived\": (value),                   Estimated amount of converted currency after conversion\n"
-            "      \"estimatedslippage\": (value),                  Estimated percent slippage from conversion\n"
-            "      \"transactionsperblock100\": (value),            Transactions per block over last 100 blocks\n"
-            "      \"transactionsperblock10\": (value),             Transactions per block over last 10 blocks\n"
+            "      \"estimatedcurrencystate\": object               Estimation of all currency values, including prices and changes\n"
             "   }\n"
 
             "\nExamples:\n"
@@ -3596,7 +3593,6 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
     }
 
     // if this is reserve to reserve "via" another currency, ensure that both "from" and "to" are reserves of the "via" currency
-    CReserveTransfer checkTransfer;
     CCurrencyDefinition *pFractionalCurrency;
     if (secondCurrencyDef.IsValid())
     {
@@ -3632,6 +3628,38 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, pFractionalCurrency->name + " must be a fractional currency or prior to start block to estimate a conversion price");
     }
 
+    uint32_t flags = CReserveTransfer::VALID;
+    if (!convertToStr.empty())
+    {
+        flags += CReserveTransfer::CONVERT;
+        if (preConvert)
+        {
+            if (!secondCurrencyID.IsNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "cannot preconvert and also convert reserve to reserve");
+            }
+            flags += CReserveTransfer::PRECONVERT;
+        }
+        if (reserveToReserve)
+        {
+            flags += CReserveTransfer::RESERVE_TO_RESERVE;
+        }
+        else if (!toFractional)
+        {
+            flags += CReserveTransfer::IMPORT_TO_SOURCE;
+        }
+    }
+
+    CReserveTransfer checkTransfer(flags,
+                                   sourceCurrencyID,
+                                   sourceAmount,
+                                   ASSETCHAINS_CHAINID,
+                                   ConnectedChains.ThisChain().GetTransactionTransferFee(),
+                                   convertToCurrencyID,
+                                   DestinationToTransferDestination(CKeyID(convertToCurrencyID)),
+                                   secondCurrencyID,
+                                   ASSETCHAINS_CHAINID);
+
     // now, get last notarization and all pending conversion transactions, calculate new conversions, including the new one to estimate and
     // return results
     CPBaaSNotarization notarization;
@@ -3666,18 +3694,13 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
     }
 
     UniValue retVal(UniValue::VOBJ);
-    if (preConvert)
-    {
-        // estimate preconversion
-        
-    }
-    else
-    {
-        // estimate normal fractional conversion
-        // get all pending chain transfers, virtually process all the should be processed in order, put this
-        // one into the export that it should go into, and calculate the final price of transfers in that export
-    }
-    return NullUniValue;
+    retVal.pushKV("estimatedcurrencystate", ConnectedChains.AddPendingConversions(*pFractionalCurrency,
+                                            notarization,
+                                            notarization.notarizationHeight,
+                                            nHeight,
+                                            0,
+                                            std::vector<CReserveTransfer>({checkTransfer})).ToUniValue());
+    return retVal;
 }
 
 bool find_utxos(const CTxDestination &fromtaddr_, std::vector<COutput> &t_inputs_) 
@@ -12684,6 +12707,7 @@ static const CRPCCommand commands[] =
     { "identity",     "getidentitytrust",             &getidentitytrust,       true  },
     { "multichain",   "setcurrencytrust",             &setcurrencytrust,       true  },
     { "multichain",   "getcurrencytrust",             &getcurrencytrust,       true  },
+    { "multichain",   "estimateconversion",           &estimateconversion,     true  },
     { "marketplace",  "makeoffer",                    &makeoffer,              true  },
     { "marketplace",  "takeoffer",                    &takeoffer,              true  },
     { "marketplace",  "getoffers",                    &getoffers,              true  },
