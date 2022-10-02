@@ -889,14 +889,6 @@ ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
             ssValue >> chain;
             pwallet->SetHDChain(chain, true);
         }
-        else if (strType == "blockutxo")
-        {
-            uint256 txID;
-            int32_t outNum;
-            ssValue >> txID;
-            ssValue >> outNum;
-            // TODO: HARDENING - store this in the UTXO blacklist of a wallet (add one)
-        }
         else if (strType == "curtrust")
         {
             uint160 currencyID;
