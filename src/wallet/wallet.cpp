@@ -3852,67 +3852,6 @@ CAmount CWallet::GetCredit(const CTransaction& tx, const int32_t &voutNum, const
     return ((IsMine(tx.vout[voutNum], nHeight) & filter) ? tx.vout[voutNum].nValue : 0);
 }
 
-bool CWallet::IsBlockedIdentity(const CIdentityID &idID) const
-{
-    if (identityTrustMode != CRating::TRUSTMODE_NORESTRICTION)
-    {
-        if (identityTrustMode == CRating::TRUSTMODE_WHITELISTONLY)
-        {
-            if (GetIdentityTrust(idID).trustLevel != CRating::TRUST_APPROVED)
-            {
-                return true;
-            }
-        }
-        else
-        {
-            if (GetIdentityTrust(idID).trustLevel == CRating::TRUST_BLOCKED)
-            {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-CCurrencyValueMap CWallet::RemoveBlockedCurrencies(const CCurrencyValueMap inputMap) const
-{
-    CCurrencyValueMap retVal = inputMap;
-    if (currencyTrustMode != CRating::TRUSTMODE_NORESTRICTION)
-    {
-        if (currencyTrustMode == CRating::TRUSTMODE_WHITELISTONLY)
-        {
-            // remove all currencies that aren't on the white list
-            for (auto &oneCurVal : inputMap.valueMap)
-            {
-                if (GetCurrencyTrust(oneCurVal.first).trustLevel != CRating::TRUST_APPROVED)
-                {
-                    retVal.valueMap.erase(oneCurVal.first);
-                    if (!retVal.valueMap.size())
-                    {
-                        break;
-                    }
-                }
-            }
-        }
-        else
-        {
-            // remove all currencies on the black list
-            for (auto &oneCurVal : inputMap.valueMap)
-            {
-                if (GetCurrencyTrust(oneCurVal.first).trustLevel == CRating::TRUST_BLOCKED)
-                {
-                    retVal.valueMap.erase(oneCurVal.first);
-                    if (!retVal.valueMap.size())
-                    {
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    return retVal;
-}
-
 CCurrencyValueMap CWallet::GetReserveCredit(const CTransaction& tx, int32_t voutNum, const isminefilter& filter) const
 {
     return ((IsMine(tx.vout[voutNum]) & filter) ? RemoveBlockedCurrencies(tx.vout[voutNum].ReserveOutValue()) : CCurrencyValueMap());
@@ -6673,8 +6612,12 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                 CCurrencyValueMap nullCurrencyMap;
                 if (reserveChange > nullCurrencyMap || nChange > 0)
                 {
-                    // Fill a vout to ourself
-                    // TODO: pass in scriptChange instead of reservekey so
+                    // Make a vout to ourself
+                    // TODO: HARDENING - ensure that down below, if this will not make an output due to native
+                    // dust, that we do not lose reserve currency in the process. Also, we need to separate any
+                    // blocked currencies from non-blocked currencies into separate change outputs.
+                    //
+                    // pass in scriptChange instead of reservekey so
                     // change transaction isn't always pay-to-bitcoin-address
                     CScript scriptChange;
 
@@ -6764,7 +6707,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
 
                     // Never create dust outputs; if we would, just
                     // add the dust to the fee. Valid cryptoconditions with a valid eval function are allowed to create outputs of 0
-                    if (newTxOut.IsDust(::minRelayTxFee))
+                    if (newTxOut.IsDust(::minRelayTxFee) && reserveChange.CanonicalMap() == nullCurrencyMap)
                     {
                         nFeeRet += nChange;
                         reservekey.ReturnKey();
@@ -7205,39 +7148,30 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
                 else
                 {
                     nChangePosRet = txNew.vout.size() - 1; // dont change first or last
-                    if (nChange > 0)
-                    {
-                        nChangeOutputs++;
-                        vector<CTxOut>::iterator position = txNew.vout.begin() + nChangePosRet;
-                        txNew.vout.insert(position, CTxOut(nChange, GetScriptForDestination(changeDest)));
-                    }
-                }
 
-                // now, loop through the remaining reserve currencies and make a change output for each separately
-                // if dust, just remove
-                auto reserveIndexMap = currencyState.GetReserveMap();
-                for (auto &curChangeOut : reserveChange.valueMap)
-                {
-                    if (!curChangeOut.second)
+                    // separate any blocked currencies from non-blocked currencies into separate change outputs
+                    if (GetCurrencyTrustMode() != CRating::TRUSTMODE_NORESTRICTION && reserveChange > CCurrencyValueMap())
                     {
-                        continue;
+                        CCurrencyValueMap withoutBlockedCurrencies = RemoveBlockedCurrencies(reserveChange);
+                        CCurrencyValueMap removedCurrencies = (reserveChange - withoutBlockedCurrencies);
+                        if (removedCurrencies > CCurrencyValueMap())
+                        {
+                            CTokenOutput unwantedOut(removedCurrencies);
+                            reserveChange = withoutBlockedCurrencies;
+                            vector<CTxOut>::iterator position = txNew.vout.begin() + (nChangePosRet + nChangeOutputs++);
+                            txNew.vout.insert(position, CTxOut(0, 
+                                                               MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, std::vector<CTxDestination>({changeDest}), 1, &unwantedOut))));
+                        }
                     }
-                    CAmount outVal;
-                    assert(curChangeOut.first != ASSETCHAINS_CHAINID);
-                    auto curIt = reserveIndexMap.find(curChangeOut.first);
-                    if (curIt != reserveIndexMap.end())
+
+                    if (nChange > 0 || reserveChange > CCurrencyValueMap())
                     {
-                        outVal = currencyState.ReserveToNative(curChangeOut.second, curIt->second);
+                        CTokenOutput to(reserveChange);
+                        CScript outputScript = (reserveChange > CCurrencyValueMap()) ?
+                                               MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, std::vector<CTxDestination>({changeDest}), 1, &to)) :
+                                               GetScriptForDestination(changeDest);
+                        txNew.vout.insert(txNew.vout.begin() + (nChangePosRet + nChangeOutputs++), CTxOut(nChange, outputScript));
                     }
-                    else
-                    {
-                        outVal = curChangeOut.second;
-                    }
-                    
-                    nChangeOutputs++;
-                    vector<CTxOut>::iterator position = txNew.vout.begin() + (nChangePosRet + nChangeOutputs++);
-                    CTokenOutput to = CTokenOutput(curChangeOut.first, curChangeOut.second);
-                    txNew.vout.insert(position, CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, {changeDest}, 1, &to))));
                 }
 
                 // if we made no change outputs, return the key

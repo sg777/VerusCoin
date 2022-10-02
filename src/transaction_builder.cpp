@@ -376,6 +376,18 @@ TransactionBuilderResult TransactionBuilder::Build(bool throwTxWithPartialSig)
                 }
                 std::vector<CTxDestination> dest(1, tChangeAddr.get());
 
+                // separate any blocked currencies from non-blocked currencies into separate change outputs
+                if (keystore && keystore->GetCurrencyTrustMode() != CRating::TRUSTMODE_NORESTRICTION)
+                {
+                    CCurrencyValueMap withoutBlockedCurrencies = keystore->RemoveBlockedCurrencies(reserveChange);
+                    CCurrencyValueMap removedCurrencies = (reserveChange - withoutBlockedCurrencies);
+                    if (removedCurrencies > CCurrencyValueMap())
+                    {
+                        CTokenOutput unwantedOut(removedCurrencies);
+                        AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dest, 1, &unwantedOut)), 0);
+                        reserveChange = withoutBlockedCurrencies;
+                    }
+                }
 
                 // one output for all reserves, change gets combined
                 // we should separate, or remove any currency that is not whitelisted if specified after whitelist is supported

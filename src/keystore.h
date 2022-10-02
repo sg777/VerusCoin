@@ -77,7 +77,7 @@ public:
     virtual bool SetCurrencyTrustMode(int trustMode=CRating::TRUSTMODE_NORESTRICTION) = 0;
     virtual int GetCurrencyTrustMode() const = 0;
     virtual const std::map<uint160, CRating> &GetCurrencyTrustMap() const = 0;
-    virtual const std::map<uint160, CRating> &GetIdentityTrustMap() const = 0;
+    virtual CCurrencyValueMap RemoveBlockedCurrencies(const CCurrencyValueMap inputMap) const = 0;
 
     //! Support for trust and ratings for identities
     virtual void ClearIdentityTrust() = 0;
@@ -86,6 +86,8 @@ public:
     virtual bool SetIdentityTrust(const CIdentityID &idID, const CRating &trust) = 0;
     virtual bool SetIdentityTrustMode(int trustMode=CRating::TRUSTMODE_NORESTRICTION) = 0;
     virtual int GetIdentityTrustMode() const = 0;
+    virtual const std::map<uint160, CRating> &GetIdentityTrustMap() const = 0;
+    virtual bool IsBlockedIdentity(const CIdentityID &idID) const = 0;
 
     //! Add a spending key to the store.
     virtual bool AddSproutSpendingKey(const libzcash::SproutSpendingKey &sk) =0;
@@ -243,6 +245,7 @@ public:
     {
         return mapCurrencyTrust;
     }
+    virtual CCurrencyValueMap RemoveBlockedCurrencies(const CCurrencyValueMap inputMap) const;
 
     virtual void ClearIdentityTrust();
     virtual bool RemoveIdentityTrust(const CIdentityID &idID);
@@ -254,6 +257,7 @@ public:
     {
         return mapIdentityTrust;
     }
+    virtual bool IsBlockedIdentity(const CIdentityID &idID) const;
 
     virtual bool AddWatchOnly(const CScript &dest);
     virtual bool RemoveWatchOnly(const CScript &dest);

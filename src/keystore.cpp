@@ -488,6 +488,45 @@ int CBasicKeyStore::GetCurrencyTrustMode() const
     return currencyTrustMode;
 }
 
+CCurrencyValueMap CBasicKeyStore::RemoveBlockedCurrencies(const CCurrencyValueMap inputMap) const
+{
+    CCurrencyValueMap retVal = inputMap;
+    if (currencyTrustMode != CRating::TRUSTMODE_NORESTRICTION)
+    {
+        if (currencyTrustMode == CRating::TRUSTMODE_WHITELISTONLY)
+        {
+            // remove all currencies that aren't on the white list
+            for (auto &oneCurVal : inputMap.valueMap)
+            {
+                if (GetCurrencyTrust(oneCurVal.first).trustLevel != CRating::TRUST_APPROVED)
+                {
+                    retVal.valueMap.erase(oneCurVal.first);
+                    if (!retVal.valueMap.size())
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+        else
+        {
+            // remove all currencies on the black list
+            for (auto &oneCurVal : inputMap.valueMap)
+            {
+                if (GetCurrencyTrust(oneCurVal.first).trustLevel == CRating::TRUST_BLOCKED)
+                {
+                    retVal.valueMap.erase(oneCurVal.first);
+                    if (!retVal.valueMap.size())
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    return retVal;
+}
+
 void CBasicKeyStore::ClearIdentityTrust()
 {
     mapIdentityTrust.clear();
@@ -534,6 +573,28 @@ bool CBasicKeyStore::SetIdentityTrustMode(int trustMode)
 int CBasicKeyStore::GetIdentityTrustMode() const
 {
     return identityTrustMode;
+}
+
+bool CBasicKeyStore::IsBlockedIdentity(const CIdentityID &idID) const
+{
+    if (identityTrustMode != CRating::TRUSTMODE_NORESTRICTION)
+    {
+        if (identityTrustMode == CRating::TRUSTMODE_WHITELISTONLY)
+        {
+            if (GetIdentityTrust(idID).trustLevel != CRating::TRUST_APPROVED)
+            {
+                return true;
+            }
+        }
+        else
+        {
+            if (GetIdentityTrust(idID).trustLevel == CRating::TRUST_BLOCKED)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 bool CBasicKeyStore::AddWatchOnly(const CScript &dest)

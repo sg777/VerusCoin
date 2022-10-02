@@ -3632,7 +3632,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 {
                     // since there is no support for taking reserves as fees, split any available 
                     // reserves fee from the launch chain, for example, between us and the exporter
-                    std::vector<CTxDestination> dests({TransferDestinationToDestination(feeRecipient)});
                     for (auto &oneFee : transferFees.valueMap)
                     {
                         if (oneFee.first != systemDestID && oneFee.first != VERUS_CHAINID && oneFee.second)
