@@ -623,6 +623,24 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                     }
                 }
             }
+            else if (IsGateway() && conversions.size())
+            {
+                if (maxPreconvert.size() != conversions.size())
+                {
+                    LogPrintf("%s: gateways must not allow preconversions %s\n", __func__, cleanGatewayName.c_str());
+                    nVersion = PBAAS_VERSION_INVALID;
+                    return;
+                }
+                for (int j = 0; j < conversions.size(); j++)
+                {
+                    if (maxPreconvert[j])
+                    {
+                        LogPrintf("%s: gateways must not allow preconversions %s\n", __func__, cleanGatewayName.c_str());
+                        nVersion = PBAAS_VERSION_INVALID;
+                        return;
+                    }
+                }
+            }
         }
 
         notarizationProtocol = (ENotarizationProtocol)uni_get_int(find_value(obj, "notarizationprotocol"), (int32_t)NOTARIZATION_AUTO);
