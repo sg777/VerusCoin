@@ -627,7 +627,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             {
                 if (maxPreconvert.size() != conversions.size())
                 {
-                    LogPrintf("%s: gateways must not allow preconversions %s\n", __func__, cleanGatewayName.c_str());
+                    LogPrintf("%s: gateways must not allow preconversions %s\n", __func__, name.c_str());
                     nVersion = PBAAS_VERSION_INVALID;
                     return;
                 }
@@ -635,7 +635,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                 {
                     if (maxPreconvert[j])
                     {
-                        LogPrintf("%s: gateways must not allow preconversions %s\n", __func__, cleanGatewayName.c_str());
+                        LogPrintf("%s: gateways must not allow preconversions %s\n", __func__, name.c_str());
                         nVersion = PBAAS_VERSION_INVALID;
                         return;
                     }
