@@ -1202,7 +1202,7 @@ UniValue CIdentity::ToUniValue() const
             }
             else if (!lastHash.IsNull())
             {
-                hashes.push_back(Pair(lastHash.GetHex(), entryArr));
+                hashes.push_back(Pair(EncodeDestination(CIdentityID(lastHash)), entryArr));
                 entryArr = UniValue(UniValue::VARR);
             }
             lastHash = entry.first;
@@ -1210,7 +1210,7 @@ UniValue CIdentity::ToUniValue() const
         }
         if (!lastHash.IsNull())
         {
-            hashes.push_back(Pair(lastHash.GetHex(), entryArr));
+            hashes.push_back(Pair(EncodeDestination(CIdentityID(lastHash)), entryArr));
         }
         obj.push_back(Pair("contentmultimap", hashes));
     }

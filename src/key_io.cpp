@@ -733,8 +733,20 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
                 try
                 {
                     uint160 key;
-                    key.SetHex(keys[i]);
-                    if (!key.IsNull() && i < values.size())
+                    CTxDestination keyDest;
+                    if (!keys[i].empty() &&
+                        (keyDest = DecodeDestination(keys[i])).which() != COptCCParams::ADDRTYPE_ID)
+                    {
+                        uint160 nameSpaceID;
+                        key = CVDXF::GetDataKey(keys[i], nameSpaceID);
+                    }
+                    if (keyDest.which() == COptCCParams::ADDRTYPE_ID)
+                    {
+                        key = GetDestinationID(keyDest);
+                    }
+
+                    if (!key.IsNull() &&
+                        i < values.size())
                     {
                         if (values[i].isArray())
                         {
