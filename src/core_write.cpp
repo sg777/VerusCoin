@@ -1198,14 +1198,15 @@ UniValue CIdentity::ToUniValue() const
             else if (entry.first == lastHash)
             {
                 entryArr.push_back(HexBytes(&(entry.second[0]), entry.second.size()));
+                continue;
             }
             else if (!lastHash.IsNull())
             {
                 hashes.push_back(Pair(lastHash.GetHex(), entryArr));
                 entryArr = UniValue(UniValue::VARR);
-                lastHash = entry.first;
-                entryArr.push_back(HexBytes(&(entry.second[0]), entry.second.size()));
             }
+            lastHash = entry.first;
+            entryArr.push_back(HexBytes(&(entry.second[0]), entry.second.size()));
         }
         if (!lastHash.IsNull())
         {

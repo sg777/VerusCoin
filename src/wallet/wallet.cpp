@@ -2741,6 +2741,13 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         // in any way without someone controlling keys from this wallet anyhow
                                         SetIdentityTrust(idID, CRating(CRating::VERSION_CURRENT, CRating::TRUST_APPROVED));
                                     }
+                                    else if (identity.HasTokenizedControl() &&
+                                             GetCurrencyTrust(idID).trustLevel == CRating::TRUST_APPROVED)
+                                    {
+                                        // if this ID has tokenized control, and that tokenized control currency
+                                        // is whitelisted, then we white list the ID as well and sync to it
+                                        SetIdentityTrust(idID, CRating(CRating::VERSION_CURRENT, CRating::TRUST_APPROVED));
+                                    }
                                     else
                                     {
                                         approvedForSync = identityTrustMode != CRating::TRUSTMODE_WHITELISTONLY;

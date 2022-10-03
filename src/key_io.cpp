@@ -726,8 +726,8 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
         UniValue multiMapUni = find_value(uni, "contentmultimap");
         if (multiMapUni.isObject())
         {
-            std::vector<std::string> keys = hashesUni.getKeys();
-            std::vector<UniValue> values = hashesUni.getValues();
+            std::vector<std::string> keys = multiMapUni.getKeys();
+            std::vector<UniValue> values = multiMapUni.getValues();
             for (int i = 0; i < keys.size(); i++)
             {
                 try
@@ -1280,7 +1280,7 @@ CScript CIdentity::IdentityUpdateOutputScript(uint32_t height, const std::vector
 
         if (IsRevoked())
         {
-            ret = MakeMofNCCScript(recovery, indexDests);
+            ret = MakeMofNCCScript(1, primary, recovery, indexDests);
         }
         else
         {

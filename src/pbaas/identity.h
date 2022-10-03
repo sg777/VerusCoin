@@ -815,6 +815,7 @@ public:
         if (CPrincipal::IsPrimaryMutation(newIdentity, isPBaaS ? VERSION_PBAAS : VERSION_VAULT) ||
             (nSolVersion >= CActivationHeight::ACTIVATE_IDCONSENSUS2 && name != newIdentity.name && GetID() == newIdentity.GetID()) ||
             contentMap != newIdentity.contentMap ||
+            contentMultiMap != newIdentity.contentMultiMap ||
             privateAddresses != newIdentity.privateAddresses ||
             (unlockAfter != newIdentity.unlockAfter && (!isRevokedExempt || newIdentity.unlockAfter != 0)) ||
             (HasActiveCurrency() != newIdentity.HasActiveCurrency()) ||
