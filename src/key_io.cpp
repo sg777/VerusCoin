@@ -32,6 +32,8 @@ uint160 VERUS_NODEID;
 bool VERUS_PRIVATECHANGE;
 std::string VERUS_DEFAULT_ZADDR;
 
+UniValue getvdxfid(const UniValue& params, bool fHelp);
+
 namespace
 {
 class DestinationEncoder : public boost::static_visitor<std::string>
@@ -653,6 +655,150 @@ CPrincipal::CPrincipal(const UniValue &uni)
     minSigs = uni_get_int(find_value(uni, "minimumsignatures"));
 }
 
+uint160 ParseVDXFKey(const std::string &keyString)
+{
+    uint160 nameSpaceID;
+
+    if (keyString.empty())
+    {
+        return uint160();
+    }
+
+    CTxDestination keyDest;
+    if ((keyDest = DecodeDestination(keyString)).which() == COptCCParams::ADDRTYPE_ID)
+    {
+        return GetDestinationID(keyDest);
+    }
+
+    UniValue jsonKey(UniValue::VOBJ);
+    if (!jsonKey.read(keyString))
+    {
+        LogPrint("contentmap", "%s: invalid key, neither i-address nor json vdxfid: %s\n", __func__, keyString.c_str());
+        return uint160();
+    }
+    UniValue parms(UniValue::VARR);
+
+    std::string vdxfUri = uni_get_str(find_value(jsonKey, "vdxfuri"));
+    if (vdxfUri.empty())
+    {
+        LogPrint("contentmap", "%s: invalid key, no vdxfuri: %s\n", __func__, jsonKey.write(1,2).c_str());
+        return uint160();
+    }
+
+    parms.push_back(vdxfUri);
+
+    auto vdxfKeyKeys = jsonKey.getKeys();
+    auto &vdxfValues = jsonKey.getValues();
+    if (vdxfKeyKeys.size() > 1)
+    {
+        UniValue vdxfObjParms(UniValue::VOBJ);
+        for (int j = 0; j < vdxfKeyKeys.size(); j++)
+        {
+            if (vdxfKeyKeys[j] != "vdxfuri")
+            {
+                vdxfObjParms.pushKV(vdxfKeyKeys[j], vdxfValues[j]);
+            }
+        }
+        parms.push_back(vdxfObjParms);
+    }
+
+    jsonKey = getvdxfid(parms, false);
+    std::string vdxfKeyStr = uni_get_str(find_value(jsonKey, "vdxfid"));
+    return vdxfKeyStr.empty() ? uint160() : GetDestinationID(DecodeDestination(vdxfKeyStr));
+}
+
+std::vector<unsigned char> VectorEncodeVDXFUni(const UniValue &obj)
+{
+    CDataStream ss(PROTOCOL_VERSION, SER_DISK);
+
+    // this should be an object with "vdxfkey" as the key and {object} as the json object to serialize
+    auto oneValKeys = obj.getKeys();
+    auto oneValValues = obj.getValues();
+
+    for (int k = 0; k < oneValKeys.size(); k++)
+    {
+        uint160 objTypeKey = ParseVDXFKey(oneValKeys[k]);
+        if (objTypeKey == CVDXF_Data::DataByteKey())
+        {
+            uint8_t oneByte = uni_get_int(oneValValues[k]);
+            ss << oneByte;
+        }
+        else if (objTypeKey == CVDXF_Data::DataInt16Key())
+        {
+            int16_t oneShort = uni_get_int(oneValValues[k]);
+            ss << oneShort;
+        }
+        else if (objTypeKey == CVDXF_Data::DataUint16Key())
+        {
+            uint16_t oneUShort = uni_get_int(oneValValues[k]);
+            ss << oneUShort;
+        }
+        else if (objTypeKey == CVDXF_Data::DataInt32Key())
+        {
+            int32_t oneInt = uni_get_int(oneValValues[k]);
+            ss << oneInt;
+        }
+        else if (objTypeKey == CVDXF_Data::DataUint32Key())
+        {
+            uint32_t oneUInt = uni_get_int64(oneValValues[k]);
+            ss << oneUInt;
+        }
+        else if (objTypeKey == CVDXF_Data::DataInt64Key())
+        {
+            int64_t oneInt64 = uni_get_int64(oneValValues[k]);
+            ss << oneInt64;
+        }
+        else if (objTypeKey == CVDXF_Data::DataUint160Key())
+        {
+            uint160 oneKey = GetDestinationID(DecodeDestination(uni_get_str(oneValValues[k])));
+            ss << oneKey;
+        }
+        else if (objTypeKey == CVDXF_Data::DataUint256Key())
+        {
+            uint256 oneHash = uint256S(uni_get_str(oneValValues[k]));
+            ss << oneHash;
+        }
+        else if (objTypeKey == CVDXF_Data::DataStringKey())
+        {
+            ss << objTypeKey;
+            ss << VARINT(1);
+            ss << ::AsVector(uni_get_str(oneValValues[k]));
+        }
+        else if (objTypeKey == CVDXF_Data::DataByteVectorKey())
+        {
+            ss << objTypeKey;
+            ss << VARINT(1);
+            ss << ParseHex(uni_get_str(oneValValues[k]));
+        }
+        else if (objTypeKey == CVDXF_Data::DataCurrencyMapKey())
+        {
+            ss << objTypeKey;
+            ss << VARINT(1);
+            ss << CCurrencyValueMap(oneValValues[k]);
+        }
+        else if (objTypeKey == CVDXF_Data::DataRatingsKey())
+        {
+            CRating oneRatingObj(oneValValues[k]);
+            ss << objTypeKey;
+            ss << VARINT(oneRatingObj.version);
+            ss << CRating(oneValValues[k]);
+        }
+        else if (objTypeKey == CVDXF_Data::DataTransferDestinationKey())
+        {
+            CTransferDestination oneTransferDest(oneValValues[k]);
+            ss << objTypeKey;
+            ss << VARINT(oneTransferDest.TypeNoFlags());
+            ss << CTransferDestination(oneValValues[k]);
+        }
+        else
+        {
+            LogPrint("contentmap", "%s: invalid or unrecognized vdxfkey for object type: %s\n", __func__, EncodeDestination(CIdentityID(objTypeKey)).c_str());
+            return std::vector<unsigned char>();
+        }
+    }
+    return std::vector<unsigned char>(ss.begin(), ss.end());
+}
+
 CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
 {
     UniValue parentUni = find_value(uni, "parent");
@@ -732,18 +878,7 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
             {
                 try
                 {
-                    uint160 key;
-                    CTxDestination keyDest;
-                    if (!keys[i].empty() &&
-                        (keyDest = DecodeDestination(keys[i])).which() != COptCCParams::ADDRTYPE_ID)
-                    {
-                        uint160 nameSpaceID;
-                        key = CVDXF::GetDataKey(keys[i], nameSpaceID);
-                    }
-                    if (keyDest.which() == COptCCParams::ADDRTYPE_ID)
-                    {
-                        key = GetDestinationID(keyDest);
-                    }
+                    uint160 key = ParseVDXFKey(keys[i]);
 
                     if (!key.IsNull() &&
                         i < values.size())
@@ -752,17 +887,57 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
                         {
                             for (int j = 0; j < values[i].size(); j++)
                             {
-                                std::string valueString = uni_get_str(values[i][j]);
-                                if (IsHex(valueString))
+                                UniValue oneValue = values[i][j];
+                                std::string valueString;
+                                if (oneValue.isStr() && IsHex(valueString = uni_get_str(oneValue)))
                                 {
                                     contentMultiMap.insert(std::make_pair(key, ParseHex(valueString)));
                                 }
+                                else if (oneValue.isObject())
+                                {
+                                    std::vector<unsigned char> mapBytesValue = VectorEncodeVDXFUni(oneValue);
+                                    if (!mapBytesValue.size() || nVersion == VERSION_INVALID)
+                                    {
+                                        nVersion = VERSION_INVALID;
+                                        break;
+                                    }
+                                    contentMultiMap.insert(std::make_pair(key, mapBytesValue));
+                                }
                             }
+                        }
+                        else if (values[i].isStr())
+                        {
+                            std::string valueString;
+                            if (IsHex(valueString = uni_get_str(values[i])))
+                            {
+                                contentMultiMap.insert(std::make_pair(key, ParseHex(valueString)));
+                            }
+                            else
+                            {
+                                nVersion = VERSION_INVALID;
+                                break;
+                            }
+                        }
+                        else if (values[i].isObject())
+                        {
+                            std::vector<unsigned char> mapBytesValue = VectorEncodeVDXFUni(values[i]);
+                            if (!mapBytesValue.size() || nVersion == VERSION_INVALID)
+                            {
+                                nVersion = VERSION_INVALID;
+                                break;
+                            }
+                            contentMultiMap.insert(std::make_pair(key, mapBytesValue));
+                        }
+                        else
+                        {
+                            nVersion = VERSION_INVALID;
+                            break;
                         }
                     }
                     else
                     {
                         nVersion = VERSION_INVALID;
+                        break;
                     }
                 }
                 catch (const std::exception &e)
@@ -771,7 +946,7 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
                 }
                 if (nVersion == VERSION_INVALID)
                 {
-                    LogPrintf("%s: contentmultimap entry is not valid keys: %s, values: %s\n", __func__, keys[i].c_str(), values[i].write().c_str());
+                    LogPrint("contentmap", "%s: contentmultimap entry is not valid keys: %s, values: %s\n", __func__, keys[i].c_str(), values[i].write().c_str());
                     break;
                 }
             }

@@ -251,6 +251,189 @@ public:
             READWRITE(data);
         }
     }
+
+    static std::string DataByteKeyName()
+    {
+        return "vrsc::system.type.byte";
+    }
+    static uint160 DataByteKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataByteKeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataInt16KeyName()
+    {
+        return "vrsc::system.type.int16";
+    }
+    static uint160 DataInt16Key()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataInt16KeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataUint16KeyName()
+    {
+        return "vrsc::system.type.uint16";
+    }
+    static uint160 DataUint16Key()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataUint16KeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataInt32KeyName()
+    {
+        return "vrsc::system.type.int32";
+    }
+    static uint160 DataInt32Key()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataInt32KeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataUint32KeyName()
+    {
+        return "vrsc::system.type.uint32";
+    }
+    static uint160 DataUint32Key()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataUint32KeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataInt64KeyName()
+    {
+        return "vrsc::system.type.int64";
+    }
+    static uint160 DataInt64Key()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataInt64KeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataUint64KeyName()
+    {
+        return "vrsc::system.type.uint64";
+    }
+    static uint160 DataUint64Key()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataUint64KeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataUint160KeyName()
+    {
+        return "vrsc::system.type.uint160";
+    }
+    static uint160 DataUint160Key()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataUint160KeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataUint256KeyName()
+    {
+        return "vrsc::system.type.uint256";
+    }
+    static uint160 DataUint256Key()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataUint256KeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataStringKeyName()
+    {
+        return "vrsc::system.type.string";
+    }
+    static uint160 DataStringKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataStringKeyName(), nameSpace);
+        return key;
+    }
+    // this is a key for a typed vector, which will have the object type key following the vector key
+    static std::string DataVectorKeyName()
+    {
+        return "vrsc::system.type.vector";
+    }
+    static uint160 DataVectorKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataVectorKeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataByteVectorKeyName()
+    {
+        return "vrsc::system.type.bytevector";
+    }
+    static uint160 DataByteVectorKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataByteVectorKeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataInt32VectorKeyName()
+    {
+        return "vrsc::system.type.int32vector";
+    }
+    static uint160 DataInt32VectorKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataInt32VectorKeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataInt64VectorKeyName()
+    {
+        return "vrsc::system.type.int64vector";
+    }
+    static uint160 DataInt64VectorKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataInt64VectorKeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataCurrencyMapKeyName()
+    {
+        return "vrsc::system.type.object.currencymap";
+    }
+    static uint160 DataCurrencyMapKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataCurrencyMapKeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataRatingsKeyName()
+    {
+        return "vrsc::system.type.object.ratings";
+    }
+    static uint160 DataRatingsKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataRatingsKeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataURLKeyName()
+    {
+        return "vrsc::system.type.object.url";
+    }
+    static uint160 DataURLKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataURLKeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataTransferDestinationKeyName()
+    {
+        return "vrsc::system.type.object.transferdestination";
+    }
+    static uint160 DataTransferDestinationKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataTransferDestinationKeyName(), nameSpace);
+        return key;
+    }
+
     static std::string ZMemoMessageKeyName()
     {
         return "vrsc::system.zmemo.message";
@@ -261,6 +444,7 @@ public:
         static uint160 memoMessageKey = GetDataKey(ZMemoMessageKeyName(), nameSpace);
         return memoMessageKey;
     }
+
     static std::string ZMemoSignatureKeyName()
     {
         return "vrsc::system.zmemo.signature";
@@ -271,6 +455,7 @@ public:
         static uint160 memoSigKey = GetDataKey(ZMemoSignatureKeyName(), nameSpace);
         return memoSigKey;
     }
+
     static std::string CurrencyStartNotarizationKeyName()
     {
         return "vrsc::system.currency.startnotarization";
@@ -281,6 +466,7 @@ public:
         static uint160 currencyStartNotarization = GetDataKey(CurrencyStartNotarizationKeyName(), nameSpace);
         return currencyStartNotarization;
     }
+
     bool IsValid()
     {
         return CVDXF::IsValid();
