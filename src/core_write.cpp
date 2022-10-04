@@ -1206,6 +1206,44 @@ UniValue CIdentity::ToUniValue() const
                 entryArr = UniValue(UniValue::VARR);
             }
             lastHash = entry.first;
+            // if we have room for a known 20 byte value, check to see if it is one
+            CDataStream ss(entry.second, PROTOCOL_VERSION, SER_DISK);
+            UniValue entryUni(UniValue::VNULL);
+            while (ss.size() > sizeof(uint160))
+            {
+                uint160 checkVal;
+                uint32_t version;
+                ss >> checkVal;
+                UniValue objectUni(UniValue::VNULL);
+
+                if (checkVal == CVDXF_Data::DataCurrencyMapKey())
+                {
+                    CCurrencyValueMap oneCurrencyMap;
+                    ss >> VARINT(version);
+                    ss >> oneCurrencyMap;
+                    objectUni = oneCurrencyMap.ToUniValue();
+                }
+                else if (checkVal == CVDXF_Data::DataRatingsKey())
+                {
+                    CCurrencyValueMap oneRatingObj;
+                    ss >> VARINT(version);
+                    ss >> oneRatingObj;
+                    objectUni = oneRatingObj.ToUniValue();
+                }
+                else if (checkVal == CVDXF_Data::DataTransferDestinationKey())
+                {
+                    CTransferDestination oneTransferDest;
+                    ss >> VARINT(version);
+                    ss >> oneTransferDest;
+                    objectUni = oneTransferDest.ToUniValue();
+                }
+                if (!objectUni.isNull())
+                {
+                    entryUni.pushKV(EncodeDestination(CIdentityID(checkVal)), objectUni);
+                    entryUni.pushKV("hex", HexBytes(&(entry.second[0]), entry.second.size()));
+                    entryArr.push_back(entryUni);
+                }
+            }
             entryArr.push_back(HexBytes(&(entry.second[0]), entry.second.size()));
         }
         if (!lastHash.IsNull())

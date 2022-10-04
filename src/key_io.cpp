@@ -711,6 +711,17 @@ std::vector<unsigned char> VectorEncodeVDXFUni(const UniValue &obj)
 {
     CDataStream ss(PROTOCOL_VERSION, SER_DISK);
 
+    std::string serializedHex = uni_get_str(find_value(obj, "hex"));
+    if (!serializedHex.empty())
+    {
+        if (!IsHex(serializedHex))
+        {
+            LogPrint("contentmap", "%s: if the \"serializedhex\" key is present, it's data must be only valid hex and complete: %s\n", __func__, serializedHex.c_str());
+            return std::vector<unsigned char>();
+        }
+        return ParseHex(serializedHex);
+    }
+
     // this should be an object with "vdxfkey" as the key and {object} as the json object to serialize
     auto oneValKeys = obj.getKeys();
     auto oneValValues = obj.getValues();
