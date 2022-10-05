@@ -6260,6 +6260,10 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     //
 
     CCurrencyValueMap estimatedFees = CCurrencyValueMap(newNotarization.currencyState.currencies, newNotarization.currencyState.fees).CanonicalMap();
+    if (newNotarization.currencyState.primaryCurrencyFees)
+    {
+        estimatedFees.valueMap[newNotarization.currencyState.GetID()] = newNotarization.currencyState.primaryCurrencyFees;
+    }
 
     uint32_t fromBlock = sinceHeight + 1;
     uint32_t toBlock = addHeight < curHeight ? addHeight : addHeight - 1;
