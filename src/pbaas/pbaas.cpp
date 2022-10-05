@@ -4194,9 +4194,11 @@ bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, const CCoin
     }
     for (auto &oneConfirmed : confirmedUTXOs)
     {
+        COptCCParams p;
         if (!mempool.mapNextTx.count(COutPoint(oneConfirmed.first.txhash, oneConfirmed.first.index)) &&
             view.GetCoins(oneConfirmed.first.txhash, coin) &&
-            coin.IsAvailable(oneConfirmed.first.index))
+            coin.IsAvailable(oneConfirmed.first.index) &&
+            oneConfirmed.second.script.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_RESERVE_DEPOSIT)
         {
             reserveDeposits.push_back(CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis, 
                                                         CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index)));
