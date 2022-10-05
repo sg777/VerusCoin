@@ -499,7 +499,7 @@ public:
 
     static std::string ReserveDepositKeyName()
     {
-        return "vrsc::system.currency.reservetransfer";
+        return "vrsc::system.currency.reservedeposit";
     }
 
     static uint160 ReserveDepositKey()
