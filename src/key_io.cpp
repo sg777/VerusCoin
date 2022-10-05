@@ -16,6 +16,7 @@
 #include "pbaas/identity.h"
 #include "cc/CCinclude.h"
 #include "boost/algorithm/string.hpp"
+#include "rpc/protocol.h"
 
 #include <assert.h>
 #include <string.h>
@@ -32,7 +33,152 @@ uint160 VERUS_NODEID;
 bool VERUS_PRIVATECHANGE;
 std::string VERUS_DEFAULT_ZADDR;
 
-UniValue getvdxfid(const UniValue& params, bool fHelp);
+uint160 ParseVDXFIDInternal(const std::string &vdxfName)
+{
+    uint160 vdxfID;
+    uint160 parentID;
+
+    if (vdxfName.empty())
+    {
+        return uint160();
+    }
+
+    // first, try to interpret the ID as an ID, in case it is
+    CTxDestination idDest = DecodeDestination(vdxfName);
+
+    if (idDest.which() == COptCCParams::ADDRTYPE_ID)
+    {
+        return GetDestinationID(idDest);
+    }
+    else if (vdxfName.back() != '@')
+    {
+        idDest = DecodeDestination(vdxfName + "@");
+    }
+
+    if (idDest.which() == COptCCParams::ADDRTYPE_ID)
+    {
+        vdxfID = GetDestinationID(idDest);
+    }
+    else
+    {
+        vdxfID = CVDXF::GetDataKey(vdxfName, parentID);
+    }
+    return vdxfID;
+}
+
+UniValue getvdxfid_internal(const UniValue& params)
+{
+    std::string vdxfName = uni_get_str(params[0]);
+    if (!vdxfName.size())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "No message to hash");
+    }
+
+    UniValue secondObj = (params.size() > 1) ? params[1] : UniValue(UniValue::VOBJ);
+    UniValue vdxfKeyInputUni = find_value(secondObj, "vdxfkey");
+    UniValue hashUniValue = find_value(secondObj, "uint256");
+    UniValue numUniValue = find_value(secondObj, "indexnum");
+
+    uint160 vdxfKeyInput;
+    uint256 hash256KeyKeyInput;
+    if (!vdxfKeyInputUni.isNull())
+    {
+        std::string vdxfKeyInputStr = uni_get_str(vdxfKeyInputUni);
+        vdxfKeyInput = ParseVDXFIDInternal(vdxfKeyInputStr);
+        if (vdxfKeyInput.IsNull())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid additional vdxf key to combine");
+        }
+    }
+    if (!hashUniValue.isNull())
+    {
+        hash256KeyKeyInput = uint256S(uni_get_str(hashUniValue));
+        if (hash256KeyKeyInput.IsNull())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid hash value to combine");
+        }
+    }
+    int32_t hashInputNum = uni_get_int(numUniValue);
+
+    uint160 vdxfID;
+    uint160 parentID;
+    std::string cleanName;
+    std::string parentIDName = "parentid";
+
+    // first, try to interpret the ID as an ID, in case it is
+    CTxDestination idDest = DecodeDestination(vdxfName);
+
+    if (idDest.which() == COptCCParams::ADDRTYPE_ID)
+    {
+        cleanName = CleanName(vdxfName, parentID, true, true);
+        vdxfID = GetDestinationID(idDest);
+    }
+    else
+    {
+        parentIDName = "namespace";
+        vdxfID = CVDXF::GetDataKey(vdxfName, parentID);
+        cleanName = vdxfName;
+    }
+
+    if (vdxfID.IsNull())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid ID or URI format");
+    }
+
+    // now, add optional values
+    UniValue boundData(UniValue::VOBJ);
+    if (!vdxfKeyInputUni.isNull())
+    {
+        if (hashUniValue.isNull())
+        {
+            vdxfID = CCrossChainRPCData::GetConditionID(vdxfID, vdxfKeyInput);
+            boundData.pushKV("vdxfkey", EncodeDestination(CIdentityID(vdxfKeyInput)));
+            if (!numUniValue.isNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot specify index without hash value");
+            }
+        }
+        else
+        {
+            if (numUniValue.isNull())
+            {
+                vdxfID = CCrossChainRPCData::GetConditionID(vdxfID, vdxfKeyInput, hash256KeyKeyInput);
+                boundData.pushKV("vdxfkey", EncodeDestination(CIdentityID(vdxfKeyInput)));
+                boundData.pushKV("uint256", hash256KeyKeyInput.GetHex());
+            }
+            else
+            {
+                vdxfID = CCrossChainRPCData::GetConditionID(vdxfID, vdxfKeyInput, hash256KeyKeyInput, hashInputNum);
+                boundData.pushKV("vdxfkey", EncodeDestination(CIdentityID(vdxfKeyInput)));
+                boundData.pushKV("uint256", hash256KeyKeyInput.GetHex());
+                boundData.pushKV("indexnum", hashInputNum);
+            }
+        }
+    }
+    else if (!hashUniValue.isNull() && !numUniValue.isNull())
+    {
+        vdxfID = CCrossChainRPCData::GetConditionID(vdxfID, hash256KeyKeyInput, hashInputNum);
+        boundData.pushKV("uint256", hash256KeyKeyInput.GetHex());
+        boundData.pushKV("indexnum", hashInputNum);
+    }
+    else if (!hashUniValue.isNull() || !numUniValue.isNull())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot specify hash or numeric index without additional vdxf key or hash");
+    }
+
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("vdxfid", EncodeDestination(CIdentityID(vdxfID)));
+    result.pushKV("hash160result", vdxfID.GetHex());
+    UniValue nameWithParent(UniValue::VOBJ);
+    nameWithParent.pushKV(parentIDName, EncodeDestination(CIdentityID(parentID)));
+    nameWithParent.pushKV("name", cleanName);
+    result.pushKV("qualifiedname", nameWithParent);
+    if (boundData.getKeys().size())
+    {
+        result.pushKV("bounddata", boundData);
+    }
+    return result;
+}
 
 namespace
 {
@@ -702,7 +848,7 @@ uint160 ParseVDXFKey(const std::string &keyString)
         parms.push_back(vdxfObjParms);
     }
 
-    jsonKey = getvdxfid(parms, false);
+    jsonKey = getvdxfid_internal(parms);
     std::string vdxfKeyStr = uni_get_str(find_value(jsonKey, "vdxfid"));
     return vdxfKeyStr.empty() ? uint160() : GetDestinationID(DecodeDestination(vdxfKeyStr));
 }
