@@ -781,7 +781,8 @@ bool operator==(const CProofRoot &op1, const CProofRoot &op2)
            op1.stateRoot == op2.stateRoot &&
            op1.systemID == op2.systemID &&
            op1.blockHash == op2.blockHash &&
-           op1.compactPower == op2.compactPower;
+           op1.compactPower == op2.compactPower &&
+           (op1.type == CProofRoot::TYPE_ETHEREUM ? op1.gasPrice == op2.gasPrice : true);
 }
 
 bool operator!=(const CProofRoot &op1, const CProofRoot &op2)

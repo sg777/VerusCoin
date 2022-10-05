@@ -1425,6 +1425,7 @@ public:
     uint256 stateRoot;                      // latest MMR root of the notarization height
     uint256 blockHash;                      // combination of block hash, block MMR root, and compact power (or external proxy) for the notarization height
     uint256 compactPower;                   // compact power (or external proxy) of the block height notarization to compare
+    int64_t gasPrice;                       // Ethereum protocol gas price
 
     CProofRoot(int Type=TYPE_PBAAS, int Version=VERSION_CURRENT) : type(Type), version(Version), rootHeight(0) {}
     CProofRoot(const UniValue &uni);
@@ -1433,9 +1434,10 @@ public:
                 const uint256 &root, 
                 const uint256 &blkHash, 
                 const uint256 &power,
+                int64_t GasPrice=0,
                 int16_t Type=TYPE_PBAAS,
                 int16_t Version=VERSION_CURRENT) : 
-                systemID(sysID), rootHeight(nHeight), stateRoot(root), blockHash(blkHash), compactPower(power), version(Version), type(Type) {}
+                systemID(sysID), rootHeight(nHeight), stateRoot(root), blockHash(blkHash), compactPower(power), version(Version), type(Type), gasPrice(GasPrice) {}
 
     ADD_SERIALIZE_METHODS;
 
@@ -1448,6 +1450,10 @@ public:
         READWRITE(stateRoot);
         READWRITE(blockHash);
         READWRITE(compactPower);
+        if (type == TYPE_ETHEREUM)
+        {
+            READWRITE(gasPrice);
+        }
     }
 
     static CProofRoot GetProofRoot(uint32_t blockHeight);

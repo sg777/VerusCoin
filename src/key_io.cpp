@@ -738,6 +738,10 @@ UniValue CProofRoot::ToUniValue() const
     obj.push_back(Pair("stateroot", stateRoot.GetHex()));
     obj.push_back(Pair("blockhash", blockHash.GetHex()));
     obj.push_back(Pair("power", compactPower.GetHex()));
+    if (type == TYPE_ETHEREUM)
+    {
+        obj.push_back(Pair("gasprice", gasPrice));
+    }
     return obj;
 }
 
