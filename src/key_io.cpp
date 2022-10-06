@@ -726,6 +726,10 @@ CProofRoot::CProofRoot(const UniValue &uni) :
     stateRoot = uint256S(uni_get_str(find_value(uni, "stateroot")));
     blockHash = uint256S(uni_get_str(find_value(uni, "blockhash")));
     compactPower = uint256S(uni_get_str(find_value(uni, "power")));
+    if (type == TYPE_ETHEREUM)
+    {
+        gasPrice = AmountFromValueNoErr(find_value(uni, "gasprice"));
+    }
 }
 
 UniValue CProofRoot::ToUniValue() const
