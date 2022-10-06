@@ -6531,10 +6531,10 @@ bool IsValidExportCurrency(const CCurrencyDefinition &systemDest, const uint160 
 
 UniValue sendcurrency(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 2 || params.size() > 4)
+    if (fHelp || params.size() < 2 || params.size() > 5)
     {
         throw runtime_error(
-            "sendcurrency \"fromaddress\" '[{\"address\":... ,\"amount\":...},...]' (minconfs) (feeamount)\n"
+            "sendcurrency \"fromaddress\" '[{\"address\":... ,\"amount\":...},...]' (minconfs) (feeamount) (returntxtemplate)\n"
             "\nThis sends one or many Verus outputs to one or many addresses on the same or another chain.\n"
             "Funds are sourced automatically from the current wallet, which must be present, as in sendtoaddress.\n"
             "If \"fromaddress\" is specified, all funds will be taken from that address, otherwise funds may come\n"
@@ -6563,8 +6563,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             "4. \"feeamount\"               (number, optional) specific fee amount requested instead of default miner's fee\n"
 
             "\nResult:\n"
-            "   \"txid\" : \"transactionid\" (string) The transaction id if (returntx) is false\n"
-            "   \"hextx\" : \"hex\"         (string) The hexadecimal, serialized transaction if (returntx) is true\n"
+            "   \"operation-id\" : \"opid\" (string) The operation id, not public info, if (returntx) is false\n"
+            "   \"hextx\" : \"hex\"         (string) The hex, serialized transaction outputs without inputs if (returntxtemplate) is true (no wallet needed)\n"
 
             "\nExamples:\n"
             + HelpExampleCli("sendcurrency", "\"*\" '[{\"currency\":\"btc\",\"address\":\"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\" ,\"amount\":500.0},...]'")
@@ -6642,9 +6642,11 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         feeAmount = AmountFromValue(params[3]);
     }
 
+    bool returnTx = params.size() > 4 ? uni_get_bool(params[4]) : false;
+
     const UniValue &uniOutputs = params[1];
 
-    TransactionBuilder tb(Params().GetConsensus(), height + 1, pwalletMain);
+    TransactionBuilder tb(Params().GetConsensus(), height + 1, returnTx ? nullptr : pwalletMain);
     std::vector<SendManyRecipient> tOutputs;
     std::vector<SendManyRecipient> zOutputs;
 
@@ -7871,6 +7873,11 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     {
         std::cerr << e.what() << '\n';
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters.");
+    }
+
+    if (returnTx)
+    {
+        return EncodeHexTx(tb.mtx);
     }
 
     // Create operation and add to global queue
@@ -9895,7 +9902,8 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
     uint32_t height = chainActive.Height();
-    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::ACTIVATE_PBAAS;
+    uint32_t solVersion = CConstVerusSolutionVector::GetVersionByHeight(height + 1);
+    bool isPBaaS = solVersion >= CActivationHeight::ACTIVATE_PBAAS;
 
     CNameReservation reservation;
     CAdvancedNameReservation advReservation;
@@ -9914,12 +9922,24 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     UniValue rawID = find_value(params[0], "identity");
 
+    int idVersion;
+
+    if (isPBaaS)
+    {
+        idVersion = CIdentity::VERSION_PBAAS;
+    }
+    else if (solVersion >= CActivationHeight::ACTIVATE_VERUSVAULT)
+    {
+        idVersion = CIdentity::VERSION_VAULT;
+    }
+    else
+    {
+        idVersion = CIdentity::VERSION_VERUSID;
+    }
+
     if (uni_get_int(find_value(rawID,"version")) == 0)
     {
-        rawID.pushKV("version", 
-                     CConstVerusSolutionVector::GetVersionByHeight(height + 1) >= CActivationHeight::ACTIVATE_VERUSVAULT ? 
-                        CIdentity::VERSION_VAULT :
-                        CIdentity::VERSION_VERUSID);
+        rawID.pushKV("version", idVersion);
     }
 
     if (uni_get_int(find_value(rawID,"minimumsignatures")) == 0)
@@ -9941,17 +9961,6 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     if (!newID.IsValid(true))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity");
-    }
-
-    uint32_t solVersion = CConstVerusSolutionVector::GetVersionByHeight(height + 1);
-
-    if (solVersion >= CActivationHeight::ACTIVATE_VERUSVAULT)
-    {
-        newID.SetVersion(solVersion < CActivationHeight::ACTIVATE_PBAAS ? CIdentity::VERSION_VAULT : CIdentity::VERSION_PBAAS);
-    }
-    else
-    {
-        newID.SetVersion(CIdentity::VERSION_VERUSID);
     }
 
     if (IsVerusActive())

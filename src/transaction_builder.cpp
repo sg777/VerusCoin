@@ -596,10 +596,13 @@ TransactionBuilderResult TransactionBuilder::Build(bool throwTxWithPartialSig)
             extern void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry);
             TxToUniv(txNewConst, uint256(), jsonTx);
             printf("Failed to sign for script:\n%s\n", jsonTx.write(1,2).c_str());
-            if (sigdata.scriptSig.size() && throwTxWithPartialSig)
+            if (throwTxWithPartialSig)
             {
-                UpdateTransaction(mtx, nIn, sigdata);
                 throwPartialSig = true;
+                if (sigdata.scriptSig.size())
+                {
+                    UpdateTransaction(mtx, nIn, sigdata);
+                }
             }
             else
             {
