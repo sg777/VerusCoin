@@ -7892,7 +7892,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 totalOutput.valueMap[ASSETCHAINS_CHAINID] = oneOut.nValue;
             }
         }
-        returnTxUni.pushKV("outputtotal", totalOutput.ToUniValue());
+        returnTxUni.pushKV("outputtotals", totalOutput.ToUniValue());
         returnTxUni.pushKV("hextx", EncodeHexTx(tb.mtx));
         return returnTxUni;
     }
