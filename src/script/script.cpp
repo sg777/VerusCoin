@@ -1547,10 +1547,6 @@ CAmount AmountFromValueNoErr(const UniValue& value)
         {
             amount = 0;
         }
-        else if (!MoneyRange(amount))
-        {
-            amount = 0;
-        }
         return amount;
     }
     catch(const std::exception& e)
