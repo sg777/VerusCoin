@@ -6563,8 +6563,13 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             "4. \"feeamount\"               (number, optional) specific fee amount requested instead of default miner's fee\n"
 
             "\nResult:\n"
-            "   \"operation-id\" : \"opid\" (string) The operation id, not public info, if (returntx) is false\n"
-            "   \"hextx\" : \"hex\"         (string) The hex, serialized transaction outputs without inputs if (returntxtemplate) is true (no wallet needed)\n"
+            "   \"operation-id\" : \"opid\" (string) The operation id, not public info, if (returntxtemplate) is false\n"
+            "\n"
+            "   If (returntxtemplate) is true"
+            "   {\n"
+            "       \"outputtotals\" : {currencyvaluemap}   Total outputs in all currencies the need to be input to the transaction\n"
+            "       \"hextx\" : \"hexstring\"               The transaction with all specified outputs and no inputs\n"
+            "   }\n"
 
             "\nExamples:\n"
             + HelpExampleCli("sendcurrency", "\"*\" '[{\"currency\":\"btc\",\"address\":\"RRehdmUV7oEAqoZnzEGBH34XysnWaBatct\" ,\"amount\":500.0},...]'")
@@ -7877,7 +7882,19 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
     if (returnTx)
     {
-        return EncodeHexTx(tb.mtx);
+        UniValue returnTxUni;
+        CCurrencyValueMap totalOutput;
+        for (auto &oneOut : tb.mtx.vout)
+        {
+            totalOutput += oneOut.ReserveOutValue();
+            if (oneOut.nValue)
+            {
+                totalOutput.valueMap[ASSETCHAINS_CHAINID] = oneOut.nValue;
+            }
+        }
+        returnTxUni.pushKV("outputtotal", totalOutput.ToUniValue());
+        returnTxUni.pushKV("hextx", EncodeHexTx(tb.mtx));
+        return returnTxUni;
     }
 
     // Create operation and add to global queue
