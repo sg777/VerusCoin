@@ -461,7 +461,6 @@ bool SetThisChain(const UniValue &chainDefinition, CCurrencyDefinition *retDef)
     if (!IsVerusActive())
     {
         // we set the notary chain to either Verus or VerusTest
-        // TODO: HARDENING - ensure that we don't need to check which name here and do the right thing in all cases
         CCurrencyDefinition notaryChainDef = CCurrencyDefinition(PBAAS_TESTMODE ? "VRSCTEST" : "VRSC", PBAAS_TESTMODE);
 
         VERUS_CHAINNAME = notaryChainDef.name;
@@ -474,6 +473,10 @@ bool SetThisChain(const UniValue &chainDefinition, CCurrencyDefinition *retDef)
         ASSETCHAINS_SUPPLY = ConnectedChains.ThisChain().GetTotalPreallocation();
         ASSETCHAINS_ISSUANCE = ConnectedChains.ThisChain().gatewayConverterIssuance;
         ASSETCHAINS_ERAOPTIONS[0] = ConnectedChains.ThisChain().ChainOptions();
+
+        mapArgs["-blocktime"] = to_string(ConnectedChains.ThisChain().blockTime);
+        mapArgs["-powaveragingwindow"] = to_string(ConnectedChains.ThisChain().powAveragingWindow);
+        mapArgs["-notarizationperiod"] = to_string(ConnectedChains.ThisChain().blockNotarizationModulo);
     }
 
     auto numEras = ConnectedChains.ThisChain().rewards.size();

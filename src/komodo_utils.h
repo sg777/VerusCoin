@@ -1821,7 +1821,7 @@ void komodo_args(char *argv0)
     ASSETCHAINS_LWMAPOS = 50;
     ASSETCHAINS_STAKED = 0;
 
-    bool paramsLoaded = false;
+    PARAMS_LOADED = false;
 
     CCurrencyDefinition mainVerusCurrency;
 
@@ -1964,7 +1964,7 @@ void komodo_args(char *argv0)
                     ASSETCHAINS_ISSUANCE = thisCurrency.gatewayConverterIssuance;
                     mapArgs["-ac_supply"] = to_string(ASSETCHAINS_SUPPLY);
                     mapArgs["-gatewayconverterissuance"] = to_string(ASSETCHAINS_ISSUANCE);
-                    paramsLoaded = true;
+                    PARAMS_LOADED = true;
                 }
                 catch(const std::exception& e)
                 {
@@ -2033,7 +2033,7 @@ void komodo_args(char *argv0)
 
     if ( name.size() )
     {
-        if (!paramsLoaded)
+        if (!PARAMS_LOADED)
         {
             ASSETCHAINS_ALGO = ASSETCHAINS_VERUSHASH;
 
@@ -2216,7 +2216,7 @@ void komodo_args(char *argv0)
 
         ASSETCHAINS_RPCCREDENTIALS = string(ASSETCHAINS_USERPASS);
 
-        if (!paramsLoaded)
+        if (!PARAMS_LOADED)
         {
             UniValue obj(UniValue::VOBJ);
 
@@ -2283,7 +2283,7 @@ void komodo_args(char *argv0)
             }
 
             SetThisChain(obj, nullptr);
-            paramsLoaded = true;
+            PARAMS_LOADED = true;
         }
     }
     else
