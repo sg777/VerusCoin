@@ -7882,14 +7882,15 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
     if (returnTx)
     {
-        UniValue returnTxUni;
+        UniValue returnTxUni(UniValue::VOBJ);
         CCurrencyValueMap totalOutput;
-        for (auto &oneOut : tb.mtx.vout)
+        for (auto &oneOut : tOutputs)
         {
-            totalOutput += oneOut.ReserveOutValue();
-            if (oneOut.nValue)
+            tb.AddTransparentOutput(get<3>(oneOut), get<1>(oneOut));
+            totalOutput += get<3>(oneOut).ReserveOutValue();
+            if (get<1>(oneOut))
             {
-                totalOutput.valueMap[ASSETCHAINS_CHAINID] = oneOut.nValue;
+                totalOutput.valueMap[ASSETCHAINS_CHAINID] = get<1>(oneOut);
             }
         }
         returnTxUni.pushKV("outputtotals", totalOutput.ToUniValue());
