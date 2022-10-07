@@ -1195,12 +1195,7 @@ UniValue CIdentity::ToUniValue() const
             {
                 continue;
             }
-            else if (entry.first == lastHash)
-            {
-                entryArr.push_back(HexBytes(&(entry.second[0]), entry.second.size()));
-                continue;
-            }
-            else if (!lastHash.IsNull())
+            else if (entry.first != lastHash && !lastHash.IsNull())
             {
                 hashes.push_back(Pair(EncodeDestination(CIdentityID(lastHash)), entryArr));
                 entryArr = UniValue(UniValue::VARR);
@@ -1208,7 +1203,6 @@ UniValue CIdentity::ToUniValue() const
             lastHash = entry.first;
             // if we have room for a known 20 byte value, check to see if it is one
             CDataStream ss(entry.second, PROTOCOL_VERSION, SER_DISK);
-            UniValue entryUni(UniValue::VNULL);
             while (ss.size() > sizeof(uint160))
             {
                 uint160 checkVal;
@@ -1239,6 +1233,7 @@ UniValue CIdentity::ToUniValue() const
                 }
                 if (!objectUni.isNull())
                 {
+                    UniValue entryUni(UniValue::VOBJ);
                     entryUni.pushKV(EncodeDestination(CIdentityID(checkVal)), objectUni);
                     entryUni.pushKV("hex", HexBytes(&(entry.second[0]), entry.second.size()));
                     entryArr.push_back(entryUni);
