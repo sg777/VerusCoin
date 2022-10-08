@@ -50,6 +50,8 @@ extern bool fPayAtLeastCustomFee;
 
 //! -paytxfee default
 static const CAmount DEFAULT_TRANSACTION_FEE = 0.0001 * COIN;
+static const CAmount DEFAULT_HEAVY_INOUT_FEE = 0.001 * COIN;
+
 //! -paytxfee will warn if called with a higher fee than this amount (in satoshis) per KB
 static const CAmount nHighTransactionFeeWarning = 0.01 * COIN;
 //! -maxtxfee default

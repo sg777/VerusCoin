@@ -6628,6 +6628,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         minConfs = uni_get_int(params[2]);
     }
 
+    int numHeavyOutputs = 0;
+
     uint32_t height = chainActive.Height();
 
     if (sourceDest.which() == COptCCParams::ADDRTYPE_ID && !GetDestinationID(sourceDest).IsNull())
@@ -6642,12 +6644,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send currency from a locked identity");
         }
-    }
-
-    CAmount feeAmount = DEFAULT_TRANSACTION_FEE;
-    if (params.size() > 3)
-    {
-        feeAmount = AmountFromValue(params[3]);
     }
 
     bool returnTx = params.size() > 4 ? uni_get_bool(params[4]) : false;
@@ -6737,6 +6733,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot duplicate private address source or destination");
                 }
+                numHeavyOutputs++;
                 zaddrDestSet.insert(zaddressDest);
                 destStr = EncodePaymentAddress(zaddressDest);
             }
@@ -7302,6 +7299,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot export currency to single currency system");
                         }
                         dest = CTransferDestination(CTransferDestination::DEST_REGISTERCURRENCY, ::AsVector(sourceCurrencyDef));
+                        numHeavyOutputs++;
                     }
 
                     // if we should export the ID, make a full ID destination
@@ -7320,6 +7318,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot find identity to export (" + EncodeDestination(destination) + ")");
                             }
                             dest = CTransferDestination(CTransferDestination::DEST_FULLID, ::AsVector(destIdentity));
+                            numHeavyOutputs++;
                         }
                     }
 
@@ -7883,6 +7882,13 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters.");
     }
 
+    // CAmount feeAmount = (numHeavyOutputs || hasZSource) ? (DEFAULT_HEAVY_INOUT_FEE * (hasZSource ? numHeavyOutputs + 1 : numHeavyOutputs)) : DEFAULT_TRANSACTION_FEE;
+    CAmount feeAmount = DEFAULT_TRANSACTION_FEE;
+    if (params.size() > 3)
+    {
+        feeAmount = AmountFromValue(params[3]);
+    }
+
     if (returnTx)
     {
         UniValue returnTxUni(UniValue::VOBJ);
@@ -7897,6 +7903,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             }
         }
         returnTxUni.pushKV("outputtotals", totalOutput.ToUniValue());
+        returnTxUni.pushKV("feeamount", ValueFromAmount(feeAmount));
         returnTxUni.pushKV("hextx", EncodeHexTx(tb.mtx));
         return returnTxUni;
     }
@@ -7906,6 +7913,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     {
         minConfs = 1;
     }
+
     CMutableTransaction contextualTx = CreateNewContextualCMutableTransaction(Params().GetConsensus(), height + 1);
     std::shared_ptr<AsyncRPCQueue> q = getAsyncRPCQueue();
     std::shared_ptr<AsyncRPCOperation> operation(new AsyncRPCOperation_sendmany(tb, 
