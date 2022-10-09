@@ -876,7 +876,6 @@ CRating::CRating(const UniValue uni) :
         for (int i = 0; i < keys.size(); i++)
         {
             auto &oneKey = keys[i];
-            std::string oneRatingStr = uni_get_str(values[i]);
             auto destKey = DecodeDestination(oneKey);
 
             uint160 vdxfKey;
@@ -889,17 +888,53 @@ CRating::CRating(const UniValue uni) :
                 return;
             }
 
-            std::vector<unsigned char> oneRatingVec;
-            if (!oneRatingStr.empty() || !IsHex(oneRatingStr) || !(oneRatingVec = ParseHex(oneRatingStr)).size())
-            {
-                LogPrint("ratings", "%s: invalid rating string: %s\n", __func__, oneRatingStr.c_str());
-                version = VERSION_INVALID;
-                return;
-            }
-
             if (destKey.which() == COptCCParams::ADDRTYPE_ID)
             {
                 vdxfKey = GetDestinationID(destKey);
+            }
+
+            const std::multimap<uint160, std::vector<std::string>> &ratingMap = GetRatingDefinitionMap();
+            std::vector<unsigned char> oneRatingVec;
+
+            auto it = ratingMap.find(vdxfKey);
+            if (it != ratingMap.end() && !(values[i].isStr() && IsHex(uni_get_str(values[i]))))
+            {
+                std::map<std::string, int> ratingKeyMap;
+                for (int j = 0; j < it->second.size(); j++)
+                {
+                    ratingKeyMap.insert(std::make_pair(it->second[j], j));
+                }
+                // if one rating, store it in an array anyhow
+                UniValue oneValueArr = values[i].isArray() ? values[i] : UniValue(UniValue::VARR);
+                if (values[i].isStr())
+                {
+                    oneValueArr.push_back(values[i]);
+                }
+                for (int j = 0; j < oneValueArr.size(); j++)
+                {
+                    std::string oneRatingStr = uni_get_str(oneValueArr[j]);
+                    auto ratingIt = ratingKeyMap.find(oneRatingStr);
+                    if (ratingIt == ratingKeyMap.end())
+                    {
+                        LogPrint("ratings", "%s: invalid rating keyword: %s\n", __func__, oneRatingStr.c_str());
+                        version = VERSION_INVALID;
+                        return;
+                    }
+                    else
+                    {
+                        oneRatingVec.push_back((uint8_t)ratingIt->second);
+                    }
+                }
+            }
+            else if (values[i].isStr() && IsHex(uni_get_str(values[i])))
+            {
+                oneRatingVec = ParseHex(uni_get_str(values[i]));
+            }
+            else
+            {
+                LogPrint("ratings", "%s: invalid rating in key: %s\n", __func__, oneKey.c_str());
+                version = VERSION_INVALID;
+                return;
             }
 
             ratings[vdxfKey] = oneRatingVec;

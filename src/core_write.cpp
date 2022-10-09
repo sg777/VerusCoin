@@ -1274,8 +1274,53 @@ UniValue CIdentity::ToUniValue() const
     return obj;
 }
 
+std::multimap<uint160, std::vector<std::string>> CRating::ratingsDefinitionMap;
+const std::multimap<uint160, std::vector<std::string>> &CRating::GetRatingDefinitionMap(const std::locale &locale)
+{
+    static CCriticalSection cs;
+    LOCK(cs);
+    if (!ratingsDefinitionMap.size())
+    {
+        std::vector<std::string> defaultRatingKeys;
+        defaultRatingKeys.resize(RATING_LASTDEFAULT + 1);
+        defaultRatingKeys[RATING_1] = "1";
+        defaultRatingKeys[RATING_2] = "2";
+        defaultRatingKeys[RATING_3] = "3";
+        defaultRatingKeys[RATING_4] = "4";
+        defaultRatingKeys[RATING_5] = "5";
+        defaultRatingKeys[RATING_6] = "6";
+        defaultRatingKeys[RATING_7] = "7";
+        defaultRatingKeys[RATING_8] = "8";
+        defaultRatingKeys[RATING_9] = "9";
+        defaultRatingKeys[RATING_10] = "10";
+        defaultRatingKeys[RATING_G] = "RATED G";
+        defaultRatingKeys[RATING_PG] = "RATED PG";
+        defaultRatingKeys[RATING_PG13] = "RATED PG13";
+        defaultRatingKeys[RATING_R] = "RATED R";
+        defaultRatingKeys[RATING_HSEX] = "SEXUAL HEALTH";
+        defaultRatingKeys[RATING_HHEALTH] = "HEALTH";
+        defaultRatingKeys[RATING_DRUGS] = "DRUGS";
+        defaultRatingKeys[RATING_SMOKING] = "SMOKING";
+        defaultRatingKeys[RATING_VIOLENCE] = "VIOLENCE";
+        defaultRatingKeys[RATING_1STAR] = std::string(u8"\U00002B50");
+        defaultRatingKeys[RATING_2STAR] = std::string(u8"\U00002B50") + std::string(u8"\U00002B50");
+        defaultRatingKeys[RATING_3STAR] = std::string(u8"\U00002B50") + std::string(u8"\U00002B50") + std::string(u8"\U00002B50");
+        defaultRatingKeys[RATING_4STAR] = std::string(u8"\U00002B50") + std::string(u8"\U00002B50") + std::string(u8"\U00002B50") + std::string(u8"\U00002B50");
+        defaultRatingKeys[RATING_5STAR] = std::string(u8"\U00002B50") + std::string(u8"\U00002B50") + std::string(u8"\U00002B50") + std::string(u8"\U00002B50") + std::string(u8"\U00002B50");
+        defaultRatingKeys[RATING_BAD] = std::string(u8"\U0001F620");
+        defaultRatingKeys[RATING_POOR] = std::string(u8"\U0001F641");
+        defaultRatingKeys[RATING_OK] = std::string(u8"\U0001F610");
+        defaultRatingKeys[RATING_GOOD] = std::string(u8"\U0001F642");
+        defaultRatingKeys[RATING_EXCELLENT] = std::string(u8"\U0001F603");
+        ratingsDefinitionMap.insert(std::make_pair(DefaultRatingTypeKey(), defaultRatingKeys));
+    }
+    return ratingsDefinitionMap;
+}
+
 UniValue CRating::ToUniValue() const
 {
+    const std::multimap<uint160, std::vector<std::string>> &ratingMap = GetRatingDefinitionMap();
+
     UniValue retVal(UniValue::VOBJ);
     retVal.pushKV("version", (int64_t)version);
     retVal.pushKV("trustlevel", (int)trustLevel);
@@ -1284,7 +1329,38 @@ UniValue CRating::ToUniValue() const
 
     for (auto &oneMapEntry : ratings)
     {
-        ratingsMapUni.pushKV(EncodeDestination(CIdentityID(oneMapEntry.first)), HexBytes(&(oneMapEntry.second[0]), oneMapEntry.second.size()));
+        bool uniOut = false;
+        auto it = ratingMap.find(oneMapEntry.first);
+        if (it != ratingMap.end())
+        {
+            uniOut = true;
+            std::set<std::pair<int,std::string>> uniStrings;
+            for (auto &oneRating : oneMapEntry.second)
+            {
+                if (oneRating > 0 && oneRating < it->second.size())
+                {
+                    uniStrings.insert(std::make_pair(oneRating, it->second[oneRating]));
+                }
+                else
+                {
+                    uniOut = false;
+                    break;
+                }
+            }
+            if (uniOut)
+            {
+                UniValue ratingsArr(UniValue::VARR);
+                for (auto &oneRatingPair : uniStrings)
+                {
+                    ratingsArr.push_back(oneRatingPair.second);
+                }
+                ratingsMapUni.pushKV(EncodeDestination(CIdentityID(oneMapEntry.first)), ratingsArr);
+            }
+        }
+        if (!uniOut)
+        {
+            ratingsMapUni.pushKV(EncodeDestination(CIdentityID(oneMapEntry.first)), HexBytes(&(oneMapEntry.second[0]), oneMapEntry.second.size()));
+        }
     }
     if (ratings.size())
     {

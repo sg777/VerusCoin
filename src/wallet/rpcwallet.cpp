@@ -1255,7 +1255,7 @@ UniValue signfile(const UniValue& params, bool fHelp)
 
     if (fHelp || params.size() < 2 || params.size() > 3)
         throw runtime_error(
-            "signfile \"address or identity\" \"filepath/filename\" \"curentsig\"\n"
+            "signfile \"address or identity\" \"filepath/filename\" \"currentsig\"\n"
             "\nGenerates a SHA256D hash of the file, returns the hash, and signs the hash with the private key specified"
             + HelpRequiringPassphrase() + "\n"
             "\nArguments:\n"

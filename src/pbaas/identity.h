@@ -1021,6 +1021,9 @@ public:
 
 class CRating
 {
+protected:
+    static std::multimap<uint160, std::vector<std::string>> ratingsDefinitionMap;
+
 public:
     enum ECoreRatingTypes
     {
@@ -1073,6 +1076,7 @@ public:
         RATING_OK = 28,
         RATING_GOOD = 29,
         RATING_EXCELLENT = 30,
+        RATING_LASTDEFAULT = 30
     };
 
     uint32_t version;
@@ -1110,15 +1114,15 @@ public:
                 trustLevel >= TRUST_FIRST && trustLevel <= TRUST_LAST;
     }
 
-    static std::string CoreRatingTypeKeyName()
+    static std::string DefaultRatingTypeKeyName()
     {
-        return "vrsc::system.ratings.coreratings";
+        return "vrsc::system.ratings.defaultratings";
     }
 
-    static uint160 CoreRatingTypeKey(const uint160 &idID)
+    static uint160 DefaultRatingTypeKey()
     {
         static uint160 nameSpace;
-        static uint160 ratingTypeKey = CVDXF::GetDataKey(CoreRatingTypeKeyName(), nameSpace);
+        static uint160 ratingTypeKey = CVDXF::GetDataKey(DefaultRatingTypeKeyName(), nameSpace);
         return ratingTypeKey;
     }
 
@@ -1145,6 +1149,8 @@ public:
         }
         return ratings;
     }
+
+    static const std::multimap<uint160, std::vector<std::string>> &GetRatingDefinitionMap(const std::locale &locale=std::locale::classic());
 
     UniValue ToUniValue() const;
 };
