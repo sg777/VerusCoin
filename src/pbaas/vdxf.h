@@ -254,7 +254,7 @@ public:
 
     static std::string DataByteKeyName()
     {
-        return "vrsc::system.type.byte";
+        return "vrsc::data.type.byte";
     }
     static uint160 DataByteKey()
     {
@@ -264,7 +264,7 @@ public:
     }
     static std::string DataInt16KeyName()
     {
-        return "vrsc::system.type.int16";
+        return "vrsc::data.type.int16";
     }
     static uint160 DataInt16Key()
     {
@@ -274,7 +274,7 @@ public:
     }
     static std::string DataUint16KeyName()
     {
-        return "vrsc::system.type.uint16";
+        return "vrsc::data.type.uint16";
     }
     static uint160 DataUint16Key()
     {
@@ -284,7 +284,7 @@ public:
     }
     static std::string DataInt32KeyName()
     {
-        return "vrsc::system.type.int32";
+        return "vrsc::data.type.int32";
     }
     static uint160 DataInt32Key()
     {
@@ -294,7 +294,7 @@ public:
     }
     static std::string DataUint32KeyName()
     {
-        return "vrsc::system.type.uint32";
+        return "vrsc::data.type.uint32";
     }
     static uint160 DataUint32Key()
     {
@@ -304,7 +304,7 @@ public:
     }
     static std::string DataInt64KeyName()
     {
-        return "vrsc::system.type.int64";
+        return "vrsc::data.type.int64";
     }
     static uint160 DataInt64Key()
     {
@@ -314,7 +314,7 @@ public:
     }
     static std::string DataUint64KeyName()
     {
-        return "vrsc::system.type.uint64";
+        return "vrsc::data.type.uint64";
     }
     static uint160 DataUint64Key()
     {
@@ -324,7 +324,7 @@ public:
     }
     static std::string DataUint160KeyName()
     {
-        return "vrsc::system.type.uint160";
+        return "vrsc::data.type.uint160";
     }
     static uint160 DataUint160Key()
     {
@@ -334,7 +334,7 @@ public:
     }
     static std::string DataUint256KeyName()
     {
-        return "vrsc::system.type.uint256";
+        return "vrsc::data.type.uint256";
     }
     static uint160 DataUint256Key()
     {
@@ -344,7 +344,7 @@ public:
     }
     static std::string DataStringKeyName()
     {
-        return "vrsc::system.type.string";
+        return "vrsc::data.type.string";
     }
     static uint160 DataStringKey()
     {
@@ -355,7 +355,7 @@ public:
     // this is a key for a typed vector, which will have the object type key following the vector key
     static std::string DataVectorKeyName()
     {
-        return "vrsc::system.type.vector";
+        return "vrsc::data.type.vector";
     }
     static uint160 DataVectorKey()
     {
@@ -365,7 +365,7 @@ public:
     }
     static std::string DataByteVectorKeyName()
     {
-        return "vrsc::system.type.bytevector";
+        return "vrsc::data.type.bytevector";
     }
     static uint160 DataByteVectorKey()
     {
@@ -375,7 +375,7 @@ public:
     }
     static std::string DataInt32VectorKeyName()
     {
-        return "vrsc::system.type.int32vector";
+        return "vrsc::data.type.int32vector";
     }
     static uint160 DataInt32VectorKey()
     {
@@ -385,7 +385,7 @@ public:
     }
     static std::string DataInt64VectorKeyName()
     {
-        return "vrsc::system.type.int64vector";
+        return "vrsc::data.type.int64vector";
     }
     static uint160 DataInt64VectorKey()
     {
@@ -395,7 +395,7 @@ public:
     }
     static std::string DataCurrencyMapKeyName()
     {
-        return "vrsc::system.type.object.currencymap";
+        return "vrsc::data.type.object.currencymap";
     }
     static uint160 DataCurrencyMapKey()
     {
@@ -405,7 +405,7 @@ public:
     }
     static std::string DataRatingsKeyName()
     {
-        return "vrsc::system.type.object.ratings";
+        return "vrsc::data.type.object.ratings";
     }
     static uint160 DataRatingsKey()
     {
@@ -415,7 +415,7 @@ public:
     }
     static std::string DataURLKeyName()
     {
-        return "vrsc::system.type.object.url";
+        return "vrsc::data.type.object.url";
     }
     static uint160 DataURLKey()
     {
@@ -425,7 +425,7 @@ public:
     }
     static std::string DataTransferDestinationKeyName()
     {
-        return "vrsc::system.type.object.transferdestination";
+        return "vrsc::data.type.object.transferdestination";
     }
     static uint160 DataTransferDestinationKey()
     {
