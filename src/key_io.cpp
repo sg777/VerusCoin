@@ -875,22 +875,12 @@ CRating::CRating(const UniValue uni) :
 
         for (int i = 0; i < keys.size(); i++)
         {
-            auto &oneKey = keys[i];
-            auto destKey = DecodeDestination(oneKey);
-
-            uint160 vdxfKey;
-            uint160 vdxfNameSpace;
-            if ((destKey.which() == COptCCParams::ADDRTYPE_INVALID && !oneKey.empty() && ((vdxfKey = CVDXF::GetDataKey(oneKey, vdxfNameSpace)).IsNull() || vdxfNameSpace.IsNull())) ||
-                (destKey.which() != COptCCParams::ADDRTYPE_INVALID && destKey.which() != COptCCParams::ADDRTYPE_ID))
+            uint160 vdxfKey = ParseVDXFKey(keys[i]);
+            if (vdxfKey.IsNull())
             {
-                LogPrint("ratings", "%s: invalid json rating key: %s\n", __func__, oneKey.c_str());
+                LogPrint("ratings", "%s: invalid json rating key: %s\n", __func__, keys[i].c_str());
                 version = VERSION_INVALID;
                 return;
-            }
-
-            if (destKey.which() == COptCCParams::ADDRTYPE_ID)
-            {
-                vdxfKey = GetDestinationID(destKey);
             }
 
             const std::multimap<uint160, std::vector<std::string>> &ratingMap = GetRatingDefinitionMap();
@@ -932,7 +922,7 @@ CRating::CRating(const UniValue uni) :
             }
             else
             {
-                LogPrint("ratings", "%s: invalid rating in key: %s\n", __func__, oneKey.c_str());
+                LogPrint("ratings", "%s: invalid rating in key: %s\n", __func__, keys[i].c_str());
                 version = VERSION_INVALID;
                 return;
             }
@@ -946,7 +936,7 @@ std::vector<unsigned char> VectorEncodeVDXFUni(const UniValue &obj)
 {
     CDataStream ss(PROTOCOL_VERSION, SER_DISK);
 
-    std::string serializedHex = uni_get_str(find_value(obj, "hex"));
+    std::string serializedHex = uni_get_str(find_value(obj, "serializedhex"));
     if (!serializedHex.empty())
     {
         if (!IsHex(serializedHex))
@@ -1008,33 +998,41 @@ std::vector<unsigned char> VectorEncodeVDXFUni(const UniValue &obj)
         {
             ss << objTypeKey;
             ss << VARINT(1);
-            ss << ::AsVector(uni_get_str(oneValValues[k]));
+            std::string stringVal = uni_get_str(oneValValues[k]);
+            ss << VARINT(GetSerializeSize(ss, stringVal));
+            ss << stringVal;
         }
         else if (objTypeKey == CVDXF_Data::DataByteVectorKey())
         {
             ss << objTypeKey;
             ss << VARINT(1);
-            ss << ParseHex(uni_get_str(oneValValues[k]));
+            std::vector<unsigned char> byteVec = ParseHex(uni_get_str(oneValValues[k]));
+            ss << VARINT(GetSerializeSize(ss, byteVec));
+            ss << byteVec;
         }
         else if (objTypeKey == CVDXF_Data::DataCurrencyMapKey())
         {
+            CCurrencyValueMap oneCurMap(oneValValues[k]);
             ss << objTypeKey;
             ss << VARINT(1);
-            ss << CCurrencyValueMap(oneValValues[k]);
+            ss << VARINT(GetSerializeSize(ss, oneCurMap));
+            ss << oneCurMap;
         }
         else if (objTypeKey == CVDXF_Data::DataRatingsKey())
         {
             CRating oneRatingObj(oneValValues[k]);
             ss << objTypeKey;
             ss << VARINT(oneRatingObj.version);
-            ss << CRating(oneValValues[k]);
+            ss << VARINT(GetSerializeSize(ss, oneRatingObj));
+            ss << oneRatingObj;
         }
         else if (objTypeKey == CVDXF_Data::DataTransferDestinationKey())
         {
             CTransferDestination oneTransferDest(oneValValues[k]);
             ss << objTypeKey;
             ss << VARINT(oneTransferDest.TypeNoFlags());
-            ss << CTransferDestination(oneValValues[k]);
+            ss << VARINT(GetSerializeSize(ss, oneTransferDest));
+            ss << oneTransferDest;
         }
         else
         {

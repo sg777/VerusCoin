@@ -1201,56 +1201,95 @@ UniValue CIdentity::ToUniValue() const
                 entryArr = UniValue(UniValue::VARR);
             }
             lastHash = entry.first;
+
             // if we have room for a known 20 byte value, check to see if it is one
             CDataStream ss(entry.second, PROTOCOL_VERSION, SER_DISK);
             bool objOut = false;
+            UniValue entryUni(UniValue::VOBJ);
+
             while (ss.size() > sizeof(uint160))
             {
-                uint160 checkVal;
-                uint32_t version;
-                ss >> checkVal;
-                UniValue objectUni(UniValue::VNULL);
+                try
+                {
+                    uint160 checkVal;
+                    uint32_t version;
+                    int64_t objSize;
+                    ss >> checkVal;
+                    UniValue objectUni(UniValue::VNULL);
 
-                if (checkVal == CVDXF_Data::DataCurrencyMapKey())
-                {
-                    CCurrencyValueMap oneCurrencyMap;
-                    ss >> VARINT(version);
-                    ss >> oneCurrencyMap;
-                    objectUni = oneCurrencyMap.ToUniValue();
+                    if (checkVal == CVDXF_Data::DataCurrencyMapKey())
+                    {
+                        CCurrencyValueMap oneCurrencyMap;
+                        ss >> VARINT(version);
+                        ss >> VARINT(objSize);
+                        ss >> oneCurrencyMap;
+                        if (oneCurrencyMap.IsValid())
+                        {
+                            objectUni = oneCurrencyMap.ToUniValue();
+                        }
+                    }
+                    else if (checkVal == CVDXF_Data::DataRatingsKey())
+                    {
+                        CRating oneRatingObj;
+                        ss >> VARINT(version);
+                        ss >> VARINT(objSize);
+                        ss >> oneRatingObj;
+                        if (oneRatingObj.IsValid())
+                        {
+                            objectUni = oneRatingObj.ToUniValue();
+                        }
+                    }
+                    else if (checkVal == CVDXF_Data::DataTransferDestinationKey())
+                    {
+                        CTransferDestination oneTransferDest;
+                        ss >> VARINT(version);
+                        ss >> VARINT(objSize);
+                        ss >> oneTransferDest;
+                        if (oneTransferDest.IsValid())
+                        {
+                            objectUni = oneTransferDest.ToUniValue();
+                        }
+                    }
+                    else if (checkVal == CVDXF_Data::DataStringKey())
+                    {
+                        std::string stringVal;
+                        ss >> VARINT(version);
+                        ss >> VARINT(objSize);
+                        ss >> stringVal;
+                        objectUni = stringVal;
+                    }
+                    else if (checkVal == CVDXF_Data::DataByteVectorKey())
+                    {
+                        std::vector<unsigned char> vecVal;
+                        ss >> VARINT(version);
+                        ss >> VARINT(objSize);
+                        ss >> vecVal;
+                        objectUni = HexBytes(&(vecVal[0]), vecVal.size());
+                    }
+
+                    // if we have an object that we recognized, encode it
+                    if (!objectUni.isNull())
+                    {
+                        objOut = true;
+                        entryUni.pushKV(EncodeDestination(CIdentityID(checkVal)), objectUni);
+                    }
+                    else
+                    {
+                        objOut = false;
+                        break;
+                    }
                 }
-                else if (checkVal == CVDXF_Data::DataRatingsKey())
+                catch (...)
                 {
-                    CCurrencyValueMap oneRatingObj;
-                    ss >> VARINT(version);
-                    ss >> oneRatingObj;
-                    objectUni = oneRatingObj.ToUniValue();
-                }
-                else if (checkVal == CVDXF_Data::DataTransferDestinationKey())
-                {
-                    CTransferDestination oneTransferDest;
-                    ss >> VARINT(version);
-                    ss >> oneTransferDest;
-                    objectUni = oneTransferDest.ToUniValue();
-                }
-                if (!objectUni.isNull())
-                {
-                    objOut = true;
-                    UniValue entryUni(UniValue::VOBJ);
-                    entryUni.pushKV(EncodeDestination(CIdentityID(checkVal)), objectUni);
-                    entryArr.push_back(entryUni);
-                }
-                else if (objOut)
-                {
-                    UniValue entryUni(UniValue::VOBJ);
-                    entryUni.pushKV("hex", HexBytes(&(entry.second[0]), entry.second.size()));
-                    entryArr.push_back(entryUni);
-                }
-                else
-                {
+                    objOut = false;
                     break;
                 }
             }
-            if (!objOut)
+            if (objOut)
+            {
+                entryArr.push_back(entryUni);
+            }
+            else
             {
                 entryArr.push_back(HexBytes(&(entry.second[0]), entry.second.size()));
             }
