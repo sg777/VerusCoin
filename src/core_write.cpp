@@ -1336,7 +1336,7 @@ const std::multimap<uint160, std::vector<std::string>> &CRating::GetRatingDefini
         defaultRatingKeys[RATING_PG] = "RATED PG";
         defaultRatingKeys[RATING_PG13] = "RATED PG13";
         defaultRatingKeys[RATING_R] = "RATED R";
-        defaultRatingKeys[RATING_HSEX] = "SEXUAL HEALTH";
+        defaultRatingKeys[RATING_HSEX] = "SEXUALITY";
         defaultRatingKeys[RATING_HHEALTH] = "HEALTH";
         defaultRatingKeys[RATING_DRUGS] = "DRUGS";
         defaultRatingKeys[RATING_SMOKING] = "SMOKING";
