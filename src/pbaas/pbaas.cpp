@@ -2414,6 +2414,19 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             }
         }
 
+        // ensure that we have enough fees for the currency definition import
+        CAmount adjustedImportFee = SATOSHIDEN;
+        
+        if (systemDest.proofProtocol == systemDest.PROOF_ETHNOTARIZATION)
+        {
+            CChainNotarizationData cnd;
+            if (!GetNotarizationData(systemDestID, cnd) || !cnd.IsConfirmed() || !cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(systemDestID))
+            {
+                return state.Error("Cannot get notarization data for destination system of transfer: " + rt.ToUniValue().write(1,2));
+            }
+            adjustedImportFee = cnd.vtx[cnd.lastConfirmed].second.proofRoots[systemDestID].gasPrice;
+        }
+
         CReserveTransactionDescriptor rtxd;
         CCoinbaseCurrencyState dummyState = importState;
         std::vector<CTxOut> vOutputs;
@@ -2597,8 +2610,10 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 exportDestination = systemDest;
             }
 
-            // ensure that we have enough fees for the currency definition import
-            if (feeEquivalentInNative < systemDest.GetCurrencyImportFee(curToExport.ChainOptions() & curToExport.OPTION_NFT_TOKEN))
+            adjustedImportFee = CCoinbaseCurrencyState::ReserveToNativeRaw(
+                        systemDest.GetCurrencyImportFee(curToExport.ChainOptions() & curToExport.OPTION_NFT_TOKEN),
+                        adjustedImportFee);
+            if (feeEquivalentInNative < adjustedImportFee)
             {
                 return state.Error("Not enough fee for currency import in reserve transfer " + rt.ToUniValue().write(1,2));
             }
@@ -2672,8 +2687,10 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.destination.fees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
                 }
 
+                adjustedImportFee = CCoinbaseCurrencyState::ReserveToNativeRaw(systemDest.IDImportFee(), adjustedImportFee);
+
                 // ensure that we have enough fees for the identity import
-                if (feeEquivalentInNative < systemDest.IDImportFee())
+                if (feeEquivalentInNative < adjustedImportFee)
                 {
                     return state.Error("Not enough fee for identity import in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
@@ -2719,7 +2736,8 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 // ensure that we have enough fees for transfer
                 if (systemDestID != ASSETCHAINS_CHAINID && !rt.IsPreConversion())
                 {
-                    if (feeEquivalentInNative < systemDest.GetTransactionImportFee())
+                    adjustedImportFee = CCoinbaseCurrencyState::ReserveToNativeRaw(systemDest.GetTransactionImportFee(), adjustedImportFee);
+                    if (feeEquivalentInNative < adjustedImportFee)
                     {
                         return state.Error("Not enough fee for cross chain currency operation in reserve transfer " + rt.ToUniValue().write(1,2));
                     }
