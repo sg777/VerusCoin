@@ -1720,6 +1720,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "updateidentity", 0},
     { "setidentitytimelock", 1},
     { "recoveridentity", 0},
+    { "signdata", 0},
     { "getidentitieswithaddress", 0},
     { "getidentitieswithrevocation", 0},
     { "getidentitieswithrecovery", 0},

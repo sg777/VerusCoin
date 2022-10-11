@@ -696,9 +696,8 @@ UniValue createmultisig(const UniValue& params, bool fHelp)
     return result;
 }
 
-uint256 HashFile(std::string filepath)
+uint256 HashFile(const std::string &filepath, CNativeHashWriter &ss)
 {
-    CHashWriterSHA256 ss(SER_GETHASH, 0);
     ifstream ifs = ifstream(filepath, std::ios::binary | std::ios::in);
     if (ifs.is_open() && !ifs.eof())
     {
@@ -721,6 +720,12 @@ uint256 HashFile(std::string filepath)
     {
         return uint256();
     }
+}
+
+uint256 HashFile(const std::string &filepath)
+{
+    CNativeHashWriter hw(CCurrencyDefinition::EHashTypes::HASH_SHA256);
+    return HashFile(filepath, hw);
 }
 
 UniValue hashdata(const UniValue& params, bool fHelp)

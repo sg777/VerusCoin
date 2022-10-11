@@ -303,6 +303,7 @@ CIdentitySignature::CIdentitySignature(const UniValue &uni)
 }
 
 uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vdxfCodes, 
+                                                  const std::vector<std::string> &vdxfCodeNames, 
                                                   const std::vector<uint256> &statements, 
                                                   const uint160 &systemID, 
                                                   uint32_t blockHeight, 
@@ -325,29 +326,47 @@ uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vd
     }
     else
     {
-        CNativeHashWriter ss((CCurrencyDefinition::EProofProtocol)hashType);
+        CNativeHashWriter ss((CCurrencyDefinition::EHashTypes)hashType);
 
-        bool crossChainLogging = LogAcceptCategory("notarysignatures");
+        bool crossChainLogging = LogAcceptCategory("notarysignatures") || LogAcceptCategory("identitysignatures");
         if (crossChainLogging)
         {
-            printf("%s: vdxfCodes:\n", __func__);
-            LogPrintf("%s: vdxfCodes:\n", __func__);
-            for (auto &oneCode : vdxfCodes)
+            if (vdxfCodes.size())
             {
-                printf("%s\n", oneCode.GetHex().c_str());
-                LogPrintf("%s\n", oneCode.GetHex().c_str());
+                printf("%s: vdxfCodes:\n", __func__);
+                LogPrintf("%s: vdxfCodes:\n", __func__);
+                for (auto &oneCode : vdxfCodes)
+                {
+                    printf("%s\n", oneCode.GetHex().c_str());
+                    LogPrintf("%s\n", oneCode.GetHex().c_str());
+                }
+                printf("\n");
+                LogPrintf("\n");
             }
-            printf("\n");
-            LogPrintf("\n");
-            printf("%s: statements:\n", __func__);
-            LogPrintf("%s: statements:\n", __func__);
-            for (auto &oneStatement : statements)
+            if (vdxfCodeNames.size())
             {
-                printf("%s\n", oneStatement.GetHex().c_str());
-                LogPrintf("%s\n", oneStatement.GetHex().c_str());
+                printf("%s: vdxfCodeNames:\n", __func__);
+                LogPrintf("%s: vdxfCodeNames:\n", __func__);
+                for (auto &oneCode : vdxfCodeNames)
+                {
+                    printf("%s\n", oneCode.c_str());
+                    LogPrintf("%s\n", oneCode.c_str());
+                }
+                printf("\n");
+                LogPrintf("\n");
             }
-            printf("\n");
-            LogPrintf("\n");
+            if (statements.size())
+            {
+                printf("%s: statements:\n", __func__);
+                LogPrintf("%s: statements:\n", __func__);
+                for (auto &oneStatement : statements)
+                {
+                    printf("%s\n", oneStatement.GetHex().c_str());
+                    LogPrintf("%s\n", oneStatement.GetHex().c_str());
+                }
+                printf("\n");
+                LogPrintf("\n");
+            }
             printf("systemid: %s, blockheight: %u, identity: %s, prefix: %s\nmsghash: %s\n",
                 EncodeDestination(CIdentityID(systemID)).c_str(),
                 blockHeight,
@@ -367,6 +386,10 @@ uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vd
         if (vdxfCodes.size())
         {
             ss << vdxfCodes;
+        }
+        if (vdxfCodeNames.size())
+        {
+            ss << vdxfCodeNames;
         }
         if (statements.size())
         {
@@ -392,6 +415,7 @@ uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vd
 
 CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(const CIdentity &signingID,
                                                                               const std::vector<uint160> &vdxfCodes, 
+                                                                              const std::vector<std::string> &vdxfCodeNames,
                                                                               const std::vector<uint256> &statements, 
                                                                               const uint160 systemID, 
                                                                               const std::string &prefixString, 
@@ -410,7 +434,7 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(co
         }
         idKeys.insert(GetDestinationID(oneKey));
     }
-    uint256 signatureHash = IdentitySignatureHash(vdxfCodes, statements, systemID, blockHeight, signingID.GetID(), prefixString, msgHash);
+    uint256 signatureHash = IdentitySignatureHash(vdxfCodes, vdxfCodeNames, statements, systemID, blockHeight, signingID.GetID(), prefixString, msgHash);
     for (auto &oneSig : signatures)
     {
         if (oneSig.size() != ECDSA_RECOVERABLE_SIZE)

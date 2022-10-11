@@ -799,7 +799,8 @@ UniValue listaddressgroupings(const UniValue& params, bool fHelp)
 }
 
 CIdentitySignature::ESignatureVerification CIdentitySignature::AddSignature(const CIdentity &signingID,
-                                                                            const std::vector<uint160> &vdxfCodes, 
+                                                                            const std::vector<uint160> &vdxfCodes,
+                                                                            const std::vector<std::string> &vdxfCodeNames,
                                                                             const std::vector<uint256> &statements, 
                                                                             const uint160 &systemID, 
                                                                             uint32_t height,
@@ -824,7 +825,7 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::AddSignature(cons
         idKeys.insert(GetDestinationID(oneKey));
     }
 
-    uint256 signatureHash = IdentitySignatureHash(vdxfCodes, statements, systemID, height, sID, prefixString, msgHash);
+    uint256 signatureHash = IdentitySignatureHash(vdxfCodes, vdxfCodeNames, statements, systemID, height, sID, prefixString, msgHash);
     
     for (auto &oneSig : signatures)
     {
@@ -872,7 +873,8 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::AddSignature(cons
 }
 
 CIdentitySignature::ESignatureVerification CIdentitySignature::NewSignature(const CIdentity &signingID,
-                                                                            const std::vector<uint160> &vdxfCodes, 
+                                                                            const std::vector<uint160> &vdxfCodes,
+                                                                            const std::vector<std::string> &vdxfCodeNames,
                                                                             const std::vector<uint256> &statements, 
                                                                             const uint160 &systemID, 
                                                                             uint32_t height,
@@ -882,7 +884,7 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::NewSignature(cons
 {
     signatures.clear();
     blockHeight = height;
-    return AddSignature(signingID, vdxfCodes, statements, systemID, height, prefixString, msgHash, pWallet);
+    return AddSignature(signingID, vdxfCodes, vdxfCodeNames, statements, systemID, height, prefixString, msgHash, pWallet);
 }
 
 std::string SignMessageHash(const CIdentity &identity, const uint256 &_msgHash, const std::string &signatureStr, uint32_t blockHeight)
@@ -1027,7 +1029,7 @@ UniValue signhash(const UniValue& params, bool fHelp)
 
     if (fHelp || params.size() < 2 || params.size() > 3)
         throw runtime_error(
-            "signhash \"address or identity\" \"hexhash\" \"curentsig\"\n"
+            "signhash \"address or identity\" \"hexhash\" \"currentsig\"\n"
             "\nSign a hexadecimal hash value with the private key of a t-addr or the authorities present in this wallet for an identity"
             + HelpRequiringPassphrase() + "\n"
             "\nNOTE: This API will only work for signing a data hash, but cannot properly sign the hash of a transaction\n"
@@ -1246,7 +1248,9 @@ UniValue signmessage(const UniValue& params, bool fHelp)
     }
 }
 
-uint256 HashFile(std::string filepath);
+uint256 HashFile(const std::string &filepath, CNativeHashWriter &ss);
+uint256 HashFile(const std::string &filepath);
+uint160 ParseVDXFKey(const std::string &keyString);
 
 UniValue signfile(const UniValue& params, bool fHelp)
 {
@@ -1352,6 +1356,344 @@ UniValue signfile(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Sign failed");
 
         UniValue ret(UniValue::VOBJ);
+        std::reverse(msgHash.begin(), msgHash.end());   // return a reversed hash for compatibility with sha256sum
+        ret.push_back(Pair("hash", msgHash.GetHex()));
+        ret.push_back(Pair("signature", EncodeBase64(&vchSig[0], vchSig.size())));
+        return ret;
+    }
+}
+
+UniValue signdata(const UniValue& params, bool fHelp)
+{
+    if (!EnsureWalletIsAvailable(fHelp))
+        return NullUniValue;
+
+    if (fHelp || params.size() != 1)
+        throw runtime_error(
+            "signdata '{\"identity\":\"i-address or friendly name (t-address will result in simple signature w/indicated hash and prefix, nothing else)\",\n"
+            "           \"prefixstring\":\"extra string that is hashed during signature and must be supplied for verification\",\n"
+            "           \"filename\":\"filepath/filename\" | \"message\":\"any message\" | \"messagehex\":\"hexdata\" | \"messagebase64\":\"base64data\",\n"
+            "           \"vdxfkeys\":[\"vdxfkey i-address\", ...],\n"
+            "           \"vdxfkeynames\":[\"vdxfkeyname, object for getvdxfid API, or friendly name ID -- no i-addresses\", ...],\n"
+            "           \"boundhashes\":[\"hexhash\", ...],\n"
+            "           \"hashtype\": \"sha256\" | \"sha256D\" | \"blake2b\" | \"keccak256\"\n"
+            "           \"signature\":\"currentsig\"}'\n\n"
+
+            "\nGenerates a hash (SHA256 default if \"hashtype\" not specified) of the data, returns the hash, and signs it with parameters specified"
+            + HelpRequiringPassphrase() + "\n"
+            "\nArguments:\n"
+            "1. \"t-addr or identity\"              (string, required) The transparent address or identity to use for signing.\n"
+            "2. \"filename\"                        (string, required) Local file to sign\n"
+            "3. \"cursig\"                          (string) The current signature of the message encoded in base 64 if multisig ID\n"
+            "3. \"vdxfkeys\":[\"vdxfkey\", ...],    (array)  Array of vdxfkeys or ID i-addresses\n"
+            "3. \"vdxfkeys\":[\"vdxfkeyname\", ...], (array)  Array of vdxfkey names or fully qualified friendly IDs\n"
+            "4. \"boundhashes\":[\"hexhash\", ...],\n"
+            "5. \"hashtype\"                        (string, optional) one of --\n"
+            "                                           \"sha256\", \"sha256D\", \"blake2b\", \"keccak256\" -- defaults to sha256\n"
+
+            "\nResult:\n"
+            "{\n"
+            "  \"hash\":\"hexhash\"         (string) The hash of the message (SHA256, NOT SHA256D)\n"
+            "  \"signature\":\"base64sig\"  (string) The aggregate signature of the message encoded in base 64 if all or partial signing successful\n"
+            "}\n"
+            "\nExamples:\n"
+            "\nCreate the signature\n"
+            + HelpExampleCli("signdata", "'{\"identity\":\"Verus Coin Foundation.vrsc@\", \"message\":\"hello world\"}'") +
+            "\nVerify the signature\n"
+            + HelpExampleCli("verifydata", "'{\"identity\":\"Verus Coin Foundation.vrsc@\", \"message\":\"hello world\", \"signature\":\"base64sig\"}'") +
+            "\nAs json rpc\n"
+            + HelpExampleRpc("signdata", "'{\"identity\":\"Verus Coin Foundation.vrsc@\", \"message\":\"hello world\"}'")
+        );
+
+    LOCK2(cs_main, pwalletMain->cs_wallet);
+
+    EnsureWalletIsUnlocked();
+
+    uint32_t nHeight = chainActive.Height();
+
+    string strAddress;
+    string strPrefix;
+    string strFileName;
+    string strMessage;
+    string strHex;
+    string strBase64;
+    string strSignature;
+    string hashTypeStr = "sha256";
+
+    UniValue vdxfKeys(UniValue::VNULL);
+    UniValue vdxfKeyNames(UniValue::VNULL);
+    UniValue boundHashes(UniValue::VNULL);
+    bool objectSignature = false;
+
+    CTxDestination dest;
+
+    if (!params[0].isStr() && params[0].isObject())
+    {
+        strAddress = uni_get_str(find_value(params[0], "identity"));
+        strPrefix = uni_get_str(find_value(params[0], "prefixstring"));
+        strFileName = uni_get_str(find_value(params[0], "filename"));
+        strMessage = uni_get_str(find_value(params[0], "message"));
+        strHex = uni_get_str(find_value(params[0], "messagehex"));
+        strBase64 = uni_get_str(find_value(params[0], "messagebase64"));
+        hashTypeStr = uni_get_str(find_value(params[0], "hashtype"), hashTypeStr);
+        vdxfKeys = find_value(params[0], "vdxfkeys");
+        vdxfKeyNames = find_value(params[0], "vdxfkeynames");
+        boundHashes = find_value(params[0], "boundhashes");
+        strSignature = uni_get_str(find_value(params[0], "signature"));
+        if (((int)strFileName.empty() +
+             (int)strMessage.empty() +
+             (int)strHex.empty() +
+             (int)strBase64.empty() +
+             (int)strAddress.empty() +
+             (int)hashTypeStr.empty()) != 3)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Must include only one of \"filename\", \"message\", \"messagehex\", \"messagebase64\" and a valid \"identity\"");
+        }
+        dest = DecodeDestination(strAddress);
+        if (!IsValidDestination(dest)) {
+            throw JSONRPCError(RPC_TYPE_ERROR, "\"identity\" specified in object must be valid VerusID or address");
+        }
+        if (dest.which() != COptCCParams::ADDRTYPE_ID &&
+            ((vdxfKeys.isArray() && vdxfKeys.size()) ||
+             (vdxfKeyNames.isArray() && vdxfKeyNames.size()) ||
+             (boundHashes.isArray() && vdxfKeyNames.size()) ||
+             strSignature.size()))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "When signing with public key and not identity, cannot include vdxf keys, vdxf key names, bound hashes, or multisig");
+        }
+        objectSignature = true;
+    }
+    else
+    {
+        strAddress = params[0].get_str();
+        strFileName = params[1].get_str();
+        if (params.size() > 2)
+        {
+            strSignature = uni_get_str(params[2]);
+        }
+        dest = DecodeDestination(strAddress);
+        if (!IsValidDestination(dest)) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid address or identity");
+        }
+    }
+
+    uint256 msgHash;
+    CCurrencyDefinition::EHashTypes hashType = CCurrencyDefinition::EHashTypes::HASH_SHA256;
+
+    if (hashTypeStr == "sha256")
+    {
+        hashType = CCurrencyDefinition::EHashTypes::HASH_SHA256;
+    }
+    else if (hashTypeStr == "sha256D")
+    {
+        hashType = CCurrencyDefinition::EHashTypes::HASH_SHA256D;
+    }
+    else if (hashTypeStr == "blake2b")
+    {
+        hashType = CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR;
+    }
+    else if (hashTypeStr == "keccak256")
+    {
+        hashType = CCurrencyDefinition::EHashTypes::HASH_KECCAK;
+    }
+    else
+    {
+        throw JSONRPCError(RPC_TYPE_ERROR, "Invalid hash type" + hashTypeStr + " must be one of -- \"sha256\", \"sha256D\", \"blake2b\", \"keccak256\"");
+    }
+
+    {
+        CNativeHashWriter hw(hashType);
+        if (!strFileName.empty())
+        {
+            msgHash = HashFile(strFileName, hw);
+        }
+        else if (!strMessage.empty())
+        {
+            hw << strMessage;
+            msgHash = hw.GetHash();
+        }
+        else if (!strHex.empty())
+        {
+            if (!IsHex(strHex))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "\"messagehex\" must be hex string with no additional characters");
+            }
+            hw << ParseHex(strHex);
+            msgHash = hw.GetHash();
+        }
+        else if (!strBase64.empty())
+        {
+            hw << DecodeBase64(strBase64);
+            msgHash = hw.GetHash();
+        }
+    }
+
+    if (msgHash.IsNull())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMS, "Cannot open file " + strFileName);
+    }
+
+    if (dest.which() == COptCCParams::ADDRTYPE_ID)
+    {
+        CIdentity identity;
+
+        identity = CIdentity::LookupIdentity(GetDestinationID(dest));
+        if (identity.IsValidUnrevoked())
+        {
+            UniValue ret(UniValue::VOBJ);
+            std::string sig;
+
+            // if we should create an advanced signature from an object specification do it, otherwise,
+            // drop through
+            if (objectSignature)
+            {
+                CIdentitySignature identitySig = CIdentitySignature(nHeight, std::vector<unsigned char>(), hashType, CIdentitySignature::VERSION_ETHBRIDGE);
+                if (!strSignature.empty())
+                {
+                    std::vector<unsigned char> sigVec;
+                    try
+                    {
+                        bool fInvalid = false;
+                        sigVec = DecodeBase64(strSignature.c_str(), &fInvalid);
+                        if (fInvalid)
+                        {
+                            sigVec.clear();
+                        }
+                        if (sigVec.size())
+                        {
+                            identitySig = CIdentitySignature(sigVec);
+                            if (!identitySig.IsValid() || identitySig.blockHeight > (nHeight + 1))
+                            {
+                                sigVec.clear();
+                            }
+                        }
+                    }
+                    catch(const std::exception& e)
+                    {
+                        sigVec.clear();
+                    }
+                    if (!sigVec.size())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMS, "Invalid pre-existing signature");
+                    }
+                }
+
+                // go through VDXF keys, VDXF key names, and bound hashes
+                std::vector<uint160> vdxfCodes;
+                std::vector<std::string> vdxfCodeNames;
+                std::vector<uint256> statements;
+
+                for (int i = 0; i < vdxfKeys.size(); i++)
+                {
+                    uint160 oneKey = ParseVDXFKey(uni_get_str(vdxfKeys[i]));
+                    if (oneKey.IsNull())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMS, "Invalid VDXF key");
+                    }
+                    vdxfCodes.push_back(oneKey);
+                }
+                for (int i = 0; i < vdxfKeyNames.size(); i++)
+                {
+                    std::string oneName = uni_get_str(vdxfKeys[i]);
+                    std::vector<unsigned char> vch;
+                    if (oneName.empty() || DecodeBase58Check(uni_get_str(vdxfKeyNames[i]), vch) && vch.size())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMS, "Invalid VDXF key name. Key names must be fully qualified, friendly names.");
+                    }
+                    uint160 oneKey = ParseVDXFKey(oneName);
+                    if (oneKey.IsNull())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMS, "Invalid VDXF key name");
+                    }
+                    vdxfCodeNames.push_back(boost::to_lower_copy(oneName));
+                }
+                for (int i = 0; i < boundHashes.size(); i++)
+                {
+                    uint256 oneHash = uint256S(uni_get_str(boundHashes[i]));
+                    if (oneHash.IsNull())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMS, "Invalid bound hash");
+                    }
+                    if (hashType == CCurrencyDefinition::EHashTypes::HASH_SHA256)
+                    {
+                        std::reverse(oneHash.begin(), oneHash.end());
+                    }
+                    statements.push_back(oneHash);
+                }
+
+                identitySig.AddSignature(identity, vdxfCodes, vdxfCodeNames, statements, ASSETCHAINS_CHAINID, identitySig.blockHeight, strPrefix, msgHash, pwalletMain);
+
+                vector<unsigned char> vchSig = ::AsVector(identitySig);
+
+                // all signatures must be from valid keys, and if there are enough, it is valid
+                sig = EncodeBase64(&vchSig[0], vchSig.size());
+            }
+            else
+            {
+                sig = SignMessageHash(identity, msgHash, strSignature, nHeight);
+            }
+            if (hashType == CCurrencyDefinition::EHashTypes::HASH_SHA256)
+            {
+                std::reverse(msgHash.begin(), msgHash.end());   // return a reversed hash for compatibility with sha256sum
+            }
+            ret.push_back(Pair("system", ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID)));
+            ret.push_back(Pair("hashtype", hashTypeStr));
+            ret.push_back(Pair("identity", (identity.parent.IsNull() ?
+                                            identity.name : 
+                                            identity.name + '.' + ConnectedChains.GetFriendlyCurrencyName(identity.parent)) +
+                                           '@'));
+            ret.push_back(Pair("height", (int64_t)nHeight));
+            if (objectSignature)
+            {
+                if (vdxfKeys.size())
+                {
+                    ret.push_back(Pair("vdxfkeys", vdxfKeys));
+                }
+                if (vdxfKeyNames.size())
+                {
+                    ret.push_back(Pair("vdxfkeynames", vdxfKeyNames));
+                }
+                if (boundHashes.size())
+                {
+                    ret.push_back(Pair("boundhashes", boundHashes));
+                }
+            }
+            ret.push_back(Pair("signature", sig));
+            return ret;
+        }
+        else if (!identity.IsValid())
+        {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid identity");
+        }
+        else
+        {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Identity is revoked and cannot sign");
+        }
+    }
+    else
+    {
+        const CKeyID *keyID = boost::get<CKeyID>(&dest);
+        if (!keyID) {
+            throw JSONRPCError(RPC_TYPE_ERROR, "Address does not refer to key");
+        }
+
+        CKey key;
+        if (!pwalletMain->GetKey(*keyID, key)) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Private key not available");
+        }
+
+        CHashWriterSHA256 ss(SER_GETHASH, PROTOCOL_VERSION);
+        ss << verusDataSignaturePrefix;
+        ss << msgHash;
+
+        vector<unsigned char> vchSig;
+        if (!key.SignCompact(ss.GetHash(), vchSig))
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Sign failed");
+
+        UniValue ret(UniValue::VOBJ);
+        ret.push_back(Pair("system", ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID)));
+        ret.push_back(Pair("hashtype", hashTypeStr));
+        ret.push_back(Pair("identity", EncodeDestination(dest)));
         std::reverse(msgHash.begin(), msgHash.end());   // return a reversed hash for compatibility with sha256sum
         ret.push_back(Pair("hash", msgHash.GetHex()));
         ret.push_back(Pair("signature", EncodeBase64(&vchSig[0], vchSig.size())));
@@ -8119,6 +8461,7 @@ static const CRPCCommand commands[] =
     { "wallet",             "settxfee",                 &settxfee,                 true  },
     { "identity",           "signmessage",              &signmessage,              true  },
     { "identity",           "signfile",                 &signfile,                 true  },
+    { "identity",           "signdata",                 &signdata,                 true  },
     // { "hidden",             "signhash",                 &signhash,                 true  }, // disable due to risk of signing something that doesn't contain the content
     { "wallet",             "openwallet",               &openwallet,               true  },
     { "wallet",             "walletlock",               &walletlock,               true  },
