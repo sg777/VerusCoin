@@ -1566,7 +1566,7 @@ UniValue signdata(const UniValue& params, bool fHelp)
             // drop through
             if (objectSignature)
             {
-                CIdentitySignature identitySig = CIdentitySignature(nHeight, std::vector<unsigned char>(), hashType, CIdentitySignature::VERSION_ETHBRIDGE);
+                CIdentitySignature identitySig = CIdentitySignature(nHeight, std::set<std::vector<unsigned char>>(), hashType, CIdentitySignature::VERSION_ETHBRIDGE);
                 if (!strSignature.empty())
                 {
                     std::vector<unsigned char> sigVec;
@@ -1658,6 +1658,7 @@ UniValue signdata(const UniValue& params, bool fHelp)
             ret.push_back(Pair("system", ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID)));
             ret.push_back(Pair("systemid", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
             ret.push_back(Pair("hashtype", hashTypeStr));
+            ret.push_back(Pair("hash", msgHash.GetHex()));
             std::string fullName = ConnectedChains.GetFriendlyIdentityName(identity);
             ret.push_back(Pair("identity", fullName));
             ret.push_back(Pair("canonicalname", boost::to_lower_copy(fullName)));
