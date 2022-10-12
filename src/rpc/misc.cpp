@@ -1490,10 +1490,12 @@ UniValue verifysignature(const UniValue& params, bool fHelp)
             }
             ret.push_back(Pair("system", ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID)));
             ret.push_back(Pair("systemid", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
-            ret.push_back(Pair("identity", ConnectedChains.GetFriendlyIdentityName(identity)));
+            std::string fullName = ConnectedChains.GetFriendlyIdentityName(identity);
+            ret.push_back(Pair("identity", fullName));
+            ret.push_back(Pair("canonicalname", boost::to_lower_copy(fullName)));
+            ret.push_back(Pair("address", EncodeDestination(identity.GetID())));
             ret.push_back(Pair("hashtype", hashTypeStr));
             ret.push_back(Pair("hash", msgHash.GetHex()));
-            ret.push_back(Pair("address", EncodeDestination(identity.GetID())));
             ret.push_back(Pair("height", (int64_t)nHeight));
             if (vdxfKeys.size())
             {

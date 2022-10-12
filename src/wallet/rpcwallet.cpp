@@ -1656,11 +1656,12 @@ UniValue signdata(const UniValue& params, bool fHelp)
                 std::reverse(msgHash.begin(), msgHash.end());   // return a reversed hash for compatibility with sha256sum
             }
             ret.push_back(Pair("system", ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID)));
+            ret.push_back(Pair("systemid", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
             ret.push_back(Pair("hashtype", hashTypeStr));
-            ret.push_back(Pair("address", (identity.parent.IsNull() ?
-                                            identity.name : 
-                                            identity.name + '.' + ConnectedChains.GetFriendlyCurrencyName(identity.parent)) +
-                                           '@'));
+            std::string fullName = ConnectedChains.GetFriendlyIdentityName(identity);
+            ret.push_back(Pair("identity", fullName));
+            ret.push_back(Pair("canonicalname", boost::to_lower_copy(fullName)));
+            ret.push_back(Pair("address", EncodeDestination(identity.GetID())));
             ret.push_back(Pair("height", (int64_t)nHeight));
             if (objectSignature)
             {
