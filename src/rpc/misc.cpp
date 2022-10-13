@@ -878,7 +878,7 @@ CIdentitySignature::ESignatureVerification CheckBasicIDSignature(uint256 msgHash
         else
         {
             msgHash = signature.IdentitySignatureHash(std::vector<uint160>(),
-                                                      std::vector<std::__cxx11::string>(), 
+                                                      std::vector<std::string>(), 
                                                       std::vector<uint256>(),
                                                       systemID,
                                                       signature.blockHeight,
