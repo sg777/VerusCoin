@@ -223,8 +223,8 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
         CIdentitySignature idSignature(height, std::set<std::vector<unsigned char>>(), hashType);
 
         uint256 signatureHash = idSignature.IdentitySignatureHash(std::vector<uint160>({NotaryConfirmedKey()}),
-                                                                  std::vector<std::string>(),
-                                                                  std::vector<uint256>(), 
+                                                                  std::vector<std::string>({std::to_string(output.n)}),
+                                                                  std::vector<uint256>({output.hash}), 
                                                                   systemID,
                                                                   height,
                                                                   signWithID,
@@ -274,8 +274,8 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
 
         CIdentitySignature::ESignatureVerification sigResult = idSignature.CheckSignature(sigIdentity, 
                                                                                         std::vector<uint160>({NotaryConfirmedKey()}), 
-                                                                                        std::vector<std::string>(), 
-                                                                                        std::vector<uint256>(), 
+                                                                                        std::vector<std::string>({std::to_string(output.n)}),
+                                                                                        std::vector<uint256>({output.hash}), 
                                                                                         systemID, 
                                                                                         "", 
                                                                                         objHash);
@@ -372,8 +372,8 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
         CIdentitySignature idSignature(height, std::set<std::vector<unsigned char>>(), hashType);
 
         uint256 signatureHash = idSignature.IdentitySignatureHash(std::vector<uint160>({NotaryRejectedKey()}), 
-                                                                  std::vector<std::string>(), 
-                                                                  std::vector<uint256>(), 
+                                                                  std::vector<std::string>({std::to_string(output.n)}),
+                                                                  std::vector<uint256>({output.hash}), 
                                                                   systemID,
                                                                   height,
                                                                   signWithID,
@@ -422,12 +422,12 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
         }
 
         CIdentitySignature::ESignatureVerification sigResult = idSignature.CheckSignature(sigIdentity, 
-                                                                                        std::vector<uint160>({NotaryRejectedKey()}), 
-                                                                                        std::vector<std::string>(), 
-                                                                                        std::vector<uint256>(), 
-                                                                                        systemID, 
-                                                                                        "", 
-                                                                                        objHash);
+                                                                                          std::vector<uint160>({NotaryRejectedKey()}), 
+                                                                                          std::vector<std::string>({std::to_string(output.n)}),
+                                                                                          std::vector<uint256>({output.hash}), 
+                                                                                          systemID, 
+                                                                                          "", 
+                                                                                          objHash);
         
         if (sigResult == CIdentitySignature::ESignatureVerification::SIGNATURE_EMPTY ||
             sigResult == CIdentitySignature::ESignatureVerification::SIGNATURE_INVALID)
@@ -522,8 +522,8 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
                 std::vector<std::vector<unsigned char>> dupSigs;
                 CIdentitySignature::ESignatureVerification result = oneIDSig.second.CheckSignature(sigIdentity,
                                                                                                    std::vector<uint160>({NotaryConfirmedKey()}), 
-                                                                                                   std::vector<std::string>(), 
-                                                                                                   std::vector<uint256>(), 
+                                                                                                   std::vector<std::string>({std::to_string(output.n)}),
+                                                                                                   std::vector<uint256>({output.hash}), 
                                                                                                    systemID, 
                                                                                                    "", 
                                                                                                    objHash,
@@ -541,6 +541,7 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
                 }
                 else if (result != oneIDSig.second.SIGNATURE_COMPLETE)
                 {
+                    // could store and return partial signatures here
                     continue;
                 }
                 notarySetConfirms[oneIDSig.first] = oneIDSig.second.signatures;
@@ -573,8 +574,8 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
                 std::vector<std::vector<unsigned char>> dupSigs;
                 CIdentitySignature::ESignatureVerification result = oneIDSig.second.CheckSignature(sigIdentity,
                                                                                                    std::vector<uint160>({NotaryRejectedKey()}), 
-                                                                                                   std::vector<std::string>(), 
-                                                                                                   std::vector<uint256>(), 
+                                                                                                   std::vector<std::string>({std::to_string(output.n)}),
+                                                                                                   std::vector<uint256>({output.hash}), 
                                                                                                    systemID, 
                                                                                                    "", 
                                                                                                    objHash,
@@ -592,6 +593,7 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
                 }
                 else if (result != oneIDSig.second.SIGNATURE_COMPLETE)
                 {
+                    // could store and return partial signatures here
                     continue;
                 }
                 notarySetRejects.insert(std::make_pair(oneIDSig.first, oneIDSig.second.signatures));
@@ -5562,201 +5564,6 @@ CNotaryEvidence CObjectFinalization::SignRejected(const std::set<uint160> &notar
         retVal.SignRejected(notarySet, minConfirming, *pWallet, tx, signatureID, signingHeight, hashType);
     }
     return retVal;
-}
-
-// Verify that the output object of "p" is signed appropriately with the indicated signature
-// and that the signature is fully authorized to sign
-// TODO: THIS SHOULD BE UPDATED TO REFLECT USAGE, WHICH IT DOESN'T YET HAVE
-// SPECIFICALLY, THE currencyID, WHICH IS USED, SHOULD BE SEPARATED FROM minimum signatures required
-CIdentitySignature::ESignatureVerification CObjectFinalization::VerifyOutputSignature(const CTransaction &initialTx, const std::vector<CNotarySignature> &signatureVec, const COptCCParams &p, uint32_t height) const
-{
-    CCurrencyDefinition curDef;
-    int32_t currencyDefHeight;
-
-    CCurrencyDefinition::EHashTypes hashType = CCurrencyDefinition::EHashTypes::HASH_INVALID;
-    for (auto oneSig : signatureVec)
-    {
-        hashType = oneSig.signatures.size() ? (CCurrencyDefinition::EHashTypes)oneSig.signatures.begin()->second.hashType : CCurrencyDefinition::EHashTypes::HASH_INVALID;
-        if (CNativeHashWriter::IsValidHashType(hashType))
-        {
-            break;
-        }
-    }
-    if (hashType == CCurrencyDefinition::EHashTypes::HASH_INVALID)
-    {
-        return CIdentitySignature::SIGNATURE_INVALID;
-    }
-
-    std::map<CIdentityID, CIdentitySignature> confirmedSigs;
-    std::map<CIdentityID, CIdentitySignature> rejectedSigs;
-
-    std::set<CIdentityID> completeConfirmedIDs;
-    std::set<CIdentityID> partialConfirmedIDs;
-    std::set<CIdentityID> completeRejectedIDs;
-    std::set<CIdentityID> partialRejectedIDs;
-
-    if (p.IsValid() && 
-        p.version >= p.VERSION_V3 && 
-        p.vData.size() &&
-        GetCurrencyDefinition(currencyID, curDef, &currencyDefHeight) &&
-        curDef.IsValid())
-    {
-        CCurrencyDefinition *pNotaryCurrency;
-        if (IsVerusActive() || !ConnectedChains.notarySystems.count(currencyID))
-        {
-            pNotaryCurrency = &curDef;
-        }
-        else
-        {
-            pNotaryCurrency = &ConnectedChains.ThisChain();
-        }
-
-        auto notarySet = pNotaryCurrency->GetNotarySet();
-        int minNotariesConfirm = pNotaryCurrency->MinimumNotariesConfirm();
-
-        for (auto &oneSigBlock : signatureVec)
-        {
-            if (oneSigBlock.IsConfirmed())
-            {
-                for (auto &oneIDSig : oneSigBlock.signatures)
-                {
-                    if (oneIDSig.second.blockHeight == height)
-                    {
-                        // merge signatures
-                        if (!confirmedSigs.count(oneIDSig.first))
-                        {
-                            confirmedSigs[oneIDSig.first] = oneIDSig.second;
-                        }
-                        else
-                        {
-                            for (auto oneKeySig : oneIDSig.second.signatures)
-                            {
-                                confirmedSigs[oneIDSig.first].signatures.insert(oneKeySig);
-                            }
-                        }
-                    }
-                }
-            }
-            else
-            {
-                for (auto &oneIDSig : oneSigBlock.signatures)
-                {
-                    if (oneIDSig.second.blockHeight == height)
-                    {
-                        // merge signatures
-                        if (!rejectedSigs.count(oneIDSig.first))
-                        {
-                            rejectedSigs[oneIDSig.first] = oneIDSig.second;
-                        }
-                        else
-                        {
-                            for (auto oneKeySig : oneIDSig.second.signatures)
-                            {
-                                rejectedSigs[oneIDSig.first].signatures.insert(oneKeySig);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        uint256 txId = output.hash.IsNull() ? initialTx.GetHash() : output.hash;
-        std::vector<uint160> vdxfCodes = {CCrossChainRPCData::GetConditionID(CNotaryEvidence::NotarySignatureKey(), txId, output.n)};
-        std::vector<std::string> vdxfCodeNames;
-        std::vector<uint256> statements;
-
-        // check that signature is of the hashed vData[0] data
-        CNativeHashWriter hw(hashType);
-        hw.write((const char *)&(p.vData[0][0]), p.vData[0].size());
-        uint256 msgHash = hw.GetHash();
-
-        for (auto &authorizedSignature : confirmedSigs)
-        {
-            if (notarySet.count(authorizedSignature.first))
-            {
-                // we might have a partial or complete signature by one notary here
-                const CIdentitySignature &oneIDSig = authorizedSignature.second;
-
-                uint256 sigHash = oneIDSig.IdentitySignatureHash(vdxfCodes, vdxfCodeNames, statements, currencyID, height, authorizedSignature.first, "", msgHash);
-
-                // get identity used to sign
-                CIdentity signer = CIdentity::LookupIdentity(authorizedSignature.first, height);
-                if (signer.IsValid())
-                {
-                    std::set<uint160> idAddresses;
-                    std::set<uint160> verifiedSignatures;
-
-                    for (const CTxDestination &oneAddress : signer.primaryAddresses)
-                    {
-                        if (oneAddress.which() != COptCCParams::ADDRTYPE_PK || oneAddress.which() != COptCCParams::ADDRTYPE_PKH)
-                        {
-                            // currently, can only check secp256k1 signatures
-                            //return state.Error("Unsupported signature type");
-                            return CIdentitySignature::SIGNATURE_INVALID;
-                        }
-                        idAddresses.insert(GetDestinationID(oneAddress));
-                    }
-
-                    for (auto &oneSig : authorizedSignature.second.signatures)
-                    {
-                        CPubKey pubKey;
-                        pubKey.RecoverCompact(sigHash, oneSig);
-                        if (!idAddresses.count(pubKey.GetID()))
-                        {
-                            // invalid signature or ID
-                            return CIdentitySignature::SIGNATURE_INVALID;
-                        }
-                        verifiedSignatures.insert(pubKey.GetID());
-                    }
-                    if (verifiedSignatures.size() >= signer.minSigs)
-                    {
-                        completeConfirmedIDs.insert(authorizedSignature.first);
-                    }
-                    else
-                    {
-                        partialConfirmedIDs.insert(authorizedSignature.first);
-                    }
-                }
-                else
-                {
-                    // invalid signing identity in signature
-                    return CIdentitySignature::SIGNATURE_INVALID;
-                }
-            }
-        }
-
-        if (completeConfirmedIDs.size() >= curDef.minNotariesConfirm)
-        {
-            return CIdentitySignature::SIGNATURE_COMPLETE;
-        }
-        else if (completeConfirmedIDs.size() || partialConfirmedIDs.size())
-        {
-            return CIdentitySignature::SIGNATURE_PARTIAL;
-        }
-    }
-    // missing or invalid
-    return CIdentitySignature::SIGNATURE_INVALID;
-}
-
-// Verify that the output object is signed with an authorized signing authority
-CIdentitySignature::ESignatureVerification CObjectFinalization::VerifyOutputSignature(const CTransaction &initialTx, const std::vector<CNotarySignature> &signatureVec, uint32_t height) const
-{
-    // now, get the output to check and check to ensure the signature is good
-    CTransaction tx;
-    uint256 blkHash;
-    COptCCParams p;
-    if (GetOutputTransaction(initialTx, tx, blkHash) &&
-        tx.vout.size() > output.n &&
-        tx.vout[output.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-        p.IsValid() &&
-        p.vData.size())
-    {
-        return VerifyOutputSignature(initialTx, signatureVec, p, height);
-    }
-    else
-    {
-        return CIdentitySignature::SIGNATURE_INVALID;
-    }
 }
 
 // this ensures that the signature is, in fact, both authorized to sign, and also a

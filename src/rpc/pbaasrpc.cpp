@@ -7619,8 +7619,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             printf("%s: setting transfer fees in currency %s to %ld\n", __func__, EncodeDestination(CIdentityID(feeCurrencyID)).c_str(), dest.fees);
                             flags &= ~CReserveTransfer::CROSS_SYSTEM;
 
-                            // at this point, we either need a refund ID or a change address for refund, or there is risk of loss,
-                            // so we fail
+                            // at this point, we either need a refund ID or a change address for refund, or there is risk of loss, so fail instead
                             if (refundDestination.which() == COptCCParams::ADDRTYPE_INVALID)
                             {
                                 if (!VERUS_DEFAULTID.IsNull())
