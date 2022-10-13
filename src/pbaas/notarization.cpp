@@ -2888,6 +2888,14 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     notarization.proofRoots[latestProofRoot.systemID] = latestProofRoot;
     notarization.notarizationHeight = latestProofRoot.rootHeight;
 
+    // TODO: HARDENING - this must be checked in precheck to ensure that the correct/consensus gas price
+    // is passed through and used at all times
+    if (systemDef.proofProtocol == systemDef.PROOF_ETHNOTARIZATION &&
+        notarization.currencyState.conversionPrice.size())
+    {
+        notarization.currencyState.conversionPrice[0] = latestProofRoot.gasPrice;
+    }
+
     UniValue currencyStatesUni = find_value(result, "currencystates");
 
     if (!systemDef.IsGateway() && !(currencyStatesUni.isArray() && currencyStatesUni.size()))

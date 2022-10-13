@@ -591,9 +591,29 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                         // imported currencies do need to conform to type constraints in order
                         // to benefit from reduced import fees. this happens on the precheck for currency definition
 
+                        CAmount feeConversionRate = SATOSHIDEN;
+
+                        CChainNotarizationData cnd;
+                        CCurrencyDefinition nextSys = ConnectedChains.GetCachedCurrency(exportingDef.systemID);
+                        if (nextSys.IsValid() && nextSys.IsGateway() && nextSys.proofProtocol == nextSys.PROOF_ETHNOTARIZATION)
+                        {
+                            if (!GetNotarizationData(exportingDef.systemID, cnd) ||
+                                !cnd.IsConfirmed() ||
+                                !cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(exportingDef.systemID))
+                            {
+                                return state.Error("Cannot get notarization data for destination system of transfer: " + oneTransfer.ToUniValue().write(1,2));
+                            }
+                            feeConversionRate = cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice.size() ?
+                                                    cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice[0] :
+                                                    cnd.vtx[cnd.lastConfirmed].second.proofRoots[exportingDef.systemID].gasPrice;
+                        }
+
                         if ((oneTransfer.HasNextLeg() && oneTransfer.destination.gatewayID != ASSETCHAINS_CHAINID ?
                                 nextLegFeeEquiv :
-                                feeEquivalent) < ConnectedChains.ThisChain().GetCurrencyImportFee(exportingDef.ChainOptions() & exportingDef.OPTION_NFT_TOKEN))
+                                feeEquivalent) < 
+                                    CCurrencyState::ReserveToNativeRaw(
+                                        ConnectedChains.ThisChain().GetCurrencyImportFee(exportingDef.ChainOptions() & exportingDef.OPTION_NFT_TOKEN),
+                                        feeConversionRate))
                         {
                             return state.Error("Insufficient fee for currency import: " + cci.ToUniValue().write(1,2));
                         }
@@ -2424,7 +2444,9 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             {
                 return state.Error("Cannot get notarization data for destination system of transfer: " + rt.ToUniValue().write(1,2));
             }
-            adjustedImportFee = cnd.vtx[cnd.lastConfirmed].second.proofRoots[systemDestID].gasPrice;
+            adjustedImportFee = cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice.size() ?
+                cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice[0] :
+                cnd.vtx[cnd.lastConfirmed].second.proofRoots[systemDestID].gasPrice;
         }
 
         CReserveTransactionDescriptor rtxd;

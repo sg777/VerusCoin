@@ -7533,21 +7533,41 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         {
                             reversePriceInFeeCur = feeConversionPrices.valueMap[feeCurrencyID];
                         }
+
+                        CAmount feeConversionRate = SATOSHIDEN;
+
+                        if (offChainDef.IsGateway() && offChainDef.proofProtocol == offChainDef.PROOF_ETHNOTARIZATION)
+                        {
+                            CChainNotarizationData cnd;
+                            if (!GetNotarizationData(offChainDef.SystemOrGatewayID(), cnd) ||
+                                !cnd.IsConfirmed() ||
+                                !cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(offChainDef.SystemOrGatewayID()))
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot get notarization data for destination system of transfer");
+                            }
+                            feeConversionRate = cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice.size() ?
+                                                    cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice[0] :
+                                                    cnd.vtx[cnd.lastConfirmed].second.proofRoots[offChainDef.SystemOrGatewayID()].gasPrice;
+                        }
+
                         if (exportCurrency)
                         {
+                            CAmount adjustedFees = CCurrencyState::ReserveToNativeRaw(
+                                        offChainDef.GetCurrencyImportFee(sourceCurrencyDef.ChainOptions() & offChainDef.OPTION_NFT_TOKEN), feeConversionRate);
                             // get source price for export and dest price for import to ensure we have enough fee currency
                             requiredFees = 
-                                CCurrencyState::ReserveToNativeRaw(offChainDef.GetCurrencyImportFee(sourceCurrencyDef.ChainOptions() & sourceCurrencyDef.OPTION_NFT_TOKEN),
-                                                                   reversePriceInFeeCur);
+                                CCurrencyState::ReserveToNativeRaw(adjustedFees, reversePriceInFeeCur);
                             flags |= CReserveTransfer::CURRENCY_EXPORT;
                         }
                         else if (exportId)
                         {
-                            requiredFees = CCurrencyState::ReserveToNativeRaw(offChainDef.IDImportFee(), reversePriceInFeeCur);
+                            CAmount adjustedFees = CCurrencyState::ReserveToNativeRaw(offChainDef.IDImportFee(), feeConversionRate);
+                            requiredFees = CCurrencyState::ReserveToNativeRaw(adjustedFees, reversePriceInFeeCur);
                         }
                         else
                         {
-                            requiredFees = CCurrencyState::ReserveToNativeRaw(offChainDef.GetTransactionImportFee() << 1, reversePriceInFeeCur);
+                            CAmount adjustedFees = CCurrencyState::ReserveToNativeRaw(offChainDef.GetTransactionImportFee() << 1, feeConversionRate);
+                            requiredFees = CCurrencyState::ReserveToNativeRaw(adjustedFees, reversePriceInFeeCur);
                         }
 
                         if (sameChainConversion)
@@ -7636,21 +7656,41 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency for cross-chain transaction 2" + ConnectedChains.GetFriendlyCurrencyName(feeCurrencyID));
                         }
 
+                        CAmount feeConversionRate = SATOSHIDEN;
+
+                        if (offChainDef.IsGateway() && offChainDef.proofProtocol == offChainDef.PROOF_ETHNOTARIZATION)
+                        {
+                            CChainNotarizationData cnd;
+                            if (!GetNotarizationData(offChainDef.SystemOrGatewayID(), cnd) ||
+                                !cnd.IsConfirmed() ||
+                                !cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(offChainDef.SystemOrGatewayID()))
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot get notarization data for destination system of transfer 2");
+                            }
+                            feeConversionRate = cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice.size() ?
+                                                    cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice[0] :
+                                                    cnd.vtx[cnd.lastConfirmed].second.proofRoots[offChainDef.SystemOrGatewayID()].gasPrice;
+                        }
+
                         // determine required fees
                         CAmount requiredFees;
                         if (exportCurrency)
                         {
                             // get source price for export and dest price for import to ensure we have enough fee currency
-                            requiredFees = CCurrencyState::ReserveToNativeRaw(offChainDef.GetCurrencyImportFee(sourceCurrencyDef.ChainOptions() & sourceCurrencyDef.OPTION_NFT_TOKEN), reversePriceInFeeCur);
+                            CAmount adjustedFees = CCurrencyState::ReserveToNativeRaw(
+                                        offChainDef.GetCurrencyImportFee(sourceCurrencyDef.ChainOptions() & offChainDef.OPTION_NFT_TOKEN), feeConversionRate);
+                            requiredFees = CCurrencyState::ReserveToNativeRaw(adjustedFees, reversePriceInFeeCur);
                             flags |= CReserveTransfer::CURRENCY_EXPORT;
                         }
                         else if (exportId)
                         {
-                            requiredFees = CCurrencyState::ReserveToNativeRaw(offChainDef.IDImportFee(), reversePriceInFeeCur);
+                            CAmount adjustedFees = CCurrencyState::ReserveToNativeRaw(offChainDef.IDImportFee(), feeConversionRate);
+                            requiredFees = CCurrencyState::ReserveToNativeRaw(adjustedFees, reversePriceInFeeCur);
                         }
                         else
                         {
-                            requiredFees = CCurrencyState::ReserveToNativeRaw(offChainDef.GetTransactionImportFee(), reversePriceInFeeCur);
+                            CAmount adjustedFees = CCurrencyState::ReserveToNativeRaw(offChainDef.GetTransactionImportFee() << 1, feeConversionRate);
+                            requiredFees = CCurrencyState::ReserveToNativeRaw(adjustedFees, reversePriceInFeeCur);
                         }
 
                         flags |= CReserveTransfer::CROSS_SYSTEM;

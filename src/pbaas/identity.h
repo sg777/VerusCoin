@@ -1060,11 +1060,11 @@ public:
         RATING_PG = 12,                     // MPAA equiv
         RATING_PG13 = 13,                   // MPAA equiv
         RATING_R = 14,                      // MPAA equiv
-        RATING_X = 15,                      // MPAA equiv
+        RATING_NC17 = 15,                   // MPAA equiv
         RATING_HSEX = 16,                   // healthy sexuality (use MPAA to determine target age)
-        RATING_HHEALTH = 17,                // healthy discussion of suicide (use MPAA to determine age recommendation)
-        RATING_DRUGS = 18,                  // drug use
-        RATING_SMOKING = 19,                // drug use
+        RATING_HHEALTH = 17,                // health related (use MPAA to determine age recommendation)
+        RATING_DRUGS = 18,                  // drug/smoking
+        RATING_NUDITY = 19,                 // nudity
         RATING_VIOLENCE = 20,               // excessive or extreme violence as perceived by users
         RATING_1STAR = 21,
         RATING_2STAR = 22,
