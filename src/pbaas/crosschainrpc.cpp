@@ -331,6 +331,43 @@ uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vd
         bool crossChainLogging = LogAcceptCategory("notarysignatures") || LogAcceptCategory("identitysignatures");
         if (crossChainLogging)
         {
+            printf("systemid: %s, blockheight: %u, identity: %s, prefix: %s\nmsghash: %s\n",
+                EncodeDestination(CIdentityID(systemID)).c_str(),
+                blockHeight,
+                EncodeDestination(CIdentityID(idID)).c_str(),
+                prefixString.c_str(),
+                msgHash.GetHex().c_str());
+            LogPrintf("systemid: %s, blockheight: %u, identity: %s, prefix: %s\nmsghash: %s\n",
+                EncodeDestination(CIdentityID(systemID)).c_str(),
+                blockHeight,
+                EncodeDestination(CIdentityID(idID)).c_str(),
+                prefixString.c_str(),
+                msgHash.GetHex().c_str());
+            printf("\n");
+            LogPrintf("\n");
+        }
+
+        if (vdxfCodes.size())
+        {
+            auto vecCopy = vdxfCodes;
+            sort(vecCopy.begin(), vecCopy.end());
+            ss << vecCopy;
+        }
+        if (vdxfCodeNames.size())
+        {
+            auto vecCopy = vdxfCodeNames;
+            sort(vecCopy.begin(), vecCopy.end());
+            ss << vecCopy;
+        }
+        if (statements.size())
+        {
+            auto vecCopy = statements;
+            sort(vecCopy.begin(), vecCopy.end());
+            ss << vecCopy;
+        }
+
+        if (crossChainLogging)
+        {
             if (vdxfCodes.size())
             {
                 printf("%s: vdxfCodes:\n", __func__);
@@ -367,34 +404,8 @@ uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vd
                 printf("\n");
                 LogPrintf("\n");
             }
-            printf("systemid: %s, blockheight: %u, identity: %s, prefix: %s\nmsghash: %s\n",
-                EncodeDestination(CIdentityID(systemID)).c_str(),
-                blockHeight,
-                EncodeDestination(CIdentityID(idID)).c_str(),
-                prefixString.c_str(),
-                msgHash.GetHex().c_str());
-            LogPrintf("systemid: %s, blockheight: %u, identity: %s, prefix: %s\nmsghash: %s\n",
-                EncodeDestination(CIdentityID(systemID)).c_str(),
-                blockHeight,
-                EncodeDestination(CIdentityID(idID)).c_str(),
-                prefixString.c_str(),
-                msgHash.GetHex().c_str());
-            printf("\n");
-            LogPrintf("\n");
         }
 
-        if (vdxfCodes.size())
-        {
-            ss << vdxfCodes;
-        }
-        if (vdxfCodeNames.size())
-        {
-            ss << vdxfCodeNames;
-        }
-        if (statements.size())
-        {
-            ss << statements;
-        }
         ss << systemID;
         ss << blockHeight;
         ss << idID;
