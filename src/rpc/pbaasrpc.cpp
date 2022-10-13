@@ -7169,7 +7169,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                 CTxDestination destination = ValidateDestination(destStr);
 
-                CTxDestination refundDestination = refundToStr.empty() ? CTxDestination() : DecodeDestination(refundToStr);
+                CTxDestination refundDestination = refundToStr.empty() ? destination : DecodeDestination(refundToStr);
 
                 if (refundDestination.which() == COptCCParams::ADDRTYPE_ID &&
                     GetDestinationID(refundDestination) != GetDestinationID(destination))
@@ -7618,6 +7618,25 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                             printf("%s: setting transfer fees in currency %s to %ld\n", __func__, EncodeDestination(CIdentityID(feeCurrencyID)).c_str(), dest.fees);
                             flags &= ~CReserveTransfer::CROSS_SYSTEM;
+
+                            // at this point, we either need a refund ID or a change address for refund, or there is risk of loss,
+                            // so we fail
+                            if (refundDestination.which() == COptCCParams::ADDRTYPE_INVALID)
+                            {
+                                if (!VERUS_DEFAULTID.IsNull())
+                                {
+                                    refundDestination = VERUS_DEFAULTID;
+                                }
+                                else if (!hasZSource && !wildCardAddress && sourceDest.which() != COptCCParams::ADDRTYPE_INVALID)
+                                {
+                                    refundDestination = sourceDest;
+                                }
+                                else
+                                {
+                                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Must provide refund address, have valid \"-defaultid\" set, or have a non-wildcard transparent source when sending via a converter cross chain");
+                                }
+                                dest.SetAuxDest(DestinationToTransferDestination(refundDestination), dest.AuxDestCount());
+                            }
                         }
                         else
                         {
