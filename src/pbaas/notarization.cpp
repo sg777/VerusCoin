@@ -175,8 +175,17 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
     }
 
     // write the object to the hash writer without a vector length prefix
-    CNativeHashWriter hw(hashType);
-    uint256 objHash = hw.write((const char *)&(p.vData[0][0]), p.vData[0].size()).GetHash();
+    uint256 objHash;
+    uint256 outputUTXOHash;
+    {
+        CNativeHashWriter hw(hashType);
+        objHash = hw.write((const char *)&(p.vData[0][0]), p.vData[0].size()).GetHash();
+    }
+    {
+        CNativeHashWriter hw(hashType);
+        hw << output;
+        outputUTXOHash = hw.GetHash();
+    }
 
     uint32_t decisionHeight;
     std::map<CIdentityID, CIdentitySignature> confirmedAtHeight;
@@ -223,8 +232,8 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
         CIdentitySignature idSignature(height, std::set<std::vector<unsigned char>>(), hashType);
 
         uint256 signatureHash = idSignature.IdentitySignatureHash(std::vector<uint160>({NotaryConfirmedKey()}),
-                                                                  std::vector<std::string>({std::to_string(output.n)}),
-                                                                  std::vector<uint256>({output.hash}), 
+                                                                  std::vector<std::string>(),
+                                                                  std::vector<uint256>({outputUTXOHash}), 
                                                                   systemID,
                                                                   height,
                                                                   signWithID,
@@ -274,8 +283,8 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
 
         CIdentitySignature::ESignatureVerification sigResult = idSignature.CheckSignature(sigIdentity, 
                                                                                         std::vector<uint160>({NotaryConfirmedKey()}), 
-                                                                                        std::vector<std::string>({std::to_string(output.n)}),
-                                                                                        std::vector<uint256>({output.hash}), 
+                                                                                        std::vector<std::string>(),
+                                                                                        std::vector<uint256>({outputUTXOHash}), 
                                                                                         systemID, 
                                                                                         "", 
                                                                                         objHash);
@@ -323,10 +332,21 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
     }
 
     // write the object to the hash writer without a vector length prefix
-    CNativeHashWriter hw(hashType);
     std::map<CIdentityID, CIdentitySignature> confirmedAtHeight;
     std::map<CIdentityID, CIdentitySignature> rejectedAtHeight;
-    uint256 objHash = hw.write((const char *)&(p.vData[0][0]), p.vData[0].size()).GetHash();
+
+    // write the object to the hash writer without a vector length prefix
+    uint256 objHash;
+    uint256 outputUTXOHash;
+    {
+        CNativeHashWriter hw(hashType);
+        objHash = hw.write((const char *)&(p.vData[0][0]), p.vData[0].size()).GetHash();
+    }
+    {
+        CNativeHashWriter hw(hashType);
+        hw << output;
+        outputUTXOHash = hw.GetHash();
+    }
 
     uint32_t decisionHeight;
 
@@ -372,8 +392,8 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
         CIdentitySignature idSignature(height, std::set<std::vector<unsigned char>>(), hashType);
 
         uint256 signatureHash = idSignature.IdentitySignatureHash(std::vector<uint160>({NotaryRejectedKey()}), 
-                                                                  std::vector<std::string>({std::to_string(output.n)}),
-                                                                  std::vector<uint256>({output.hash}), 
+                                                                  std::vector<std::string>(),
+                                                                  std::vector<uint256>({outputUTXOHash}), 
                                                                   systemID,
                                                                   height,
                                                                   signWithID,
@@ -423,8 +443,8 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
 
         CIdentitySignature::ESignatureVerification sigResult = idSignature.CheckSignature(sigIdentity, 
                                                                                           std::vector<uint160>({NotaryRejectedKey()}), 
-                                                                                          std::vector<std::string>({std::to_string(output.n)}),
-                                                                                          std::vector<uint256>({output.hash}), 
+                                                                                          std::vector<std::string>(),
+                                                                                          std::vector<uint256>({outputUTXOHash}), 
                                                                                           systemID, 
                                                                                           "", 
                                                                                           objHash);
@@ -466,6 +486,25 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
 
     // if we have full rejection from any IDs in any period, that is considered rejection and that ID is blacklisted from accepting
     // if we have full confirmation in the most recent period, that is considered confirmation
+
+    // write the object to the hash writer without a vector length prefix
+    uint256 outputUTXOHash;
+    {
+        auto notarySigs = GetNotarySignatures();
+        CCurrencyDefinition::EHashTypes hashType = CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR;
+        for (auto &oneSig : notarySigs)
+        {
+            if (notarySigs.size() && notarySigs[0].signatures.size())
+            {
+                hashType = (CCurrencyDefinition::EHashTypes)notarySigs[0].signatures.begin()->second.hashType;
+                break;
+            }
+        }
+        
+        CNativeHashWriter hw(hashType);
+        hw << output;
+        outputUTXOHash = hw.GetHash();
+    }
 
     // for every height, we check and merge 
     uint32_t lastHeight = 0;
@@ -522,8 +561,8 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
                 std::vector<std::vector<unsigned char>> dupSigs;
                 CIdentitySignature::ESignatureVerification result = oneIDSig.second.CheckSignature(sigIdentity,
                                                                                                    std::vector<uint160>({NotaryConfirmedKey()}), 
-                                                                                                   std::vector<std::string>({std::to_string(output.n)}),
-                                                                                                   std::vector<uint256>({output.hash}), 
+                                                                                                   std::vector<std::string>(),
+                                                                                                   std::vector<uint256>({outputUTXOHash}), 
                                                                                                    systemID, 
                                                                                                    "", 
                                                                                                    objHash,
@@ -574,8 +613,8 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
                 std::vector<std::vector<unsigned char>> dupSigs;
                 CIdentitySignature::ESignatureVerification result = oneIDSig.second.CheckSignature(sigIdentity,
                                                                                                    std::vector<uint160>({NotaryRejectedKey()}), 
-                                                                                                   std::vector<std::string>({std::to_string(output.n)}),
-                                                                                                   std::vector<uint256>({output.hash}), 
+                                                                                                   std::vector<std::string>(),
+                                                                                                   std::vector<uint256>({outputUTXOHash}), 
                                                                                                    systemID, 
                                                                                                    "", 
                                                                                                    objHash,
