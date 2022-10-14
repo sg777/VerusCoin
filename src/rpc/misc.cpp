@@ -1428,9 +1428,9 @@ UniValue verifysignature(const UniValue& params, bool fHelp)
             }
             for (int i = 0; i < vdxfKeyNames.size(); i++)
             {
-                std::string oneName = uni_get_str(vdxfKeys[i]);
+                std::string oneName = uni_get_str(vdxfKeyNames[i]);
                 std::vector<unsigned char> vch;
-                if (oneName.empty() || DecodeBase58Check(uni_get_str(vdxfKeyNames[i]), vch) && vch.size())
+                if (oneName.empty() || (DecodeBase58Check(oneName, vch) && vch.size()))
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMS, "Invalid VDXF key name. Key names must be fully qualified, friendly names.");
                 }
@@ -1497,6 +1497,7 @@ UniValue verifysignature(const UniValue& params, bool fHelp)
             ret.push_back(Pair("hashtype", hashTypeStr));
             ret.push_back(Pair("hash", msgHash.GetHex()));
             ret.push_back(Pair("height", (int64_t)nHeight));
+            ret.push_back(Pair("signatureheight", (int64_t)identitySig.blockHeight));
             if (vdxfKeys.size())
             {
                 ret.push_back(Pair("vdxfkeys", vdxfKeys));
