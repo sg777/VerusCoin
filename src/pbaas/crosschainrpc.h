@@ -1395,6 +1395,8 @@ public:
         return version;
     }
 
+    static const std::map<std::string, CCurrencyDefinition::EHashTypes> &HashTypeStringMap();
+
     UniValue ToUniValue() const
     {
         UniValue retObj(UniValue::VOBJ);

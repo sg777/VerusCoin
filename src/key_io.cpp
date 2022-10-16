@@ -946,6 +946,13 @@ std::vector<unsigned char> VectorEncodeVDXFUni(const UniValue &obj)
         }
         return ParseHex(serializedHex);
     }
+    std::string serializedBase64 = uni_get_str(find_value(obj, "serializedbase64"));
+    if (!serializedBase64.empty())
+    {
+        bool isValid = false;
+        auto retVec = DecodeBase64(serializedBase64.c_str(), &isValid);
+        return isValid ? retVec : std::vector<unsigned char>();
+    }
 
     // this should be an object with "vdxfkey" as the key and {object} as the json object to serialize
     auto oneValKeys = obj.getKeys();

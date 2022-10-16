@@ -3276,7 +3276,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
         // flip back to normal earned notarization as before
         pbn.SetMirror(false);
 
-        // printf("%s: evidence: %s\n", __func__, evidence.ToUniValue().write(1,2).c_str());
+        LogPrint("notarization", "%s: evidence: %s\n", __func__, evidence.ToUniValue().write(1,2).c_str());
 
         // now, make a new notarization based on this earned notarization, mirrored, so it reflects a notarization on this chain, 
         // but can be verified with the cross-chain signatures and evidence

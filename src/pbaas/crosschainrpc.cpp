@@ -280,12 +280,39 @@ CNodeData::CNodeData(std::string netAddr, std::string paymentAddr) :
     nodeIdentity = GetDestinationID(DecodeDestination(paymentAddr));
 }
 
+const std::map<std::string, CCurrencyDefinition::EHashTypes> &CIdentitySignature::HashTypeStringMap()
+{
+    static std::map<std::string, CCurrencyDefinition::EHashTypes> hashTypeMap;
+    if (!hashTypeMap.size())
+    {
+        hashTypeMap["sha256"] = CCurrencyDefinition::EHashTypes::HASH_SHA256;
+        hashTypeMap["blake2b"] = CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR;
+        hashTypeMap["keccak256"] = CCurrencyDefinition::EHashTypes::HASH_KECCAK;
+        hashTypeMap["sha256D"] = CCurrencyDefinition::EHashTypes::HASH_SHA256D;
+    }
+    return hashTypeMap;
+}
+
 CIdentitySignature::CIdentitySignature(const UniValue &uni)
 {
     try
     {
         version = uni_get_int(find_value(uni, "version"));
-        hashType = uni_get_int(find_value(uni, "hashtype"), CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR);
+        std::string hashTypeStr = uni_get_str(find_value(uni, "hashtype"));
+        auto it = HashTypeStringMap().find(hashTypeStr);
+        if (it != HashTypeStringMap().end())
+        {
+            hashType = it->second;
+        }
+        else
+        {
+            hashType = uni_get_int(find_value(uni, "hashtype"), CCurrencyDefinition::EHashTypes::HASH_INVALID);
+            if (!IsValidHashType((CCurrencyDefinition::EHashTypes)hashType))
+            {
+                version = VERSION_INVALID;
+                return;
+            }
+        }
         blockHeight = uni_get_int64(find_value(uni, "blockheight"));
         UniValue sigs = find_value(uni, "signatures");
         if (sigs.isArray() && sigs.size())

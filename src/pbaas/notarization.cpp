@@ -37,6 +37,10 @@ CNotaryEvidence::CNotaryEvidence(const UniValue &uni)
     output = CUTXORef(find_value(uni, "output"));
     state = uni_get_int(find_value(uni, "state"));
     evidence = CCrossChainProof(find_value(uni, "evidence"));
+    if (!evidence.IsValid())
+    {
+        version = VERSION_INVALID;
+    }
 }
 
 std::vector<CNotarySignature> CNotaryEvidence::GetConfirmedAndRejectedSignatureMaps(
@@ -4781,13 +4785,11 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     std::string strTxId;
     params.push_back(lastConfirmedNotarization.ToUniValue());
     params.push_back(allEvidence.ToUniValue());
-    // printf("%s: sending evidence:\n%s\n", __func__, allEvidence.ToUniValue().write(1,2).c_str());
+    
+    LogPrint("notarization", "%s: sending evidence:\n%s\n", __func__, allEvidence.ToUniValue().write(1,2).c_str());
+    LogPrint("notarization", "submitting notarization with parameters:\n%s\n%s\n", params[0].write(1,2).c_str(), params[1].write(1,2).c_str());
 
-    /* for (auto &debugOut : oneNotarization.second.signatures)
-    {
-        printf("%s: onesig - ID: %s, signature: %s\n", __func__, EncodeDestination(debugOut.first).c_str(), debugOut.second.ToUniValue().write(1,2).c_str());
-    }
-    printf("%s: submitting notarization with parameters:\n%s\n%s\n", __func__, params[0].write(1,2).c_str(), params[1].write(1,2).c_str());
+    /*
     printf("%s: initial notarization:\n%s\n", __func__, oneNotarization.first.ToUniValue().write(1,2).c_str());
     std::vector<unsigned char> notVec1 = ::AsVector(oneNotarization.first);
     CPBaaSNotarization checkNotarization(oneNotarization.first.ToUniValue());

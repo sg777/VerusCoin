@@ -1542,17 +1542,14 @@ UniValue verifysignature(const UniValue& params, bool fHelp)
 
         CPubKey pubkey;
         std::vector<unsigned char> vchSig = DecodeBase64(strSignature.c_str());
-        if (!pubkey.RecoverCompact(sigHash, vchSig))
+        std::string signatureStat = "verified";
+        if (!pubkey.RecoverCompact(sigHash, vchSig) || pubkey.GetID() != GetDestinationID(dest))
         {
-            return false;
-        }
-
-        if (pubkey.GetID() != GetDestinationID(dest))
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMS, "Invalid signature");
+            signatureStat = "invalid";
         }
 
         UniValue ret(UniValue::VOBJ);
+        ret.pushKV("signaturestatus", signatureStat);
         ret.push_back(Pair("system", ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID)));
         ret.push_back(Pair("hashtype", hashTypeStr));
         ret.push_back(Pair("address", EncodeDestination(dest)));

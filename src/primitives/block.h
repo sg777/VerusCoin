@@ -681,6 +681,11 @@ public:
         retVal.pushKV("hex", HexBytes(&(thisVec[0]), thisVec.size()));
         return retVal;
     }
+
+    bool IsValid() const
+    {
+        return version >= VERSION_FIRST && version <= VERSION_LAST;
+    }
 };
 
 // class that enables efficient cross-chain proofs of a block
@@ -777,6 +782,14 @@ public:
         uint256 hash = blockHeader.BlockProofBridge().SafeCheck(checkHash);
         hash = headerProof.CheckProof(hash);
         return blockHeight == BlockNum() ? hash : uint256();
+    }
+
+    // simple version check
+    bool IsValid() const
+    {
+        return version >= VERSION_FIRST && 
+               version <= VERSION_LAST && 
+               blockHeader.nVersion != 0;
     }
 };
 
@@ -906,6 +919,11 @@ public:
         std::vector<unsigned char> thisVec = ::AsVector(*this);
         retVal.pushKV("hex", HexBytes(&(thisVec[0]), thisVec.size()));
         return retVal;
+    }
+
+    bool IsValid() const
+    {
+        return version >= VERSION_FIRST && version <= VERSION_LAST;
     }
 };
 
@@ -1483,6 +1501,64 @@ public:
 
     bool IsValid() const
     {
+        union {
+            CChainObject<CBlockHeaderAndProof> *pNewHeader;
+            CChainObject<CPartialTransactionProof> *pNewTx;
+            CChainObject<CProofRoot> *pNewProof;
+            CChainObject<CBlockHeaderProof> *pNewHeaderRef;
+            CChainObject<CHashCommitments> *pPriors;
+            CChainObject<CReserveTransfer> *pExport;
+            CChainObject<CCrossChainProof> *pCrossChainProof;
+            CChainObject<CNotarySignature> *pNotarySignature;
+            CChainObject<CEvidenceData> *pBytes;
+            CBaseChainObject *pobj;
+        };
+
+        for (int i = 0; i < chainObjects.size(); i++)
+        {
+            pobj = chainObjects[i];
+            switch(pobj->objectType)
+            {
+                case CHAINOBJ_HEADER:
+                    if (!pNewHeader->object.IsValid()) return false;
+                    break;
+
+                case CHAINOBJ_TRANSACTION_PROOF:
+                    if (!pNewTx->object.IsValid()) return false;
+                    break;
+
+                case CHAINOBJ_HEADER_REF:
+                    if (!pNewHeaderRef->object.IsValid()) return false;
+                    break;
+
+                case CHAINOBJ_COMMITMENTDATA:
+                    if (!pPriors->object.IsValid()) return false;
+                    break;
+
+                case CHAINOBJ_PROOF_ROOT:
+                    if (!pNewProof->object.IsValid()) return false;
+                    break;
+
+                case CHAINOBJ_RESERVETRANSFER:
+                    if (!pExport->object.IsValid()) return false;
+                    break;
+
+                case CHAINOBJ_CROSSCHAINPROOF:
+                    if (!pCrossChainProof->object.IsValid()) return false;
+                    break;
+
+                case CHAINOBJ_NOTARYSIGNATURE:
+                    if (!pNotarySignature->object.IsValid()) return false;
+                    break;
+
+                case CHAINOBJ_EVIDENCEDATA:
+                    if (!pBytes->object.IsValid()) return false;
+                    break;
+
+                default:
+                    return false;
+            }
+        }
         return (version >= VERSION_FIRST || version <= VERSION_LAST);
     }
 
@@ -1919,6 +1995,7 @@ CBaseChainObject *RehydrateChainObject(OStream &s)
                 pCrossChainProof->objectType = objType;
             }
             break;
+
         // TODO: HARDENING - consider removing composite chain object completely
         case CHAINOBJ_COMPOSITEOBJECT:
             pCompositeChainObject = new CChainObject<CCompositeChainObject>();
@@ -1928,6 +2005,7 @@ CBaseChainObject *RehydrateChainObject(OStream &s)
                 pCompositeChainObject->objectType = objType;
             }
             break;
+
         case CHAINOBJ_EVIDENCEDATA:
         {
             pBytes = new CChainObject<CEvidenceData>();
@@ -1994,7 +2072,6 @@ bool DehydrateChainObject(OStream &s, const CBaseChainObject *pobj)
             s << *(CChainObject<CHashCommitments> *)pobj;
             return true;
         }
-
         case CHAINOBJ_RESERVETRANSFER:
         {
             s << *(CChainObject<CReserveTransfer> *)pobj;
