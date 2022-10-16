@@ -827,6 +827,12 @@ uint160 ParseVDXFKey(const std::string &keyString)
     UniValue jsonKey(UniValue::VOBJ);
     if (!jsonKey.read(keyString))
     {
+        uint160 nameSpaceID;
+        uint160 simpleVDXFKey = CVDXF::GetDataKey(keyString, nameSpaceID);
+        if (!simpleVDXFKey.IsNull())
+        {
+            return simpleVDXFKey;
+        }
         LogPrint("contentmap", "%s: invalid key, neither i-address nor json vdxfid: %s\n", __func__, keyString.c_str());
         return uint160();
     }
