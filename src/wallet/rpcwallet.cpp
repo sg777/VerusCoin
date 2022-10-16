@@ -1463,6 +1463,25 @@ UniValue signdata(const UniValue& params, bool fHelp)
         if (!IsValidDestination(dest)) {
             throw JSONRPCError(RPC_TYPE_ERROR, "\"identity\" specified in object must be valid VerusID or address");
         }
+        // if bound parameters are single strings, make them arrays of one
+        if (vdxfKeys.isStr())
+        {
+            UniValue uniArr(UniValue::VARR);
+            uniArr.push_back(vdxfKeys);
+            vdxfKeys = uniArr;
+        }
+        if (vdxfKeyNames.isStr())
+        {
+            UniValue uniArr(UniValue::VARR);
+            uniArr.push_back(vdxfKeyNames);
+            vdxfKeyNames = uniArr;
+        }
+        if (boundHashes.isStr())
+        {
+            UniValue uniArr(UniValue::VARR);
+            uniArr.push_back(boundHashes);
+            boundHashes = uniArr;
+        }
         if (dest.which() != COptCCParams::ADDRTYPE_ID &&
             ((vdxfKeys.isArray() && vdxfKeys.size()) ||
              (vdxfKeyNames.isArray() && vdxfKeyNames.size()) ||
