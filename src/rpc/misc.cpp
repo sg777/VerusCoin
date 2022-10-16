@@ -1454,7 +1454,14 @@ UniValue verifysignature(const UniValue& params, bool fHelp)
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMS, "Invalid VDXF key name. Key names must be fully qualified, friendly names.");
                 }
-                uint160 oneKey = ParseVDXFKey(oneName);
+                UniValue jsonObj(UniValue::VOBJ);
+                if (jsonObj.read(oneName))
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMS, "Invalid VDXF key name. Must be simple VDXF key or fully qualified ID.");
+                }
+                jsonObj = UniValue(UniValue::VOBJ);
+                jsonObj.pushKV("vdxfuri", oneName);
+                uint160 oneKey = ParseVDXFKey(jsonObj.write());
                 if (oneKey.IsNull())
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMS, "Invalid VDXF key name");
