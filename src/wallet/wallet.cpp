@@ -4280,7 +4280,7 @@ void CWalletTx::GetAmounts(list<COutputEntry>& listReceived,
 
         // In either case, we need to get the destination address
         CTxDestination address;
-        if (!ExtractDestination(txout.scriptPubKey, address))
+        if (!ExtractDestination(txout.scriptPubKey, address) || address.which() == COptCCParams::ADDRTYPE_INVALID)
         {
             //LogPrintf("CWalletTx::GetAmounts: Unknown transaction type found, txid %s\n",this->GetHash().ToString()); complains on the opreturns
             address = CNoDestination();

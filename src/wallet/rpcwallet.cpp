@@ -2521,7 +2521,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
     bool bIsStake = false;
     bool bIsCoinbase = false;
     bool bIsMint = false;
-    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) > CActivationHeight::ACTIVATE_PBAAS;
+    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) >= CActivationHeight::ACTIVATE_PBAAS;
     CReserveTransactionDescriptor rtxd;
     CCoinsViewCache view(pcoinsTip);
     uint32_t nHeight = chainActive.Height();
@@ -2595,7 +2595,8 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
         BOOST_FOREACH(const COutputEntry& r, listReceived)
         {
             string account;
-            if (pwalletMain->mapAddressBook.count(r.destination))
+            bool isFromZ = r.vout >= wtx.vout.size();
+            if (r.destination.which() != COptCCParams::ADDRTYPE_INVALID && pwalletMain->mapAddressBook.count(r.destination))
                 account = pwalletMain->mapAddressBook[r.destination].name;
             if (fAllAccounts || (account == strAccount))
             {
@@ -2605,7 +2606,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
                 entry.push_back(Pair("account", account));
                 
                 CTxDestination dest;
-                if (CScriptExt::ExtractVoutDestination(wtx, r.vout, dest))
+                if (!isFromZ && CScriptExt::ExtractVoutDestination(wtx, r.vout, dest))
                     MaybePushAddress(entry, dest);
                 else
                     MaybePushAddress(entry, r.destination);
@@ -2629,7 +2630,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
                 }
                 
                 COptCCParams p;
-                if (wtx.vout[r.vout].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
+                if (!isFromZ && wtx.vout[r.vout].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
                 {
                     UniValue ccUni;
                     ScriptPubKeyToJSON(wtx.vout[r.vout].scriptPubKey, ccUni, false, false);
@@ -2637,7 +2638,13 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
                 }
 
                 entry.push_back(Pair("amount", ValueFromAmount(r.amount)));
-                entry.push_back(Pair("vout", r.vout));
+                if (isFromZ)
+                {
+                    entry.push_back(Pair("zoutput", true));
+                }
+                {
+                    entry.push_back(Pair("vout", r.vout));
+                }
                 if (fLong)
                     WalletTxToJSON(wtx, entry);
                 entry.push_back(Pair("size", static_cast<uint64_t>(GetSerializeSize(static_cast<CTransaction>(wtx), SER_NETWORK, PROTOCOL_VERSION))));
