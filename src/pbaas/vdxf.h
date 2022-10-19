@@ -433,6 +433,16 @@ public:
         static uint160 key = GetDataKey(DataTransferDestinationKeyName(), nameSpace);
         return key;
     }
+    static std::string TypeDefinitionKeyName()
+    {
+        return "vrsc::data.type.typedefinition";
+    }
+    static uint160 TypeDefinitionKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(TypeDefinitionKeyName(), nameSpace);
+        return key;
+    }
 
     static std::string ZMemoMessageKeyName()
     {
