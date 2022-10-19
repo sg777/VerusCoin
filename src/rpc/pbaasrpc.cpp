@@ -11503,7 +11503,16 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity must be revoked in order to recover : " + newID.name);
     }
 
-    return updateidentity(params, false);
+    UniValue newParams(UniValue::VARR);
+
+    newID.flags |= (oldID.flags & (CIdentity::FLAG_ACTIVECURRENCY + CIdentity::FLAG_TOKENIZED_CONTROL));
+
+    newParams.push_back(newID.ToUniValue());
+    for (int i = 1; i < params.size(); i++)
+    {
+        newParams.push_back(params[i]);
+    }
+    return updateidentity(newParams, false);
 }
 
 UniValue getidentity(const UniValue& params, bool fHelp)
