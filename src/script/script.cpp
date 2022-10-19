@@ -1371,17 +1371,58 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             if (vData.size() && (identity = CIdentity(vData[0])).IsValid())
             {
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(identity.GetID(), evalCode)));
-            }
-            // if we are maintaining an ID index, add keys for primary addresses, revocation, and recovery
-            extern bool fIdIndex;
-            if (fIdIndex)
-            {
-                for (auto &oneDest : identity.primaryAddresses)
+
+                // index content multimap entries. also index type definitions separately for direct, non-scoped queries
+                for (auto defIT = identity.contentMultiMap.begin(); defIT != identity.contentMultiMap.end(); defIT++)
                 {
-                    destinations.insert(identity.IdentityPrimaryAddressKey(oneDest));
+                    destinations.insert(CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(identity.GetID(), defIT->first)));
+                    if (defIT->first == CVDXF_Data::TypeDefinitionKey())
+                    {
+                        CDataStream ss(defIT->second, SER_DISK, PROTOCOL_VERSION);
+                        std::string typeDefKeyName;
+                        try
+                        {
+                            uint32_t Version;
+                            uint32_t Size;
+                            ss >> VARINT(Version);
+                            ss >> VARINT(Size);
+                            if (Version == 1 && Size == ss.size())
+                            {
+                                ss >> LIMITED_STRING(typeDefKeyName, MAX_SCRIPT_ELEMENT_SIZE_IDENTITY);
+                                if (typeDefKeyName.size() > Size - 1)
+                                {
+                                    typeDefKeyName.clear();
+                                }
+                            }
+                        }
+                        catch (...)
+                        {
+                            typeDefKeyName.clear();
+                        }
+                        uint160 nameSpace = identity.GetID();
+                        if (typeDefKeyName.size())
+                        {
+                            uint160 newTypeKey = CVDXF::GetDataKey(typeDefKeyName, nameSpace);
+                            if (!newTypeKey.IsNull() &&
+                                nameSpace == identity.GetID())
+                            {
+                                destinations.insert(CCrossChainRPCData::GetConditionID(CVDXF_Data::TypeDefinitionKey(), newTypeKey));
+                            }
+                        }
+                    }
                 }
-                destinations.insert(identity.IdentityRecoveryKey());
-                destinations.insert(identity.IdentityRevocationKey());
+
+                // if we are maintaining an ID index, add keys for primary addresses, revocation, and recovery
+                extern bool fIdIndex;
+                if (fIdIndex)
+                {
+                    for (auto &oneDest : identity.primaryAddresses)
+                    {
+                        destinations.insert(identity.IdentityPrimaryAddressKey(oneDest));
+                    }
+                    destinations.insert(identity.IdentityRecoveryKey());
+                    destinations.insert(identity.IdentityRevocationKey());
+                }
             }
             break;
         }

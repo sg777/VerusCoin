@@ -443,6 +443,16 @@ public:
         static uint160 key = GetDataKey(TypeDefinitionKeyName(), nameSpace);
         return key;
     }
+    static std::string MultiMapKeyName()
+    {
+        return "vrsc::identity.multimapkey";
+    }
+    static uint160 MultiMapKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(MultiMapKeyName(), nameSpace);
+        return key;
+    }
 
     static std::string ZMemoMessageKeyName()
     {
