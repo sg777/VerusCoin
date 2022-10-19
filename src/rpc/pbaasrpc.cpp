@@ -10211,6 +10211,10 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. First parameter must be sapling address, transparent address, identity, \"*\", \"R*\", or \"i*\",. See help.");
         }
     }
+    else
+    {
+        wildCardTransparentAddress = true;
+    }
 
     // this is only used to actually create errors and is normally not
     // a parameter used for anything except testing
@@ -10523,9 +10527,6 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     }
     outputs.push_back({reservationOutScript, CNameReservation::DEFAULT_OUTPUT_AMOUNT, false});
 
-    // make one dummy output, which CreateTransaction will leave as last, and we will remove to add its output to the fee
-    // this serves to keep the change output after our real reservation output
-
     // use the transaction builder to properly make change of native and reserves
     TransactionBuilder tb(Params().consensus, height + 1, pwalletMain);
 
@@ -10582,11 +10583,6 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     {
         tb.SetFee(feeOffer);
         reservesOut.valueMap[ASSETCHAINS_CHAINID] += feeOffer;
-    }
-
-    if (params.size() <= 3)
-    {
-        wildCardTransparentAddress = true;
     }
 
     bool success = false;
@@ -10808,10 +10804,10 @@ UniValue MapToUniObject(const std::map<std::string, UniValue> &uniMap)
 
 UniValue updateidentity(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 1 || params.size() > 3)
+    if (fHelp || params.size() < 1 || params.size() > 5)
     {
         throw runtime_error(
-            "updateidentity \"jsonidentity\" (returntx) (tokenupdate)\n"
+            "updateidentity \"jsonidentity\" (returntx) (tokenupdate) (feeoffer) (sourceoffunds)\n"
             "\n\n"
 
             "\nArguments\n"
@@ -10875,6 +10871,9 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
 
     auto uniOldID = UniObjectToMap(oldID.ToUniValue());
 
+    // always clear the contentmultimap
+    uniOldID.erase("contentmultimap");
+
     // overwrite old elements
     for (auto &oneEl : UniObjectToMap(params[0]))
     {
@@ -10907,10 +10906,6 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid JSON ID parameter");
     }
 
-    // make sure we have a revocation and recovery authority defined
-    CIdentity revocationAuth = newID.revocationAuthority == newIDID ? newID : newID.LookupIdentity(newID.revocationAuthority);
-    CIdentity recoveryAuth = newID.recoveryAuthority == newIDID ? newID : newID.LookupIdentity(newID.recoveryAuthority);
-
     if (tokenizedIDControl)
     {
         if (!oldID.HasTokenizedControl())
@@ -10919,9 +10914,71 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         }
     }
 
-    if (!revocationAuth.IsValid() || !recoveryAuth.IsValid())
+    // check fee offer
+    CAmount feeOffer = 0;
+    if (params.size() > 3)
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid revocation or recovery authority");
+        feeOffer = AmountFromValue(params[3]);
+    }
+
+    std::string sourceAddress;
+    CTxDestination sourceDest;
+
+    bool wildCardTransparentAddress = false;
+    bool wildCardRAddress = false;
+    bool wildCardiAddress = false;
+    bool wildCardAddress = false;
+
+    libzcash::PaymentAddress zaddressSource;
+    libzcash::SaplingExpandedSpendingKey expsk;
+    uint256 sourceOvk;
+    bool hasZSource = false;
+
+    if (params.size() > 4)
+    {
+        sourceAddress = uni_get_str(params[4]);
+
+        wildCardTransparentAddress = sourceAddress == "*";
+        wildCardRAddress = sourceAddress == "R*";
+        wildCardiAddress = sourceAddress == "i*";
+        wildCardAddress = wildCardTransparentAddress || wildCardRAddress || wildCardiAddress;
+        hasZSource = !wildCardAddress && pwalletMain->GetAndValidateSaplingZAddress(sourceAddress, zaddressSource);
+
+        // if we have a z-address as a source, re-encode it to a string, which is used
+        // by the async operation, to ensure that we don't need to lookup IDs in that operation
+        if (hasZSource)
+        {
+            sourceAddress = EncodePaymentAddress(zaddressSource);
+            // We don't need to lock on the wallet as spending key related methods are thread-safe
+            if (!boost::apply_visitor(HaveSpendingKeyForPaymentAddress(pwalletMain), zaddressSource)) {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid from address, no spending key found for zaddr");
+            }
+
+            auto spendingkey_ = boost::apply_visitor(GetSpendingKeyForPaymentAddress(pwalletMain), zaddressSource).get();
+            auto sk = boost::get<libzcash::SaplingExtendedSpendingKey>(spendingkey_);
+            expsk = sk.expsk;
+            sourceOvk = expsk.full_viewing_key().ovk;
+        }
+
+        if (!(hasZSource ||
+            wildCardAddress ||
+            (sourceDest = DecodeDestination(sourceAddress)).which() != COptCCParams::ADDRTYPE_INVALID))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters. First parameter must be sapling address, transparent address, identity, \"*\", \"R*\", or \"i*\",. See help.");
+        }
+    }
+    else
+    {
+        wildCardTransparentAddress = true;
+    }
+
+    // make sure we have a valid revocation and recovery authority defined
+    CIdentity revocationAuth = newID.revocationAuthority == newIDID ? newID : newID.LookupIdentity(newID.revocationAuthority);
+    CIdentity recoveryAuth = newID.recoveryAuthority == newIDID ? newID : newID.LookupIdentity(newID.recoveryAuthority);
+
+    if ((!revocationAuth.IsValid() || !recoveryAuth.IsValid()) && !newID.HasTokenizedControl())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid revocation or recovery authority without tokenized ID control");
     }
 
     CMutableTransaction txNew = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight + 1);
@@ -10947,12 +11004,24 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         }
     }
 
-    // if we are supposed to get our authority from the token, make sure it is present and prepare to spend it
-    std::vector<COutput> controlTokenOuts;
-    CCurrencyValueMap tokenCurrencyControlMap(std::vector<uint160>({newIDID}), std::vector<int64_t>({1}));
+    // use the transaction builder to properly make change of native and reserves
+    TransactionBuilder tb(Params().consensus, nHeight + 1, pwalletMain);
 
+    // spend the prior ID output
+    tb.AddTransparentInput(idTxIn.prevout,
+                           oldIdTx.vout[idTxIn.prevout.n].scriptPubKey,
+                           oldIdTx.vout[idTxIn.prevout.n].nValue);
+
+    tb.AddTransparentOutput(newID.IdentityUpdateOutputScript(nHeight + 1), oldIdTx.vout[idTxIn.prevout.n].nValue);
+
+    // if we are supposed to get our authority from the token, make sure it is present and prepare to spend it
+    // this is handled separately from other currency in and out to ensure no mixing and the ability to use a
+    // specific source or z-address for fees
     if (tokenizedIDControl)
     {
+        std::vector<COutput> controlTokenOuts;
+        CCurrencyValueMap tokenCurrencyControlMap(std::vector<uint160>({newIDID}), std::vector<int64_t>({1}));
+
         COptCCParams tcP;
         CCurrencyValueMap reserveMap;
 
@@ -10965,6 +11034,12 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
                 LogPrint("tokenizedidcontrol", "%s: controlTokenOuts.size(): %d, controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue(): %s, reserveMap: %s, reserveMap.valueMap[idID]: %ld\n", __func__, (int)controlTokenOuts.size(), controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue().ToUniValue().write().c_str(), reserveMap.ToUniValue().write().c_str(), reserveMap.valueMap[newIDID]);
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot locate spendable tokenized ID control currency in wallet - if present, may require rescan");
             }
+            tb.AddTransparentInput(COutPoint(controlTokenOuts[0].tx->GetHash(), controlTokenOuts[0].i),
+                                   controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].scriptPubKey,
+                                   controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].nValue);
+
+            tb.AddTransparentOutput(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].scriptPubKey,
+                                    controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].nValue);
         }
         else
         {
@@ -10972,96 +11047,204 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         }
     }
 
-    // create the identity definition transaction
-    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(nHeight + 1), 0, false}});
-    CWalletTx wtx;
+    bool success = false;
+    std::set<std::pair<const CWalletTx *, unsigned int>> setCoinsRet;
+    std::vector<SaplingNoteEntry> saplingNotes;
+    std::vector<COutput> vCoins;
 
-    CReserveKey reserveKey(pwalletMain);
-    CAmount fee;
-    int nChangePos;
-    int nNumChangeOutputs = 0;
-    string failReason;
-
-    if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason, nullptr, false))
+    CTxDestination from_taddress;
+    if (wildCardTransparentAddress)
     {
-        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to create update transaction: " + failReason);
+        from_taddress = CTxDestination();
     }
-    CMutableTransaction mtx(wtx);
-
-    // add the spend of the last ID transaction output
-    mtx.vin.push_back(idTxIn);
-
-    // if we are using tokenized ID control, add the input and output to the transaction before signing
-    if (tokenizedIDControl)
+    else if (wildCardRAddress)
     {
-        mtx.vin.push_back(CTxIn(controlTokenOuts[0].tx->GetHash(), controlTokenOuts[0].i));
-        // just in case a change output was inserted, we loop to find the first output with zero out
-        // and put the spend just after
-        for (auto it = mtx.vout.begin(); it != mtx.vout.end(); it++)
-        {
-            if (!it->nValue)
-            {
-                it++;
-                mtx.vout.insert(it, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
-                break;
-            }
-        }
+        from_taddress = CTxDestination(CKeyID(uint160()));
     }
-
-    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
+    else if (wildCardiAddress)
+    {
+        from_taddress = CTxDestination(CIdentityID(uint160()));
+    }
+    else
+    {
+        from_taddress = sourceDest;
+    }
 
     if (tokenizedIDControl && LogAcceptCategory("tokenizedidcontrol"))
     {
         UniValue jsonTx(UniValue::VOBJ);
-        TxToUniv(wtx, uint256(), jsonTx);
+        TxToUniv(tb.mtx, uint256(), jsonTx);
         LogPrintf("%s: updateidtx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
     }
 
-    // now sign
-    CCoinsViewCache view(pcoinsTip);
-    for (int i = 0; i < wtx.vin.size(); i++)
+    // calculate total fee required to update based on content in content maps
+    // as of PBaaS, standard contentMaps cost an extra standard fee per entry
+    // contentMultiMaps cost an extra standard fee for each 128 bytes in size
+    CAmount contentMultiMapFactor = 0;
+    if (newID.contentMultiMap.size())
     {
-        bool signSuccess;
-        SignatureData sigdata;
+        CDataStream ss(SER_DISK, PROTOCOL_VERSION);
+        auto tempID = newID;
+        tempID.contentMultiMap.clear();
+        size_t serSize = GetSerializeSize(ss, newID) - GetSerializeSize(ss, tempID);
+        contentMultiMapFactor = (serSize / 128) + ((serSize % 128) ? 1 : 0);
+    }
 
-        CCoins coins;
-        if (!(view.GetCoins(wtx.vin[i].prevout.hash, coins) && coins.IsAvailable(wtx.vin[i].prevout.n)))
+    feeOffer = feeOffer ? feeOffer : DEFAULT_TRANSACTION_FEE + ((contentMultiMapFactor + newID.contentMap.size()) * DEFAULT_TRANSACTION_FEE);
+
+    CAmount totalFound = 0;
+
+    if (hasZSource)
+    {
+        saplingNotes = find_unspent_notes(zaddressSource);
+        int i;
+        for (i = 0; i < saplingNotes.size(); i++)
         {
-            break;
+            totalFound += saplingNotes[i].note.value();
+            if (totalFound >= feeOffer)
+            {
+                break;
+            }
         }
-
-        CAmount value = coins.vout[wtx.vin[i].prevout.n].nValue;
-
-        signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, coins.vout[wtx.vin[i].prevout.n].scriptPubKey), coins.vout[wtx.vin[i].prevout.n].scriptPubKey, sigdata, CurrentEpochBranchId(nHeight, Params().GetConsensus()));
-
-        if (!signSuccess && !returnTx)
+        // remove all but the notes we'll use
+        if (i < saplingNotes.size())
         {
-            LogPrintf("%s: failure to sign identity update tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
-            printf("%s: failure to sign identity update tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
-            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
-        } else if (sigdata.scriptSig.size()) {
-            UpdateTransaction(mtx, i, sigdata);
+            saplingNotes.erase(saplingNotes.begin() + i + 1, saplingNotes.end());
+            success = true;
         }
     }
-    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
+    else
+    {
+        success = find_utxos(from_taddress, vCoins) &&
+                pwalletMain->SelectCoinsMinConf(feeOffer, 0, 0, vCoins, setCoinsRet, totalFound);
+    }
+
+    // aggregate all inputs into one output with only the offer coins and offer indexes
+    if (saplingNotes.size())
+    {
+        std::vector<SaplingOutPoint> notes;
+        for (auto &oneNoteInfo : saplingNotes)
+        {
+            notes.push_back(oneNoteInfo.op);
+        }
+        // Fetch Sapling anchor and witnesses
+        uint256 anchor;
+        std::vector<boost::optional<SaplingWitness>> witnesses;
+        {
+            LOCK2(cs_main, pwalletMain->cs_wallet);
+            pwalletMain->GetSaplingNoteWitnesses(notes, witnesses, anchor);
+        }
+
+        // Add Sapling spends
+        for (size_t i = 0; i < saplingNotes.size(); i++)
+        {
+            tb.AddSaplingSpend(expsk, saplingNotes[i].note, anchor, witnesses[i].get());
+        }
+    }
+    else
+    {
+        for (auto &oneInput : setCoinsRet)
+        {
+            tb.AddTransparentInput(COutPoint(oneInput.first->GetHash(), oneInput.second),
+                                    oneInput.first->vout[oneInput.second].scriptPubKey,
+                                    oneInput.first->vout[oneInput.second].nValue);
+        }
+    }
+
+    if (totalFound > feeOffer)
+    {
+        if (hasZSource)
+        {
+            tb.SendChangeTo(*boost::get<libzcash::SaplingPaymentAddress>(&zaddressSource), sourceOvk);
+        }
+        else if (sourceDest.which() != COptCCParams::ADDRTYPE_INVALID && !GetDestinationID(sourceDest).IsNull())
+        {
+            tb.SendChangeTo(sourceDest);
+        }
+        else
+        {
+            if (defaultSaplingDest && VERUS_PRIVATECHANGE)
+            {
+                auto spendingkey_ = boost::apply_visitor(GetSpendingKeyForPaymentAddress(pwalletMain), DecodePaymentAddress(VERUS_DEFAULT_ZADDR)).get();
+                auto sk = boost::get<libzcash::SaplingExtendedSpendingKey>(spendingkey_);
+                expsk = sk.expsk;
+                auto changeOvk = expsk.full_viewing_key().ovk;
+
+                tb.SendChangeTo(defaultSaplingDest.get(), changeOvk);
+            }
+            else
+            {
+                txnouttype typeRet;
+                std::vector<CTxDestination> addressRet;
+                int nRequiredRet;
+                if (ExtractDestinations(setCoinsRet.begin()->first->vout[setCoinsRet.begin()->second].scriptPubKey,
+                                        typeRet,
+                                        addressRet,
+                                        nRequiredRet) &&
+                    addressRet.size() == 1)
+                {
+                    tb.SendChangeTo(addressRet[0]);
+                }
+                else
+                {
+                    CReserveKey changeKey(pwalletMain);
+                    CPubKey pk;
+                    if (changeKey.GetReservedKey(pk))
+                    {
+                        tb.SendChangeTo(pk.GetID());
+                        changeKey.KeepKey();
+                    }
+                    else
+                    {
+                        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Unable to create change address");
+                    }
+                }
+            }
+        }
+    }
+
+    tb.SetFee(feeOffer);
+
+    TransactionBuilderResult preResult = tb.Build(true);
+    CTransaction commitTx = preResult.GetTxOrThrow();
 
     if (returnTx)
     {
-        return EncodeHexTx(wtx);
+        return EncodeHexTx(commitTx);
     }
-    else if (!pwalletMain->CommitTransaction(wtx, reserveKey))
+    else
     {
-        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
+        // add to mem pool and relay
+        LOCK(cs_main);
+
+        bool relayTx;
+        CValidationState state;
+        {
+            LOCK2(smartTransactionCS, mempool.cs);
+            relayTx = myAddtomempool(commitTx, &state);
+        }
+
+        // add to mem pool and relay
+        if (!relayTx)
+        {
+            throw JSONRPCError(RPC_TRANSACTION_REJECTED, "Unable to commit identity update transaction: " + state.GetRejectReason());
+        }
+        else
+        {
+            RelayTransaction(commitTx);
+        }
     }
-    return wtx.GetHash().GetHex();
+
+    // including definitions and claims thread
+    return UniValue(commitTx.GetHash().GetHex());
 }
 
 UniValue setidentitytimelock(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 2 || params.size() > 3)
+    if (fHelp || params.size() < 2 || params.size() > 5)
     {
         throw runtime_error(
-            "setidentitytimelock \"id@\" '{\"unlockatblock\":absoluteblockheight || \"setunlockdelay\":numberofblocksdelayafterunlock}' (returntx)\n"
+            "setidentitytimelock \"id@\" '{\"unlockatblock\":absoluteblockheight || \"setunlockdelay\":numberofblocksdelayafterunlock}' (returntx) (feeoffer) (sourceoffunds)\n"
             "\nEnables timelocking and unlocking of funds access for an on-chain VerusID. This does not affect the lock status of VerusIDs on other chains,\n"
             "including VerusIDs with the same identity as this one, which has been exported to another chain.\n"
             "\nUse \"setunlockdelay\" to set a time unlock delay on an identity, which means that once the identity has been unlocked,\n"
@@ -11134,20 +11317,25 @@ UniValue setidentitytimelock(const UniValue& params, bool fHelp)
 
     UniValue newParams(UniValue::VARR);
 
+    oldIdentity.contentMultiMap.clear();
     newParams.push_back(oldIdentity.ToUniValue());
-    if (params.size() > 2)
+    for (int i = 2; i < params.size(); i++)
     {
-        newParams.push_back(params[2]);
+        if (i == 3)
+        {
+            newParams.push_back(false);
+        }
+        newParams.push_back(params[i]);
     }
     return updateidentity(newParams, fHelp);
 }
 
 UniValue revokeidentity(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 1 || params.size() > 3)
+    if (fHelp || params.size() < 1 || params.size() > 5)
     {
         throw runtime_error(
-            "revokeidentity \"nameorID\" (returntx) (tokenrevoke)\n"
+            "revokeidentity \"nameorID\" (returntx) (tokenrevoke) (feeoffer) (sourceoffunds)\n"
             "\n\n"
 
             "\nArguments\n"
@@ -11228,93 +11416,23 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
     newID.UpgradeVersion(chainActive.Height() + 1);
     newID.Revoke();
 
-    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(chainActive.Height()), 0, false}});
-    CWalletTx wtx;
+    UniValue newParams(UniValue::VARR);
 
-    CReserveKey reserveKey(pwalletMain);
-    CAmount fee;
-    int nChangePos;
-    string failReason;
-
-    if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason, nullptr, false))
+    newID.contentMultiMap.clear();
+    newParams.push_back(newID.ToUniValue());
+    for (int i = 1; i < params.size(); i++)
     {
-        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to create update transaction: " + failReason);
+        newParams.push_back(params[i]);
     }
-    CMutableTransaction mtx(wtx);
-
-    // add the spend of the last ID transaction output
-    mtx.vin.push_back(idTxIn);
-
-    // if we are using tokenized ID control, add the input and output to the transaction before signing
-    if (tokenizedIDControl)
-    {
-        mtx.vin.push_back(CTxIn(controlTokenOuts[0].tx->GetHash(), controlTokenOuts[0].i));
-        // just in case a change output was inserted, we loop to find the first output with zero out
-        // and put the spend just after
-        for (auto it = mtx.vout.begin(); it != mtx.vout.end(); it++)
-        {
-            if (!it->nValue)
-            {
-                it++;
-                mtx.vout.insert(it, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
-                break;
-            }
-        }
-    }
-
-    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
-    if (tokenizedIDControl && LogAcceptCategory("tokenizedidcontrol"))
-    {
-        UniValue jsonTx(UniValue::VOBJ);
-        TxToUniv(wtx, uint256(), jsonTx);
-        LogPrintf("%s: revokeidtx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
-    }
-
-    // now sign
-    CCoinsViewCache view(pcoinsTip);
-    for (int i = 0; i < wtx.vin.size(); i++)
-    {
-        bool signSuccess;
-        SignatureData sigdata;
-
-        CCoins coins;
-        if (!(view.GetCoins(wtx.vin[i].prevout.hash, coins) && coins.IsAvailable(wtx.vin[i].prevout.n)))
-        {
-            break;
-        }
-
-        CAmount value = coins.vout[wtx.vin[i].prevout.n].nValue;
-
-        signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, coins.vout[wtx.vin[i].prevout.n].scriptPubKey), coins.vout[wtx.vin[i].prevout.n].scriptPubKey, sigdata, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()));
-
-        if (!signSuccess && !returnTx)
-        {
-            LogPrintf("%s: failure to sign identity revocation tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
-            printf("%s: failure to sign identity revocation tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
-            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
-        } else if (sigdata.scriptSig.size()) {
-            UpdateTransaction(mtx, i, sigdata);
-        }
-    }
-    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
-
-    if (returnTx)
-    {
-        return EncodeHexTx(wtx);
-    }
-    else if (!pwalletMain->CommitTransaction(wtx, reserveKey))
-    {
-        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
-    }
-    return wtx.GetHash().GetHex();
+    return updateidentity(newParams, fHelp);
 }
 
 UniValue recoveridentity(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() < 1 || params.size() > 3)
+    if (fHelp || params.size() < 1 || params.size() > 5)
     {
         throw runtime_error(
-            "recoveridentity \"jsonidentity\" (returntx) (tokenrecover)\n"
+            "recoveridentity \"jsonidentity\" (returntx) (tokenrecover) (feeoffer) (sourceoffunds)\n"
             "\n\n"
 
             "\nArguments\n"
@@ -11385,117 +11503,7 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity must be revoked in order to recover : " + newID.name);
     }
 
-    // if we are supposed to get our authority from the token, make sure it is present and prepare to spend it
-    std::vector<COutput> controlTokenOuts;
-    CCurrencyValueMap tokenCurrencyControlMap(std::vector<uint160>({newIDID}), std::vector<int64_t>({1}));
-
-    if (tokenizedIDControl)
-    {
-        COptCCParams tcP;
-
-        CCurrencyValueMap reserveMap;
-        pwalletMain->AvailableReserveCoins(controlTokenOuts, true, nullptr, false, false, nullptr, &tokenCurrencyControlMap, false);
-        if (controlTokenOuts.size() == 1 && controlTokenOuts[0].fSpendable)
-        {
-            reserveMap = controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue();
-            if (!reserveMap.valueMap.count(newIDID) || reserveMap.valueMap[newIDID] != 1)
-            {
-                LogPrint("tokenizedidcontrol", "%s: controlTokenOuts.size(): %d, controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue(): %s, reserveMap: %s, reserveMap.valueMap[idID]: %ld\n", __func__, (int)controlTokenOuts.size(), controlTokenOuts[0].tx->vout[controlTokenOuts[0].i].ReserveOutValue().ToUniValue().write().c_str(), reserveMap.ToUniValue().write().c_str(), reserveMap.valueMap[newIDID]);
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot locate spendable tokenized ID control currency in wallet - if present, may require rescan");
-            }
-        }
-        else
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "No spendable tokenized ID control currency for recover in wallet");
-        }
-    }
-
-    newID.flags |= (oldID.flags & (oldID.FLAG_ACTIVECURRENCY + oldID.FLAG_TOKENIZED_CONTROL));
-    newID.flags &= ~CIdentity::FLAG_REVOKED;
-    newID.systemID = oldID.systemID;
-    newID.UpgradeVersion(nHeight + 1);
-
-    // create the identity definition transaction
-    std::vector<CRecipient> outputs = std::vector<CRecipient>({{newID.IdentityUpdateOutputScript(nHeight + 1), 0, false}});
-    CWalletTx wtx;
-
-    CReserveKey reserveKey(pwalletMain);
-    CAmount fee;
-    int nChangePos;
-    string failReason;
-
-    if (!pwalletMain->CreateTransaction(outputs, wtx, reserveKey, fee, nChangePos, failReason, nullptr, false))
-    {
-        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Unable to create update transaction: " + failReason);
-    }
-    CMutableTransaction mtx(wtx);
-
-    // add the spend of the last ID transaction output
-    mtx.vin.push_back(idTxIn);
-
-    // if we are using tokenized ID control, add the input and output to the transaction before signing
-    if (tokenizedIDControl)
-    {
-        mtx.vin.push_back(CTxIn(controlTokenOuts[0].tx->GetHash(), controlTokenOuts[0].i));
-        // just in case a change output was inserted, we loop to find the first output with zero out
-        // and put the spend just after
-        for (auto it = mtx.vout.begin(); it != mtx.vout.end(); it++)
-        {
-            if (!it->nValue)
-            {
-                it++;
-                mtx.vout.insert(it, CTxOut(controlTokenOuts[0].tx->vout[controlTokenOuts[0].i]));
-                break;
-            }
-        }
-    }
-
-    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
-
-    if (tokenizedIDControl && LogAcceptCategory("tokenizedidcontrol"))
-    {
-        UniValue jsonTx(UniValue::VOBJ);
-        TxToUniv(wtx, uint256(), jsonTx);
-        LogPrintf("%s: recoveridtx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
-    }
-
-    // now sign
-    CCoinsViewCache view(pcoinsTip);
-    for (int i = 0; i < wtx.vin.size(); i++)
-    {
-        bool signSuccess;
-        SignatureData sigdata;
-
-        CCoins coins;
-        if (!(view.GetCoins(wtx.vin[i].prevout.hash, coins) && coins.IsAvailable(wtx.vin[i].prevout.n)))
-        {
-            break;
-        }
-
-        CAmount value = coins.vout[wtx.vin[i].prevout.n].nValue;
-
-        signSuccess = ProduceSignature(TransactionSignatureCreator(pwalletMain, &wtx, i, value, coins.vout[wtx.vin[i].prevout.n].scriptPubKey), coins.vout[wtx.vin[i].prevout.n].scriptPubKey, sigdata, CurrentEpochBranchId(chainActive.Height(), Params().GetConsensus()));
-
-        if (!signSuccess && !returnTx)
-        {
-            LogPrintf("%s: failure to sign identity recovery tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
-            printf("%s: failure to sign identity recovery tx for input %d from output %d of %s\n", __func__, i, wtx.vin[i].prevout.n, wtx.vin[i].prevout.hash.GetHex().c_str());
-            throw JSONRPCError(RPC_TRANSACTION_ERROR, "Failed to sign transaction");
-        } else if (sigdata.scriptSig.size()) {
-            UpdateTransaction(mtx, i, sigdata);
-        }
-    }
-    *static_cast<CTransaction*>(&wtx) = CTransaction(mtx);
-
-    if (returnTx)
-    {
-        return EncodeHexTx(wtx);
-    }
-    else if (!pwalletMain->CommitTransaction(wtx, reserveKey))
-    {
-        throw JSONRPCError(RPC_TRANSACTION_ERROR, "Could not commit transaction " + wtx.GetHash().GetHex());
-    }
-    return wtx.GetHash().GetHex();
+    return updateidentity(params, false);
 }
 
 UniValue getidentity(const UniValue& params, bool fHelp)

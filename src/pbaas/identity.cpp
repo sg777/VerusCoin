@@ -70,7 +70,8 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
         (nSolVersion < CActivationHeight::ACTIVATE_VERUSVAULT && (newIdentity.IsLocked() || newIdentity.nVersion >= VERSION_VAULT)) ||
         (nSolVersion >= CActivationHeight::ACTIVATE_VERUSVAULT && (newIdentity.nVersion < VERSION_VAULT ||
                                                                   (newIdentity.systemID != (nVersion < VERSION_VAULT ? parent : systemID)))) ||
-        (nSolVersion < CActivationHeight::ACTIVATE_PBAAS && (newIdentity.HasActiveCurrency() || newIdentity.nVersion >= VERSION_PBAAS)) ||
+        (nSolVersion < CActivationHeight::ACTIVATE_PBAAS &&
+         (newIdentity.HasActiveCurrency() || newIdentity.contentMultiMap.size() || newIdentity.nVersion >= VERSION_PBAAS)) ||
         (nSolVersion >= CActivationHeight::ACTIVATE_PBAAS && (newIdentity.nVersion < VERSION_PBAAS)) ||
         GetID() != newIdentity.GetID() ||
         ((newIdentity.flags & ~FLAG_REVOKED) && newIdentity.nVersion < VERSION_VAULT) ||
