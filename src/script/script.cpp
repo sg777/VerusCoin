@@ -628,15 +628,9 @@ bool CScript::IsInstantSpend() const
     COptCCParams p;
     bool isInstantSpend = false;
 
-    // TODO: HARDENING - this must run on the Verus chain, but should have a version check and parameter
-    //
-    // before we remove the exclusion for mainnet, make sure that all smart transaction types below cannot
-    // release value from the protocol until at least the finalization of this chain's notarizations
-    // 
-    if (!_IsVerusMainnetActive() && IsPayToCryptoCondition(p) && p.IsValid())
+    if (IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
     {
-        // instant spends must be to expected instant spend crypto conditions and to the right address as well
-        // TODO: fix this check
+        // instant spends can be spent from a coinbase before block maturity, but cannot carry any currency value
         if (p.evalCode == EVAL_EARNEDNOTARIZATION || 
             p.evalCode == EVAL_FINALIZE_NOTARIZATION || 
             p.evalCode == EVAL_FINALIZE_EXPORT || 
@@ -655,8 +649,6 @@ bool CScript::IsInstantSpendOrUnspendable() const
     bool isInstantSpend = false;
     if (IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
     {
-        // instant spends must be to expected instant spend crypto conditions and to the right address as well
-        // TODO: fix this check
         if (p.evalCode == EVAL_EARNEDNOTARIZATION || 
             p.evalCode == EVAL_FINALIZE_NOTARIZATION || 
             p.evalCode == EVAL_CROSSCHAIN_IMPORT ||

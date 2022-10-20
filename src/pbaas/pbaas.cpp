@@ -1964,15 +1964,14 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                     }
                 }
 
-                // TODO: HARDENING - add hardening to ensure that no more than one satoshi at a time ever comes in from a bridge for an NFT mapped currency
                 if (isNFTMappedCurrency && newCurrency.proofProtocol == newCurrency.PROOF_CHAINID)
                 {
-                    return state.Error("Identity must be set for tokenized control when defining NFT token or tokenized control currency");
+                    return state.Error("NFT or tokenized control currency may not also be a centralized currency");
                 }
 
                 if (isNFTMappedCurrency && !newIdentity.HasTokenizedControl())
                 {
-                    return state.Error("Identity must be set for tokenized control when defining NFT token or tokenized control currency");
+                    return state.Error("Identity not set for tokenized control when defining NFT token or tokenized control currency");
                 }
 
                 if (newIdentity.parent != ASSETCHAINS_CHAINID &&
@@ -5876,6 +5875,13 @@ bool CConnectedChains::CurrencyExportStatus(const CCurrencyValueMap &totalExport
             {
                 printf("%s: Invalid currency for export or corrupt chain state\n", __func__);
                 LogPrintf("%s: Invalid currency for export or corrupt chain state\n", __func__);
+                return false;
+            }
+
+            if (oneCurDef.IsNFTToken() && oneCur.second > 1)
+            {
+                printf("%s: No more than 1 satoshi may be transfered cross-chain to represent an NFT or tokenized ID control currency\n", __func__);
+                LogPrintf("%s: No more than 1 satoshi may be transfered cross-chain to represent an NFT or tokenized ID control currency\n", __func__);
                 return false;
             }
 

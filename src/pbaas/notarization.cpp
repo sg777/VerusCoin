@@ -1133,7 +1133,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     bool thisIsLaunchSys = destCurrency.launchSystemID == ASSETCHAINS_CHAINID;
 
     // if this is the clear launch notarization after start, make the notarization and determine if we should launch or refund
-
     uint256 weakEntropy = proofRoots.count(sourceSystemID) ? proofRoots.find(sourceSystemID)->second.stateRoot : uint256();
 
     // TODO: HARDENING ensure that the latest proof root of this chain is in on gateway
@@ -1556,22 +1555,6 @@ UniValue CChainNotarizationData::ToUniValue() const
     obj.push_back(Pair("lastconfirmed", lastConfirmed));
     obj.push_back(Pair("bestchain", bestChain));
     return obj;
-}
-
-bool CPBaaSNotarization::IsNotarizationConfirmed(const CPBaaSNotarization &notarization,
-                                                 const CNotaryEvidence &notaryEvidence,
-                                                 CValidationState &state) const
-{
-    // TODO: HARDENING - remove or implement and use
-    return false;
-}
-
-bool CPBaaSNotarization::IsNotarizationRejected(const CPBaaSNotarization &notarization,
-                                                const CNotaryEvidence &notaryEvidence,
-                                                CValidationState &state) const
-{
-    // TODO: HARDENING - remove or implement and use
-    return false;
 }
 
 bool CChainNotarizationData::CalculateConfirmation(int confirmingIdx, std::set<int> &confirmedOutputNums, std::set<int> &invalidatedOutputNums) const
@@ -5132,6 +5115,8 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
     // ensure that if we are finalizing a notarization, we have followed all rules to do so
     // after we precheck and confirm a notarization finalization for a notary chain of this chain, we record it
     // as the last notarized checkpoint and prevent any unwind of the blockchain from that point
+
+    // TODO: HARDENING - precheck check ALL protocol outputs to ensure correct spendability
 
     uint32_t chainHeight = chainActive.Height();
     bool haveFullChain = height <= chainHeight + 1;

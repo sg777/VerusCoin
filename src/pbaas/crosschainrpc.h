@@ -446,15 +446,16 @@ public:
     enum ELimitsDefaults
     {
         // TODO: HARDENING - reconcile all core fees, including for z-transactions, imports, identities, etc.
-        TRANSACTION_CROSSCHAIN_FEE = 2000000, // 0.02 destination currency per cross chain transfer total, chain's accept notary currency or have converter
-        TRANSACTION_TRANSFER_FEE = 20000,   // 0.0002 per same chain transfer total, chain's accept notary currency or have converter
-        CURRENCY_REGISTRATION_FEE = 20000000000, // default 100 to register a currency
-        PBAAS_SYSTEM_LAUNCH_FEE = 1000000000000, // default 10000 to register and launch a PBaaS chain
-        CURRENCY_IMPORT_FEE = 10000000000,  // default 100 to import a currency
-        IDENTITY_REGISTRATION_FEE = 10000000000, // 100 to register an identity
-        IDENTITY_IMPORT_FEE = 2000000,      // 0.02 in native currency to import an identity
-        MIN_CURRENCY_LIFE = 480,            // 8 hour minimum lifetime, which gives 8 hours of minimum billing to notarize conclusion
-        DEFAULT_OUTPUT_VALUE = 0,           // 0 VRSC default output value
+        TRANSACTION_CROSSCHAIN_FEE = 2000000,       // 0.02 destination currency per cross chain transfer, chain's accept notary currency or have converter
+        TRANSACTION_TRANSFER_FEE = 20000,           // 0.0002 per same chain transfer total, chain's accept notary currency or have converter
+        CURRENCY_REGISTRATION_FEE = 20000000000,    // default 200 to register a currency, except tokenizing ID control
+        PBAAS_SYSTEM_LAUNCH_FEE = 1000000000000,    // default 10000 to register and launch a PBaaS chain
+        CURRENCY_IMPORT_FEE = 10000000000,          // default 100 to import a currency
+        IDENTITY_REGISTRATION_FEE = 10000000000,    // 100 full price to register an identity
+        IDENTITY_IMPORT_FEE = 2000000,              // 0.02 in native currency to import an identity
+        EXTRA_Z_OUTPUT_FEE = (TRANSACTION_TRANSFER_FEE >> 1), // 2 or more z-outputs accompanied by t-outputs on a transaction
+        MIN_CURRENCY_LIFE = 480,                    // 8 hour minimum lifetime, which gives 8 hours of minimum billing to notarize conclusion
+        DEFAULT_OUTPUT_VALUE = 0,                   // 0 VRSC default output value
         DEFAULT_ID_REFERRAL_LEVELS = 3,
         MAX_ID_REFERRAL_LEVELS = 5,
         MAX_NAME_LEN = 64,
@@ -468,11 +469,11 @@ public:
         MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 1,
         MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK = 0,
         MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK = 50,
-        DEFAULT_BLOCK_NOTARIZATION_TIME = 600, // default target time for block notarizations
-        MIN_BLOCK_NOTARIZATION_BLOCKS = 2,  // minimum target blocks for notarization period
+        DEFAULT_BLOCK_NOTARIZATION_TIME = 600,      // default target time for block notarizations
+        MIN_BLOCK_NOTARIZATION_BLOCKS = 2,          // minimum target blocks for notarization period
         MAX_NOTARIZATION_CONVERSION_PRICING_INTERVAL = 100,  // there must be a notarization with conversion at least 100 blocks before reserve transfer
-        DEFAULT_BLOCKTIME_TARGET = 60,      // default block time target for difficulty adjustment, in seconds
-        DEFAULT_AVERAGING_WINDOW = 45,      // default target spacing (blocks) for difficulty adjustment
+        DEFAULT_BLOCKTIME_TARGET = 60,              // default block time target for difficulty adjustment, in seconds
+        DEFAULT_AVERAGING_WINDOW = 45,              // default target spacing (blocks) for difficulty adjustment
         BLOCK_NOTARIZATION_MODULO = (DEFAULT_BLOCK_NOTARIZATION_TIME / DEFAULT_BLOCKTIME_TARGET) // default min notarization spacing (10 minutes)
     };
 

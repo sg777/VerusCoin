@@ -525,14 +525,6 @@ public:
                                              uint32_t nHeight,
                                              bool &finalized);
 
-    bool IsNotarizationConfirmed(const CPBaaSNotarization &notarization,
-                                 const CNotaryEvidence &notaryEvidence,
-                                 CValidationState &state) const;
-
-    bool IsNotarizationRejected(const CPBaaSNotarization &notarization,
-                                const CNotaryEvidence &notaryEvidence,
-                                CValidationState &state) const;
-
     static std::vector<uint256> SubmitFinalizedNotarizations(const CRPCChainData &externalSystem,
                                                              CValidationState &state);
 

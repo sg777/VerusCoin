@@ -454,7 +454,6 @@ void CTxMemPool::removeForReorg(const CCoinsViewCache *pcoins, unsigned int nMem
                         break;
                     }
 
-
                     // TODO: HARDENING - if we can no longer submit evidence or finalization of a notarization
                     // due to reorganizing back past the point where a notary can sign, we must consider this transaction
                     // on hold until it is valid again. on the other hand, if the original notarization it refers to

@@ -7941,10 +7941,26 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     }
 
     // CAmount feeAmount = (numHeavyOutputs || hasZSource) ? (DEFAULT_HEAVY_INOUT_FEE * (hasZSource ? numHeavyOutputs + 1 : numHeavyOutputs)) : DEFAULT_TRANSACTION_FEE;
-    CAmount feeAmount = DEFAULT_TRANSACTION_FEE;
+    CAmount feeAmount = 0;
     if (params.size() > 3)
     {
         feeAmount = AmountFromValue(params[3]);
+    }
+
+    // if fee offer was not specified, calculate
+    if (!feeAmount)
+    {
+        // calculate total fee required to update based on content in content maps
+        // as of PBaaS, standard contentMaps cost an extra standard fee per entry
+        // contentMultiMaps cost an extra standard fee for each 128 bytes in size
+        feeAmount = DEFAULT_TRANSACTION_FEE;
+
+        // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
+        // we make allowance for 1 z-output or t-output, 1 native z-change, one token change, and 1 blacklisted change
+        if ((zOutputs.size() > 1 && tOutputs.size() > 3) || (zOutputs.size() > 2 && tOutputs.size() > 2))
+        {
+            feeAmount += ((tOutputs.size() > 3 ? zOutputs.size() - 1 : zOutputs.size() - 2) * DEFAULT_TRANSACTION_FEE);
+        }
     }
 
     if (returnTx)
@@ -11132,20 +11148,29 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         LogPrintf("%s: updateidtx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
     }
 
-    // calculate total fee required to update based on content in content maps
-    // as of PBaaS, standard contentMaps cost an extra standard fee per entry
-    // contentMultiMaps cost an extra standard fee for each 128 bytes in size
-    CAmount contentMultiMapFactor = 0;
-    if (newID.contentMultiMap.size())
+    // if fee offer was not specified, calculate
+    if (!feeOffer)
     {
-        CDataStream ss(SER_DISK, PROTOCOL_VERSION);
-        auto tempID = newID;
-        tempID.contentMultiMap.clear();
-        size_t serSize = GetSerializeSize(ss, newID) - GetSerializeSize(ss, tempID);
-        contentMultiMapFactor = (serSize / 128) + ((serSize % 128) ? 1 : 0);
-    }
+        // calculate total fee required to update based on content in content maps
+        // as of PBaaS, standard contentMaps cost an extra standard fee per entry
+        // contentMultiMaps cost an extra standard fee for each 128 bytes in size
+        CAmount identityFeeFactor = 0;
+        if (newID.contentMultiMap.size())
+        {
+            CDataStream ss(SER_DISK, PROTOCOL_VERSION);
+            auto tempID = newID;
+            tempID.contentMultiMap.clear();
+            size_t serSize = GetSerializeSize(ss, newID) - GetSerializeSize(ss, tempID);
+            identityFeeFactor = (serSize / 128) + ((serSize % 128) ? 1 : 0);
+        }
 
-    feeOffer = feeOffer ? feeOffer : DEFAULT_TRANSACTION_FEE + ((contentMultiMapFactor + newID.contentMap.size()) * DEFAULT_TRANSACTION_FEE);
+        // if we have more primary addresses than 1 or more private addresses than 1, pay appropriate fee
+        identityFeeFactor += newID.contentMap.size();
+        identityFeeFactor += newID.primaryAddresses.size() > 1 ? newID.primaryAddresses.size() - 1 : 0;
+        identityFeeFactor += newID.privateAddresses.size() > 1 ? newID.privateAddresses.size() - 1 : 0;
+
+        feeOffer = DEFAULT_TRANSACTION_FEE + (identityFeeFactor * DEFAULT_TRANSACTION_FEE);
+    }
 
     CAmount totalFound = 0;
 

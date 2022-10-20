@@ -5833,8 +5833,8 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
     }
 
     // Fee in Zatoshis, not currency format)
-    CAmount nFee        = ASYNC_RPC_OPERATION_DEFAULT_MINERS_FEE;
-    CAmount nDefaultFee = nFee;
+    CAmount nFee        = 0;
+    CAmount nDefaultFee = ASYNC_RPC_OPERATION_DEFAULT_MINERS_FEE;
 
     if (params.size() > 3) {
         if (params[3].get_real() == 0.0) {
@@ -5856,6 +5856,21 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
                 throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Fee %s is greater than the sum of outputs %s and also greater than the default fee", FormatMoney(nFee), FormatMoney(nTotalOut)));
             }
 	    }
+    }
+
+    // if fee offer was not specified, calculate
+    if (!nFee)
+    {
+        // calculate total fee required to update based on content in content maps
+        // as of PBaaS, standard contentMaps cost an extra standard fee per entry
+        // contentMultiMaps cost an extra standard fee for each 128 bytes in size
+        nFee = nDefaultFee;
+
+        // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
+        if ((zaddrRecipients.size() > 1 && taddrRecipients.size() > 3) || (zaddrRecipients.size() > 2 && taddrRecipients.size() > 2))
+        {
+            nFee += ((taddrRecipients.size() > 3 ? zaddrRecipients.size() - 1 : zaddrRecipients.size() - 2) * DEFAULT_TRANSACTION_FEE);
+        }
     }
 
     // Use input parameters as the optional context info to be returned by z_getoperationstatus and z_getoperationresult.

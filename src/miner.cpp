@@ -805,14 +805,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
 
         // create the import thread output
         cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
-        if (newCurrency.proofProtocol == newCurrency.PROOF_CHAINID)
-        {
-            dests = std::vector<CTxDestination>({CIdentityID(newCurID)});
-        }
-        else
-        {
-            dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-        }
+        dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
         if ((newCurrency.systemID == ASSETCHAINS_CHAINID) && firstNotaryID == newCurrency.launchSystemID)
         {
