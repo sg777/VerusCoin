@@ -3806,6 +3806,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
+        int identityFeeFactor = 0;
+
         const CTransaction &tx = block.vtx[i];
         const uint256 txhash = tx.GetHash();
         nInputs += tx.vin.size();
@@ -3825,7 +3827,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             return state.DoS(100, error(strprintf("%s: Invalid reserve transaction", __func__).c_str()), REJECT_INVALID, "bad-txns-invalid-reserve");
         }
 
-        if (isPBaaS && (rtxd.flags & (rtxd.IS_IMPORT | rtxd.IS_RESERVETRANSFER | rtxd.IS_EXPORT | rtxd.IS_IDENTITY_DEFINITION | rtxd.IS_CURRENCY_DEFINITION)))
+        if (isPBaaS && (rtxd.flags & (rtxd.IS_IMPORT | rtxd.IS_RESERVETRANSFER | rtxd.IS_EXPORT | rtxd.IS_IDENTITY | rtxd.IS_IDENTITY_DEFINITION | rtxd.IS_CURRENCY_DEFINITION)))
         {
             // go through all outputs and record all currency and identity definitions, either import-based definitions or
             // identity reservations to check for collision, which is disallowed
@@ -3841,6 +3843,35 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 {
                     switch (p.evalCode)
                     {
+                        case EVAL_IDENTITY_PRIMARY:
+                        {
+                            CIdentity identity;
+                            if ((identity = CIdentity(p.vData[0])).IsValid())
+                            {
+                                if (!tx.IsCoinBase())
+                                {
+                                    if (identity.contentMultiMap.size())
+                                    {
+                                        CDataStream ss(SER_DISK, PROTOCOL_VERSION);
+                                        auto tempID = identity;
+                                        tempID.contentMultiMap.clear();
+                                        size_t serSize = GetSerializeSize(ss, identity) - GetSerializeSize(ss, tempID);
+                                        identityFeeFactor += (serSize / 128) + ((serSize % 128) ? 1 : 0);
+                                    }
+
+                                    // if we have more primary addresses than 1 or more private addresses than 1, pay appropriate fee
+                                    identityFeeFactor += identity.contentMap.size();
+                                    identityFeeFactor += identity.primaryAddresses.size() > 1 ? identity.primaryAddresses.size() - 1 : 0;
+                                    identityFeeFactor += identity.privateAddresses.size() > 1 ? identity.privateAddresses.size() - 1 : 0;
+                                }
+                            }
+                            else
+                            {
+                                return state.DoS(10, error("%s: attempt to submit block with invalid identity", __func__), REJECT_INVALID, "bad-txns-invalid-id");
+                            }
+                            break;
+                        }
+
                         case EVAL_IDENTITY_ADVANCEDRESERVATION:
                         {
                             CAdvancedNameReservation advNameRes;
@@ -4026,6 +4057,22 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     }
                 }
             }
+            if (rtxd.IsValid())
+            {
+                CAmount feeAmount = 0;
+                // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
+                // we make allowance for 1 z-output or t-output, 1 native z-change, one token change, and 1 blacklisted change
+                if ((tx.vShieldedOutput.size() > 1 && tx.vout.size() > 3) || (tx.vShieldedOutput.size() > 2 && tx.vout.size() > 2))
+                {
+                    feeAmount += ((identityFeeFactor + (tx.vout.size() > 3 ? tx.vShieldedOutput.size() - 1 : tx.vShieldedOutput.size() - 2)) *
+                                    DEFAULT_TRANSACTION_FEE);
+                }
+                if (rtxd.NativeFees() < feeAmount)
+                {
+                    return state.DoS(100, error("ConnectBlock(): insufficient fee for resource usage"),
+                                    REJECT_INVALID, "insufficient-fee");
+                }
+            }
         }
 
         // coinbase transaction output is dependent on all other transactions in the block, figure those out first 
@@ -4139,30 +4186,14 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         
         txdata.emplace_back(tx);
 
-        /*
-        if (!isVerusActive)
-        {
-            // we get the currency state, and if reserve, add any appropriate converted fees that are the difference between
-            // reserve in and native in converted to reserve and native out on the currency state output.
-            if (tx.IsCoinBase())
-            {
-                int outIdx;
-                currencyState = CCoinbaseCurrencyState(block.vtx[0], &outIdx);
-                if (!currencyState.IsValid())
-                {
-                    return state.DoS(100, error("ConnectBlock(): invalid currency state"), REJECT_INVALID, "bad-blk-currency");
-                }
-            }
-        }
-        */
-
         if (!tx.IsCoinBase())
         {
             if (rtxd.IsValid())
             {
                 nFees += rtxd.NativeFees();
                 totalReserveTxFees += rtxd.ReserveFees();
-            } else
+            }
+            else
             {
                 CAmount interest;
                 nFees += view.GetValueIn(chainActive.LastTip()->GetHeight(), &interest, tx, chainActive.LastTip()->nTime) - tx.GetValueOut();
