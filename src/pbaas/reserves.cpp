@@ -3422,7 +3422,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     int32_t totalCarveOut = importCurrencyDef.GetTotalCarveOut();
     CCurrencyValueMap totalCarveOuts;
+
     CAmount totalMinted = 0;
+
     CAmount currencyRegistrationFee = 0;
     CAmount totalNativeFee = 0;
     CAmount totalVerusFee = 0;
@@ -4568,9 +4570,29 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     // if this is a minting of currency
                     // this is used for both pre-allocation and also centrally, algorithmically, or externally controlled currencies
                     uint160 destCurID = curTransfer.destCurrencyID;
-                    if (curTransfer.IsMint() && destCurID == importCurrencyID)
+                    if (curTransfer.IsMint())
                     {
-                        // minting is emitted in new currency state
+                        if (destCurID != importCurrencyID)
+                        {
+                            LogPrint("reservetransfers", "%s: invalid mint transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
+                            LogPrint("minting", "%s: invalid mint transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
+                            return false;
+                        }
+                        if (importCurrencyDef.IsFractional())
+                        {
+                            auto tempCurState = importCurrencyState;
+                            // minting is emitted in new currency state
+                            tempCurState.UpdateWithEmission(totalMinted + curTransfer.FirstValue());
+                            for (auto oneWeight : tempCurState.weights)
+                            {
+                                if (oneWeight < CCurrencyDefinition::MIN_RESERVE_RATIO)
+                                {
+                                    // zero out the mint if it will reduce reserve ratio below minimum
+                                    curTransfer.reserveValues.valueMap[curTransfer.reserveValues.valueMap.begin()->first] = 0;
+                                }
+                            }
+                        }
+
                         totalMinted += curTransfer.FirstValue();
                         AddNativeOutConverted(destCurID, curTransfer.FirstValue());
                         if (destCurID != systemDestID)

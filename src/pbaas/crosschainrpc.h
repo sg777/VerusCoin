@@ -453,13 +453,13 @@ public:
         CURRENCY_IMPORT_FEE = 10000000000,  // default 100 to import a currency
         IDENTITY_REGISTRATION_FEE = 10000000000, // 100 to register an identity
         IDENTITY_IMPORT_FEE = 2000000,      // 0.02 in native currency to import an identity
-        MIN_RESERVE_CONTRIBUTION = 1000000, // 0.01 minimum per reserve contribution minimum
-        MIN_BILLING_PERIOD = 960,           // 16 hour minimum billing period for notarization, typically expect days/weeks/months
         MIN_CURRENCY_LIFE = 480,            // 8 hour minimum lifetime, which gives 8 hours of minimum billing to notarize conclusion
         DEFAULT_OUTPUT_VALUE = 0,           // 0 VRSC default output value
         DEFAULT_ID_REFERRAL_LEVELS = 3,
         MAX_ID_REFERRAL_LEVELS = 5,
         MAX_NAME_LEN = 64,
+        MAX_RESERVE_CURRENCIES = 10,
+        MIN_RESERVE_RATIO = 5000000,
         MAX_STARTUP_NODES = 5,
         DEFAULT_START_TARGET = 0x1e01e1e1,
         MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 20,

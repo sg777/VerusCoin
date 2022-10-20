@@ -8593,7 +8593,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
 
     // if this is a fractional reserve currency, ensure that all reserves are currently active 
     // with at least as long of a life as this currency and that at least one of the currencies
-    // is VRSC or VRSCTEST.
+    // is the native currency of the chain.
     std::vector<CCurrencyDefinition> reserveCurrencies;
     bool hasCoreReserve = false;
     if (newCurrency.IsFractional())
@@ -8609,6 +8609,61 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         }
 
         newCurrency.preconverted = newCurrency.contributions;
+
+        // for a definition to be valid, it needs to have post-launch reserve ratios of all currencies > CCurrencyDefinition::MIN_RESERVE_RATIO (5%)
+        // and no greater than CCurrencyDefinition::MAX_RESERVE_CURRENCIES currencies, including pre-launch 
+        // carve-outs, pre-allocations, and initial supply
+        if (newCurrency.currencies.size() > CCurrencyDefinition::MAX_RESERVE_CURRENCIES)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Fractional currencies may have a maximum of 10 reserve currencies specified");
+        }
+
+        CCurrencyDefinition tmpDef = newCurrency;
+        auto calcState = ConnectedChains.GetCurrencyState(tmpDef, height);
+        CAmount issuedWeight = newCurrency.gatewayConverterIssuance ? newCurrency.weights[newCurrency.GetCurrenciesMap()[newCurrency.systemID]] : 0;
+
+        int32_t totalCarveOut = newCurrency.GetTotalCarveOut();
+
+        if (totalCarveOut)
+        {
+            if (issuedWeight < totalCarveOut)
+            {
+                calcState.ApplyCarveouts(totalCarveOut - issuedWeight);
+                issuedWeight = 0;
+            }
+            else
+            {
+                issuedWeight -= totalCarveOut;
+            }
+        }
+        if (newCurrency.preLaunchDiscount)
+        {
+            if (issuedWeight <= newCurrency.preLaunchDiscount)
+            {
+                calcState.ApplyCarveouts(newCurrency.preLaunchDiscount - issuedWeight);
+                issuedWeight = 0;
+            }
+            else
+            {
+                issuedWeight -= newCurrency.preLaunchDiscount;
+            }
+        }
+
+        CAmount preAllocTotal = newCurrency.GetTotalPreallocation();
+
+        if (preAllocTotal)
+        {
+            calcState.UpdateWithEmission(preAllocTotal, issuedWeight);
+        }
+
+        // ensure that no weight goes below lower limit
+        for (auto oneWeight : calcState.weights)
+        {
+            if (oneWeight < CCurrencyDefinition::MIN_RESERVE_RATIO)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Fractional currencies must not go below 5% weight of each reserve currency before, during or after launch");
+            }
+        }
 
         for (auto &currency : newCurrency.currencies)
         {
