@@ -744,7 +744,7 @@ UniValue CProofRoot::ToUniValue() const
     obj.push_back(Pair("power", compactPower.GetHex()));
     if (type == TYPE_ETHEREUM)
     {
-        obj.push_back(Pair("gasprice", gasPrice));
+        obj.push_back(Pair("gasprice", ValueFromAmount(gasPrice)));
     }
     return obj;
 }
