@@ -4692,13 +4692,6 @@ bool CWalletTx::HasMatureCoins() const
     }
     else
     {
-        for (auto oneout : vout)
-        {
-            if (oneout.scriptPubKey.IsInstantSpend())
-            {
-                return true;
-            }
-        }
         return false;
     }
 }

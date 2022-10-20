@@ -1324,6 +1324,14 @@ bool ContextualCheckTransaction(
 
     if (tx.IsCoinBase())
     {
+        for (auto &oneOut : tx.vout)
+        {
+            if (oneOut.scriptPubKey.IsInstantSpend() && (oneOut.nValue || oneOut.scriptPubKey.ReserveOutValue() > CCurrencyValueMap()))
+            {
+                return state.DoS(100, error("CheckTransaction(): invalid non-zero output value for coinbase instant spend"),
+                                    REJECT_INVALID, "bad-txns-invalid-instantspend-for-coinbase");
+            }
+        }
         if (!ContextualCheckCoinbaseTransaction(tx, nHeight))
             return state.DoS(100, error("CheckTransaction(): invalid script data for coinbase"),
                                 REJECT_INVALID, "bad-txns-invalid-script-data-for-coinbase");
@@ -1785,10 +1793,10 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         }
     }
 
-    bool isVerusVault = CVerusSolutionVector::GetVersionByHeight(nextBlockHeight) >= CActivationHeight::ACTIVATE_VERUSVAULT;
-    if (isVerusVault && tx.IsCoinBase())
+    if (tx.IsCoinBase())
     {
-        return error("AcceptToMemoryPool: Coinbase");
+        fprintf(stderr,"AcceptToMemoryPool coinbase as individual tx\n");
+        return state.DoS(100, error("AcceptToMemoryPool: coinbase as individual tx"),REJECT_INVALID, "coinbase");
     }
 
     auto verifier = libzcash::ProofVerifier::Strict();
@@ -1817,14 +1825,6 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
     {
         return error("AcceptToMemoryPool: Invalid identity redefinition");
     }
-
-    // Coinbase is only valid in a block, not as a loose transaction. we will put it in the mem pool to enable
-    // instant spend features, but we will not relay coinbase transactions
-    //if (tx.IsCoinBase())
-    //{
-    //    fprintf(stderr,"AcceptToMemoryPool coinbase as individual tx\n");
-    //    return state.DoS(100, error("AcceptToMemoryPool: coinbase as individual tx"),REJECT_INVALID, "coinbase");
-    //}
 
     // DoS mitigation: reject transactions expiring soon
     // Note that if a valid transaction belonging to the wallet is in the mempool and the node is shutdown,
@@ -1859,34 +1859,27 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         return state.Invalid(false, REJECT_DUPLICATE, "already in mempool");
     }
 
-    bool iscoinbase = tx.IsCoinBase();
-
-    // Check for conflicts with in-memory transactions
-    // TODO: HARDENING including conflicts in chain definition and notarizations
-    if(!iscoinbase)
+    for (unsigned int i = 0; i < tx.vin.size(); i++)
     {
-        for (unsigned int i = 0; i < tx.vin.size(); i++)
+        COutPoint outpoint = tx.vin[i].prevout;
+        if (pool.mapNextTx.count(outpoint))
         {
-            COutPoint outpoint = tx.vin[i].prevout;
-            if (pool.mapNextTx.count(outpoint))
-            {
-                // Disable replacement feature for now
-                //printf("%s: outpoint already spent in mempool by tx: %s\n", __func__, pool.mapNextTx[outpoint].ptx->GetHash().GetHex().c_str());
-                return state.Invalid(false, REJECT_INVALID, "bad-txns-inputs-spent");
+            // Disable replacement feature for now
+            //printf("%s: outpoint already spent in mempool by tx: %s\n", __func__, pool.mapNextTx[outpoint].ptx->GetHash().GetHex().c_str());
+            return state.Invalid(false, REJECT_INVALID, "bad-txns-inputs-spent");
+        }
+    }
+    BOOST_FOREACH(const JSDescription &joinsplit, tx.vJoinSplit) {
+        BOOST_FOREACH(const uint256 &nf, joinsplit.nullifiers) {
+            if (pool.nullifierExists(nf, SPROUT)) {
+                fprintf(stderr,"pool.mapNullifiers.count\n");
+                return state.Invalid(false, REJECT_INVALID, "bad-txns-sprout-nullifier-exists");
             }
         }
-        BOOST_FOREACH(const JSDescription &joinsplit, tx.vJoinSplit) {
-            BOOST_FOREACH(const uint256 &nf, joinsplit.nullifiers) {
-                if (pool.nullifierExists(nf, SPROUT)) {
-                    fprintf(stderr,"pool.mapNullifiers.count\n");
-                    return state.Invalid(false, REJECT_INVALID, "bad-txns-sprout-nullifier-exists");
-                }
-            }
-        }
-        for (const SpendDescription &spendDescription : tx.vShieldedSpend) {
-            if (pool.nullifierExists(spendDescription.nullifier, SAPLING)) {
-                return state.Invalid(false, REJECT_INVALID, "bad-txns-sapling-nullifier-exists");
-            }
+    }
+    for (const SpendDescription &spendDescription : tx.vShieldedSpend) {
+        if (pool.nullifierExists(spendDescription.nullifier, SAPLING)) {
+            return state.Invalid(false, REJECT_INVALID, "bad-txns-sapling-nullifier-exists");
         }
     }
 
@@ -1912,7 +1905,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
                 if (ExistsImportTombstone(tx, view))
                     return state.Invalid(false, REJECT_DUPLICATE, "import tombstone exists");
             }
-            else if (!iscoinbase)
+            else
             {
                 // do all inputs exist?
                 // Note that this does not check for the presence of actual outputs (see the next check for that),
@@ -1946,7 +1939,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             view.GetBestBlock();
             
             // store coinbases as having the same value in as out
-            nValueIn = iscoinbase ? tx.GetValueOut() : view.GetValueIn(chainActive.LastTip()->GetHeight(),&interest,tx,chainActive.LastTip()->nTime);
+            nValueIn = view.GetValueIn(chainActive.LastTip()->GetHeight(),&interest,tx,chainActive.LastTip()->nTime);
             if ( 0 && interest != 0 )
                 fprintf(stderr,"add interest %.8f\n",(double)interest/COIN);
             // we have all inputs cached now, so switch back to dummy, so we don't need to keep lock on mempool
@@ -2015,16 +2008,14 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         // Keep track of transactions that spend a coinbase and are not "InstantSpend:", which we re-scan
         // during reorgs to ensure COINBASE_MATURITY is still met.
         bool fSpendsCoinbase = false;
-        if (!iscoinbase) {
-            BOOST_FOREACH(const CTxIn &txin, tx.vin) {
-                const CCoins *coins = view.AccessCoins(txin.prevout.hash);
-                if (coins->IsCoinBase() &&
-                    !coins->vout[txin.prevout.n].scriptPubKey.IsInstantSpend() &&
-                    !(coins->nHeight == 1 && !IsVerusActive()))
-                {
-                    fSpendsCoinbase = true;
-                    break;
-                }
+        BOOST_FOREACH(const CTxIn &txin, tx.vin) {
+            const CCoins *coins = view.AccessCoins(txin.prevout.hash);
+            if (coins->IsCoinBase() &&
+                !coins->vout[txin.prevout.n].scriptPubKey.IsInstantSpend() &&
+                !(coins->nHeight == 1 && !IsVerusActive()))
+            {
+                fSpendsCoinbase = true;
+                break;
             }
         }
 
@@ -2043,7 +2034,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         } else {
             // Don't accept it if it can't get into a block, if it's a coinbase, it's here to be recognized, not to go somewhere else
             CAmount txMinFee = GetMinRelayFee(tx, nSize, true);
-            if (!iscoinbase && fLimitFree && nFees < txMinFee)
+            if (fLimitFree && nFees < txMinFee)
             {
                 //fprintf(stderr,"accept failure.5\n");
                 return state.DoS(0, error("AcceptToMemoryPool: not enough fees %s, %d < %d",hash.ToString(), nFees, txMinFee),REJECT_INSUFFICIENTFEE, "insufficient fee");
@@ -2052,7 +2043,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
 
         // Require that free transactions have sufficient priority to be mined in the next block.
         CAmount minFee = ::minRelayTxFee.GetFee(nSize);
-        if (!iscoinbase && GetBoolArg("-relaypriority", false) && nFees < minFee && !AllowFree(view.GetPriority(tx, chainActive.Height() + 1))) {
+        if (GetBoolArg("-relaypriority", false) && nFees < minFee && !AllowFree(view.GetPriority(tx, chainActive.Height() + 1))) {
             fprintf(stderr,"accept failure.6\n");
             return state.DoS(0, false, REJECT_INSUFFICIENTFEE, "insufficient priority");
         }
@@ -2060,7 +2051,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         // Continuously rate-limit free (really, very-low-fee) transactions
         // This mitigates 'penny-flooding' -- sending thousands of free transactions just to
         // be annoying or make others' transactions take longer to confirm.
-        if (!iscoinbase && fLimitFree && nFees < ::minRelayTxFee.GetFee(nSize))
+        if (fLimitFree && nFees < ::minRelayTxFee.GetFee(nSize))
         {
             static CCriticalSection csFreeLimiter;
             static double dFreeCount;
@@ -2157,7 +2148,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             }
 
             // Add memory spent index
-            if (!iscoinbase && fSpentIndex) {
+            if (fSpentIndex) {
                 pool.addSpentIndex(entry, view);
             }
         }
@@ -2817,9 +2808,6 @@ namespace Consensus {
                      (nSpendHeight - coins->nHeight) < COINBASE_MATURITY &&
                      !coins->vout[prevout.n].scriptPubKey.IsInstantSpend())
                 {
-                    // DEBUG ONLY
-                    coins->vout[prevout.n].scriptPubKey.IsInstantSpend();
-                    //
                     return state.DoS(0,
                         error("CheckInputs(): tried to spend coinbase at depth %d", nSpendHeight - coins->nHeight),
                         REJECT_INVALID, "bad-txns-premature-spend-of-coinbase");
