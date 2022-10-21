@@ -6345,7 +6345,9 @@ bool ContextualCheckBlock(
         {
             if (newIDs.count(boost::algorithm::to_lower_copy(nameRes.name)))
             {
-                return state.DoS(10, error("%s: attempt to submit block with duplicate identity", __func__), REJECT_INVALID, "bad-txns-dup-id");
+                LogPrintf("%s: PLEASE REPORT: caught attempt to submit block with duplicate identity when it should not be possible\n", __func__);
+                printf("%s: PLEASE REPORT: caught attempt to submit block with duplicate identity when it should not be possible\n", __func__);
+                assert(false);
             }
             newIDs.insert(boost::algorithm::to_lower_copy(nameRes.name));
         }
