@@ -7351,8 +7351,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             "Cannot send non-preconvert transfers to import system " + nonVerusChainDef.name + " (" + EncodeDestination(CIdentityID(offChainID)) + ") until after launch");
                     }
 
-                    // TODO: HARDENING - ensure this gets into enforcement/protocol - check the target currency, if not system, for prelaunch & launch confirmed
-
                     if (cnd.vtx[cnd.lastConfirmed].second.IsRefunding())
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER,

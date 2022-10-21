@@ -386,7 +386,7 @@ public:
         FLAG_ACTIVECURRENCY = 0x1,          // flag that is set when this ID is being used as an active currency name
         FLAG_LOCKED = 0x2,                  // set when this identity is locked
         FLAG_TOKENIZED_CONTROL = 0x4,       // set when revocation/recovery over this identity can be performed by anyone who controls its token
-        MAX_UNLOCK_DELAY = 60 * 24 * 22 * 365 // 21+ year maximum unlock time for an ID
+        MAX_UNLOCK_DELAY = 60 * 24 * 22 * 365 // 21+ year maximum unlock time for an ID w/1 minute blocks, not adjusted for avg blocktime in first PBaaS
     };
 
     static const int MAX_NAME_LEN = 64;

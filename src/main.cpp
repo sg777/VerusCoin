@@ -1968,42 +1968,72 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         double dPriority;
 
         CReserveTransactionDescriptor txDesc;
-        CCurrencyState currencyState;
         bool isVerusActive = IsVerusActive();
 
+        // if we don't recognize it, process and check
+        if (!mempool.IsKnownReserveTransaction(hash, txDesc))
         {
-            // if we don't recognize it, process and check
-            CCurrencyState currencyState = ConnectedChains.GetCurrencyState(nextBlockHeight > chainActive.Height() ? chainActive.Height() : nextBlockHeight);
-            if (!mempool.IsKnownReserveTransaction(hash, txDesc))
+            // we need the current currency state
+            txDesc = CReserveTransactionDescriptor(tx, view, nextBlockHeight);
+            // if we have a reserve transaction
+            if (!txDesc.IsValid() && txDesc.IsReject())
             {
-                // we need the current currency state
+                //UniValue jsonTx(UniValue::VOBJ);
+                //TxToUniv(tx, uint256(), jsonTx);
+                //printf("\n%s\n", jsonTx.write(1,2).c_str());
                 txDesc = CReserveTransactionDescriptor(tx, view, nextBlockHeight);
-                // if we have a reserve transaction
-                if (!txDesc.IsValid() && txDesc.IsReject())
+                LogPrint("mempool", "AcceptToMemoryPool: invalid reserve transaction :\n%s\n", txDesc.ToUniValue().write(1,2).c_str());
+                return state.DoS(1, error("AcceptToMemoryPool: invalid reserve transaction %s", hash.ToString()), REJECT_NONSTANDARD, "bad-txns-invalid-reserve");
+            }
+        }
+
+        // if this is an identity, determine the identtyFeeFactor
+        CAmount identityFeeFactor = 0;
+        if (txDesc.IsValid() && txDesc.IsIdentity() && !txDesc.IsImport())
+        {
+            for (int j = 0; j < tx.vout.size(); j++)
+            {
+                auto &oneOut = tx.vout[j];
+                COptCCParams p;
+                uint160 oneIdID;
+                if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    p.version >= p.VERSION_V3 &&
+                    p.vData.size() &&
+                    p.evalCode == EVAL_IDENTITY_PRIMARY)
                 {
-                    //UniValue jsonTx(UniValue::VOBJ);
-                    //TxToUniv(tx, uint256(), jsonTx);
-                    //printf("\n%s\n", jsonTx.write(1,2).c_str());
-                    txDesc = CReserveTransactionDescriptor(tx, view, nextBlockHeight);
-                    printf("AcceptToMemoryPool: invalid reserve transaction %s\n", hash.ToString().c_str());
-                    return state.DoS(1, error("AcceptToMemoryPool: invalid reserve transaction %s", hash.ToString()), REJECT_NONSTANDARD, "bad-txns-invalid-reserve");
+                    CIdentity identity;
+                    if ((identity = CIdentity(p.vData[0])).IsValid())
+                    {
+                        if (!tx.IsCoinBase())
+                        {
+                            if (identity.contentMultiMap.size())
+                            {
+                                CDataStream ss(SER_DISK, PROTOCOL_VERSION);
+                                auto tempID = identity;
+                                tempID.contentMultiMap.clear();
+                                size_t serSize = GetSerializeSize(ss, identity) - GetSerializeSize(ss, tempID);
+                                identityFeeFactor += (serSize / 128) + ((serSize % 128) ? 1 : 0);
+                            }
+
+                            // if we have more primary addresses than 1 or more private addresses than 1, pay appropriate fee
+                            identityFeeFactor += identity.contentMap.size();
+                            identityFeeFactor += identity.primaryAddresses.size() > 1 ? identity.primaryAddresses.size() - 1 : 0;
+                            identityFeeFactor += identity.privateAddresses.size() > 1 ? identity.privateAddresses.size() - 1 : 0;
+                        }
+                    }
+                    else
+                    {
+                        return state.DoS(10, error("%s: invalid identity", __func__), REJECT_INVALID, "bad-txn-invalid-id");
+                    }
                 }
             }
         }
 
         nValueOut = tx.GetValueOut();
 
-        // need to fix GetPriority to incorporate reserve
-        if (isVerusActive && txDesc.IsValid() && currencyState.IsValid())
-        {
-            nFees = txDesc.AllFeesAsNative(currencyState, currencyState.PricesInReserve());
-            dPriority = view.GetPriority(tx, chainActive.Height(), &txDesc, &currencyState);
-        }
-        else
-        {
-            nFees = nValueIn - nValueOut;
-            dPriority = view.GetPriority(tx, chainActive.Height());
-        }
+        nFees = nValueIn - nValueOut;
+        dPriority = view.GetPriority(tx, chainActive.Height());
 
         // Keep track of transactions that spend a coinbase and are not "InstantSpend:", which we re-scan
         // during reorgs to ensure COINBASE_MATURITY is still met.
@@ -2028,21 +2058,39 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
 
         unsigned int nSize = entry.GetTxSize();
 
-        // Accept a tx if it contains joinsplits and has at least the default fee specified by z_sendmany.
-        if (tx.vJoinSplit.size() > 0 && nFees >= ASYNC_RPC_OPERATION_DEFAULT_MINERS_FEE) {
-            // In future we will we have more accurate and dynamic computation of fees for tx with joinsplits.
-        } else {
-            // Don't accept it if it can't get into a block, if it's a coinbase, it's here to be recognized, not to go somewhere else
-            CAmount txMinFee = GetMinRelayFee(tx, nSize, true);
-            if (fLimitFree && nFees < txMinFee)
-            {
-                //fprintf(stderr,"accept failure.5\n");
-                return state.DoS(0, error("AcceptToMemoryPool: not enough fees %s, %d < %d",hash.ToString(), nFees, txMinFee),REJECT_INSUFFICIENTFEE, "insufficient fee");
-            }
+        int64_t defaultLimitRate = GetArg("-limitfreerelay", 15)*10*1000;
+
+        // Don't accept it if it can't get into a block
+        CAmount txMinFee = GetMinRelayFee(tx, nSize, defaultLimitRate != 0);
+        if (fLimitFree && nFees < txMinFee)
+        {
+            //fprintf(stderr,"accept failure.5\n");
+            return state.DoS(0, error("AcceptToMemoryPool: not enough fees %s, %d < %d",hash.ToString(), nFees, txMinFee),REJECT_INSUFFICIENTFEE, "insufficient fee");
         }
 
         // Require that free transactions have sufficient priority to be mined in the next block.
-        CAmount minFee = ::minRelayTxFee.GetFee(nSize);
+        CAmount minFee = identityFeeFactor * DEFAULT_TRANSACTION_FEE;
+
+        // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
+        // we make allowance for 1 z-output or t-output, 1 native z-change, one token change, and 1 blacklisted change
+        int idExtraLimit = txDesc.IsIdentityDefinition() ? ConnectedChains.ThisChain().idReferralLevels + 2 : 0;
+        if ((tx.vShieldedOutput.size() > 1 && tx.vout.size() > (3 + idExtraLimit)) || (tx.vShieldedOutput.size() > 2 && tx.vout.size() > 2) || tx.vShieldedOutput.size() > 3)
+        {
+            minFee += ((tx.vout.size() > 3 ? (tx.vShieldedOutput.size() - 1) :
+                                                (tx.vout.size() > 2 ? tx.vShieldedOutput.size() - 2 :
+                                                                        tx.vShieldedOutput.size() - 3)) *
+                            DEFAULT_TRANSACTION_FEE);
+        }
+
+        if (minFee)
+        {
+            minFee += DEFAULT_TRANSACTION_FEE;
+        }
+        else
+        {
+            minFee = ::minRelayTxFee.GetFee(nSize);
+        }
+
         if (GetBoolArg("-relaypriority", false) && nFees < minFee && !AllowFree(view.GetPriority(tx, chainActive.Height() + 1))) {
             fprintf(stderr,"accept failure.6\n");
             return state.DoS(0, false, REJECT_INSUFFICIENTFEE, "insufficient priority");
@@ -2051,7 +2099,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         // Continuously rate-limit free (really, very-low-fee) transactions
         // This mitigates 'penny-flooding' -- sending thousands of free transactions just to
         // be annoying or make others' transactions take longer to confirm.
-        if (fLimitFree && nFees < ::minRelayTxFee.GetFee(nSize))
+        if (fLimitFree && nFees < minFee)
         {
             static CCriticalSection csFreeLimiter;
             static double dFreeCount;
@@ -2059,15 +2107,16 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             int64_t nNow = GetTime();
             
             LOCK(csFreeLimiter);
-            
+
             // Use an exponentially decaying ~10-minute window:
             dFreeCount *= pow(1.0 - 1.0/600.0, (double)(nNow - nLastTime));
             nLastTime = nNow;
+
             // -limitfreerelay unit is thousand-bytes-per-minute
             // At default rate it would take over a month to fill 1GB
-            if (dFreeCount >= GetArg("-limitfreerelay", 15)*10*1000)
+            if ((dFreeCount + nSize) >= defaultLimitRate)
             {
-                fprintf(stderr,"accept failure.7\n");
+                fprintf(stderr,"AcceptToMemoryPool failure.7\n");
                 return state.DoS(0, error("AcceptToMemoryPool: free transaction rejected by rate limiter"), REJECT_INSUFFICIENTFEE, "rate limited free transaction");
             }
             LogPrint("mempool", "Rate limit dFreeCount: %g => %g\n", dFreeCount, dFreeCount+nSize);
@@ -2075,7 +2124,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         }
 
         // make sure this will check any normal error case and not fail with exchanges, exports/imports, identities, etc.
-        if ((!txDesc.IsValid() || !txDesc.IsHighFee()) && fRejectAbsurdFee && nFees > ::minRelayTxFee.GetFee(nSize) * 10000 && nFees > nValueOut/19) 
+        if ((!txDesc.IsValid() || !txDesc.IsHighFee()) && fRejectAbsurdFee && nFees > minFee * 10000 && nFees > nValueOut/19) 
         {
             string errmsg = strprintf("absurdly high fees %s, %d > %d",
                                       hash.ToString(),
@@ -2113,7 +2162,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         }
         if (!ContextualCheckInputs(tx, state, view, nextBlockHeight, true, MANDATORY_SCRIPT_VERIFY_FLAGS, true, txdata, Params().GetConsensus(), consensusBranchId))
         {
-            ContextualCheckInputs(tx, state, view, nextBlockHeight, true, MANDATORY_SCRIPT_VERIFY_FLAGS, true, txdata, Params().GetConsensus(), consensusBranchId);
+            //ContextualCheckInputs(tx, state, view, nextBlockHeight, true, MANDATORY_SCRIPT_VERIFY_FLAGS, true, txdata, Params().GetConsensus(), consensusBranchId);
             if ( flag != 0 )
                 KOMODO_CONNECTING = -1;
             return error("AcceptToMemoryPool: ConnectInputs failed against MANDATORY but not STANDARD flags %s", hash.ToString());
@@ -2137,7 +2186,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         if (txDesc.IsValid())
         {
             txDesc.ptx = &(entry.GetTx());
-            mempool.PrioritiseReserveTransaction(txDesc, currencyState);
+            mempool.PrioritiseReserveTransaction(txDesc);
         }
 
         if (!tx.IsCoinImport())
@@ -3806,8 +3855,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
-        int identityFeeFactor = 0;
-
         const CTransaction &tx = block.vtx[i];
         const uint256 txhash = tx.GetHash();
         nInputs += tx.vin.size();
@@ -3827,7 +3874,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             return state.DoS(100, error(strprintf("%s: Invalid reserve transaction", __func__).c_str()), REJECT_INVALID, "bad-txns-invalid-reserve");
         }
 
-        if (isPBaaS && (rtxd.flags & (rtxd.IS_IMPORT | rtxd.IS_RESERVETRANSFER | rtxd.IS_EXPORT | rtxd.IS_IDENTITY | rtxd.IS_IDENTITY_DEFINITION | rtxd.IS_CURRENCY_DEFINITION)))
+        if (isPBaaS && (rtxd.flags & (rtxd.IS_IMPORT | rtxd.IS_RESERVETRANSFER | rtxd.IS_EXPORT | rtxd.IS_IDENTITY_DEFINITION | rtxd.IS_CURRENCY_DEFINITION)))
         {
             // go through all outputs and record all currency and identity definitions, either import-based definitions or
             // identity reservations to check for collision, which is disallowed
@@ -3843,35 +3890,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 {
                     switch (p.evalCode)
                     {
-                        case EVAL_IDENTITY_PRIMARY:
-                        {
-                            CIdentity identity;
-                            if ((identity = CIdentity(p.vData[0])).IsValid())
-                            {
-                                if (!tx.IsCoinBase())
-                                {
-                                    if (identity.contentMultiMap.size())
-                                    {
-                                        CDataStream ss(SER_DISK, PROTOCOL_VERSION);
-                                        auto tempID = identity;
-                                        tempID.contentMultiMap.clear();
-                                        size_t serSize = GetSerializeSize(ss, identity) - GetSerializeSize(ss, tempID);
-                                        identityFeeFactor += (serSize / 128) + ((serSize % 128) ? 1 : 0);
-                                    }
-
-                                    // if we have more primary addresses than 1 or more private addresses than 1, pay appropriate fee
-                                    identityFeeFactor += identity.contentMap.size();
-                                    identityFeeFactor += identity.primaryAddresses.size() > 1 ? identity.primaryAddresses.size() - 1 : 0;
-                                    identityFeeFactor += identity.privateAddresses.size() > 1 ? identity.privateAddresses.size() - 1 : 0;
-                                }
-                            }
-                            else
-                            {
-                                return state.DoS(10, error("%s: attempt to submit block with invalid identity", __func__), REJECT_INVALID, "bad-txns-invalid-id");
-                            }
-                            break;
-                        }
-
                         case EVAL_IDENTITY_ADVANCEDRESERVATION:
                         {
                             CAdvancedNameReservation advNameRes;
@@ -4062,29 +4080,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         // coinbase transaction output is dependent on all other transactions in the block, figure those out first 
         if (!tx.IsCoinBase())
         {
-            if (isPBaaS && rtxd.IsValid())
-            {
-                CAmount feeAmount = 0;
-                // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
-                // we make allowance for 1 z-output or t-output, 1 native z-change, one token change, and 1 blacklisted change
-                int idExtraLimit = rtxd.IsIdentity() ? ConnectedChains.ThisChain().idReferralLevels + 2 : 0;
-                if ((tx.vShieldedOutput.size() > 1 && tx.vout.size() > (3 + idExtraLimit)) || (tx.vShieldedOutput.size() > 2 && tx.vout.size() > 2) || tx.vShieldedOutput.size() > 3)
-                {
-                    feeAmount = DEFAULT_TRANSACTION_FEE;
-                    feeAmount += ((identityFeeFactor + (tx.vout.size() > 3 ?
-                                                            (tx.vShieldedOutput.size() - 1) :
-                                                            (tx.vout.size() > 2 ?
-                                                                tx.vShieldedOutput.size() - 2 :
-                                                                tx.vShieldedOutput.size() - 3))) *
-                                    DEFAULT_TRANSACTION_FEE);
-                }
-                if (rtxd.NativeFees() < feeAmount)
-                {
-                    return state.DoS(100, error("ConnectBlock(): insufficient fee for resource usage"),
-                                    REJECT_INVALID, "insufficient-fee");
-                }
-            }
-
             if (!view.HaveInputs(tx))
             {
                 return state.DoS(100, error("ConnectBlock(): inputs missing/spent"),

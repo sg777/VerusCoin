@@ -1008,7 +1008,7 @@ void CTxMemPool::ClearPrioritisation(const uint256 hash)
     mapReserveTransactions.erase(hash);
 }
 
-bool CTxMemPool::PrioritiseReserveTransaction(const CReserveTransactionDescriptor &txDesc, const CCurrencyState &currencyState)
+bool CTxMemPool::PrioritiseReserveTransaction(const CReserveTransactionDescriptor &txDesc)
 {
     LOCK(cs);
     uint256 hash = txDesc.ptx->GetHash();
@@ -1016,7 +1016,16 @@ bool CTxMemPool::PrioritiseReserveTransaction(const CReserveTransactionDescripto
     if (txDesc.IsValid())
     {
         mapReserveTransactions[hash] = txDesc;
-        CAmount feeDelta = txDesc.AllFeesAsNative(currencyState);
+        CAmount feeDelta = txDesc.NativeFees();
+        if (!IsVerusActive())
+        {
+            CCurrencyValueMap reserveFees = txDesc.ReserveFees();
+            auto it = reserveFees.valueMap.find(VERUS_CHAINID);
+            if (it != reserveFees.valueMap.end())
+            {
+                feeDelta += it->second;
+            }
+        }
         PrioritiseTransaction(hash, hash.GetHex().c_str(), (double)feeDelta * 100.0, feeDelta);
         return true;
     }
