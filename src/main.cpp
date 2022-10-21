@@ -4059,32 +4059,32 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             }
         }
 
-        if (isPBaaS && rtxd.IsValid())
-        {
-            CAmount feeAmount = 0;
-            // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
-            // we make allowance for 1 z-output or t-output, 1 native z-change, one token change, and 1 blacklisted change
-            int idExtraLimit = rtxd.IsIdentity() ? ConnectedChains.ThisChain().idReferralLevels + 2 : 0;
-            if ((tx.vShieldedOutput.size() > 1 && tx.vout.size() > (3 + idExtraLimit)) || (tx.vShieldedOutput.size() > 2 && tx.vout.size() > 2) || tx.vShieldedOutput.size() > 3)
-            {
-                feeAmount = DEFAULT_TRANSACTION_FEE;
-                feeAmount += ((identityFeeFactor + (tx.vout.size() > 3 ?
-                                                        (tx.vShieldedOutput.size() - 1) :
-                                                        (tx.vout.size() > 2 ?
-                                                            tx.vShieldedOutput.size() - 2 :
-                                                            tx.vShieldedOutput.size() - 3))) *
-                                DEFAULT_TRANSACTION_FEE);
-            }
-            if (rtxd.NativeFees() < feeAmount)
-            {
-                return state.DoS(100, error("ConnectBlock(): insufficient fee for resource usage"),
-                                REJECT_INVALID, "insufficient-fee");
-            }
-        }
-
         // coinbase transaction output is dependent on all other transactions in the block, figure those out first 
         if (!tx.IsCoinBase())
         {
+            if (isPBaaS && rtxd.IsValid())
+            {
+                CAmount feeAmount = 0;
+                // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
+                // we make allowance for 1 z-output or t-output, 1 native z-change, one token change, and 1 blacklisted change
+                int idExtraLimit = rtxd.IsIdentity() ? ConnectedChains.ThisChain().idReferralLevels + 2 : 0;
+                if ((tx.vShieldedOutput.size() > 1 && tx.vout.size() > (3 + idExtraLimit)) || (tx.vShieldedOutput.size() > 2 && tx.vout.size() > 2) || tx.vShieldedOutput.size() > 3)
+                {
+                    feeAmount = DEFAULT_TRANSACTION_FEE;
+                    feeAmount += ((identityFeeFactor + (tx.vout.size() > 3 ?
+                                                            (tx.vShieldedOutput.size() - 1) :
+                                                            (tx.vout.size() > 2 ?
+                                                                tx.vShieldedOutput.size() - 2 :
+                                                                tx.vShieldedOutput.size() - 3))) *
+                                    DEFAULT_TRANSACTION_FEE);
+                }
+                if (rtxd.NativeFees() < feeAmount)
+                {
+                    return state.DoS(100, error("ConnectBlock(): insufficient fee for resource usage"),
+                                    REJECT_INVALID, "insufficient-fee");
+                }
+            }
+
             if (!view.HaveInputs(tx))
             {
                 return state.DoS(100, error("ConnectBlock(): inputs missing/spent"),
