@@ -2259,14 +2259,14 @@ bool GetAddressUnspent(const uint160& addressHash, int type,
     return true;
 }
 
-bool myAddtomempool(CTransaction &tx, CValidationState *pstate, int32_t simHeight, bool *missinginputs)
+bool myAddtomempool(CTransaction &tx, CValidationState *pstate, int32_t simHeight, bool limitFree, bool *missinginputs)
 {
     CValidationState state;
     if (!pstate)
         pstate = &state;
     CTransaction Ltx; bool fOverrideFees = false;
     if ( mempool.lookup(tx.GetHash(),Ltx) == 0 )
-        return(AcceptToMemoryPoolInt(mempool, *pstate, tx, false, missinginputs, !fOverrideFees, -1, simHeight));
+        return(AcceptToMemoryPoolInt(mempool, *pstate, tx, limitFree, missinginputs, !fOverrideFees, -1, simHeight));
     else return(true);
 }
 
@@ -6074,7 +6074,7 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
                     }
                 }
 
-                if (!tx.IsCoinBase() && myAddtomempool(Tx, &state, height, &missinginputs) == false ) // happens with out of order tx in block on resync
+                if (!tx.IsCoinBase() && myAddtomempool(Tx, &state, height, false, &missinginputs) == false ) // happens with out of order tx in block on resync
                 {
                     //LogPrintf("%s: Rejected by mempool, reason: .%s.\n", __func__, state.GetRejectReason().c_str());
                     //printf("%s: Rejected by mempool, reason: .%s.\n", __func__, state.GetRejectReason().c_str());

@@ -1969,7 +1969,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                 LOCK2(smartTransactionCS, mempool.cs);
                                 mempool.removeConflicts(notarizationTx, removedTxVec);
                                 CValidationState mempoolState;
-                                relayTx = myAddtomempool(notarizationTx, &state);
+                                relayTx = myAddtomempool(notarizationTx, &state, 0, false);
                                 if (LogAcceptCategory("notarization"))
                                 {
                                     for (auto oneTx : removedTxVec)

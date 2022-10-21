@@ -6939,7 +6939,8 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                             // add to mem pool, prioritize according to the fee we will get, and relay
                             //printf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
                             //LogPrintf("Created and signed export transaction %s\n", tx.GetHash().GetHex().c_str());
-                            if (myAddtomempool(tx))
+                            CValidationState memPoolState;
+                            if (myAddtomempool(tx, &memPoolState, 0, false))
                             {
                                 uint256 hash = tx.GetHash();
                                 thisExport.second.txIn.prevout.hash = hash;
@@ -6952,7 +6953,7 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                                 UniValue uni(UniValue::VOBJ);
                                 TxToUniv(tx, uint256(), uni);
                                 //printf("%s: created invalid transaction:\n%s\n", __func__, uni.write(1,2).c_str());
-                                LogPrintf("%s: created invalid transaction:\n%s\n", __func__, uni.write(1,2).c_str());
+                                LogPrintf("%s: error (%s) created invalid transaction:\n%s\n", __func__, memPoolState.GetRejectReason().c_str(), uni.write(1,2).c_str());
                                 break;
                             }
                             UpdateCoins(tx, view, nHeight + 1);
