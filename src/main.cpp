@@ -4062,9 +4062,14 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 CAmount feeAmount = 0;
                 // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
                 // we make allowance for 1 z-output or t-output, 1 native z-change, one token change, and 1 blacklisted change
-                if ((tx.vShieldedOutput.size() > 1 && tx.vout.size() > 3) || (tx.vShieldedOutput.size() > 2 && tx.vout.size() > 2))
+                if ((tx.vShieldedOutput.size() > 1 && tx.vout.size() > 3) || (tx.vShieldedOutput.size() > 2 && tx.vout.size() > 2) || tx.vShieldedOutput.size() > 3)
                 {
-                    feeAmount += ((identityFeeFactor + (tx.vout.size() > 3 ? tx.vShieldedOutput.size() - 1 : tx.vShieldedOutput.size() - 2)) *
+                    feeAmount = DEFAULT_TRANSACTION_FEE;
+                    feeAmount += ((identityFeeFactor + (tx.vout.size() > 3 ?
+                                                            (tx.vShieldedOutput.size() - 1) :
+                                                            (tx.vout.size() > 2 ?
+                                                                tx.vShieldedOutput.size() - 2 :
+                                                                tx.vShieldedOutput.size() - 3))) *
                                     DEFAULT_TRANSACTION_FEE);
                 }
                 if (rtxd.NativeFees() < feeAmount)

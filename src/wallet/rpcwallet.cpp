@@ -5867,9 +5867,14 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
         nFee = nDefaultFee;
 
         // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
-        if ((zaddrRecipients.size() > 1 && taddrRecipients.size() > 3) || (zaddrRecipients.size() > 2 && taddrRecipients.size() > 2))
+        if ((zaddrRecipients.size() > 1 && taddrRecipients.size() > 3) || (zaddrRecipients.size() > 2 && taddrRecipients.size() > 2) || zaddrRecipients.size() > 3)
         {
-            nFee += ((taddrRecipients.size() > 3 ? zaddrRecipients.size() - 1 : zaddrRecipients.size() - 2) * DEFAULT_TRANSACTION_FEE);
+            nFee += ((taddrRecipients.size() > 3 ?
+                                (zaddrRecipients.size() - 1) :
+                                (taddrRecipients.size() > 2) ?
+                                    zaddrRecipients.size() - 2 :
+                                    zaddrRecipients.size() - 3) *
+                           DEFAULT_TRANSACTION_FEE);
         }
     }
 
