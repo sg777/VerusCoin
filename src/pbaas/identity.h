@@ -1004,13 +1004,14 @@ public:
                 ret.pushKV("valuehash", valueHash.GetHex());
             }
         }
+        return ret;
     }
 
     bool IsValid() const
     {
         if (version >= VERSION_FIRST && version <= VERSION_LAST && action >= ACTION_FIRST && action <= ACTION_LAST)
         {
-            return (action == ACTION_CLEAR_MAP || (!entryKey.IsNull() && (action == ACTION_REMOVE_ALL_KEY || !valueHash.IsNull()));
+            return (action == ACTION_CLEAR_MAP || (!entryKey.IsNull() && (action == ACTION_REMOVE_ALL_KEY || !valueHash.IsNull())));
         }
         return false;
     }
