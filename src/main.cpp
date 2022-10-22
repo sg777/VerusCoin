@@ -2058,7 +2058,8 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
 
         unsigned int nSize = entry.GetTxSize();
 
-        int64_t defaultLimitRate = GetArg("-limitfreerelay", 15)*10*1000;
+        int64_t maxFreeSizeLimit = GetArg("-limitfreerelay", 15)*1000;
+        int64_t defaultLimitRate = maxFreeSizeLimit*10;
 
         // Don't accept it if it can't get into a block
         CAmount txMinFee = GetMinRelayFee(tx, nSize, defaultLimitRate != 0);
@@ -2114,7 +2115,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
 
             // -limitfreerelay unit is thousand-bytes-per-minute
             // At default rate it would take over a month to fill 1GB
-            if ((dFreeCount + nSize) >= defaultLimitRate)
+            if ((dFreeCount + nSize) >= defaultLimitRate || nSize > maxFreeSizeLimit)
             {
                 fprintf(stderr,"AcceptToMemoryPool failure.7\n");
                 return state.DoS(0, error("AcceptToMemoryPool: free transaction rejected by rate limiter"), REJECT_INSUFFICIENTFEE, "rate limited free transaction");
