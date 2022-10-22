@@ -1367,7 +1367,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 // index content multimap entries. also index type definitions separately for direct, non-scoped queries
                 for (auto defIT = identity.contentMultiMap.begin(); defIT != identity.contentMultiMap.end(); defIT++)
                 {
-                    destinations.insert(CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(identity.GetID(), defIT->first)));
+                    destinations.insert(CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(defIT->first, identity.GetID())));
                     if (defIT->first == CVDXF_Data::TypeDefinitionKey())
                     {
                         CDataStream ss(defIT->second, SER_DISK, PROTOCOL_VERSION);
