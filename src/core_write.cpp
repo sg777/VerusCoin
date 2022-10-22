@@ -1250,6 +1250,17 @@ UniValue CIdentity::ToUniValue() const
                             objectUni = oneTransferDest.ToUniValue();
                         }
                     }
+                    else if (checkVal == CVDXF_Data::ContentMultiMapRemoveKey())
+                    {
+                        CContentMultiMapRemove oneContentRemove;
+                        ss >> VARINT(version);
+                        ss >> VARINT(objSize);
+                        ss >> oneContentRemove;
+                        if (oneContentRemove.IsValid())
+                        {
+                            objectUni = oneContentRemove.ToUniValue();
+                        }
+                    }
                     else if (checkVal == CVDXF_Data::DataStringKey())
                     {
                         std::string stringVal;

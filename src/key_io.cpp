@@ -1047,6 +1047,14 @@ std::vector<unsigned char> VectorEncodeVDXFUni(const UniValue &obj)
             ss << VARINT(GetSerializeSize(ss, oneTransferDest));
             ss << oneTransferDest;
         }
+        else if (objTypeKey == CVDXF_Data::ContentMultiMapRemoveKey())
+        {
+            CContentMultiMapRemove contentRemove(oneValValues[k]);
+            ss << objTypeKey;
+            ss << VARINT(contentRemove.version);
+            ss << VARINT(GetSerializeSize(ss, contentRemove));
+            ss << contentRemove;
+        }
         else
         {
             LogPrint("contentmap", "%s: invalid or unrecognized vdxfkey for object type: %s\n", __func__, EncodeDestination(CIdentityID(objTypeKey)).c_str());

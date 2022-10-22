@@ -928,6 +928,94 @@ public:
     static bool GetActiveIdentitiesWithRecoveryID(const CIdentityID &idID, std::map<uint160, std::pair<std::pair<CAddressUnspentKey, CAddressUnspentValue>, CIdentity>> &identities);
 };
 
+class CContentMultiMapRemove
+{
+public:
+    enum {
+        VERSION_INVALID = 0,
+        VERSION_FIRST = 1,
+        VERSION_LAST = 1,
+        VERSION_CURRENT = 1,
+        ACTION_FIRST = 1,
+        ACTION_REMOVE_ONE_KEYVALUE = 1,
+        ACTION_REMOVE_ALL_KEYVALUE = 2,
+        ACTION_REMOVE_ALL_KEY = 3,
+        ACTION_CLEAR_MAP = 4,
+        ACTION_LAST = 4,
+    };
+
+    uint32_t version;
+    uint32_t action;
+    uint160 entryKey;
+    uint256 valueHash;
+
+    CContentMultiMapRemove() : version(VERSION_INVALID), action(0) {}
+
+    ADD_SERIALIZE_METHODS;
+
+    CContentMultiMapRemove(const UniValue &uni)
+    {
+        version = uni_get_int64(find_value(uni, "version"), VERSION_CURRENT);
+        action = uni_get_int64(find_value(uni, "action"));
+        if (action != ACTION_CLEAR_MAP)
+        {
+            entryKey.SetHex(uni_get_str(find_value(uni, "entrykey")));
+            if (action != ACTION_REMOVE_ALL_KEY)
+            {
+                valueHash.SetHex(uni_get_str(find_value(uni, "valuehash")));
+            }
+        }
+    }
+
+    CContentMultiMapRemove(const std::vector<unsigned char> &vch)
+    {
+        bool success = false;
+        ::FromVector(vch, *this, &success);
+        if (!success)
+        {
+            version = VERSION_INVALID;
+        }
+    }
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(VARINT(version));
+        READWRITE(VARINT(action));
+        if (action != ACTION_CLEAR_MAP)
+        {
+            READWRITE(entryKey);
+            if (action != ACTION_REMOVE_ALL_KEY)
+            {
+                READWRITE(valueHash);
+            }
+        }
+    }
+
+    UniValue ToUniValue() const
+    {
+        UniValue ret(UniValue::VOBJ);
+        ret.pushKV("version", (int64_t)version);
+        ret.pushKV("action", (int64_t)action);
+        if (action != ACTION_CLEAR_MAP)
+        {
+            ret.pushKV("entrykey", entryKey.GetHex());
+            if (action != ACTION_REMOVE_ALL_KEY)
+            {
+                ret.pushKV("valuehash", valueHash.GetHex());
+            }
+        }
+    }
+
+    bool IsValid() const
+    {
+        if (version >= VERSION_FIRST && version <= VERSION_LAST && action >= ACTION_FIRST && action <= ACTION_LAST)
+        {
+            return (action == ACTION_CLEAR_MAP || (!entryKey.IsNull() && (action == ACTION_REMOVE_ALL_KEY || !valueHash.IsNull()));
+        }
+        return false;
+    }
+};
+
 class CIdentityMapKey
 {
 public:

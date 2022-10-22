@@ -453,6 +453,16 @@ public:
         static uint160 key = GetDataKey(MultiMapKeyName(), nameSpace);
         return key;
     }
+    static std::string ContentMultiMapRemoveKeyName()
+    {
+        return "vrsc::identity.multimapremove";
+    }
+    static uint160 ContentMultiMapRemoveKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(ContentMultiMapRemoveKeyName(), nameSpace);
+        return key;
+    }
 
     static std::string ZMemoMessageKeyName()
     {
