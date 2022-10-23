@@ -1183,7 +1183,7 @@ bool ContextualCheckTransaction(
 
     uint32_t verusVersion = CVerusSolutionVector::GetVersionByHeight(nHeight);
     bool isVerusVault = verusVersion >= CActivationHeight::ACTIVATE_VERUSVAULT;
-    // bool isPBaaS = isPBaaS >= CActivationHeight::ACTIVATE_PBAAS;
+    // bool isPBaaS = verusVersion >= CActivationHeight::ACTIVATE_PBAAS;
 
     // If Sprout rules apply, reject transactions which are intended for Overwinter and beyond
     if (isSprout && tx.fOverwintered) {
