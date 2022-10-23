@@ -5691,6 +5691,19 @@ bool CObjectFinalization::GetOutputTransaction(const CTransaction &initialTx, CT
     return false;
 }
 
+bool CUTXORef::GetOutputTransaction(CTransaction &tx, uint256 &blockHash) const
+{
+    if (hash.IsNull())
+    {
+        return false;
+    }
+    else if (myGetTransaction(hash, tx, blockHash) && tx.vout.size() > n)
+    {
+        return true;
+    }
+    return false;
+}
+
 // Sign the output object with an ID or signing authority of the ID from the wallet.
 CNotaryEvidence CObjectFinalization::SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EHashTypes hashType) const
 {

@@ -813,15 +813,3 @@ uint256 CPartialTransactionProof::CheckBlockPreHeader(CPBaaSPreHeader &outPreHea
     return uint256();
 }
 
-bool CUTXORef::GetOutputTransaction(CTransaction &tx, uint256 &blockHash) const
-{
-    if (hash.IsNull())
-    {
-        return false;
-    }
-    else if (myGetTransaction(hash, tx, blockHash) && tx.vout.size() > n)
-    {
-        return true;
-    }
-    return false;
-}
