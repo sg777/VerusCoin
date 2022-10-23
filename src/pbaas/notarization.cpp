@@ -5019,7 +5019,8 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             {
                 return state.Error("Unable to retrieve notarizing currency");
             }
-            if (!evidence.CheckSignatureConfirmation(hw.GetHash(), curDef.GetNotarySet(), curDef.minNotariesConfirm, height))
+            if (evidence.CheckSignatureConfirmation(hw.GetHash(), curDef.GetNotarySet(), curDef.minNotariesConfirm, height) !=
+                CNotaryEvidence::EStates::STATE_CONFIRMED)
             {
                 return state.Error("Cannot confirm notary signatures for notarization");
             }
