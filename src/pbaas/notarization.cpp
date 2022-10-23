@@ -4876,6 +4876,10 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
     {
         return true;
     }
+
+    // TODO: HARDENING - check that all is in place here, especially proof checking of accepted notarizations down below and conditions for
+    // earned notarizations
+
     // ensure that we never accept an invalid proofroot for this chain in a notarization
     COptCCParams p;
     CPBaaSNotarization currentNotarization;
