@@ -1535,10 +1535,10 @@ private:
     nativeHashWriter state;
 
 public:
-    CNativeHashWriter(CCurrencyDefinition::EHashTypes proofProtocol=CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR,
+    CNativeHashWriter(CCurrencyDefinition::EHashTypes hashType=CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR,
                       const unsigned char *personal=nullptr)
     {
-        nativeHashType = proofProtocol;
+        nativeHashType = hashType;
         switch (nativeHashType)
         {
             case CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR:

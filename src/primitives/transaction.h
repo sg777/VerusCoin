@@ -1712,6 +1712,9 @@ public:
         return IsValid() && hash.IsNull();
     }
 
+    // returns false if hash is null
+    bool GetOutputTransaction(CTransaction &tx, uint256 &blockHash) const;
+
     UniValue ToUniValue() const;
 };
 

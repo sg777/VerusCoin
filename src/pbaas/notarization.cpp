@@ -2372,7 +2372,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         {
             priorNotarizationIdx = cnd.lastConfirmed;
         }
-        // earned notarization is entered as pending if we get here
+        // new notarization is entered as pending if we get here
     }
     else
     {
@@ -4825,12 +4825,54 @@ bool ValidateAcceptedNotarization(struct CCcontract_info *cp, Eval* eval, const 
     //    reference. If that is the case, it is rejected.
     // 4. Has all relevant inputs, including finalizes all necessary transactions, both confirmed and orphaned
     //printf("ValidateAcceptedNotarization\n");
-    return true;
+
+    // first, determine our notarization finalization protocol
+    CUTXORef spendingOutput(tx.vin[nIn].prevout.hash, tx.vin[nIn].prevout.n);
+    CTransaction sourceTx;
+    uint256 blockHash;
+    if (!spendingOutput.GetOutputTransaction(sourceTx, blockHash))
+    {
+        return eval->Error("Unable to retrieve spending transaction for accepted notarization");
+    }
+
+    CPBaaSNotarization pbn;
+    COptCCParams pN;
+    if (!(sourceTx.vout[spendingOutput.n].scriptPubKey.IsPayToCryptoCondition(pN) &&
+          pN.IsValid() &&
+          pN.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
+          pN.vData.size() &&
+          (pbn = CPBaaSNotarization(pN.vData[0])).IsValid()))
+    {
+        return eval->Error("Invalid accepted notarization");
+    }
+
+    int i;
+    for (i = 0; i < tx.vout.size(); i++)
+    {
+        COptCCParams p;
+        CPBaaSNotarization nextPbn;
+        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
+            p.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
+            p.vData.size() &&
+            (nextPbn = CPBaaSNotarization(p.vData[0])).IsValid() &&
+            nextPbn.currencyID == pbn.currencyID)
+        {
+            break;
+        }
+    }
+
+    if (i < tx.vout.size())
+    {
+        return true;
+    }
+
+    return eval->Error("Accepted notarization can only be spent by a transaction containing another valid notarization");
 }
 
 bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
-    if (height < 1567999 && CConstVerusSolutionVector::activationHeight.ActiveVersion(height) < CActivationHeight::ACTIVATE_PBAAS)
+    if (IsVerusMainnetActive() && height < 1567999)
     {
         return true;
     }
@@ -4903,34 +4945,42 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             // blocks. accepted notarizations may include chain roots from currently confirmed notarizations
             if (p.evalCode == EVAL_ACCEPTEDNOTARIZATION)
             {
-                // if this notarization is not the current chain, but it does have a proof root
-                // present, ensure that the proof root accurately reflects the last earned and confirmed notarization
+                // this should only be present as an accepted notarization for the notary chain in any normal case
+                // on an import transaction.
+                // ensure that the proof root accurately reflects the last earned and confirmed notarization.
+                CPBaaSNotarization priorNotarization;
                 if (currentNotarization.currencyID != ASSETCHAINS_CHAINID && currentNotarization.proofRoots.count(currentNotarization.currencyID))
                 {
                     CTransaction priorNotTx;
                     uint256 hashBlock;
-                    if ((currentNotarization.prevNotarization.IsNull() && !currentNotarization.IsDefinitionNotarization()) ||
-                        !myGetTransaction(currentNotarization.prevNotarization.hash, priorNotTx, hashBlock))
+                    COptCCParams priorP;
+                    // if there is a proof root in this accepted notarization, it must be as part of an import
+                    // and the proof root should match the evidence notarization reference used to prove the
+                    // import.
+                    if (currentNotarization.prevNotarization.IsNull() ||
+                        !myGetTransaction(currentNotarization.prevNotarization.hash, priorNotTx, hashBlock) ||
+                        priorNotTx.vout.size() <= currentNotarization.prevNotarization.n ||
+                        !priorNotTx.vout[currentNotarization.prevNotarization.n].scriptPubKey.IsPayToCryptoCondition(priorP) ||
+                        !priorP.IsValid() ||
+                        (priorP.evalCode != EVAL_ACCEPTEDNOTARIZATION && priorP.evalCode != EVAL_EARNEDNOTARIZATION) ||
+                        priorP.vData.size() < 1 ||
+                        !(priorNotarization = CPBaaSNotarization(priorP.vData[0])).IsValid() ||
+                        priorNotarization.currencyID != currentNotarization.currencyID ||
+                        !priorNotarization.proofRoots.count(currentNotarization.currencyID) ||
+                        priorNotarization.proofRoots[currentNotarization.currencyID] != currentNotarization.proofRoots[currentNotarization.currencyID])
                     {
                         return state.Error("Invalid prior notarization");
                     }
-                    if (currentNotarization.IsDefinitionNotarization())
-                    {
-                        // let it go and if valid, it will be confirmed
-                    }
-                    else
-                    {
-                        // if there is a proof root in this accepted notarization, it must be as part of an import
-                        // and the proof root should match the evidence notarization reference used to prove the
-                        // import.
-                        // TODO: HARDENING - consider that it may never be necessary to have a proof root in import notarizations
-                        //
-                    }
+                }
+                if (currentNotarization.IsDefinitionNotarization())
+                {
+                    // let it go and if valid, it will be confirmed
                 }
             }
             else
             {
-                // ensure that this earned notarization follows all relevant rules
+                // this is an earned notarization, ensure that the proof root of the current chain is correct as of the
+                // specified block and that the notarization follows all other rules as well (alt stake/work, etc.)
             }
         }
         else
@@ -4944,6 +4994,35 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             //                              N blocks without being rejected by the notaries to be considered confirmed.
             // NOTARIZATION_NOTARY_CONFIRM - requires no evidence beyond notary signatures
             // NOTARIZATION_NOTARY_CHAINID - requires no evidence beyond chain signature
+            
+            // first get evidence and verify signatures
+            int afterEvidence;
+            CNotaryEvidence evidence(tx, outNum + 1, afterEvidence);
+            if (!evidence.IsValid())
+            {
+                return state.Error("Invalid notary evidence for accepted notarization");
+            }
+            auto notarySignatures = evidence.GetNotarySignatures();
+            if (!notarySignatures.size() ||
+                !notarySignatures[0].signatures.size())
+            {
+                return state.Error("Notary signatures may not be empty for accepted notarization");
+            }
+            CNativeHashWriter hw((CCurrencyDefinition::EHashTypes)(notarySignatures[0].signatures.begin()->second.hashType));
+            if (!currentNotarization.SetMirror(false))
+            {
+                return state.Error("Notarization cannot be unmirrored");
+            }
+            hw << currentNotarization;
+            CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(currentNotarization.currencyID);
+            if (!curDef.IsValid())
+            {
+                return state.Error("Unable to retrieve notarizing currency");
+            }
+            if (!evidence.CheckSignatureConfirmation(hw.GetHash(), curDef.GetNotarySet(), curDef.minNotariesConfirm, height))
+            {
+                return state.Error("Cannot confirm notary signatures for notarization");
+            }
         }
     }
     return true;
@@ -5344,9 +5423,55 @@ bool IsAcceptedNotarizationInput(const CScript &scriptSig)
 // confirmed notarization
 bool ValidateEarnedNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
-    // TODO: HARDENING ensure that earned notarization UTXOs are spent appropriately
+    // TODO: HARDENING audit & ensure that earned notarization UTXOs are spent appropriately
     // the spending transaction must be a finalization that either confirms or invalidates this notarization
-    return true;
+
+    // first, determine our notarization finalization protocol
+    CUTXORef spendingOutput(tx.vin[nIn].prevout.hash, tx.vin[nIn].prevout.n);
+    CTransaction sourceTx;
+    uint256 blockHash;
+    if (!spendingOutput.GetOutputTransaction(sourceTx, blockHash))
+    {
+        return eval->Error("Unable to retrieve spending transaction");
+    }
+
+    CPBaaSNotarization pbn;
+    COptCCParams pN;
+    if (!(sourceTx.vout[spendingOutput.n].scriptPubKey.IsPayToCryptoCondition(pN) &&
+          pN.IsValid() &&
+          pN.evalCode == EVAL_EARNEDNOTARIZATION &&
+          pN.vData.size() &&
+          (pbn = CPBaaSNotarization(pN.vData[0])).IsValid()))
+    {
+        return eval->Error("Invalid earned notarization, unspendable");
+    }
+
+    int i;
+    for (i = 0; i < tx.vout.size(); i++)
+    {
+        COptCCParams p;
+        CObjectFinalization of;
+        CPBaaSNotarization nextPbn;
+        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
+            (p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+            p.vData.size() &&
+            (of = CObjectFinalization(p.vData[0])).IsValid() &&
+            of.currencyID == pbn.currencyID) ||
+            (p.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
+             p.vData.size() &&
+             (nextPbn = CPBaaSNotarization(p.vData[0])).IsValid() &&
+             nextPbn.currencyID == pbn.currencyID))
+        {
+            break;
+        }
+    }
+
+    if (i < tx.vout.size())
+    {
+        return true;
+    }
+    return eval->Error("Earned notarization can only be spent to a valid finalization");
 }
 
 bool IsEarnedNotarizationInput(const CScript &scriptSig)

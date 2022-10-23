@@ -1005,15 +1005,17 @@ bool CConnectedChains::GetNotaryIDs(const CRPCChainData notaryChain, const std::
             identities[oneDef.GetID()] = oneDef;
         }
     }
+
     // if we have a currency converter, create a new ID as a clone of the main chain ID with revocation and recovery as main chain ID
-    // TODO: HARDENING - harden ID
     if (!ConnectedChains.ThisChain().GatewayConverterID().IsNull())
     {
         CIdentity newConverterIdentity = identities[ASSETCHAINS_CHAINID];
         assert(newConverterIdentity.IsValid());
-        newConverterIdentity.parent = newConverterIdentity.GetID();
+        newConverterIdentity.parent = ASSETCHAINS_CHAINID;
+        newConverterIdentity.systemID = ASSETCHAINS_CHAINID;
         newConverterIdentity.name = ConnectedChains.ThisChain().gatewayConverterName;
         newConverterIdentity.contentMap.clear();
+        newConverterIdentity.contentMultiMap.clear();
         newConverterIdentity.revocationAuthority = newConverterIdentity.recoveryAuthority = ASSETCHAINS_CHAINID;
         identities[ConnectedChains.ThisChain().GatewayConverterID()] = newConverterIdentity;
     }
