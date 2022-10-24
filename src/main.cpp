@@ -2102,18 +2102,19 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         // be annoying or make others' transactions take longer to confirm.
         //
         // TODO: HARDENING - make sure we protect against low fee spam via imports
-        // or notarizations before mainnet, best would be to ensure that there is always
+        // or notarizations before mainnet, use priority, flags, or ensure that there is always
         // sufficient fee on txes that don't have it and remove these exemptions. right now,
         // there are some beginning and end imports that don't have fees on a launch. We can
         // recognize those imports or consider using fees from the initial currency definition.
-        if (!(txDesc.IsValid() && (txDesc.IsImport() || txDesc.IsNotaryPrioritized())) &&
+        // exports bounce fees back, imports allow fees to keep flowing.
+        if (!(txDesc.IsValid() && (txDesc.IsImport() || txDesc.IsExport() || txDesc.IsNotaryPrioritized())) &&
             fLimitFree && nFees < minFee)
         {
             static CCriticalSection csFreeLimiter;
             static double dFreeCount;
             static int64_t nLastTime;
             int64_t nNow = GetTime();
-            
+
             LOCK(csFreeLimiter);
 
             // Use an exponentially decaying ~10-minute window:
