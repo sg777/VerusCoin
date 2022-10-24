@@ -5042,6 +5042,11 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             if (currentNotarization.IsPreLaunch())
             {
                 // export or launch notarization
+                if (p.evalCode == EVAL_EARNEDNOTARIZATION)
+                {
+                    return state.Error("Earned notarization cannot be a pre-launch notarization");
+                }
+                // TODO: HARDENING - check that the notarization is valid or confirm that this is done in export
             }
             else
             {
