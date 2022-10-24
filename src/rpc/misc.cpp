@@ -2190,7 +2190,11 @@ UniValue getaddressdeltas(const UniValue& params, bool fHelp)
                         }
                     }
                     UniValue sentToUni(UniValue::VOBJ);
-                    sentToUni.pushKV("outputtypes", functions);
+                    UniValue outputsUni(UniValue::VARR);
+                    if (functions.size())
+                    {
+                        sentToUni.pushKV("outputfunctions", functions);
+                    }
                     for (auto &oneDestSet : destMap)
                     {
                         UniValue addressesUni(UniValue::VARR);
@@ -2198,9 +2202,12 @@ UniValue getaddressdeltas(const UniValue& params, bool fHelp)
                         {
                             addressesUni.push_back(EncodeDestination(oneAddr));
                         }
-                        sentToUni.pushKV("addresses", addressesUni);
-                        sentToUni.pushKV("amounts", oneDestSet.second.ToUniValue());
+                        UniValue oneDestAmount(UniValue::VOBJ);
+                        oneDestAmount.pushKV("addresses", addressesUni.size() == 1 ? addressesUni[0] : addressesUni);
+                        oneDestAmount.pushKV("amounts", oneDestSet.second.ToUniValue());
+                        outputsUni.push_back(oneDestAmount);
                     }
+                    sentToUni.pushKV("outputs", outputsUni);
                     if (curTx.valueBalance < 0)
                     {
                         sentToUni.pushKV("privateoutput", -curTx.valueBalance);
