@@ -1790,7 +1790,7 @@ void CurrencyValuesAndNames(UniValue &output, bool spending, const CTransaction 
             throw JSONRPCError(RPC_DATABASE_ERROR, "Unable to retrieve data to for currency output values");
         }
     }
-    return CurrencyValuesAndNames(output, spending, script, satoshis, friendlyNames);
+    CurrencyValuesAndNames(output, spending, script, satoshis, friendlyNames);
 }
 
 UniValue AddressMemPoolUni(const std::vector<std::pair<uint160, int>> &addresses, bool friendlyNames)
