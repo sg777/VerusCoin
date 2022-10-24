@@ -4998,7 +4998,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                 }
 
                 if ((curDef.IsPBaaSChain() || curDef.IsGateway()) &&
-                    curDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
+                     curDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
                 {
                     if (!currentNotarization.proofRoots.count(currentNotarization.currencyID) ||
                         (currentNotarization.IsBlockOneNotarization() &&
@@ -5053,10 +5053,6 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             if (currentNotarization.IsPreLaunch())
             {
                 // export or launch notarization
-                if (p.evalCode == EVAL_EARNEDNOTARIZATION)
-                {
-                    return state.Error("Earned notarization cannot be a pre-launch notarization");
-                }
                 // TODO: HARDENING - check that the notarization is valid or confirm that this is done in export
             }
             else
@@ -5067,7 +5063,8 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                     return state.Error("Unable to retrieve notarizing currency 1");
                 }
 
-                if (curDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
+                if ((curDef.IsPBaaSChain() || curDef.IsGateway()) &&
+                     curDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
                 {
                     // we should only approve accepted notarizations that have the following qualifications
                     // for the following protocols:
