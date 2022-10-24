@@ -4935,6 +4935,33 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
     // do full checks if the chain is in sync behind us
     if (nHeight >= (height - 1))
     {
+        CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(currentNotarization.currencyID);
+        if (!curDef.IsValid())
+        {
+            COptCCParams defP;
+            for (auto &oneOut : tx.vout)
+            {
+                if ((tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(defP) &&
+                        defP.IsValid() &&
+                        defP.evalCode == EVAL_CURRENCY_DEFINITION &&
+                        defP.vData.size() &&
+                        (curDef = CCurrencyDefinition(defP.vData[0])).IsValid() &&
+                        curDef.IsValid() &&
+                        curDef.GetID() == currentNotarization.currencyID))
+                {
+                    break;
+                }
+                else
+                {
+                    curDef.nVersion = curDef.VERSION_INVALID;
+                }
+            }
+            if (!curDef.IsValid())
+            {
+                return state.Error("Unable to retrieve notarizing currency 1");
+            }
+        }
+
         // ensure that on a chain requiring earned notarizations, we do not enter new chain roots in the form of
         // accepted notarizations. accepted notarizations can be generated on cross-chain imports, and in that case,
         // may only include proof roots from a prior confirmed notarization.
@@ -4989,12 +5016,6 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                 if (!tx.IsCoinBase())
                 {
                     return state.Error("Earned notarization must be an output on coinbase transaction");
-                }
-
-                CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(currentNotarization.currencyID);
-                if (!curDef.IsValid())
-                {
-                    return state.Error("Unable to retrieve notarizing currency");
                 }
 
                 if ((curDef.IsPBaaSChain() || curDef.IsGateway()) &&
@@ -5057,12 +5078,6 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             }
             else
             {
-                CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(currentNotarization.currencyID);
-                if (!curDef.IsValid())
-                {
-                    return state.Error("Unable to retrieve notarizing currency 1");
-                }
-
                 if ((curDef.IsPBaaSChain() || curDef.IsGateway()) &&
                      curDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
                 {
