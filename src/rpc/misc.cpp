@@ -2214,7 +2214,7 @@ UniValue getaddressdeltas(const UniValue& params, bool fHelp)
                     }
                     if (sentToUni.size())
                     {
-                        delta.pushKV("sentto", sentToUni);
+                        delta.pushKV("sent", sentToUni);
                     }
                 }
             }
