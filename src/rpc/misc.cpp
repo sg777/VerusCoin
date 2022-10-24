@@ -1771,6 +1771,7 @@ void CurrencyValuesAndNames(UniValue &output, bool spending, const CTransaction 
         uint256 blockHash;
         if (tx.vin.size() > index && index >= 0 && myGetTransaction(tx.vin[index].prevout.hash, priorOutTx, blockHash))
         {
+
             script = priorOutTx.vout[tx.vin[index].prevout.n].scriptPubKey;
         }
         else
@@ -2101,6 +2102,7 @@ UniValue getaddressdeltas(const UniValue& params, bool fHelp)
             delta.push_back(Pair("index", (int)it->first.index));
             delta.push_back(Pair("blockindex", (int)it->first.txindex));
             delta.push_back(Pair("height", it->first.blockHeight));
+            delta.push_back(Pair("spending", it->first.spending));
             delta.push_back(Pair("address", address));
             if (chainActive.Height() >= it->first.blockHeight)
             {
@@ -2111,6 +2113,107 @@ UniValue getaddressdeltas(const UniValue& params, bool fHelp)
             if (verbosity && !it->first.txhash.IsNull() && (it->first.txhash == curTx.GetHash() || myGetTransaction(it->first.txhash, curTx, blockHash)))
             {
                 CurrencyValuesAndNames(delta, it->first.spending, curTx, it->first.index, it->second, friendlyNames);
+                if (it->first.spending)
+                {
+                    std::map<std::set<CTxDestination>, CCurrencyValueMap> destMap;
+                    UniValue functions(UniValue::VARR);
+                    for (auto &oneOut : curTx.vout)
+                    {
+                        txnouttype typeRet;
+                        std::vector<CTxDestination> addresses;
+                        int requiredRet;
+                        if (ExtractDestinations(oneOut.scriptPubKey, typeRet, addresses, requiredRet) && addresses.size())
+                        {
+                            COptCCParams p;
+                            if (typeRet == txnouttype::TX_CRYPTOCONDITION &&
+                                oneOut.scriptPubKey.IsPayToCryptoCondition(p))
+                            {
+                                if (p.IsValid())
+                                {
+                                    switch (p.evalCode)
+                                    {
+                                        case EVAL_NONE:
+                                        {
+                                            functions.push_back("nativesend");
+                                        }
+                                        case EVAL_RESERVE_OUTPUT:
+                                        {
+                                            functions.push_back("anysend");
+                                        }
+                                        case EVAL_RESERVE_TRANSFER:
+                                        {
+                                            functions.push_back(Pair("reservetransfer", CReserveTransfer(p.vData[0]).ToUniValue()));
+                                        }
+                                        case EVAL_IDENTITY_ADVANCEDRESERVATION:
+                                        {
+                                            functions.push_back(Pair("identityregistration", CAdvancedNameReservation(p.vData[0]).ToUniValue()));
+                                        }
+                                        case EVAL_RESERVE_DEPOSIT:
+                                        {
+                                            functions.push_back(Pair("reservedeposit", CReserveDeposit(p.vData[0]).ToUniValue()));
+                                        }
+                                        case EVAL_CROSSCHAIN_IMPORT:
+                                        {
+                                            functions.push_back(Pair("crosschainimport", CCrossChainImport(p.vData[0]).ToUniValue()));
+                                        }
+                                        case EVAL_CROSSCHAIN_EXPORT:
+                                        {
+                                            functions.push_back(Pair("crosschainexport", CCrossChainExport(p.vData[0]).ToUniValue()));
+                                        }
+                                        case EVAL_IDENTITY_COMMITMENT:
+                                        {
+                                            functions.push_back(Pair("identitycommitment", CCommitmentHash(p.vData[0]).ToUniValue()));
+                                        }
+                                        case EVAL_IDENTITY_PRIMARY:
+                                        {
+                                            functions.push_back(Pair("identity", CIdentity(p.vData[0]).ToUniValue()));
+                                        }
+                                        case EVAL_IDENTITY_RESERVATION:
+                                        {
+                                            functions.push_back(Pair("identityregistration", CNameReservation(p.vData[0]).ToUniValue()));
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    functions.push_back("invalid");
+                                }
+                            }
+                            std::set<CTxDestination> addrSet;
+                            for (auto &oneAddr : addresses)
+                            {
+                                addrSet.insert(oneAddr);
+                            }
+                            CCurrencyValueMap outVal = oneOut.ReserveOutValue();
+                            outVal.valueMap[ASSETCHAINS_CHAINID] = oneOut.nValue;
+                            destMap[addrSet] += outVal;
+                        }
+                    }
+                    UniValue sentToUni(UniValue::VOBJ);
+                    if (curTx.valueBalance < 0)
+                    {
+                        functions.push_back("private");
+                    }
+                    sentToUni.pushKV("outputtypes", functions);
+                    for (auto &oneDestSet : destMap)
+                    {
+                        UniValue addressesUni(UniValue::VARR);
+                        for (auto &oneAddr : oneDestSet.first)
+                        {
+                            addressesUni.push_back(EncodeDestination(oneAddr));
+                        }
+                        sentToUni.pushKV("addresses", addressesUni);
+                        sentToUni.pushKV("amounts", oneDestSet.second.ToUniValue());
+                    }
+                    if (curTx.valueBalance < 0 || destMap.size())
+                    {
+                        sentToUni.pushKV("privateoutput", -curTx.valueBalance);
+                    }
+                    if (sentToUni.size())
+                    {
+                        delta.pushKV("sentto", sentToUni);
+                    }
+                }
             }
 
             deltas.push_back(delta);

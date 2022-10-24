@@ -4943,8 +4943,10 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
         // if not a notary chain, the currency or chain must have been launched by this chain and notarizations are "accepted"
         // either unquestioningly for notarization protocols other than auto notarization or with auto-notarization
         // requirements
-        if (ConnectedChains.notarySystems.count(currentNotarization.currencyID))
+        if (ConnectedChains.notarySystems.count(currentNotarization.currencyID) || p.evalCode == EVAL_EARNEDNOTARIZATION)
         {
+            CPBaaSNotarization priorNotarization;
+
             // chain roots may only come from earned notarizations that alternate between staked and mined
             // blocks. accepted notarizations may include chain roots from currently confirmed notarizations
             if (p.evalCode == EVAL_ACCEPTEDNOTARIZATION)
@@ -4952,7 +4954,6 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                 // this should only be present as an accepted notarization for the notary chain in any normal case
                 // on an import transaction.
                 // ensure that the proof root accurately reflects the last earned and confirmed notarization.
-                CPBaaSNotarization priorNotarization;
                 if (currentNotarization.currencyID != ASSETCHAINS_CHAINID && currentNotarization.proofRoots.count(currentNotarization.currencyID))
                 {
                     CTransaction priorNotTx;
@@ -4985,48 +4986,108 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             {
                 // this is an earned notarization, ensure that the proof root of the current chain is correct as of the
                 // specified block and that the notarization follows all other rules as well (alt stake/work, etc.)
+                if (!tx.IsCoinBase())
+                {
+                    return state.Error("Earned notarization must be an output on coinbase transaction");
+                }
+
+                if (!currentNotarization.proofRoots.count(currentNotarization.currencyID) ||
+                    (currentNotarization.IsBlockOneNotarization() &&
+                     currentNotarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                     currentNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight != 0) ||
+                    (!currentNotarization.IsBlockOneNotarization() &&
+                     (currentNotarization.proofRoots.size() < 2 ||
+                      !currentNotarization.proofRoots.count(ASSETCHAINS_CHAINID) ||
+                      currentNotarization.proofRoots[ASSETCHAINS_CHAINID] !=
+                        CProofRoot::GetProofRoot(currentNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight))))
+                {
+                    return state.Error("Earned notarizations must contain valid, matching proof roots for current chain and notary chain");
+                }
+
+                // TODO: HARDENING - ensure the alternating PoS/PoW block state is checked when block is checked
+
+                if (!currentNotarization.IsBlockOneNotarization() && !currentNotarization.IsDefinitionNotarization())
+                {
+                    // ensure that this notarization does not skip any valid notarization behind us
+                    // whether or not this block alternates PoS and PoW is not checked here, as it is
+                    // not natural for us to know that block information now
+                    CTransaction priorNotTx;
+                    uint256 hashBlock;
+                    COptCCParams priorP;
+
+                    // if there is a proof root in this accepted notarization, it must be as part of an import
+                    // and the proof root should match the evidence notarization reference used to prove the
+                    // import.
+                    if (currentNotarization.prevNotarization.IsNull() ||
+                        !myGetTransaction(currentNotarization.prevNotarization.hash, priorNotTx, hashBlock) ||
+                        priorNotTx.vout.size() <= currentNotarization.prevNotarization.n ||
+                        !priorNotTx.vout[currentNotarization.prevNotarization.n].scriptPubKey.IsPayToCryptoCondition(priorP) ||
+                        !priorP.IsValid() ||
+                        (priorP.evalCode != EVAL_ACCEPTEDNOTARIZATION && priorP.evalCode != EVAL_EARNEDNOTARIZATION) ||
+                        priorP.vData.size() < 1 ||
+                        !(priorNotarization = CPBaaSNotarization(priorP.vData[0])).IsValid() ||
+                        (priorP.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
+                         !priorNotarization.IsBlockOneNotarization() &&
+                         !priorNotarization.IsDefinitionNotarization()))
+                    {
+                        return state.Error("Invalid prior for earned notarization");
+                    }
+                }
             }
         }
         else
         {
-            // we should only approve accepted notarizations that have the following qualifications
-            // for the following protocols:
-            // NOTARIZATION_AUTO        -   must have evidence to prove that one recent earned notarization
-            //                              from either a PoW or PoS block refers to and proves another alternated
-            //                              and proven PoW or PoS earned notarization, which then alternates and proves
-            //                              the notarization being confirmed. This allows us to post it, but it must mature
-            //                              N blocks without being rejected by the notaries to be considered confirmed.
-            // NOTARIZATION_NOTARY_CONFIRM - requires no evidence beyond notary signatures
-            // NOTARIZATION_NOTARY_CHAINID - requires no evidence beyond chain signature
-            
-            // first get evidence and verify signatures
-            int afterEvidence;
-            CNotaryEvidence evidence(tx, outNum + 1, afterEvidence);
-            if (!evidence.IsValid())
+            // either this is another system entering an accepted notarization or one coming from an import or pre-launch export
+            // determine which, based on the tx and presence of an import
+            if (currentNotarization.IsPreLaunch())
             {
-                return state.Error("Invalid notary evidence for accepted notarization");
+                // export or launch notarization
             }
-            auto notarySignatures = evidence.GetNotarySignatures();
-            if (!notarySignatures.size() ||
-                !notarySignatures[0].signatures.size())
+            else
             {
-                return state.Error("Notary signatures may not be empty for accepted notarization");
-            }
-            CNativeHashWriter hw((CCurrencyDefinition::EHashTypes)(notarySignatures[0].signatures.begin()->second.hashType));
-            if (!currentNotarization.SetMirror(false))
-            {
-                return state.Error("Notarization cannot be unmirrored");
-            }
-            hw << currentNotarization;
-            CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(currentNotarization.currencyID);
-            if (!curDef.IsValid())
-            {
-                return state.Error("Unable to retrieve notarizing currency");
-            }
-            if (evidence.CheckSignatureConfirmation(hw.GetHash(), curDef.GetNotarySet(), curDef.minNotariesConfirm, height) !=
-                CNotaryEvidence::EStates::STATE_CONFIRMED)
-            {
-                return state.Error("Cannot confirm notary signatures for notarization");
+                CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(currentNotarization.currencyID);
+                if (!curDef.IsValid())
+                {
+                    return state.Error("Unable to retrieve notarizing currency");
+                }
+
+                if (curDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
+                {
+                    // we should only approve accepted notarizations that have the following qualifications
+                    // for the following protocols:
+                    // NOTARIZATION_AUTO        -   must have evidence to prove that one recent earned notarization
+                    //                              from either a PoW or PoS block refers to and proves another alternated
+                    //                              and proven PoW or PoS earned notarization, which then alternates and proves
+                    //                              the notarization being confirmed. This allows us to post it, but it must mature
+                    //                              N blocks without being rejected by the notaries to be considered confirmed.
+                    // NOTARIZATION_NOTARY_CONFIRM - requires no evidence beyond notary signatures
+                    // NOTARIZATION_NOTARY_CHAINID - requires no evidence beyond chain signature
+
+                    // first get evidence and verify signatures
+                    int afterEvidence;
+                    CNotaryEvidence evidence(tx, outNum + 1, afterEvidence);
+                    if (!evidence.IsValid())
+                    {
+                        return state.Error("Invalid notary evidence for accepted notarization");
+                    }
+                    auto notarySignatures = evidence.GetNotarySignatures();
+                    if (!notarySignatures.size() ||
+                        !notarySignatures[0].signatures.size())
+                    {
+                        return state.Error("Notary signatures may not be empty for accepted notarization");
+                    }
+                    CNativeHashWriter hw((CCurrencyDefinition::EHashTypes)(notarySignatures[0].signatures.begin()->second.hashType));
+                    if (!currentNotarization.SetMirror(false))
+                    {
+                        return state.Error("Notarization cannot be unmirrored");
+                    }
+                    hw << currentNotarization;
+                    if (evidence.CheckSignatureConfirmation(hw.GetHash(), curDef.GetNotarySet(), curDef.minNotariesConfirm, height) !=
+                        CNotaryEvidence::EStates::STATE_CONFIRMED)
+                    {
+                        return state.Error("Cannot confirm notary signatures for notarization");
+                    }
+                }
             }
         }
     }
