@@ -2132,45 +2132,45 @@ UniValue getaddressdeltas(const UniValue& params, bool fHelp)
                                 {
                                     switch (p.evalCode)
                                     {
-                                        case EVAL_NONE:
-                                        {
-                                            functions.push_back("nativesend");
-                                        }
-                                        case EVAL_RESERVE_OUTPUT:
-                                        {
-                                            functions.push_back("anysend");
-                                        }
                                         case EVAL_RESERVE_TRANSFER:
                                         {
                                             functions.push_back(Pair("reservetransfer", CReserveTransfer(p.vData[0]).ToUniValue()));
+                                            break;
                                         }
                                         case EVAL_IDENTITY_ADVANCEDRESERVATION:
                                         {
                                             functions.push_back(Pair("identityregistration", CAdvancedNameReservation(p.vData[0]).ToUniValue()));
+                                            break;
                                         }
                                         case EVAL_RESERVE_DEPOSIT:
                                         {
                                             functions.push_back(Pair("reservedeposit", CReserveDeposit(p.vData[0]).ToUniValue()));
+                                            break;
                                         }
                                         case EVAL_CROSSCHAIN_IMPORT:
                                         {
                                             functions.push_back(Pair("crosschainimport", CCrossChainImport(p.vData[0]).ToUniValue()));
+                                            break;
                                         }
                                         case EVAL_CROSSCHAIN_EXPORT:
                                         {
                                             functions.push_back(Pair("crosschainexport", CCrossChainExport(p.vData[0]).ToUniValue()));
+                                            break;
                                         }
                                         case EVAL_IDENTITY_COMMITMENT:
                                         {
                                             functions.push_back(Pair("identitycommitment", CCommitmentHash(p.vData[0]).ToUniValue()));
+                                            break;
                                         }
                                         case EVAL_IDENTITY_PRIMARY:
                                         {
                                             functions.push_back(Pair("identity", CIdentity(p.vData[0]).ToUniValue()));
+                                            break;
                                         }
                                         case EVAL_IDENTITY_RESERVATION:
                                         {
                                             functions.push_back(Pair("identityregistration", CNameReservation(p.vData[0]).ToUniValue()));
+                                            break;
                                         }
                                     }
                                 }
@@ -2190,10 +2190,6 @@ UniValue getaddressdeltas(const UniValue& params, bool fHelp)
                         }
                     }
                     UniValue sentToUni(UniValue::VOBJ);
-                    if (curTx.valueBalance < 0)
-                    {
-                        functions.push_back("private");
-                    }
                     sentToUni.pushKV("outputtypes", functions);
                     for (auto &oneDestSet : destMap)
                     {
@@ -2205,7 +2201,7 @@ UniValue getaddressdeltas(const UniValue& params, bool fHelp)
                         sentToUni.pushKV("addresses", addressesUni);
                         sentToUni.pushKV("amounts", oneDestSet.second.ToUniValue());
                     }
-                    if (curTx.valueBalance < 0 || destMap.size())
+                    if (curTx.valueBalance < 0)
                     {
                         sentToUni.pushKV("privateoutput", -curTx.valueBalance);
                     }
