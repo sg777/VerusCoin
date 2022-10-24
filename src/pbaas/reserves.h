@@ -1739,6 +1739,7 @@ public:
     bool IsFillOrKillFail() const { return flags & IS_FILLORKILLFAIL; }
     bool IsIdentity() const { return flags & IS_IDENTITY; }
     bool IsImport() const { return flags & IS_IMPORT; }
+    bool IsExport() const { return flags & IS_EXPORT; }
     bool IsCurrencyDefinition() const { return flags & IS_CURRENCY_DEFINITION; }
     bool IsNotaryPrioritized() const { return flags & IS_CHAIN_NOTARIZATION; }
     bool IsIdentityDefinition() const { return flags & IS_IDENTITY_DEFINITION; }

@@ -4991,46 +4991,57 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                     return state.Error("Earned notarization must be an output on coinbase transaction");
                 }
 
-                if (!currentNotarization.proofRoots.count(currentNotarization.currencyID) ||
-                    (currentNotarization.IsBlockOneNotarization() &&
-                     currentNotarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
-                     currentNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight != 0) ||
-                    (!currentNotarization.IsBlockOneNotarization() &&
-                     (currentNotarization.proofRoots.size() < 2 ||
-                      !currentNotarization.proofRoots.count(ASSETCHAINS_CHAINID) ||
-                      currentNotarization.proofRoots[ASSETCHAINS_CHAINID] !=
-                        CProofRoot::GetProofRoot(currentNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight))))
+                CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(currentNotarization.currencyID);
+                if (!curDef.IsValid())
                 {
-                    return state.Error("Earned notarizations must contain valid, matching proof roots for current chain and notary chain");
+                    return state.Error("Unable to retrieve notarizing currency");
                 }
 
-                // TODO: HARDENING - ensure the alternating PoS/PoW block state is checked when block is checked
-
-                if (!currentNotarization.IsBlockOneNotarization() && !currentNotarization.IsDefinitionNotarization())
+                if ((curDef.IsPBaaSChain() || curDef.IsGateway()) &&
+                    curDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
                 {
-                    // ensure that this notarization does not skip any valid notarization behind us
-                    // whether or not this block alternates PoS and PoW is not checked here, as it is
-                    // not natural for us to know that block information now
-                    CTransaction priorNotTx;
-                    uint256 hashBlock;
-                    COptCCParams priorP;
-
-                    // if there is a proof root in this accepted notarization, it must be as part of an import
-                    // and the proof root should match the evidence notarization reference used to prove the
-                    // import.
-                    if (currentNotarization.prevNotarization.IsNull() ||
-                        !myGetTransaction(currentNotarization.prevNotarization.hash, priorNotTx, hashBlock) ||
-                        priorNotTx.vout.size() <= currentNotarization.prevNotarization.n ||
-                        !priorNotTx.vout[currentNotarization.prevNotarization.n].scriptPubKey.IsPayToCryptoCondition(priorP) ||
-                        !priorP.IsValid() ||
-                        (priorP.evalCode != EVAL_ACCEPTEDNOTARIZATION && priorP.evalCode != EVAL_EARNEDNOTARIZATION) ||
-                        priorP.vData.size() < 1 ||
-                        !(priorNotarization = CPBaaSNotarization(priorP.vData[0])).IsValid() ||
-                        (priorP.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
-                         !priorNotarization.IsBlockOneNotarization() &&
-                         !priorNotarization.IsDefinitionNotarization()))
+                    if (!currentNotarization.proofRoots.count(currentNotarization.currencyID) ||
+                        (currentNotarization.IsBlockOneNotarization() &&
+                         currentNotarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                         currentNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight != 0) ||
+                        (!currentNotarization.IsBlockOneNotarization() &&
+                        (currentNotarization.proofRoots.size() < 2 ||
+                        !currentNotarization.proofRoots.count(ASSETCHAINS_CHAINID) ||
+                        currentNotarization.proofRoots[ASSETCHAINS_CHAINID] !=
+                            CProofRoot::GetProofRoot(currentNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight))))
                     {
-                        return state.Error("Invalid prior for earned notarization");
+                        LogPrint("notarization", "%s: Invalid earned notarization:\n%s\n", __func__, currentNotarization.ToUniValue().write(1,2).c_str());
+                        return state.Error("Earned notarizations must contain valid, matching proof roots for current chain and notary chain");
+                    }
+
+                    // TODO: HARDENING - ensure the alternating PoS/PoW block state is checked when block is checked
+
+                    if (!currentNotarization.IsBlockOneNotarization() && !currentNotarization.IsDefinitionNotarization())
+                    {
+                        // ensure that this notarization does not skip any valid notarization behind us
+                        // whether or not this block alternates PoS and PoW is not checked here, as it is
+                        // not natural for us to know that block information now
+                        CTransaction priorNotTx;
+                        uint256 hashBlock;
+                        COptCCParams priorP;
+
+                        // if there is a proof root in this accepted notarization, it must be as part of an import
+                        // and the proof root should match the evidence notarization reference used to prove the
+                        // import.
+                        if (currentNotarization.prevNotarization.IsNull() ||
+                            !myGetTransaction(currentNotarization.prevNotarization.hash, priorNotTx, hashBlock) ||
+                            priorNotTx.vout.size() <= currentNotarization.prevNotarization.n ||
+                            !priorNotTx.vout[currentNotarization.prevNotarization.n].scriptPubKey.IsPayToCryptoCondition(priorP) ||
+                            !priorP.IsValid() ||
+                            (priorP.evalCode != EVAL_ACCEPTEDNOTARIZATION && priorP.evalCode != EVAL_EARNEDNOTARIZATION) ||
+                            priorP.vData.size() < 1 ||
+                            !(priorNotarization = CPBaaSNotarization(priorP.vData[0])).IsValid() ||
+                            (priorP.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
+                            !priorNotarization.IsBlockOneNotarization() &&
+                            !priorNotarization.IsDefinitionNotarization()))
+                        {
+                            return state.Error("Invalid prior for earned notarization");
+                        }
                     }
                 }
             }
@@ -5053,7 +5064,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                 CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(currentNotarization.currencyID);
                 if (!curDef.IsValid())
                 {
-                    return state.Error("Unable to retrieve notarizing currency");
+                    return state.Error("Unable to retrieve notarizing currency 1");
                 }
 
                 if (curDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
