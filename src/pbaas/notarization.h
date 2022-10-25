@@ -329,7 +329,7 @@ public:
         ::FromVector(vch, *this);
     }
 
-    CChainNotarizationData(UniValue &obj);
+    CChainNotarizationData(UniValue &obj, bool loadNotarizations=false);
 
     ADD_SERIALIZE_METHODS;
 

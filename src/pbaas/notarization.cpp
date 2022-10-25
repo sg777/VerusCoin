@@ -1485,7 +1485,7 @@ CObjectFinalization::CObjectFinalization(const CTransaction &tx, uint32_t *pEcod
     }
 }
 
-CChainNotarizationData::CChainNotarizationData(UniValue &obj)
+CChainNotarizationData::CChainNotarizationData(UniValue &obj, bool loadNotarizations)
 {
     version = (uint32_t)uni_get_int(find_value(obj, "version"));
     UniValue vtxUni = find_value(obj, "notarizations");
@@ -1494,9 +1494,43 @@ CChainNotarizationData::CChainNotarizationData(UniValue &obj)
         vector<UniValue> vvtx = vtxUni.getValues();
         for (auto o : vvtx)
         {
+            UniValue notarizationUni = find_value(o, "notarization");
+            if (loadNotarizations && notarizationUni.isNull())
+            {
+                uint256 txid;
+                txid.SetHex(uni_get_str(find_value(o, "txid")));
+                CUTXORef utxo(txid, uni_get_int(find_value(o, "vout"), -1));
+                if (utxo.IsValid())
+                {
+                    uint256 blockHash;
+                    CTransaction tx;
+                    COptCCParams p;
+                    CPBaaSNotarization pbn;
+                    if (utxo.GetOutputTransaction(tx, blockHash) &&
+                        tx.vout.size() > utxo.n &&
+                        tx.vout[utxo.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        (p.evalCode == EVAL_EARNEDNOTARIZATION || p.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
+                        p.vData.size() &&
+                        (pbn = CPBaaSNotarization(p.vData[0])).IsValid())
+                    {
+                        notarizationUni = pbn.ToUniValue();
+                    }
+                    else
+                    {
+                        version = 0;
+                        return;
+                    }
+                }
+                else
+                {
+                    version = 0;
+                    return;
+                }
+            }
+
             vtx.push_back(make_pair(CUTXORef(uint256S(uni_get_str(find_value(o, "txid"))),
                                              uni_get_int(find_value(o, "vout"))),
-                                    CPBaaSNotarization(find_value(o, "notarization"))));
+                                    CPBaaSNotarization(notarizationUni)));
         }
     }
 
@@ -2940,17 +2974,17 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     {
         result = NullUniValue;
     }
+    // take the lock again, now that we're back from calling out
+    LOCK2(cs_main, mempool.cs);
+
     CChainNotarizationData crosschainCND;
     if (result.isNull() ||
-        !(crosschainCND = CChainNotarizationData(result)).IsValid() ||
+        !(crosschainCND = CChainNotarizationData(result, true)).IsValid() ||
         (!externalSystem.chainDefinition.IsGateway() && !crosschainCND.IsConfirmed()))
     {
         LogPrint("notarization", "Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(externalSystem.GetID())).c_str());
         return state.Error("invalid crosschain notarization data");
     }
-
-    // take the lock again, now that we're back from calling out
-    LOCK2(cs_main, mempool.cs);
 
     // if height changed, we need to fail and possibly try again
     if (height != chainActive.Height())
@@ -4328,7 +4362,6 @@ bool CPBaaSNotarization::FindEarnedNotarization(CObjectFinalization &confirmedFi
     return true;
 }
 
-
 // look for finalized notarizations either on chain or in the mempool, which are eligible for submission
 // and submit them to the notary chain, referring to the last on the notary chain that we agree with.
 std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPCChainData &externalSystem,
@@ -4405,48 +4438,50 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     }
 
     CChainNotarizationData crosschainCND;
-    if (result.isNull() ||
-        !(crosschainCND = CChainNotarizationData(result)).IsValid() ||
-        (!externalSystem.chainDefinition.IsGateway() && !crosschainCND.IsConfirmed()))
-    {
-        LogPrintf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-        printf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-        return retVal;
-    }
-
-    // if the returned data is not confirmed, then it is a gateway that has not yet confirmed its first transaction
-    // it may still have unconfirmed notarizations
-    // if it is a gateway that is unconfirmed on the other side, we will insert its definition notarization as confirmed,
-    // until it is confirmed on its side.
-    if (!crosschainCND.IsConfirmed())
     {
         LOCK(cs_main);
-        CInputDescriptor notarizationRef;
-        CPBaaSNotarization definitionNotarization;
-        if (!ConnectedChains.GetDefinitionNotarization(externalSystem.chainDefinition, notarizationRef, definitionNotarization))
+        if (result.isNull() ||
+            !(crosschainCND = CChainNotarizationData(result, true)).IsValid() ||
+            (!externalSystem.chainDefinition.IsGateway() && !crosschainCND.IsConfirmed()))
         {
-            LogPrintf("Unable to get definition notarization for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-            printf("Unable to get definition notarization for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+            LogPrintf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+            printf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
             return retVal;
         }
-        crosschainCND.lastConfirmed = 0;
-        crosschainCND.vtx.insert(crosschainCND.vtx.begin(), std::make_pair(CUTXORef(notarizationRef.txIn.prevout), definitionNotarization));
 
-        if (crosschainCND.vtx.size() == 1)
+        // if the returned data is not confirmed, then it is a gateway that has not yet confirmed its first transaction
+        // it may still have unconfirmed notarizations
+        // if it is a gateway that is unconfirmed on the other side, we will insert its definition notarization as confirmed,
+        // until it is confirmed on its side.
+        if (!crosschainCND.IsConfirmed())
         {
-            crosschainCND.bestChain = 0;
-            crosschainCND.forks = std::vector<std::vector<int>>({std::vector<int>({0})});
-        }
-        else
-        {
-            // loop through the forks, insert 0, and increment all following indices
-            for (auto &oneFork : crosschainCND.forks)
+            CInputDescriptor notarizationRef;
+            CPBaaSNotarization definitionNotarization;
+            if (!ConnectedChains.GetDefinitionNotarization(externalSystem.chainDefinition, notarizationRef, definitionNotarization))
             {
-                for (auto &oneIndex : oneFork)
+                LogPrintf("Unable to get definition notarization for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                printf("Unable to get definition notarization for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                return retVal;
+            }
+            crosschainCND.lastConfirmed = 0;
+            crosschainCND.vtx.insert(crosschainCND.vtx.begin(), std::make_pair(CUTXORef(notarizationRef.txIn.prevout), definitionNotarization));
+
+            if (crosschainCND.vtx.size() == 1)
+            {
+                crosschainCND.bestChain = 0;
+                crosschainCND.forks = std::vector<std::vector<int>>({std::vector<int>({0})});
+            }
+            else
+            {
+                // loop through the forks, insert 0, and increment all following indices
+                for (auto &oneFork : crosschainCND.forks)
                 {
-                    oneIndex++;
+                    for (auto &oneIndex : oneFork)
+                    {
+                        oneIndex++;
+                    }
+                    oneFork.insert(oneFork.begin(), 0);
                 }
-                oneFork.insert(oneFork.begin(), 0);
             }
         }
     }
