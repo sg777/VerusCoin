@@ -4941,13 +4941,13 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             COptCCParams defP;
             for (auto &oneOut : tx.vout)
             {
-                if ((tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(defP) &&
-                        defP.IsValid() &&
-                        defP.evalCode == EVAL_CURRENCY_DEFINITION &&
-                        defP.vData.size() &&
-                        (curDef = CCurrencyDefinition(defP.vData[0])).IsValid() &&
-                        curDef.IsValid() &&
-                        curDef.GetID() == currentNotarization.currencyID))
+                if ((oneOut.scriptPubKey.IsPayToCryptoCondition(defP) &&
+                     defP.IsValid() &&
+                     defP.evalCode == EVAL_CURRENCY_DEFINITION &&
+                     defP.vData.size() &&
+                     (curDef = CCurrencyDefinition(defP.vData[0])).IsValid() &&
+                     curDef.IsValid() &&
+                     curDef.GetID() == currentNotarization.currencyID))
                 {
                     break;
                 }
@@ -4958,6 +4958,13 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             }
             if (!curDef.IsValid())
             {
+                if (LogAcceptCategory("notarization"))
+                {
+                    UniValue jsonNTx(UniValue::VOBJ);
+                    TxToUniv(tx, uint256(), jsonNTx);
+                    LogPrintf("%s: Unable to retrieve notarization currency on tx:\n%s\n", __func__, jsonNTx.write(1,2).c_str());
+                }
+
                 return state.Error("Unable to retrieve notarizing currency 1");
             }
         }
