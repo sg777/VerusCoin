@@ -7319,6 +7319,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             {
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot find identity to export (" + EncodeDestination(destination) + ")");
                             }
+                            destIdentity.contentMap.clear();
+                            destIdentity.contentMultiMap.clear();
                             dest = CTransferDestination(CTransferDestination::DEST_FULLID, ::AsVector(destIdentity));
                             numHeavyOutputs++;
                         }

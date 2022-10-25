@@ -2939,6 +2939,8 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                     LogPrintf("%s: Invalid export identity or identity not found for %s\n", __func__, EncodeDestination(dest).c_str());
                     return false;
                 }
+                fullID.contentMap.clear();
+                fullID.contentMultiMap.clear();
                 lastLegDest.type = lastLegDest.DEST_FULLID;
                 lastLegDest.destination = ::AsVector(fullID);
             }
