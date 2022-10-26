@@ -4919,12 +4919,13 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
     COptCCParams p;
     CPBaaSNotarization currentNotarization;
     if (!(tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
-         p.IsValid() &&
-         (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
-         p.vData.size() &&
-         (currentNotarization = CPBaaSNotarization(p.vData[0])).IsValid() &&
-         currentNotarization.currencyState.IsValid() &&
-         currentNotarization.currencyState.GetID() == currentNotarization.currencyID))
+          p.IsValid() &&
+          (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
+          p.vData.size() &&
+          (currentNotarization = CPBaaSNotarization(p.vData[0])).IsValid() &&
+          currentNotarization.currencyState.IsValid() &&
+          currentNotarization.currencyState.GetID() == currentNotarization.currencyID &&
+          p.IsEvalPKOut()))
     {
         return state.Error("Invalid notarization output");
     }
@@ -5353,7 +5354,8 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
           p.IsValid() &&
           p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
           p.vData.size() &&
-          (currentFinalization = CObjectFinalization(p.vData[0])).IsValid()))
+          (currentFinalization = CObjectFinalization(p.vData[0])).IsValid()) &&
+          p.IsEvalPKOut())
     {
         return state.Error("Invalid finalization for notarization output");
     }

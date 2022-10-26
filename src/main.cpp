@@ -1412,7 +1412,7 @@ bool ContextualCheckTransaction(
             {
                 CCcontract_info CC;
                 CCcontract_info *cp;
-                if (!(cp = CCinit(&CC, p.evalCode)))
+                if (!((p.evalCode <= EVAL_LAST) && (cp = CCinit(&CC, p.evalCode))))
                 {
                     return state.DoS(100, error("ContextualCheckTransaction(): Invalid smart transaction eval code"), REJECT_INVALID, "bad-txns-evalcode-invalid");
                 }

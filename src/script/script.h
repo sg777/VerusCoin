@@ -475,6 +475,8 @@ public:
     std::set<CIndexID> GetIndexKeys() const;
     std::map<uint160, uint32_t> GetIndexHeightOffsets(uint32_t height) const;
     std::vector<CTxDestination> GetDestinations() const;
+
+    bool IsEvalPKOut() const;
 };
 
 // This is for STAKEGUARD2, which is versioned and enables staking the reserve of a reserve currency
