@@ -5326,6 +5326,22 @@ std::vector<CNotaryEvidence> CObjectFinalization::GetFinalizationEvidence(const 
     return evidenceVec;
 }
 
+bool PreCheckNotaryEvidence(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    // TODO: HARDENING - ensure that evidence is valid as expected
+    COptCCParams p;
+    CNotaryEvidence currentEvidence;
+    if (!(tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+          p.IsValid() &&
+          p.evalCode == EVAL_NOTARY_EVIDENCE &&
+          p.vData.size() &&
+          (currentEvidence = CNotaryEvidence(p.vData[0])).IsValid()) &&
+          p.IsEvalPKOut())
+    {
+        return state.Error("Invalid notary evidence output");
+    }
+}
+
 bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
     // ensure that if we are finalizing a notarization, we have followed all rules to do so
