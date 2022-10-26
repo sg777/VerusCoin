@@ -5340,6 +5340,7 @@ bool PreCheckNotaryEvidence(const CTransaction &tx, int32_t outNum, CValidationS
     {
         return state.Error("Invalid notary evidence output");
     }
+    return true;
 }
 
 bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
