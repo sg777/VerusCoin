@@ -409,7 +409,6 @@ CCurrencyValueMap CTransaction::GetReserveValueOut() const
             if (oneCur.second &&
                 (retVal.valueMap[oneCur.first] += oneCur.second) < 0)
             {
-                // TODO: HARDENING - confirm this is correct overflow behavior
                 printf("%s: currency value overflow total: %ld, adding: %ld - pegging to max\n", __func__, retVal.valueMap[oneCur.first], oneCur.second);
                 LogPrintf("%s: currency value overflow total: %ld, adding: %ld - pegging to max\n", __func__, retVal.valueMap[oneCur.first], oneCur.second);
                 retVal.valueMap[oneCur.first] = INT64_MAX;

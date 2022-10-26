@@ -376,6 +376,18 @@ TransactionBuilderResult TransactionBuilder::Build(bool throwTxWithPartialSig)
                 }
                 std::vector<CTxDestination> dest(1, tChangeAddr.get());
 
+                // separate any blocked currencies from non-blocked currencies into separate change outputs
+                if (keystore && keystore->GetCurrencyTrustMode() != CRating::TRUSTMODE_NORESTRICTION)
+                {
+                    CCurrencyValueMap withoutBlockedCurrencies = keystore->RemoveBlockedCurrencies(reserveChange);
+                    CCurrencyValueMap removedCurrencies = (reserveChange - withoutBlockedCurrencies);
+                    if (removedCurrencies > CCurrencyValueMap())
+                    {
+                        CTokenOutput unwantedOut(removedCurrencies);
+                        AddTransparentOutput(MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dest, 1, &unwantedOut)), 0);
+                        reserveChange = withoutBlockedCurrencies;
+                    }
+                }
 
                 // one output for all reserves, change gets combined
                 // we should separate, or remove any currency that is not whitelisted if specified after whitelist is supported
@@ -584,10 +596,13 @@ TransactionBuilderResult TransactionBuilder::Build(bool throwTxWithPartialSig)
             extern void TxToUniv(const CTransaction& tx, const uint256& hashBlock, UniValue& entry);
             TxToUniv(txNewConst, uint256(), jsonTx);
             printf("Failed to sign for script:\n%s\n", jsonTx.write(1,2).c_str());
-            if (sigdata.scriptSig.size() && throwTxWithPartialSig)
+            if (throwTxWithPartialSig)
             {
-                UpdateTransaction(mtx, nIn, sigdata);
                 throwPartialSig = true;
+                if (sigdata.scriptSig.size())
+                {
+                    UpdateTransaction(mtx, nIn, sigdata);
+                }
             }
             else
             {

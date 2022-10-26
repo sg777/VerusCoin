@@ -1462,6 +1462,23 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
                     fprintf(fp,"ac_end=%s\n", (charPtr = mapArgs["-ac_end"].c_str())[0] == 0 ? "0" : charPtr);
                     fprintf(fp,"ac_options=%s\n", (charPtr = mapArgs["-ac_options"].c_str())[0] == 0 ? "0" : charPtr);
 
+                    if (!mapArgs["-blocktime"].empty() || !mapArgs["-powaveragingwindow"].empty() || !mapArgs["-notarizationperiod"].empty())
+                    {
+                        int paramBlockTime = GetArg("-blocktime", CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET);
+                        int powAveragingWindow = GetArg("-powaveragingwindow", CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW);
+                        int notarizationPeriod = GetArg("-notarizationperiod", 
+                                                        std::max((int)(CCurrencyDefinition::DEFAULT_BLOCK_NOTARIZATION_TIME / paramBlockTime),
+                                                                 (int)CCurrencyDefinition::MIN_BLOCK_NOTARIZATION_BLOCKS));
+                        if (paramBlockTime != CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET ||
+                            powAveragingWindow != CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW ||
+                            notarizationPeriod != CCurrencyDefinition::BLOCK_NOTARIZATION_MODULO)
+                        {
+                            fprintf(fp,"blocktime=%s\n", std::to_string(paramBlockTime).c_str());
+                            fprintf(fp,"powaveragingwindow=%s\n", std::to_string(powAveragingWindow).c_str());
+                            fprintf(fp,"notarizationperiod=%s\n", std::to_string(notarizationPeriod).c_str());
+                        }
+                    }
+
                     if (GetArg("-port", 0))
                     {
                         fprintf(fp,"port=%s\n", mapArgs["-port"].c_str());
@@ -1804,7 +1821,7 @@ void komodo_args(char *argv0)
     ASSETCHAINS_LWMAPOS = 50;
     ASSETCHAINS_STAKED = 0;
 
-    bool paramsLoaded = false;
+    PARAMS_LOADED = false;
 
     CCurrencyDefinition mainVerusCurrency;
 
@@ -1947,7 +1964,7 @@ void komodo_args(char *argv0)
                     ASSETCHAINS_ISSUANCE = thisCurrency.gatewayConverterIssuance;
                     mapArgs["-ac_supply"] = to_string(ASSETCHAINS_SUPPLY);
                     mapArgs["-gatewayconverterissuance"] = to_string(ASSETCHAINS_ISSUANCE);
-                    paramsLoaded = true;
+                    PARAMS_LOADED = true;
                 }
                 catch(const std::exception& e)
                 {
@@ -2016,7 +2033,7 @@ void komodo_args(char *argv0)
 
     if ( name.size() )
     {
-        if (!paramsLoaded)
+        if (!PARAMS_LOADED)
         {
             ASSETCHAINS_ALGO = ASSETCHAINS_VERUSHASH;
 
@@ -2199,7 +2216,7 @@ void komodo_args(char *argv0)
 
         ASSETCHAINS_RPCCREDENTIALS = string(ASSETCHAINS_USERPASS);
 
-        if (!paramsLoaded)
+        if (!PARAMS_LOADED)
         {
             UniValue obj(UniValue::VOBJ);
 
@@ -2220,6 +2237,12 @@ void komodo_args(char *argv0)
                 obj.push_back(Pair("launchsystemid", GetArg("-launchsystemid","")));
                 obj.push_back(Pair("systemid", GetArg("-systemid","")));
                 obj.push_back(Pair("parent", GetArg("-parentid","")));
+
+                int paramBlockTime = GetArg("-blocktime", (int64_t)CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET);
+                obj.pushKV("blocktime", paramBlockTime);
+                obj.pushKV("powaveragingwindow", GetArg("-powaveragingwindow", (int64_t)CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW));
+                obj.pushKV("notarizationperiod", GetArg("-notarizationperiod", 
+                                                        std::max((int64_t)(CCurrencyDefinition::DEFAULT_BLOCK_NOTARIZATION_TIME / paramBlockTime), (int64_t)CCurrencyDefinition::MIN_BLOCK_NOTARIZATION_BLOCKS)));
 
                 UniValue eras(UniValue::VARR);
                 for (int i = 0; i <= ASSETCHAINS_LASTERA; i++)
@@ -2260,7 +2283,7 @@ void komodo_args(char *argv0)
             }
 
             SetThisChain(obj, nullptr);
-            paramsLoaded = true;
+            PARAMS_LOADED = true;
         }
     }
     else

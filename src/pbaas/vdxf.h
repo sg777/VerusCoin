@@ -251,6 +251,219 @@ public:
             READWRITE(data);
         }
     }
+
+    static std::string DataByteKeyName()
+    {
+        return "vrsc::data.type.byte";
+    }
+    static uint160 DataByteKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataByteKeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataInt16KeyName()
+    {
+        return "vrsc::data.type.int16";
+    }
+    static uint160 DataInt16Key()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataInt16KeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataUint16KeyName()
+    {
+        return "vrsc::data.type.uint16";
+    }
+    static uint160 DataUint16Key()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataUint16KeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataInt32KeyName()
+    {
+        return "vrsc::data.type.int32";
+    }
+    static uint160 DataInt32Key()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataInt32KeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataUint32KeyName()
+    {
+        return "vrsc::data.type.uint32";
+    }
+    static uint160 DataUint32Key()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataUint32KeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataInt64KeyName()
+    {
+        return "vrsc::data.type.int64";
+    }
+    static uint160 DataInt64Key()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataInt64KeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataUint64KeyName()
+    {
+        return "vrsc::data.type.uint64";
+    }
+    static uint160 DataUint64Key()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataUint64KeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataUint160KeyName()
+    {
+        return "vrsc::data.type.uint160";
+    }
+    static uint160 DataUint160Key()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataUint160KeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataUint256KeyName()
+    {
+        return "vrsc::data.type.uint256";
+    }
+    static uint160 DataUint256Key()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataUint256KeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataStringKeyName()
+    {
+        return "vrsc::data.type.string";
+    }
+    static uint160 DataStringKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataStringKeyName(), nameSpace);
+        return key;
+    }
+    // this is a key for a typed vector, which will have the object type key following the vector key
+    static std::string DataVectorKeyName()
+    {
+        return "vrsc::data.type.vector";
+    }
+    static uint160 DataVectorKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataVectorKeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataByteVectorKeyName()
+    {
+        return "vrsc::data.type.bytevector";
+    }
+    static uint160 DataByteVectorKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataByteVectorKeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataInt32VectorKeyName()
+    {
+        return "vrsc::data.type.int32vector";
+    }
+    static uint160 DataInt32VectorKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataInt32VectorKeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataInt64VectorKeyName()
+    {
+        return "vrsc::data.type.int64vector";
+    }
+    static uint160 DataInt64VectorKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataInt64VectorKeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataCurrencyMapKeyName()
+    {
+        return "vrsc::data.type.object.currencymap";
+    }
+    static uint160 DataCurrencyMapKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataCurrencyMapKeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataRatingsKeyName()
+    {
+        return "vrsc::data.type.object.ratings";
+    }
+    static uint160 DataRatingsKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataRatingsKeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataURLKeyName()
+    {
+        return "vrsc::data.type.object.url";
+    }
+    static uint160 DataURLKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataURLKeyName(), nameSpace);
+        return key;
+    }
+    static std::string DataTransferDestinationKeyName()
+    {
+        return "vrsc::data.type.object.transferdestination";
+    }
+    static uint160 DataTransferDestinationKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(DataTransferDestinationKeyName(), nameSpace);
+        return key;
+    }
+    static std::string TypeDefinitionKeyName()
+    {
+        return "vrsc::data.type.typedefinition";
+    }
+    static uint160 TypeDefinitionKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(TypeDefinitionKeyName(), nameSpace);
+        return key;
+    }
+    static std::string MultiMapKeyName()
+    {
+        return "vrsc::identity.multimapkey";
+    }
+    static uint160 MultiMapKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(MultiMapKeyName(), nameSpace);
+        return key;
+    }
+    static std::string ContentMultiMapRemoveKeyName()
+    {
+        return "vrsc::identity.multimapremove";
+    }
+    static uint160 ContentMultiMapRemoveKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = GetDataKey(ContentMultiMapRemoveKeyName(), nameSpace);
+        return key;
+    }
+
     static std::string ZMemoMessageKeyName()
     {
         return "vrsc::system.zmemo.message";
@@ -261,6 +474,7 @@ public:
         static uint160 memoMessageKey = GetDataKey(ZMemoMessageKeyName(), nameSpace);
         return memoMessageKey;
     }
+
     static std::string ZMemoSignatureKeyName()
     {
         return "vrsc::system.zmemo.signature";
@@ -271,6 +485,7 @@ public:
         static uint160 memoSigKey = GetDataKey(ZMemoSignatureKeyName(), nameSpace);
         return memoSigKey;
     }
+
     static std::string CurrencyStartNotarizationKeyName()
     {
         return "vrsc::system.currency.startnotarization";
@@ -281,6 +496,7 @@ public:
         static uint160 currencyStartNotarization = GetDataKey(CurrencyStartNotarizationKeyName(), nameSpace);
         return currencyStartNotarization;
     }
+
     bool IsValid()
     {
         return CVDXF::IsValid();
@@ -302,14 +518,7 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(*(CVDXF *)this);
-        if (key == STRUCTURED_DATA_KEY)
-        {
-            version = VERSION_INVALID;
-        }
-        else
-        {
-            READWRITE(data);
-        }
+        READWRITE(data);
     }
     static std::string StructuredDataKeyName()
     {
@@ -332,6 +541,7 @@ public:
             {
                 
             }
+            return true;
         }
         return false;
     }
@@ -379,10 +589,10 @@ std::string TrimSpaces(const std::string &Name);
 VDXFData DeserializeVDXFData(const std::vector<unsigned char> &sourceVector);
 std::vector<unsigned char> SerializeVDXFData(const VDXFData &vdxfData);
 
-bool uni_get_bool(UniValue uv, bool def=false);
-int32_t uni_get_int(UniValue uv, int32_t def=0);
-int64_t uni_get_int64(UniValue uv, int64_t def =0);
-std::string uni_get_str(UniValue uv, std::string def="");
-std::vector<UniValue> uni_getValues(UniValue uv, std::vector<UniValue> def=std::vector<UniValue>());
+bool uni_get_bool(const UniValue &uv, bool def=false);
+int32_t uni_get_int(const UniValue &uv, int32_t def=0);
+int64_t uni_get_int64(const UniValue &uv, int64_t def =0);
+std::string uni_get_str(const UniValue &uv, std::string def="");
+std::vector<UniValue> uni_getValues(const UniValue &uv, std::vector<UniValue> def=std::vector<UniValue>());
 
 #endif // VDXF_H

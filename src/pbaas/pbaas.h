@@ -224,9 +224,6 @@ public:
         VERSION_CURRENT = 1,
         FINAL_CONFIRMATIONS = 9,
         DEFAULT_NOTARIZATION_FEE = 10000,               // price of a notarization fee in native or launch system currency
-        BLOCK_NOTARIZATION_MODULO = 10,                 // incentive to earn one valid notarization during this many blocks
-        MIN_BLOCKS_BEFORE_NOTARY_FINALIZED = 15,        // 15 blocks must go by before notary signatures or confirming evidence can be provided
-        MAX_NOTARIZATION_CONVERSION_PRICING_INTERVAL = 100,  // there must be a notarization with conversion at least 100 blocks before reserve transfer
         MAX_NODES = 2,                                  // only provide 2 nodes per notarization
         MIN_NOTARIZATION_OUTPUT = 0,                    // minimum amount for notarization output
     };
@@ -528,14 +525,6 @@ public:
                                              uint32_t nHeight,
                                              bool &finalized);
 
-    bool IsNotarizationConfirmed(const CPBaaSNotarization &notarization,
-                                 const CNotaryEvidence &notaryEvidence,
-                                 CValidationState &state) const;
-
-    bool IsNotarizationRejected(const CPBaaSNotarization &notarization,
-                                const CNotaryEvidence &notaryEvidence,
-                                CValidationState &state) const;
-
     static std::vector<uint256> SubmitFinalizedNotarizations(const CRPCChainData &externalSystem,
                                                              CValidationState &state);
 
@@ -821,6 +810,8 @@ public:
     void AggregateChainTransfers(const CTransferDestination &feeRecipient, uint32_t nHeight);
     CCurrencyDefinition GetCachedCurrency(const uint160 &currencyID);
     std::string GetFriendlyCurrencyName(const uint160 &currencyID);
+    std::string GetFriendlyIdentityName(const CIdentity &identity);
+    std::string GetFriendlyIdentityName(const std::string &name, const uint160 &parentCurrencyID);
     CCurrencyDefinition UpdateCachedCurrency(const CCurrencyDefinition &currentCurrency, uint32_t height);
 
     bool GetLastImport(const uint160 &currencyID, 
@@ -833,11 +824,11 @@ public:
 
     bool GetUnspentSystemExports(const CCoinsViewCache &view,
                                  const uint160 systemID, 
-                                 std::vector<pair<int, CInputDescriptor>> &exportOutputs);
+                                 std::vector<std::pair<int, CInputDescriptor>> &exportOutputs);
 
     bool GetUnspentCurrencyExports(const CCoinsViewCache &view,
                                    const uint160 currencyID, 
-                                   std::vector<pair<int, CInputDescriptor>> &exportOutputs);
+                                   std::vector<std::pair<int, CInputDescriptor>> &exportOutputs);
 
     // get the exports to a specific system on this chain from a specific height up to a specific height
     bool GetSystemExports(const uint160 &systemID,                                 // transactions exported to system
@@ -977,7 +968,15 @@ public:
                                                    const CCoinbaseCurrencyState &currencyState,
                                                    int32_t fromHeight,
                                                    int32_t height,
-                                                   int32_t curDefHeight);
+                                                   int32_t curDefHeight,
+                                                   const std::vector<CReserveTransfer> &extraConversions=std::vector<CReserveTransfer>());
+
+    CCoinbaseCurrencyState AddPendingConversions(CCurrencyDefinition &curDef,
+                                                 const CPBaaSNotarization &currencyState,
+                                                 int32_t fromHeight,
+                                                 int32_t height,
+                                                 int32_t curDefHeight,
+                                                 const std::vector<CReserveTransfer> &extraConversions=std::vector<CReserveTransfer>());
 
     CCoinbaseCurrencyState GetCurrencyState(int32_t height);                                // gets this chain's native currency state by block height
     CCoinbaseCurrencyState GetCurrencyState(CCurrencyDefinition &curDef, int32_t height, int32_t curDefHeight=0); // gets currency state

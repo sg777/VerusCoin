@@ -70,7 +70,8 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
         (nSolVersion < CActivationHeight::ACTIVATE_VERUSVAULT && (newIdentity.IsLocked() || newIdentity.nVersion >= VERSION_VAULT)) ||
         (nSolVersion >= CActivationHeight::ACTIVATE_VERUSVAULT && (newIdentity.nVersion < VERSION_VAULT ||
                                                                   (newIdentity.systemID != (nVersion < VERSION_VAULT ? parent : systemID)))) ||
-        (nSolVersion < CActivationHeight::ACTIVATE_PBAAS && (newIdentity.HasActiveCurrency() || newIdentity.nVersion >= VERSION_PBAAS)) ||
+        (nSolVersion < CActivationHeight::ACTIVATE_PBAAS &&
+         (newIdentity.HasActiveCurrency() || newIdentity.contentMultiMap.size() || newIdentity.nVersion >= VERSION_PBAAS)) ||
         (nSolVersion >= CActivationHeight::ACTIVATE_PBAAS && (newIdentity.nVersion < VERSION_PBAAS)) ||
         GetID() != newIdentity.GetID() ||
         ((newIdentity.flags & ~FLAG_REVOKED) && newIdentity.nVersion < VERSION_VAULT) ||
@@ -2152,7 +2153,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                     // fulfill signature requirements. if we only have one signature, and
                     // it is from the publicly available key, ValidateIdentityRecover will
                     // consider the signature unfulfilled
-                    if ((PBAAS_TESTMODE && (!(IsVerusActive() || ConnectedChains.ThisChain().name == "Gravity") || height >= TESTNET_FORK_HEIGHT)) && identity.HasTokenizedControl())
+                    if (isPBaaS && identity.HasTokenizedControl())
                     {
                         if (!(oneP.m == 1 && oneP.n >= oneP.m))
                         {
@@ -2448,8 +2449,6 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
     }
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
 
-    bool currencySigEnforcement = PBAAS_TESTMODE && (!(IsVerusActive() || ConnectedChains.ThisChain().name == "Gravity") || height >= TESTNET_FORK_HEIGHT);
-
     bool advancedIdentity = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
 
     int idIndex;
@@ -2558,11 +2557,6 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
     {
         sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p);
 
-        if (currencySigEnforcement && (oldIdentity.IsRevocation(newIdentity) || oldIdentity.IsRevocationMutation(newIdentity, height)))
-        {
-            return eval->Error("Unauthorized modification of revocation information");
-        }
-
         for (int i = 1; i < p.vData.size() - 1; i++)
         {
             COptCCParams oneP(p.vData[i]);
@@ -2601,8 +2595,6 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
     }
     uint32_t height = chainActive.LastTip()->GetHeight() + 1;
 
-    bool currencySigEnforcement = PBAAS_TESTMODE && (!(IsVerusActive() || ConnectedChains.ThisChain().name == "Gravity") || height >= TESTNET_FORK_HEIGHT);
-
     bool advancedIdentity = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
 
     int idIndex;
@@ -2633,12 +2625,9 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
 
     // before we start conditioning decisions on fulfilled status,
     // check to see if it has been fulfilled by using a control token/NFT
-    if (!fulfilled)
+    if (!fulfilled && !oldIdentity.HasActiveCurrency() && newIdentity.HasActiveCurrency())
     {
-        if (currencySigEnforcement && (!oldIdentity.HasActiveCurrency() && newIdentity.HasActiveCurrency()))
-        {
-            return eval->Error("Missing recovery signature. All authorities must sign for currency or token definition");
-        }
+        return eval->Error("Missing recovery signature. All authorities must sign for currency or token definition");
     }
 
     if (oldIdentity.HasTokenizedControl())

@@ -184,17 +184,17 @@ uint160 GetConditionID(uint160 cid, int32_t condition)
     return Hash160(chainHash.begin(), chainHash.end());
 }
 
-uint160 CTransferDestination::CurrencyExportKeyToSystem(const uint160 &exportToSystemID)
+uint160 CTransferDestination::CurrencyDefinitionExportKeyToSystem(const uint160 &exportToSystemID)
 {
-    return CCrossChainRPCData::GetConditionID(UnboundCurrencyExportKey(), exportToSystemID);
+    return CCrossChainRPCData::GetConditionID(UnboundCurrencyDefinitionExportKey(), exportToSystemID);
 }
 
-uint160 CTransferDestination::GetBoundCurrencyExportKey(const uint160 &exportToSystemID, const uint160 &curToExportID)
+uint160 CTransferDestination::GetBoundCurrencyDefinitionExportKey(const uint160 &exportToSystemID, const uint160 &curToExportID)
 {
-    return CCrossChainRPCData::GetConditionID(CurrencyExportKeyToSystem(exportToSystemID), curToExportID);;
+    return CCrossChainRPCData::GetConditionID(CurrencyDefinitionExportKeyToSystem(exportToSystemID), curToExportID);;
 }
 
-uint160 CTransferDestination::GetBoundCurrencyExportKey(const uint160 &exportToSystemID) const
+uint160 CTransferDestination::GetBoundCurrencyDefinitionExportKey(const uint160 &exportToSystemID) const
 {
     uint160 retVal;
     if (TypeNoFlags() == DEST_REGISTERCURRENCY)
@@ -202,7 +202,7 @@ uint160 CTransferDestination::GetBoundCurrencyExportKey(const uint160 &exportToS
         CCurrencyDefinition curDef(destination);
         if (curDef.IsValid())
         {
-            retVal = CCrossChainRPCData::GetConditionID(CurrencyExportKeyToSystem(exportToSystemID), curDef.GetID());
+            retVal = CCrossChainRPCData::GetConditionID(CurrencyDefinitionExportKeyToSystem(exportToSystemID), curDef.GetID());
         }
     }
     return retVal;
@@ -628,15 +628,9 @@ bool CScript::IsInstantSpend() const
     COptCCParams p;
     bool isInstantSpend = false;
 
-    // TODO: HARDENING - this must run on the Verus chain, but should have a version check and parameter
-    //
-    // before we remove the exclusion for mainnet, make sure that all smart transaction types below cannot
-    // release value from the protocol until at least the finalization of this chain's notarizations
-    // 
-    if (!_IsVerusMainnetActive() && IsPayToCryptoCondition(p) && p.IsValid())
+    if (IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
     {
-        // instant spends must be to expected instant spend crypto conditions and to the right address as well
-        // TODO: fix this check
+        // instant spends can be spent from a coinbase before block maturity, but cannot carry any currency value
         if (p.evalCode == EVAL_EARNEDNOTARIZATION || 
             p.evalCode == EVAL_FINALIZE_NOTARIZATION || 
             p.evalCode == EVAL_FINALIZE_EXPORT || 
@@ -655,8 +649,6 @@ bool CScript::IsInstantSpendOrUnspendable() const
     bool isInstantSpend = false;
     if (IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
     {
-        // instant spends must be to expected instant spend crypto conditions and to the right address as well
-        // TODO: fix this check
         if (p.evalCode == EVAL_EARNEDNOTARIZATION || 
             p.evalCode == EVAL_FINALIZE_NOTARIZATION || 
             p.evalCode == EVAL_CROSSCHAIN_IMPORT ||
@@ -769,9 +761,7 @@ bool CScript::IsSpendableOutputType() const
     {
         return IsSpendableOutputType(p);
     }
-    // default for non-CC outputs is true, this is to protect from accidentally spending specific CC output types, 
-    // even though they could be spent
-    return true;
+    return !IsOpReturn();
 }
 
 CCurrencyValueMap CReserveTransfer::TotalCurrencyOut() const
@@ -857,14 +847,6 @@ CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p, bool spendableOnly) 
                 if (ch.IsValid())
                 {
                     retVal = ch.reserveValues;
-
-                    // TODO: HARDENING - once Verus Vault activates on mainnet, support currencies and remove this if statement just below
-                    // until PBaaS, we should have no valid currency outputs on mainnet
-                    if (_IsVerusMainnetActive() && retVal.valueMap.size())
-                    {
-                        LogPrintf("%s: invalid identity commitment output detected\n", __func__);
-                        printf("%s: invalid identity commitment output detected\n", __func__);
-                    }
                 }
             }
         }
@@ -1298,8 +1280,8 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 !rt.destSystemID.IsNull() &&
                 rt.destination.TypeNoFlags() == rt.destination.DEST_REGISTERCURRENCY)
             {
-                destinations.insert(rt.destination.CurrencyExportKeyToSystem(rt.destSystemID));
-                destinations.insert(rt.destination.GetBoundCurrencyExportKey(rt.destSystemID));
+                destinations.insert(rt.destination.CurrencyDefinitionExportKeyToSystem(rt.destSystemID));
+                destinations.insert(rt.destination.GetBoundCurrencyDefinitionExportKey(rt.destSystemID));
             }
             break;
         }
@@ -1333,8 +1315,8 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                             {
                                 // store the unbound and bound currency export index
                                 // for each currency
-                                destinations.insert(CTransferDestination::GetBoundCurrencyExportKey(ccx.sourceSystemID, oneRT.FirstCurrency()));
-                                destinations.insert(CTransferDestination::CurrencyExportKeyToSystem(ccx.sourceSystemID));
+                                destinations.insert(CTransferDestination::GetBoundCurrencyDefinitionExportKey(ccx.sourceSystemID, oneRT.FirstCurrency()));
+                                destinations.insert(CTransferDestination::CurrencyDefinitionExportKeyToSystem(ccx.sourceSystemID));
                             }
                         }
                     }
@@ -1381,17 +1363,58 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             if (vData.size() && (identity = CIdentity(vData[0])).IsValid())
             {
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(identity.GetID(), evalCode)));
-            }
-            // if we are maintaining an ID index, add keys for primary addresses, revocation, and recovery
-            extern bool fIdIndex;
-            if (fIdIndex)
-            {
-                for (auto &oneDest : identity.primaryAddresses)
+
+                // index content multimap entries. also index type definitions separately for direct, non-scoped queries
+                for (auto defIT = identity.contentMultiMap.begin(); defIT != identity.contentMultiMap.end(); defIT++)
                 {
-                    destinations.insert(identity.IdentityPrimaryAddressKey(oneDest));
+                    destinations.insert(CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(defIT->first, identity.GetID())));
+                    if (defIT->first == CVDXF_Data::TypeDefinitionKey())
+                    {
+                        CDataStream ss(defIT->second, SER_DISK, PROTOCOL_VERSION);
+                        std::string typeDefKeyName;
+                        try
+                        {
+                            uint32_t Version;
+                            uint32_t Size;
+                            ss >> VARINT(Version);
+                            ss >> VARINT(Size);
+                            if (Version == 1 && Size == ss.size())
+                            {
+                                ss >> LIMITED_STRING(typeDefKeyName, MAX_SCRIPT_ELEMENT_SIZE_IDENTITY);
+                                if (typeDefKeyName.size() > Size - 1)
+                                {
+                                    typeDefKeyName.clear();
+                                }
+                            }
+                        }
+                        catch (...)
+                        {
+                            typeDefKeyName.clear();
+                        }
+                        uint160 nameSpace = identity.GetID();
+                        if (typeDefKeyName.size())
+                        {
+                            uint160 newTypeKey = CVDXF::GetDataKey(typeDefKeyName, nameSpace);
+                            if (!newTypeKey.IsNull() &&
+                                nameSpace == identity.GetID())
+                            {
+                                destinations.insert(CCrossChainRPCData::GetConditionID(CVDXF_Data::TypeDefinitionKey(), newTypeKey));
+                            }
+                        }
+                    }
                 }
-                destinations.insert(identity.IdentityRecoveryKey());
-                destinations.insert(identity.IdentityRevocationKey());
+
+                // if we are maintaining an ID index, add keys for primary addresses, revocation, and recovery
+                extern bool fIdIndex;
+                if (fIdIndex)
+                {
+                    for (auto &oneDest : identity.primaryAddresses)
+                    {
+                        destinations.insert(identity.IdentityPrimaryAddressKey(oneDest));
+                    }
+                    destinations.insert(identity.IdentityRecoveryKey());
+                    destinations.insert(identity.IdentityRevocationKey());
+                }
             }
             break;
         }
@@ -1554,10 +1577,6 @@ CAmount AmountFromValueNoErr(const UniValue& value)
             amount = 0;
         }
         else if (!ParseFixedPoint(value.getValStr(), 8, &amount))
-        {
-            amount = 0;
-        }
-        else if (!MoneyRange(amount))
         {
             amount = 0;
         }

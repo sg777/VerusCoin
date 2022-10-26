@@ -499,7 +499,7 @@ public:
 
     static std::string ReserveDepositKeyName()
     {
-        return "vrsc::system.currency.reservetransfer";
+        return "vrsc::system.currency.reservedeposit";
     }
 
     static uint160 ReserveDepositKey()
@@ -941,18 +941,17 @@ public:
     uint256 hashReserveTransfers;               // hash of complete reserve transfer list in order of (txinputs, m=0, m=1, ..., m=(n-1))
     uint160 destSystemID;                       // exported to target blockchain or system
     uint160 destCurrencyID;                     // exported to target currency
-    uint32_t sourceHeightStart;                 // exporting all items to the destination from source system height...
-    uint32_t sourceHeightEnd;                   // to height, inclusive of end, last before start block from launch chain is needed to start a currency
-    int32_t numInputs;                          // total number of inputs aggregated for validation
-    CCurrencyValueMap totalAmounts;             // total amount exported of each currency, including fees
-    CCurrencyValueMap totalFees;                // total fees in all currencies to split between this export and import
-    CCurrencyValueMap totalBurned;              // if this is a cross chain export, some currencies will be burned, the rest held in deposits
-
-    // TODO: HARDENING - on next testnet reset, put exporter right above the currency maps with totalFees as the first map after that
-    // also ensure that only valid destination system fee currencies can be used for destination - do this in prechecks
     CTransferDestination exporter;              // typically the exporting miner or staker's address, to accept deferred payment for the export
 
     int32_t firstInput;                         // if export is from inputs, on chain of reserveTransfers, this is first input, -1 for cross-chain
+    int32_t numInputs;                          // total number of inputs aggregated for validation
+
+    uint32_t sourceHeightStart;                 // exporting all items to the destination from source system height...
+    uint32_t sourceHeightEnd;                   // to height, inclusive of end, last before start block from launch chain is needed to start a currency
+
+    CCurrencyValueMap totalFees;                // total fees in all currencies to split between this export and import
+    CCurrencyValueMap totalAmounts;             // total amount exported of each currency, including fees
+    CCurrencyValueMap totalBurned;              // if this is a cross chain export, some currencies will be burned, the rest held in deposits
     std::vector<CReserveTransfer> reserveTransfers; // reserve transfers for this export, can be split across multiple outputs
 
     CCrossChainExport() : nVersion(VERSION_INVALID), flags(0), sourceHeightStart(0), sourceHeightEnd(0), numInputs(0), firstInput(0) {}
@@ -1009,14 +1008,14 @@ public:
             READWRITE(hashReserveTransfers);
             READWRITE(destSystemID);
             READWRITE(destCurrencyID);
-            READWRITE(VARINT(sourceHeightStart));
-            READWRITE(VARINT(sourceHeightEnd));
-            READWRITE(numInputs);
-            READWRITE(totalAmounts);
-            READWRITE(totalFees);
-            READWRITE(totalBurned);
             READWRITE(exporter);
             READWRITE(firstInput);
+            READWRITE(numInputs);
+            READWRITE(VARINT(sourceHeightStart));
+            READWRITE(VARINT(sourceHeightEnd));
+            READWRITE(totalFees);
+            READWRITE(totalAmounts);
+            READWRITE(totalBurned);
         }
         READWRITE(reserveTransfers);
     }
@@ -1739,6 +1738,8 @@ public:
     bool IsFillOrKill() const { return flags & IS_FILLORKILL; }
     bool IsFillOrKillFail() const { return flags & IS_FILLORKILLFAIL; }
     bool IsIdentity() const { return flags & IS_IDENTITY; }
+    bool IsImport() const { return flags & IS_IMPORT; }
+    bool IsExport() const { return flags & IS_EXPORT; }
     bool IsCurrencyDefinition() const { return flags & IS_CURRENCY_DEFINITION; }
     bool IsNotaryPrioritized() const { return flags & IS_CHAIN_NOTARIZATION; }
     bool IsIdentityDefinition() const { return flags & IS_IDENTITY_DEFINITION; }

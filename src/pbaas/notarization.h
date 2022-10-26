@@ -193,12 +193,8 @@ public:
     std::vector<CNotaryEvidence> GetFinalizationEvidence(const CTransaction &thisTx, CValidationState &state, CTransaction *pOutputTx=nullptr) const;
 
     // Sign the output object with an ID or signing authority of the ID from the wallet.
-    CNotaryEvidence SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EProofProtocol hashType) const;
-    CNotaryEvidence SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EProofProtocol hashType) const;
-
-    // Verify that the output object is signed with an ID or signing authority of the ID from the wallet.
-    CIdentitySignature::ESignatureVerification VerifyOutputSignature(const CTransaction &initialTx, const std::vector<CNotarySignature> &signatureVec, const COptCCParams &p, uint32_t height) const;
-    CIdentitySignature::ESignatureVerification VerifyOutputSignature(const CTransaction &initialTx, const std::vector<CNotarySignature> &signatureVec, uint32_t height) const;
+    CNotaryEvidence SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EHashTypes hashType) const;
+    CNotaryEvidence SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EHashTypes hashType) const;
 
     static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentConfirmedFinalizations(const uint160 &currencyID);
     static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentPendingFinalizations(const uint160 &currencyID);
@@ -333,7 +329,7 @@ public:
         ::FromVector(vch, *this);
     }
 
-    CChainNotarizationData(UniValue &obj);
+    CChainNotarizationData(UniValue &obj, bool loadNotarizations=false);
 
     ADD_SERIALIZE_METHODS;
 

@@ -352,21 +352,21 @@ public:
         return "{\"contract\":\"0x" + HexBytes(ethContractID.begin(), ethContractID.size()) + "\", \"tokenid\":\"0x" + HexBytes(tokenID.begin(), tokenID.size()) + "\"}";
     }
 
-    static std::string CurrencyExportKeyName()
+    static std::string CurrencyDefinitionExportKeyName()
     {
-        return "vrsc::system.currency.export";
+        return "vrsc::system.currency.definitionexport";
     }
 
-    static uint160 UnboundCurrencyExportKey()
+    static uint160 UnboundCurrencyDefinitionExportKey()
     {
         static uint160 nameSpace;
-        static uint160 exportKey = CVDXF::GetDataKey(CurrencyExportKeyName(), nameSpace);
+        static uint160 exportKey = CVDXF::GetDataKey(CurrencyDefinitionExportKeyName(), nameSpace);
         return exportKey;
     }
 
-    static uint160 CurrencyExportKeyToSystem(const uint160 &exportToSystemID);
-    static uint160 GetBoundCurrencyExportKey(const uint160 &exportToSystemID, const uint160 &curToExportID);
-    uint160 GetBoundCurrencyExportKey(const uint160 &exportToSystemID) const;
+    static uint160 CurrencyDefinitionExportKeyToSystem(const uint160 &exportToSystemID);
+    static uint160 GetBoundCurrencyDefinitionExportKey(const uint160 &exportToSystemID, const uint160 &curToExportID);
+    uint160 GetBoundCurrencyDefinitionExportKey(const uint160 &exportToSystemID) const;
 
     UniValue ToUniValue() const;
 };
@@ -446,20 +446,21 @@ public:
     enum ELimitsDefaults
     {
         // TODO: HARDENING - reconcile all core fees, including for z-transactions, imports, identities, etc.
-        TRANSACTION_CROSSCHAIN_FEE = 2000000, // 0.02 destination currency per cross chain transfer total, chain's accept notary currency or have converter
-        TRANSACTION_TRANSFER_FEE = 20000,   // 0.0002 per same chain transfer total, chain's accept notary currency or have converter
-        CURRENCY_REGISTRATION_FEE = 20000000000, // default 100 to register a currency
-        PBAAS_SYSTEM_LAUNCH_FEE = 1000000000000, // default 10000 to register and launch a PBaaS chain
-        CURRENCY_IMPORT_FEE = 10000000000,  // default 100 to import a currency
-        IDENTITY_REGISTRATION_FEE = 10000000000, // 100 to register an identity
-        IDENTITY_IMPORT_FEE = 2000000,      // 0.02 in native currency to import an identity
-        MIN_RESERVE_CONTRIBUTION = 1000000, // 0.01 minimum per reserve contribution minimum
-        MIN_BILLING_PERIOD = 960,           // 16 hour minimum billing period for notarization, typically expect days/weeks/months
-        MIN_CURRENCY_LIFE = 480,            // 8 hour minimum lifetime, which gives 8 hours of minimum billing to notarize conclusion
-        DEFAULT_OUTPUT_VALUE = 0,           // 0 VRSC default output value
+        TRANSACTION_CROSSCHAIN_FEE = 2000000,       // 0.02 destination currency per cross chain transfer, chain's accept notary currency or have converter
+        TRANSACTION_TRANSFER_FEE = 20000,           // 0.0002 per same chain transfer total, chain's accept notary currency or have converter
+        CURRENCY_REGISTRATION_FEE = 20000000000,    // default 200 to register a currency, except tokenizing ID control
+        PBAAS_SYSTEM_LAUNCH_FEE = 1000000000000,    // default 10000 to register and launch a PBaaS chain
+        CURRENCY_IMPORT_FEE = 10000000000,          // default 100 to import a currency
+        IDENTITY_REGISTRATION_FEE = 10000000000,    // 100 full price to register an identity
+        IDENTITY_IMPORT_FEE = 2000000,              // 0.02 in native currency to import an identity
+        EXTRA_Z_OUTPUT_FEE = (TRANSACTION_TRANSFER_FEE >> 1), // 2 or more z-outputs accompanied by t-outputs on a transaction
+        MIN_CURRENCY_LIFE = 480,                    // 8 hour minimum lifetime, which gives 8 hours of minimum billing to notarize conclusion
+        DEFAULT_OUTPUT_VALUE = 0,                   // 0 VRSC default output value
         DEFAULT_ID_REFERRAL_LEVELS = 3,
         MAX_ID_REFERRAL_LEVELS = 5,
         MAX_NAME_LEN = 64,
+        MAX_RESERVE_CURRENCIES = 10,
+        MIN_RESERVE_RATIO = 5000000,
         MAX_STARTUP_NODES = 5,
         DEFAULT_START_TARGET = 0x1e01e1e1,
         MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 20,
@@ -467,7 +468,13 @@ public:
         MAX_TRANSFER_EXPORTS_PER_BLOCK = 200,
         MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 1,
         MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK = 0,
-        MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK = 50
+        MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK = 50,
+        DEFAULT_BLOCK_NOTARIZATION_TIME = 600,      // default target time for block notarizations
+        MIN_BLOCK_NOTARIZATION_BLOCKS = 2,          // minimum target blocks for notarization period
+        MAX_NOTARIZATION_CONVERSION_PRICING_INTERVAL = 100,  // there must be a notarization with conversion at least 100 blocks before reserve transfer
+        DEFAULT_BLOCKTIME_TARGET = 60,              // default block time target for difficulty adjustment, in seconds
+        DEFAULT_AVERAGING_WINDOW = 45,              // default target spacing (blocks) for difficulty adjustment
+        BLOCK_NOTARIZATION_MODULO = (DEFAULT_BLOCK_NOTARIZATION_TIME / DEFAULT_BLOCKTIME_TARGET) // default min notarization spacing (10 minutes)
     };
 
     enum ECurrencyOptions
@@ -505,6 +512,17 @@ public:
         PROOF_ETHNOTARIZATION = 3,          // proven by Ethereum notarization
         PROOF_LASTPROTOCOL = 3,
         PROOF_KOMODONOTARIZATION = 4        // Komodo protocol is not valid until someone from Komodo finishes it
+    };
+
+    enum EHashTypes
+    {
+        HASH_INVALID = 0,
+        HASH_BLAKE2BMMR = 1,
+        HASH_BLAKE2BMMR2 = 2,
+        HASH_KECCAK = 3,
+        HASH_SHA256D = 4,
+        HASH_SHA256 = 5,
+        HASH_LASTTYPE = 5
     };
 
     enum EQueryOptions
@@ -561,6 +579,8 @@ public:
     // notaries, if present on a gateway or PBaaS chain, have the power to finalize notarizations on either blockchain. notarizations can be 
     // used as anchors to prove transactions on other currency systems that may import/export tokens, IDs or other things from other networks
     std::vector<uint160> notaries;          // a list of notary IDs, which if present, are the only identities capable of confirming notarizations
+
+    // TODO: HARDENING - make sure this is at least a majority to be valid & avoid forks
     int32_t minNotariesConfirm;             // requires this many unique notaries to confirm a notarization
 
     // costs to register and import IDs
@@ -582,6 +602,11 @@ public:
     // people can participate in to have access to the currency itself. pre-mine to a NULL address
     // puts it into the initial gateway currency reserves.
     uint32_t initialBits;                   // initial starting difficulty
+
+    uint32_t blockTime;                     // block time target in seconds between blocks
+    uint32_t powAveragingWindow;            // averaging window in number of blocks for DAA
+    uint16_t blockNotarizationModulo;       // periodicity of notarizations that can finalize against the notary chain
+
     std::vector<int64_t> rewards;           // initial reward in each of native coin, if this is a reserve the number represents percentage of supply w/satoshis
     std::vector<int64_t> rewardsDecay;      // decay of rewards at halvings during the era
     std::vector<int32_t> halving;           // number of blocks between halvings
@@ -607,7 +632,10 @@ public:
                             currencyImportFee(CURRENCY_IMPORT_FEE),
                             transactionImportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
                             transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
-                            initialBits(DEFAULT_START_TARGET)
+                            initialBits(DEFAULT_START_TARGET),
+                            blockTime(DEFAULT_BLOCKTIME_TARGET),
+                            powAveragingWindow(DEFAULT_AVERAGING_WINDOW),
+                            blockNotarizationModulo(BLOCK_NOTARIZATION_MODULO)
     {}
 
     CCurrencyDefinition(const UniValue &obj);
@@ -636,6 +664,9 @@ public:
                         int64_t CurrencyImportFee=CURRENCY_IMPORT_FEE, int64_t IDRegistrationAmount=IDENTITY_REGISTRATION_FEE, 
                         int32_t IDReferralLevels=DEFAULT_ID_REFERRAL_LEVELS, int64_t IDImportFee=IDENTITY_IMPORT_FEE,
                         uint32_t InitialBits=DEFAULT_START_TARGET,
+                        uint32_t BlockTime=DEFAULT_BLOCKTIME_TARGET,
+                        uint32_t PowAveragingWindow=DEFAULT_AVERAGING_WINDOW,
+                        uint32_t BlockNotarizationModulo=BLOCK_NOTARIZATION_MODULO,
                         uint32_t Version=VERSION_CURRENT) :
                         nVersion(Version),
                         options(Options),
@@ -672,6 +703,9 @@ public:
                         transactionImportFee(TransactionTransferFee >> 1),
                         transactionExportFee(TransactionTransferFee >> 1),
                         initialBits(InitialBits),
+                        blockTime(BlockTime),
+                        powAveragingWindow(PowAveragingWindow),
+                        blockNotarizationModulo(BlockNotarizationModulo),
                         rewards(chainRewards),
                         rewardsDecay(chainRewardsDecay),
                         halving(chainHalving),
@@ -735,6 +769,9 @@ public:
             if (IsPBaaSChain())
             {
                 READWRITE(initialBits);
+                READWRITE(blockTime);
+                READWRITE(powAveragingWindow);
+                READWRITE(blockNotarizationModulo);
                 READWRITE(rewards);
                 READWRITE(rewardsDecay);
                 READWRITE(halving);
@@ -800,6 +837,12 @@ public:
         {
             return minNotariesConfirm;
         }
+    }
+
+    // minimum blocks to notarize 1.5 x notarization period
+    int32_t GetMinBlocksToNotarize() const
+    {
+        return blockNotarizationModulo + (blockNotarizationModulo >> 1);
     }
 
     uint160 GatewayConverterID() const
@@ -1214,32 +1257,32 @@ public:
     std::set<std::vector<unsigned char>> signatures;
 
     CIdentitySignature(const UniValue &uni);
-    CIdentitySignature(CCurrencyDefinition::EProofProtocol hType=CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR, uint8_t ver=VERSION_DEFAULT) : 
+    CIdentitySignature(CCurrencyDefinition::EHashTypes hType=CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR, uint8_t ver=VERSION_DEFAULT) : 
         version(ver), hashType(hType), blockHeight(0)
     {
         if (IsValidHashType(hType) &&
-            hType != CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR)
+            hType != CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR)
         {
             version = VERSION_ETHBRIDGE;
         }
     }
 
     CIdentitySignature(uint32_t height, const std::vector<unsigned char> &oneSig,
-        CCurrencyDefinition::EProofProtocol hType=CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR, uint8_t ver=VERSION_DEFAULT) : 
+        CCurrencyDefinition::EHashTypes hType=CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR, uint8_t ver=VERSION_DEFAULT) : 
         version(ver), hashType(hType), blockHeight(height), signatures({oneSig})
     {
         if (IsValidHashType(hType) &&
-            hType != CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR)
+            hType != CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR)
         {
             version = VERSION_ETHBRIDGE;
         }
     }
     CIdentitySignature(uint32_t height, const std::set<std::vector<unsigned char>> &sigs,
-        CCurrencyDefinition::EProofProtocol hType=CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR, uint8_t ver=VERSION_DEFAULT) : 
+        CCurrencyDefinition::EHashTypes hType=CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR, uint8_t ver=VERSION_DEFAULT) : 
         version(ver), hashType(hType), blockHeight(height), signatures(sigs)
     {
         if (IsValidHashType(hType) &&
-            hType != CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR)
+            hType != CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR)
         {
             version = VERSION_ETHBRIDGE;
         }
@@ -1261,7 +1304,7 @@ public:
             }
             else
             {
-                hashType = CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR;
+                hashType = CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR;
             }
             READWRITE(blockHeight);
             std::vector<std::vector<unsigned char>> sigs;
@@ -1288,9 +1331,9 @@ public:
 
     ADD_SERIALIZE_METHODS;
 
-    static bool IsValidHashType(CCurrencyDefinition::EProofProtocol hashType)
+    static bool IsValidHashType(CCurrencyDefinition::EHashTypes hashType)
     {
-        return (hashType == CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR || hashType == CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
+        return (hashType > CCurrencyDefinition::EHashTypes::HASH_INVALID && hashType <= CCurrencyDefinition::EHashTypes::HASH_LASTTYPE);
     }
 
     void AddSignature(const std::vector<unsigned char> &signature)
@@ -1310,16 +1353,18 @@ public:
         return signatureKey;
     }
 
-    uint256 IdentitySignatureHash(const std::vector<uint160> &vdxfCodes, 
+    uint256 IdentitySignatureHash(const std::vector<uint160> &vdxfCodes,
+                                  const std::vector<std::string> &vdxfCodeNames,
                                   const std::vector<uint256> &statements, 
                                   const uint160 &systemID, 
                                   uint32_t blockHeight, 
-                                  uint160 signingID,
+                                  const uint160 &signingID,
                                   const std::string &prefixString, 
                                   const uint256 &msgHash) const;
 
     ESignatureVerification NewSignature(const CIdentity &signingID,
-                                        const std::vector<uint160> &vdxfCodes, 
+                                        const std::vector<uint160> &vdxfCodes,
+                                        const std::vector<std::string> &vdxfCodeNames,
                                         const std::vector<uint256> &statements, 
                                         const uint160 &systemID, 
                                         uint32_t height,
@@ -1328,7 +1373,8 @@ public:
                                         const CKeyStore *pWallet=nullptr);
 
     ESignatureVerification AddSignature(const CIdentity &signingID,
-                                        const std::vector<uint160> &vdxfCodes, 
+                                        const std::vector<uint160> &vdxfCodes,
+                                        const std::vector<std::string> &vdxfCodeNames,
                                         const std::vector<uint256> &statements, 
                                         const uint160 &systemID, 
                                         uint32_t blockHeight,
@@ -1337,7 +1383,8 @@ public:
                                         const CKeyStore *pWallet=nullptr);
 
     ESignatureVerification CheckSignature(const CIdentity &signingID,
-                                          const std::vector<uint160> &vdxfCodes, 
+                                          const std::vector<uint160> &vdxfCodes,
+                                          const std::vector<std::string> &vdxfCodeNames,
                                           const std::vector<uint256> &statements, 
                                           const uint160 systemID, 
                                           const std::string &prefixString, 
@@ -1349,10 +1396,41 @@ public:
         return version;
     }
 
+    static const std::map<std::string, CCurrencyDefinition::EHashTypes> &HashTypeStringMap();
+
     UniValue ToUniValue() const
     {
         UniValue retObj(UniValue::VOBJ);
         retObj.push_back(Pair("version", version));
+        retObj.push_back(Pair("blockheight", (int64_t)blockHeight));
+        switch (hashType)
+        {
+            case CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR:
+            case CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR2:
+            {
+                retObj.push_back(Pair("hashtype", "blake2b"));
+                break;
+            }
+            case CCurrencyDefinition::EHashTypes::HASH_SHA256:
+            {
+                retObj.push_back(Pair("hashtype", "sha256"));
+                break;
+            }
+            case CCurrencyDefinition::EHashTypes::HASH_KECCAK:
+            {
+                retObj.push_back(Pair("hashtype", "keccak"));
+                break;
+            }
+            case CCurrencyDefinition::EHashTypes::HASH_SHA256D:
+            {
+                retObj.push_back(Pair("hashtype", "sha256D"));
+                break;
+            }
+            default:
+            {
+                retObj.push_back(Pair("hashtype", "unknown"));
+            }
+        }
         retObj.push_back(Pair("blockheight", (int64_t)blockHeight));
         UniValue sigs(UniValue::VARR);
         for (auto &oneSig : signatures)
@@ -1366,7 +1444,7 @@ public:
     uint32_t IsValid()
     {
         return version <= VERSION_LAST && version >= VERSION_FIRST && 
-            ((version >= VERSION_ETHBRIDGE && IsValidHashType((CCurrencyDefinition::EProofProtocol)hashType)) || hashType == CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR);
+            (hashType == CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR || (version >= VERSION_ETHBRIDGE && IsValidHashType((CCurrencyDefinition::EHashTypes)hashType)));
     }
 };
 
@@ -1394,6 +1472,7 @@ public:
     uint256 stateRoot;                      // latest MMR root of the notarization height
     uint256 blockHash;                      // combination of block hash, block MMR root, and compact power (or external proxy) for the notarization height
     uint256 compactPower;                   // compact power (or external proxy) of the block height notarization to compare
+    int64_t gasPrice;                       // Ethereum protocol gas price
 
     CProofRoot(int Type=TYPE_PBAAS, int Version=VERSION_CURRENT) : type(Type), version(Version), rootHeight(0) {}
     CProofRoot(const UniValue &uni);
@@ -1402,9 +1481,10 @@ public:
                 const uint256 &root, 
                 const uint256 &blkHash, 
                 const uint256 &power,
+                int64_t GasPrice=0,
                 int16_t Type=TYPE_PBAAS,
                 int16_t Version=VERSION_CURRENT) : 
-                systemID(sysID), rootHeight(nHeight), stateRoot(root), blockHash(blkHash), compactPower(power), version(Version), type(Type) {}
+                systemID(sysID), rootHeight(nHeight), stateRoot(root), blockHash(blkHash), compactPower(power), version(Version), type(Type), gasPrice(GasPrice) {}
 
     ADD_SERIALIZE_METHODS;
 
@@ -1417,6 +1497,10 @@ public:
         READWRITE(stateRoot);
         READWRITE(blockHash);
         READWRITE(compactPower);
+        if (type == TYPE_ETHEREUM)
+        {
+            READWRITE(gasPrice);
+        }
     }
 
     static CProofRoot GetProofRoot(uint32_t blockHeight);
@@ -1440,30 +1524,49 @@ public:
 class CNativeHashWriter
 {
 private:
-    CCurrencyDefinition::EProofProtocol nativeHashType;
+    CCurrencyDefinition::EHashTypes nativeHashType;
     union nativeHashWriter
     {
         CBLAKE2bWriter *hw_blake2b;
         CKeccack256Writer *hw_keccack;
+        CHashWriterSHA256 *hw_sha256;
+        CHashWriter *hw_sha256D;
     };
     nativeHashWriter state;
 
 public:
-    CNativeHashWriter(CCurrencyDefinition::EProofProtocol proofProtocol=CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR,
+    CNativeHashWriter(CCurrencyDefinition::EHashTypes hashType=CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR,
                       const unsigned char *personal=nullptr)
     {
-        nativeHashType = proofProtocol;
+        nativeHashType = hashType;
         switch (nativeHashType)
         {
-            case CCurrencyDefinition::EProofProtocol::PROOF_CHAINID:
-            case CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR:
+            case CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR:
+            case CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR2:
             {
-                state.hw_blake2b = new CBLAKE2bWriter(SER_GETHASH, PROTOCOL_VERSION, personal);
+                if (!personal)
+                {
+                    state.hw_blake2b = new CBLAKE2bWriter(SER_GETHASH, PROTOCOL_VERSION);
+                }
+                else
+                {
+                    state.hw_blake2b = new CBLAKE2bWriter(SER_GETHASH, PROTOCOL_VERSION, personal);
+                }
                 break;
             }
-            case CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION:
+            case CCurrencyDefinition::EHashTypes::HASH_KECCAK:
             {
                 state.hw_keccack = new CKeccack256Writer();
+                break;
+            }
+            case CCurrencyDefinition::EHashTypes::HASH_SHA256:
+            {
+                state.hw_sha256 = new CHashWriterSHA256(SER_GETHASH, PROTOCOL_VERSION);
+                break;
+            }
+            case CCurrencyDefinition::EHashTypes::HASH_SHA256D:
+            {
+                state.hw_sha256D = new CHashWriter(SER_GETHASH, PROTOCOL_VERSION);
                 break;
             }
             default:
@@ -1473,21 +1576,34 @@ public:
         }
     }
 
+    CNativeHashWriter(CCurrencyDefinition::EProofProtocol proofProtocol, const unsigned char *personal=nullptr) : 
+        CNativeHashWriter((CCurrencyDefinition::EHashTypes)proofProtocol, personal) {}
+
     ~CNativeHashWriter()
     {
         if (IsValid())
         {
             switch (nativeHashType)
             {
-                case CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR:
-                case CCurrencyDefinition::EProofProtocol::PROOF_CHAINID:
+                case CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR:
+                case CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR2:
                 {
                     delete state.hw_blake2b;
                     break;
                 }
-                case CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION:
+                case CCurrencyDefinition::EHashTypes::HASH_KECCAK:
                 {
                     delete state.hw_keccack;
+                    break;
+                }
+                case CCurrencyDefinition::EHashTypes::HASH_SHA256:
+                {
+                    delete state.hw_sha256;
+                    break;
+                }
+                case CCurrencyDefinition::EHashTypes::HASH_SHA256D:
+                {
+                    delete state.hw_sha256D;
                     break;
                 }
             }
@@ -1495,11 +1611,9 @@ public:
         state.hw_blake2b = nullptr;
     }
 
-    static bool IsValidHashType(CCurrencyDefinition::EProofProtocol hashType)
+    static bool IsValidHashType(CCurrencyDefinition::EHashTypes hashType)
     {
-        return (hashType == CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR ||
-                hashType == CCurrencyDefinition::EProofProtocol::PROOF_CHAINID ||
-                hashType == CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION);
+        return (hashType > CCurrencyDefinition::EHashTypes::HASH_INVALID && hashType <= CCurrencyDefinition::EHashTypes::HASH_LASTTYPE);
     }
 
     bool IsValid()
@@ -1527,15 +1641,25 @@ public:
     {
         switch (nativeHashType)
         {
-            case CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR:
-            case CCurrencyDefinition::EProofProtocol::PROOF_CHAINID:
+            case CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR:
+            case CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR2:
             {
                 state.hw_blake2b->write(pch, size);
                 break;
             }
-            case CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION:
+            case CCurrencyDefinition::EHashTypes::HASH_KECCAK:
             {
                 state.hw_keccack->write(pch, size);
+                break;
+            }
+            case CCurrencyDefinition::EHashTypes::HASH_SHA256:
+            {
+                state.hw_sha256->write(pch, size);
+                break;
+            }
+            case CCurrencyDefinition::EHashTypes::HASH_SHA256D:
+            {
+                state.hw_sha256D->write(pch, size);
                 break;
             }
         }
@@ -1547,15 +1671,25 @@ public:
         uint256 result;
         switch (nativeHashType)
         {
-            case CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR:
-            case CCurrencyDefinition::EProofProtocol::PROOF_CHAINID:
+            case CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR:
+            case CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR2:
             {
                 result = state.hw_blake2b->GetHash();
                 break;
             }
-            case CCurrencyDefinition::EProofProtocol::PROOF_ETHNOTARIZATION:
+            case CCurrencyDefinition::EHashTypes::HASH_KECCAK:
             {
                 result = state.hw_keccack->GetHash();
+                break;
+            }
+            case CCurrencyDefinition::EHashTypes::HASH_SHA256:
+            {
+                result = state.hw_sha256->GetHash();
+                break;
+            }
+            case CCurrencyDefinition::EHashTypes::HASH_SHA256D:
+            {
+                result = state.hw_sha256D->GetHash();
                 break;
             }
         }

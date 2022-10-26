@@ -50,6 +50,8 @@ extern bool fPayAtLeastCustomFee;
 
 //! -paytxfee default
 static const CAmount DEFAULT_TRANSACTION_FEE = 0.0001 * COIN;
+static const CAmount DEFAULT_HEAVY_INOUT_FEE = 0.001 * COIN;
+
 //! -paytxfee will warn if called with a higher fee than this amount (in satoshis) per KB
 static const CAmount nHighTransactionFeeWarning = 0.01 * COIN;
 //! -maxtxfee default
@@ -1135,6 +1137,20 @@ public:
     bool AddUpdateIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
     bool RemoveIdentity(const CIdentityMapKey &mapKey, const uint256 &txid=uint256());
     bool LoadIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValue &identity);
+
+    void ClearCurrencyTrust();
+    bool RemoveCurrencyTrust(const uint160 &currencyID);
+    bool SetCurrencyTrust(const uint160 &currencyID, const CRating &trust);
+    bool SetCurrencyTrustMode(int trustMode=CRating::TRUSTMODE_NORESTRICTION);
+    bool LoadCurrencyTrust(const uint160 &currencyID, const CRating &trust);
+    bool LoadCurrencyTrustMode(int trustMode);
+
+    void ClearIdentityTrust();
+    bool RemoveIdentityTrust(const CIdentityID &idID);
+    bool SetIdentityTrust(const CIdentityID &idID, const CRating &trust);
+    bool SetIdentityTrustMode(int trustMode=CRating::TRUSTMODE_NORESTRICTION);
+    bool LoadIdentityTrust(const CIdentityID &idID, const CRating &trust);
+    bool LoadIdentityTrustMode(int trustMode);
 
     virtual std::set<CKeyID> GetTransactionDestinationIDs();
 

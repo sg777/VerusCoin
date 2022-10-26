@@ -280,12 +280,39 @@ CNodeData::CNodeData(std::string netAddr, std::string paymentAddr) :
     nodeIdentity = GetDestinationID(DecodeDestination(paymentAddr));
 }
 
+const std::map<std::string, CCurrencyDefinition::EHashTypes> &CIdentitySignature::HashTypeStringMap()
+{
+    static std::map<std::string, CCurrencyDefinition::EHashTypes> hashTypeMap;
+    if (!hashTypeMap.size())
+    {
+        hashTypeMap["sha256"] = CCurrencyDefinition::EHashTypes::HASH_SHA256;
+        hashTypeMap["blake2b"] = CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR;
+        hashTypeMap["keccak256"] = CCurrencyDefinition::EHashTypes::HASH_KECCAK;
+        hashTypeMap["sha256D"] = CCurrencyDefinition::EHashTypes::HASH_SHA256D;
+    }
+    return hashTypeMap;
+}
+
 CIdentitySignature::CIdentitySignature(const UniValue &uni)
 {
     try
     {
         version = uni_get_int(find_value(uni, "version"));
-        hashType = uni_get_int(find_value(uni, "hashtype"), CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR);
+        std::string hashTypeStr = uni_get_str(find_value(uni, "hashtype"));
+        auto it = HashTypeStringMap().find(hashTypeStr);
+        if (it != HashTypeStringMap().end())
+        {
+            hashType = it->second;
+        }
+        else
+        {
+            hashType = uni_get_int(find_value(uni, "hashtype"), CCurrencyDefinition::EHashTypes::HASH_INVALID);
+            if (!IsValidHashType((CCurrencyDefinition::EHashTypes)hashType))
+            {
+                version = VERSION_INVALID;
+                return;
+            }
+        }
         blockHeight = uni_get_int64(find_value(uni, "blockheight"));
         UniValue sigs = find_value(uni, "signatures");
         if (sigs.isArray() && sigs.size())
@@ -303,10 +330,11 @@ CIdentitySignature::CIdentitySignature(const UniValue &uni)
 }
 
 uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vdxfCodes, 
+                                                  const std::vector<std::string> &vdxfCodeNames, 
                                                   const std::vector<uint256> &statements, 
                                                   const uint160 &systemID, 
                                                   uint32_t blockHeight, 
-                                                  uint160 idID,
+                                                  const uint160 &idID,
                                                   const std::string &prefixString, 
                                                   const uint256 &msgHash) const
 {
@@ -325,29 +353,11 @@ uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vd
     }
     else
     {
-        CNativeHashWriter ss((CCurrencyDefinition::EProofProtocol)hashType);
+        CNativeHashWriter ss((CCurrencyDefinition::EHashTypes)hashType);
 
-        bool crossChainLogging = LogAcceptCategory("notarysignatures");
+        bool crossChainLogging = LogAcceptCategory("notarysignatures") || LogAcceptCategory("identitysignatures");
         if (crossChainLogging)
         {
-            printf("%s: vdxfCodes:\n", __func__);
-            LogPrintf("%s: vdxfCodes:\n", __func__);
-            for (auto &oneCode : vdxfCodes)
-            {
-                printf("%s\n", oneCode.GetHex().c_str());
-                LogPrintf("%s\n", oneCode.GetHex().c_str());
-            }
-            printf("\n");
-            LogPrintf("\n");
-            printf("%s: statements:\n", __func__);
-            LogPrintf("%s: statements:\n", __func__);
-            for (auto &oneStatement : statements)
-            {
-                printf("%s\n", oneStatement.GetHex().c_str());
-                LogPrintf("%s\n", oneStatement.GetHex().c_str());
-            }
-            printf("\n");
-            LogPrintf("\n");
             printf("systemid: %s, blockheight: %u, identity: %s, prefix: %s\nmsghash: %s\n",
                 EncodeDestination(CIdentityID(systemID)).c_str(),
                 blockHeight,
@@ -366,12 +376,63 @@ uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vd
 
         if (vdxfCodes.size())
         {
-            ss << vdxfCodes;
+            auto vecCopy = vdxfCodes;
+            sort(vecCopy.begin(), vecCopy.end());
+            ss << vecCopy;
+        }
+        if (vdxfCodeNames.size())
+        {
+            auto vecCopy = vdxfCodeNames;
+            sort(vecCopy.begin(), vecCopy.end());
+            ss << vecCopy;
         }
         if (statements.size())
         {
-            ss << statements;
+            auto vecCopy = statements;
+            sort(vecCopy.begin(), vecCopy.end());
+            ss << vecCopy;
         }
+
+        if (crossChainLogging)
+        {
+            if (vdxfCodes.size())
+            {
+                printf("%s: vdxfCodes:\n", __func__);
+                LogPrintf("%s: vdxfCodes:\n", __func__);
+                for (auto &oneCode : vdxfCodes)
+                {
+                    printf("%s\n", oneCode.GetHex().c_str());
+                    LogPrintf("%s\n", oneCode.GetHex().c_str());
+                }
+                printf("\n");
+                LogPrintf("\n");
+            }
+            if (vdxfCodeNames.size())
+            {
+                printf("%s: vdxfCodeNames:\n", __func__);
+                LogPrintf("%s: vdxfCodeNames:\n", __func__);
+                for (auto &oneCode : vdxfCodeNames)
+                {
+                    printf("%s\n", oneCode.c_str());
+                    LogPrintf("%s\n", oneCode.c_str());
+                }
+                printf("\n");
+                LogPrintf("\n");
+            }
+            if (statements.size())
+            {
+                printf("%s: statements:\n", __func__);
+                LogPrintf("%s: statements:\n", __func__);
+                for (auto &oneStatement : statements)
+                {
+                    printf("%s\n", oneStatement.GetHex().c_str());
+                    LogPrintf("%s\n", oneStatement.GetHex().c_str());
+                }
+                printf("\n");
+                LogPrintf("\n");
+            }
+        }
+
         ss << systemID;
         ss << blockHeight;
         ss << idID;
@@ -392,6 +453,7 @@ uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vd
 
 CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(const CIdentity &signingID,
                                                                               const std::vector<uint160> &vdxfCodes, 
+                                                                              const std::vector<std::string> &vdxfCodeNames,
                                                                               const std::vector<uint256> &statements, 
                                                                               const uint160 systemID, 
                                                                               const std::string &prefixString, 
@@ -410,7 +472,7 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(co
         }
         idKeys.insert(GetDestinationID(oneKey));
     }
-    uint256 signatureHash = IdentitySignatureHash(vdxfCodes, statements, systemID, blockHeight, signingID.GetID(), prefixString, msgHash);
+    uint256 signatureHash = IdentitySignatureHash(vdxfCodes, vdxfCodeNames, statements, systemID, blockHeight, signingID.GetID(), prefixString, msgHash);
     for (auto &oneSig : signatures)
     {
         if (oneSig.size() != ECDSA_RECOVERABLE_SIZE)
@@ -541,7 +603,10 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
     currencyImportFee(CURRENCY_IMPORT_FEE),
     transactionImportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
     transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
-    initialBits(DEFAULT_START_TARGET)
+    initialBits(DEFAULT_START_TARGET),
+    blockTime(DEFAULT_BLOCKTIME_TARGET),
+    powAveragingWindow(DEFAULT_AVERAGING_WINDOW),
+    blockNotarizationModulo(BLOCK_NOTARIZATION_MODULO)
 {
     try
     {
@@ -615,6 +680,24 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
                     if (gatewayID.IsNull() || gatewayID != parent)
                     {
+                        nVersion = PBAAS_VERSION_INVALID;
+                        return;
+                    }
+                }
+            }
+            else if (IsGateway() && conversions.size())
+            {
+                if (maxPreconvert.size() != conversions.size())
+                {
+                    LogPrintf("%s: gateways must not allow preconversions %s\n", __func__, name.c_str());
+                    nVersion = PBAAS_VERSION_INVALID;
+                    return;
+                }
+                for (int j = 0; j < conversions.size(); j++)
+                {
+                    if (maxPreconvert[j])
+                    {
+                        LogPrintf("%s: gateways must not allow preconversions %s\n", __func__, name.c_str());
                         nVersion = PBAAS_VERSION_INVALID;
                         return;
                     }
@@ -1015,7 +1098,12 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                 LogPrintf("%s: Invalid initial target, must be 256 bit hex target\n", __func__);
                 throw e;
             }
-            
+
+            blockTime = uni_get_int64(find_value(obj, "blocktime"), DEFAULT_BLOCKTIME_TARGET);
+            powAveragingWindow = uni_get_int64(find_value(obj, "powaveragingwindow"), DEFAULT_AVERAGING_WINDOW);
+            blockNotarizationModulo = uni_get_int64(find_value(obj, "notarizationperiod"), 
+                                                    std::max((int64_t)(DEFAULT_BLOCK_NOTARIZATION_TIME / blockTime), (int64_t)MIN_BLOCK_NOTARIZATION_BLOCKS));
+
             for (auto era : vEras)
             {
                 rewards.push_back(uni_get_int64(find_value(era, "reward")));
@@ -1052,7 +1140,10 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
     currencyImportFee(CURRENCY_IMPORT_FEE),
     transactionImportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
     transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
-    initialBits(DEFAULT_START_TARGET)
+    initialBits(DEFAULT_START_TARGET),
+    blockTime(DEFAULT_BLOCKTIME_TARGET),
+    powAveragingWindow(DEFAULT_AVERAGING_WINDOW),
+    blockNotarizationModulo(BLOCK_NOTARIZATION_MODULO)
 {
     name = boost::to_upper_copy(CleanName(currencyName, parent));
     if (parent.IsNull())
@@ -1065,6 +1156,10 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
         uniCurrency.pushKV("systemid", EncodeDestination(CIdentityID(thisCurrencyID)));
         uniCurrency.pushKV("notarizationprotocol", (int32_t)NOTARIZATION_AUTO);
         uniCurrency.pushKV("proofprotocol", (int32_t)PROOF_PBAASMMR);
+
+        uniCurrency.pushKV("blocktime", (int64_t)DEFAULT_BLOCKTIME_TARGET);
+        uniCurrency.pushKV("powaveragingwindow", (int64_t)DEFAULT_AVERAGING_WINDOW);
+        uniCurrency.pushKV("notarizationperiod", (int)BLOCK_NOTARIZATION_MODULO);
 
         if (name == "VRSC" && !testMode)
         {
@@ -1108,7 +1203,7 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
             UniValue uniEra1(UniValue::VOBJ);
             uniEra1.pushKV("reward", 1200000000);
             uniEra1.pushKV("decay", 0);
-            uniEra1.pushKV("halving", 163382);
+            uniEra1.pushKV("halving", 76001);
             uniEra1.pushKV("eraend", 0);
             uniEras.push_back(uniEra1);
 

@@ -44,10 +44,6 @@ CAmount AmountFromValueNoErr(const UniValue& value)
         {
             amount = 0;
         }
-        else if (!MoneyRange(amount))
-        {
-            amount = 0;
-        }
         return amount;
     }
     catch(const std::exception& e)
@@ -408,7 +404,10 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
     currencyImportFee(CURRENCY_IMPORT_FEE),
     transactionImportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
     transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
-    initialBits(DEFAULT_START_TARGET)
+    initialBits(DEFAULT_START_TARGET),
+    blockTime(DEFAULT_BLOCKTIME_TARGET),
+    powAveragingWindow(DEFAULT_AVERAGING_WINDOW),
+    blockNotarizationModulo(BLOCK_NOTARIZATION_MODULO)
 {
     try
     {
@@ -850,7 +849,12 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                 LogPrintf("%s: Invalid initial target, must be 256 bit hex target\n", __func__);
                 throw e;
             }
-            
+
+            blockTime = uni_get_int64(find_value(obj, "blocktime"), DEFAULT_BLOCKTIME_TARGET);
+            powAveragingWindow = uni_get_int64(find_value(obj, "powaveragingwindow"), DEFAULT_AVERAGING_WINDOW);
+            blockNotarizationModulo = uni_get_int64(find_value(obj, "notarizationperiod"), 
+                                                    std::max((int64_t)(DEFAULT_BLOCK_NOTARIZATION_TIME / blockTime), (int64_t)MIN_BLOCK_NOTARIZATION_BLOCKS));
+
             for (auto era : vEras)
             {
                 rewards.push_back(uni_get_int64(find_value(era, "reward")));
@@ -887,7 +891,10 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
     currencyImportFee(CURRENCY_IMPORT_FEE),
     transactionImportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
     transactionExportFee(TRANSACTION_CROSSCHAIN_FEE >> 1),
-    initialBits(DEFAULT_START_TARGET)
+    initialBits(DEFAULT_START_TARGET),
+    blockTime(DEFAULT_BLOCKTIME_TARGET),
+    powAveragingWindow(DEFAULT_AVERAGING_WINDOW),
+    blockNotarizationModulo(BLOCK_NOTARIZATION_MODULO)
 {
     name = boost::to_upper_copy(CleanName(currencyName, parent));
     if (parent.IsNull())
@@ -900,6 +907,10 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
         uniCurrency.pushKV("systemid", EncodeDestination(CIdentityID(thisCurrencyID)));
         uniCurrency.pushKV("notarizationprotocol", (int32_t)NOTARIZATION_AUTO);
         uniCurrency.pushKV("proofprotocol", (int32_t)PROOF_PBAASMMR);
+
+        uniCurrency.pushKV("blocktime", (int64_t)DEFAULT_BLOCKTIME_TARGET);
+        uniCurrency.pushKV("powaveragingwindow", (int64_t)DEFAULT_AVERAGING_WINDOW);
+        uniCurrency.pushKV("notarizationperiod", (int)BLOCK_NOTARIZATION_MODULO);
 
         if (name == "VRSC" && !testMode)
         {
@@ -1119,6 +1130,11 @@ UniValue CCurrencyDefinition::ToUniValue() const
             arith_uint256 target;
             target.SetCompact(initialBits);
             obj.push_back(Pair("initialtarget", ArithToUint256(target).GetHex()));
+
+            obj.pushKV("blocktime", (int64_t)blockTime);
+            obj.pushKV("powaveragingwindow", (int64_t)powAveragingWindow);
+            obj.pushKV("notarizationperiod", (int)blockNotarizationModulo);
+
             UniValue eraArr(UniValue::VARR);
             for (int i = 0; i < rewards.size(); i++)
             {
@@ -1172,7 +1188,7 @@ int64_t CCurrencyDefinition::GetTotalPreallocation() const
     return totalPreallocatedNative;
 }
 
-bool uni_get_bool(UniValue uv, bool def)
+bool uni_get_bool(const UniValue &uv, bool def)
 {
     try
     {
@@ -1205,7 +1221,7 @@ bool uni_get_bool(UniValue uv, bool def)
     }
 }
 
-int32_t uni_get_int(UniValue uv, int32_t def)
+int32_t uni_get_int(const UniValue &uv, int32_t def)
 {
     try
     {
@@ -1221,7 +1237,7 @@ int32_t uni_get_int(UniValue uv, int32_t def)
     }
 }
 
-int64_t uni_get_int64(UniValue uv, int64_t def)
+int64_t uni_get_int64(const UniValue &uv, int64_t def)
 {
     try
     {
@@ -1237,7 +1253,7 @@ int64_t uni_get_int64(UniValue uv, int64_t def)
     }
 }
 
-std::string uni_get_str(UniValue uv, std::string def)
+std::string uni_get_str(const UniValue &uv, std::string def)
 {
     try
     {
@@ -1249,7 +1265,7 @@ std::string uni_get_str(UniValue uv, std::string def)
     }
 }
 
-std::vector<UniValue> uni_getValues(UniValue uv, std::vector<UniValue> def)
+std::vector<UniValue> uni_getValues(const UniValue &uv, std::vector<UniValue> def)
 {
     try
     {
@@ -1704,9 +1720,12 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "updateidentity", 0},
     { "setidentitytimelock", 1},
     { "recoveridentity", 0},
+    { "signdata", 0},
+    { "verifysignature", 0},
     { "getidentitieswithaddress", 0},
     { "getidentitieswithrevocation", 0},
     { "getidentitieswithrecovery", 0},
+    { "estimateconversion", 1},
     { "makeoffer", 1},
     { "takeoffer", 1},
     { "closeoffers", 0},

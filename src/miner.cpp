@@ -805,14 +805,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
 
         // create the import thread output
         cp = CCinit(&CC, EVAL_CROSSCHAIN_IMPORT);
-        if (newCurrency.proofProtocol == newCurrency.PROOF_CHAINID)
-        {
-            dests = std::vector<CTxDestination>({CIdentityID(newCurID)});
-        }
-        else
-        {
-            dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-        }
+        dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
         if ((newCurrency.systemID == ASSETCHAINS_CHAINID) && firstNotaryID == newCurrency.launchSystemID)
         {
@@ -1838,7 +1831,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         }
 
         // if we are a notary, notarize
-        if (nHeight > CPBaaSNotarization::MIN_BLOCKS_BEFORE_NOTARY_FINALIZED && !VERUS_NOTARYID.IsNull())
+        if (nHeight > ConnectedChains.ThisChain().GetMinBlocksToNotarize() && !VERUS_NOTARYID.IsNull())
         {
             CValidationState state;
             std::vector<TransactionBuilder> notarizationBuilders;
@@ -1976,7 +1969,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                 LOCK2(smartTransactionCS, mempool.cs);
                                 mempool.removeConflicts(notarizationTx, removedTxVec);
                                 CValidationState mempoolState;
-                                relayTx = myAddtomempool(notarizationTx, &state);
+                                relayTx = myAddtomempool(notarizationTx, &state, 0, false);
                                 if (LogAcceptCategory("notarization"))
                                 {
                                     for (auto oneTx : removedTxVec)

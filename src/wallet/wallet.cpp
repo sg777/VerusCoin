@@ -653,6 +653,106 @@ bool CWallet::LoadIdentity(const CIdentityMapKey &mapKey, const CIdentityMapValu
     return CCryptoKeyStore::AddUpdateIdentity(mapKey, identity);
 }
 
+void CWallet::ClearIdentityTrust()
+{
+    if (fFileBacked)
+    {
+        for (auto &idTrustPair : mapIdentityTrust)
+        {
+            CWalletDB(strWalletFile).EraseIdentityTrust(idTrustPair.first);
+        }    
+        CWalletDB(strWalletFile).WriteIdentityTrustMode(CRating::TRUSTMODE_NORESTRICTION);
+    }
+    CCryptoKeyStore::ClearIdentityTrust();
+}
+
+bool CWallet::SetIdentityTrust(const CIdentityID &idID, const CRating &trust)
+{
+    if (!CCryptoKeyStore::SetIdentityTrust(idID, trust))
+        return false;
+    if (!fFileBacked)
+        return true;
+    return CWalletDB(strWalletFile).WriteIdentityTrust(idID, trust);
+}
+
+bool CWallet::RemoveIdentityTrust(const CIdentityID &idID)
+{
+    if (!CCryptoKeyStore::RemoveIdentityTrust(idID))
+        return false;
+    if (!fFileBacked)
+        return true;
+    return CWalletDB(strWalletFile).EraseIdentityTrust(idID);
+}
+
+bool CWallet::LoadIdentityTrust(const CIdentityID &idID, const CRating &trust)
+{
+    return CCryptoKeyStore::SetIdentityTrust(idID, trust);
+}
+
+bool CWallet::SetIdentityTrustMode(int trustMode)
+{
+    if (!CCryptoKeyStore::SetIdentityTrustMode(trustMode))
+        return false;
+    if (!fFileBacked)
+        return true;
+    return CWalletDB(strWalletFile).WriteIdentityTrustMode(trustMode);
+}
+
+bool CWallet::LoadIdentityTrustMode(int trustMode)
+{
+    return CCryptoKeyStore::SetIdentityTrustMode(trustMode);
+}
+
+void CWallet::ClearCurrencyTrust()
+{
+    if (fFileBacked)
+    {
+        for (auto &currencyTrustPair : mapCurrencyTrust)
+        {
+            CWalletDB(strWalletFile).EraseCurrencyTrust(currencyTrustPair.first);
+        }    
+        CWalletDB(strWalletFile).WriteCurrencyTrustMode(CRating::TRUSTMODE_NORESTRICTION);
+    }
+    CCryptoKeyStore::ClearCurrencyTrust();
+}
+
+bool CWallet::SetCurrencyTrust(const uint160 &currencyID, const CRating &trust)
+{
+    if (!CCryptoKeyStore::SetCurrencyTrust(currencyID, trust))
+        return false;
+    if (!fFileBacked)
+        return true;
+    return CWalletDB(strWalletFile).WriteCurrencyTrust(currencyID, trust);
+}
+
+bool CWallet::RemoveCurrencyTrust(const uint160 &currencyID)
+{
+    if (!CCryptoKeyStore::RemoveCurrencyTrust(currencyID))
+        return false;
+    if (!fFileBacked)
+        return true;
+    return CWalletDB(strWalletFile).EraseCurrencyTrust(currencyID);
+}
+
+bool CWallet::LoadCurrencyTrust(const uint160 &currencyID, const CRating &trust)
+{
+    return CCryptoKeyStore::SetCurrencyTrust(currencyID, trust);
+}
+
+bool CWallet::SetCurrencyTrustMode(int trustMode)
+{
+    if (!CCryptoKeyStore::SetCurrencyTrustMode(trustMode))
+        return false;
+    if (!fFileBacked)
+        return true;
+    return CWalletDB(strWalletFile).WriteCurrencyTrustMode(trustMode);
+}
+
+bool CWallet::LoadCurrencyTrustMode(int trustMode)
+{
+    return CCryptoKeyStore::SetCurrencyTrustMode(trustMode);
+}
+
 // returns all key IDs that are destinations for UTXOs in the wallet
 std::set<CKeyID> CWallet::GetTransactionDestinationIDs()
 {
@@ -2600,22 +2700,73 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
 
                     if (!doneWithID)
                     {
+                        int identityTrustLevel = CRating::TRUST_UNKNOWN;
+                        int identityTrustMode = CRating::TRUSTMODE_NORESTRICTION;
                         if (pblock)
                         {
+                            identityTrustLevel = GetIdentityTrust(idID).trustLevel;
+                            identityTrustMode = GetIdentityTrustMode();
+
                             // if we used to be able to sign with this identity, can now, or we put it on a manual hold, and it's not invalid or blacklisted, store it
-                            if ((wasCanSignCanSpend.first || canSignCanSpend.first || (idHistory.first.flags & idHistory.first.MANUAL_HOLD)) && !(idHistory.first.flags & idHistory.first.BLACKLIST))
+                            if ((wasCanSignCanSpend.first || canSignCanSpend.first || (idHistory.first.flags & idHistory.first.MANUAL_HOLD)) &&
+                                !(idHistory.first.flags & idHistory.first.BLACKLIST) &&
+                                (identityTrustMode == CRating::TRUSTMODE_NORESTRICTION || identityTrustLevel != CRating::TRUST_BLOCKED))
                             {
-                                idMapKey = CIdentityMapKey(identity.GetID(), 
-                                                            nHeight, 
-                                                            blockOrder, 
-                                                            idHistory.first.VALID | 
-                                                                ((idHistory.second.IsValid() ? idHistory.first.flags : 0) & idHistory.first.MANUAL_HOLD) | 
-                                                                (canSignCanSpend.first ? idHistory.first.CAN_SIGN : 0) | 
-                                                                (canSignCanSpend.second ? idHistory.first.CAN_SPEND : 0));
-                                AddUpdateIdentity(idMapKey, identity);
-                                if (canSignCanSpend.first)
+                                bool approvedForSync = true;
+                                // are both revocation and recovery whitelisted/not blocked in white list mode?
+                                bool revocationAndRecoveryApproved = GetIdentityTrust(identity.revocationAuthority).trustLevel == CRating::TRUST_APPROVED &&
+                                                                     GetIdentityTrust(identity.recoveryAuthority).trustLevel == CRating::TRUST_APPROVED;
+                                if ((revocationAndRecoveryApproved || identityTrustMode == CRating::TRUSTMODE_WHITELISTONLY) &&
+                                    identityTrustLevel < CRating::TRUST_APPROVED)
                                 {
-                                    isNewID = true;
+                                    bool approvedOrSelf = revocationAndRecoveryApproved ||
+                                                          (identity.revocationAuthority == identity.recoveryAuthority ||
+                                                           GetIdentityTrust(identity.revocationAuthority).trustLevel == CRating::TRUST_APPROVED) &&
+                                                           (identity.recoveryAuthority == idID ||
+                                                           GetIdentityTrust(identity.recoveryAuthority).trustLevel == CRating::TRUST_APPROVED);
+
+                                    if (!identity.HasTokenizedControl() &&
+                                        (revocationAndRecoveryApproved ||
+                                         (approvedOrSelf &&
+                                          canSignCanSpend.second == true &&
+                                          identity.minSigs > (identity.primaryAddresses.size() >> 1))))
+                                    {
+                                        // if this is an ID that is not on the block list and has:
+                                        // 1) no separate revocation/recovery
+                                        // 2) no tokenized ID control
+                                        // 3) can spend is true, &
+                                        // 4) we either have whitelisted revocation and recovery or control a majority or 
+                                        //    greater of primary addresses & majority or greater are needed for spend
+                                        // -- we add it to the white list and continue, as it cannot be taken back from us
+                                        // in any way without someone controlling keys from this wallet anyhow
+                                        SetIdentityTrust(idID, CRating(CRating::VERSION_CURRENT, CRating::TRUST_APPROVED));
+                                    }
+                                    else if (identity.HasTokenizedControl() &&
+                                             GetCurrencyTrust(idID).trustLevel == CRating::TRUST_APPROVED)
+                                    {
+                                        // if this ID has tokenized control, and that tokenized control currency
+                                        // is whitelisted, then we white list the ID as well and sync to it
+                                        SetIdentityTrust(idID, CRating(CRating::VERSION_CURRENT, CRating::TRUST_APPROVED));
+                                    }
+                                    else
+                                    {
+                                        approvedForSync = identityTrustMode != CRating::TRUSTMODE_WHITELISTONLY;
+                                    }
+                                }
+                                if (approvedForSync)
+                                {
+                                    idMapKey = CIdentityMapKey(idID, 
+                                                                nHeight, 
+                                                                blockOrder, 
+                                                                idHistory.first.VALID | 
+                                                                    ((idHistory.second.IsValid() ? idHistory.first.flags : 0) & idHistory.first.MANUAL_HOLD) | 
+                                                                    (canSignCanSpend.first ? idHistory.first.CAN_SIGN : 0) | 
+                                                                    (canSignCanSpend.second ? idHistory.first.CAN_SPEND : 0));
+                                    AddUpdateIdentity(idMapKey, identity);
+                                    if (canSignCanSpend.first)
+                                    {
+                                        isNewID = true;
+                                    }
                                 }
                             }
                         }
@@ -2624,6 +2775,11 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                             std::pair<bool, bool> swapBools = canSignCanSpend;
                             canSignCanSpend = wasCanSignCanSpend;
                             wasCanSignCanSpend = swapBools;
+                        }
+
+                        if (IsBlockedIdentity(idID))
+                        {
+                            canSignCanSpend = std::make_pair(false, false);
                         }
 
                         // store transitions as needed in the wallet
@@ -3395,7 +3551,7 @@ CCurrencyValueMap CWallet::GetReserveDebit(const CTxIn &txin, const isminefilter
             const CWalletTx& prev = (*mi).second;
             if (txin.prevout.n < prev.vout.size())
                 if (::IsMine(*this, prev.vout[txin.prevout.n].scriptPubKey, nHeight) & filter)
-                    return prev.vout[txin.prevout.n].ReserveOutValue();
+                    return RemoveBlockedCurrencies(prev.vout[txin.prevout.n].ReserveOutValue());
         }
     }
     return CCurrencyValueMap();
@@ -3705,7 +3861,7 @@ CAmount CWallet::GetCredit(const CTransaction& tx, const int32_t &voutNum, const
 
 CCurrencyValueMap CWallet::GetReserveCredit(const CTransaction& tx, int32_t voutNum, const isminefilter& filter) const
 {
-    return ((IsMine(tx.vout[voutNum]) & filter) ? tx.vout[voutNum].ReserveOutValue() : CCurrencyValueMap());
+    return ((IsMine(tx.vout[voutNum]) & filter) ? RemoveBlockedCurrencies(tx.vout[voutNum].ReserveOutValue()) : CCurrencyValueMap());
 }
 
 CCurrencyValueMap CWallet::GetReserveCredit(const CTransaction& tx, const isminefilter& filter) const
@@ -4124,7 +4280,7 @@ void CWalletTx::GetAmounts(list<COutputEntry>& listReceived,
 
         // In either case, we need to get the destination address
         CTxDestination address;
-        if (!ExtractDestination(txout.scriptPubKey, address))
+        if (!ExtractDestination(txout.scriptPubKey, address) || address.which() == COptCCParams::ADDRTYPE_INVALID)
         {
             //LogPrintf("CWalletTx::GetAmounts: Unknown transaction type found, txid %s\n",this->GetHash().ToString()); complains on the opreturns
             address = CNoDestination();
@@ -4536,13 +4692,6 @@ bool CWalletTx::HasMatureCoins() const
     }
     else
     {
-        for (auto oneout : vout)
-        {
-            if (oneout.scriptPubKey.IsInstantSpend())
-            {
-                return true;
-            }
-        }
         return false;
     }
 }
@@ -5230,6 +5379,15 @@ void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed
                           (fIncludeNative && pcoin->vout[i].nValue)))
                     {
                         continue;
+                    }
+
+                    if (currencyTrustMode != CRating::TRUSTMODE_NORESTRICTION)
+                    {
+                        // if no currencies we will pay attention to and no native, don't return this output
+                        if (!RemoveBlockedCurrencies(rOut).valueMap.size() && !(fIncludeNative && pcoin->vout[i].nValue))
+                        {
+                            continue;
+                        }
                     }
 
                     if (pOnlyFromDest)
@@ -6454,8 +6612,9 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                 CCurrencyValueMap nullCurrencyMap;
                 if (reserveChange > nullCurrencyMap || nChange > 0)
                 {
-                    // Fill a vout to ourself
-                    // TODO: pass in scriptChange instead of reservekey so
+                    // Make a vout to ourself
+                    //
+                    // pass in scriptChange instead of reservekey so
                     // change transaction isn't always pay-to-bitcoin-address
                     CScript scriptChange;
 
@@ -6545,7 +6704,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
 
                     // Never create dust outputs; if we would, just
                     // add the dust to the fee. Valid cryptoconditions with a valid eval function are allowed to create outputs of 0
-                    if (newTxOut.IsDust(::minRelayTxFee))
+                    if (newTxOut.IsDust(::minRelayTxFee) && reserveChange.CanonicalMap() == nullCurrencyMap)
                     {
                         nFeeRet += nChange;
                         reservekey.ReturnKey();
@@ -6553,7 +6712,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                     else
                     {
                         nChangePosRet = txNew.vout.size() - 1; // dont change first or last
-                        vector<CTxOut>::iterator position = txNew.vout.begin()+nChangePosRet;
+                        vector<CTxOut>::iterator position = txNew.vout.begin() + nChangePosRet;
                         txNew.vout.insert(position, newTxOut);
                     }
                 } else reservekey.ReturnKey();
@@ -6986,39 +7145,30 @@ int CWallet::CreateReserveTransaction(const vector<CRecipient>& vecSend, CWallet
                 else
                 {
                     nChangePosRet = txNew.vout.size() - 1; // dont change first or last
-                    if (nChange > 0)
-                    {
-                        nChangeOutputs++;
-                        vector<CTxOut>::iterator position = txNew.vout.begin() + nChangePosRet;
-                        txNew.vout.insert(position, CTxOut(nChange, GetScriptForDestination(changeDest)));
-                    }
-                }
 
-                // now, loop through the remaining reserve currencies and make a change output for each separately
-                // if dust, just remove
-                auto reserveIndexMap = currencyState.GetReserveMap();
-                for (auto &curChangeOut : reserveChange.valueMap)
-                {
-                    if (!curChangeOut.second)
+                    // separate any blocked currencies from non-blocked currencies into separate change outputs
+                    if (GetCurrencyTrustMode() != CRating::TRUSTMODE_NORESTRICTION && reserveChange > CCurrencyValueMap())
                     {
-                        continue;
+                        CCurrencyValueMap withoutBlockedCurrencies = RemoveBlockedCurrencies(reserveChange);
+                        CCurrencyValueMap removedCurrencies = (reserveChange - withoutBlockedCurrencies);
+                        if (removedCurrencies > CCurrencyValueMap())
+                        {
+                            CTokenOutput unwantedOut(removedCurrencies);
+                            reserveChange = withoutBlockedCurrencies;
+                            vector<CTxOut>::iterator position = txNew.vout.begin() + (nChangePosRet + nChangeOutputs++);
+                            txNew.vout.insert(position, CTxOut(0, 
+                                                               MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, std::vector<CTxDestination>({changeDest}), 1, &unwantedOut))));
+                        }
                     }
-                    CAmount outVal;
-                    assert(curChangeOut.first != ASSETCHAINS_CHAINID);
-                    auto curIt = reserveIndexMap.find(curChangeOut.first);
-                    if (curIt != reserveIndexMap.end())
+
+                    if (nChange > 0 || reserveChange > CCurrencyValueMap())
                     {
-                        outVal = currencyState.ReserveToNative(curChangeOut.second, curIt->second);
+                        CTokenOutput to(reserveChange);
+                        CScript outputScript = (reserveChange > CCurrencyValueMap()) ?
+                                               MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, std::vector<CTxDestination>({changeDest}), 1, &to)) :
+                                               GetScriptForDestination(changeDest);
+                        txNew.vout.insert(txNew.vout.begin() + (nChangePosRet + nChangeOutputs++), CTxOut(nChange, outputScript));
                     }
-                    else
-                    {
-                        outVal = curChangeOut.second;
-                    }
-                    
-                    nChangeOutputs++;
-                    vector<CTxOut>::iterator position = txNew.vout.begin() + (nChangePosRet + nChangeOutputs++);
-                    CTokenOutput to = CTokenOutput(curChangeOut.first, curChangeOut.second);
-                    txNew.vout.insert(position, CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, {changeDest}, 1, &to))));
                 }
 
                 // if we made no change outputs, return the key

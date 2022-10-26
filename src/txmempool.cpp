@@ -454,7 +454,6 @@ void CTxMemPool::removeForReorg(const CCoinsViewCache *pcoins, unsigned int nMem
                         break;
                     }
 
-
                     // TODO: HARDENING - if we can no longer submit evidence or finalization of a notarization
                     // due to reorganizing back past the point where a notary can sign, we must consider this transaction
                     // on hold until it is valid again. on the other hand, if the original notarization it refers to
@@ -568,68 +567,94 @@ bool CTxMemPool::checkNameConflicts(const CTransaction &tx, std::list<CTransacti
     // in the blockchain has already taken place.
     CIdentity identity;
     CNameReservation reservation;
+    CAdvancedNameReservation advNameRes;
+    CCurrencyDefinition newCurDef;
+    std::set<uint160> newIDs;
+    std::set<uint160> newCurrencies;
     for (auto output : tx.vout)
     {
         COptCCParams p;
-        if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
+        if (output.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3 && p.vData.size())
         {
-            if (p.evalCode == EVAL_IDENTITY_PRIMARY && p.vData.size() > 1)
+            switch (p.evalCode)
             {
-                if (identity.IsValid())
+                case EVAL_IDENTITY_ADVANCEDRESERVATION:
                 {
-                    identity = CIdentity();
+                    if ((advNameRes = CAdvancedNameReservation(p.vData[0])).IsValid())
+                    {
+                        uint160 parentID;
+                        newIDs.insert(CIdentity::GetID(advNameRes.name, advNameRes.parent));
+                    }
                     break;
                 }
-                else
+                case EVAL_IDENTITY_RESERVATION:
                 {
-                    identity = CIdentity(p.vData[0]);
-                }
-            }
-            else if (p.evalCode == EVAL_IDENTITY_RESERVATION && p.vData.size() > 1)
-            {
-                if (reservation.IsValid())
-                {
-                    reservation = CNameReservation();
+                    if ((reservation = CNameReservation(p.vData[0])).IsValid())
+                    {
+                        uint160 parentID = ASSETCHAINS_CHAINID;
+                        newIDs.insert(CIdentity::GetID(reservation.name, parentID));
+                    }
                     break;
                 }
-                else
+                case EVAL_CURRENCY_DEFINITION:
                 {
-                    reservation = CNameReservation(p.vData[0]);
+                    if ((newCurDef = CCurrencyDefinition(p.vData[0])).IsValid())
+                    {
+                        newCurrencies.insert(newCurDef.GetID());
+                    }
+                    break;
                 }
             }
         }
     }
 
-    // it can't conflict if it's not a definition
-    if (!(identity.IsValid() && reservation.IsValid()))
+    // first, look for ID conflicts, any new ID that matches should be removed
+    for (auto &oneIDID : newIDs)
     {
-        return false;
+        std::vector<std::pair<uint160, int>> addresses =
+            std::vector<std::pair<uint160, int>>({{CCrossChainRPCData::GetConditionID(oneIDID, EVAL_IDENTITY_RESERVATION), CScript::P2IDX},
+                                                  {CCrossChainRPCData::GetConditionID(oneIDID, EVAL_IDENTITY_ADVANCEDRESERVATION), CScript::P2IDX}});
+        std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> results;
+        if (mempool.getAddressIndex(addresses, results) && results.size())
+        {
+            std::map<uint256, std::pair<CTransaction, int>> txesAndSources;   // first hash is transaction of input of prior identity or commitment output in the mempool, second pair is tx and ID output num if identity
+
+            uint256 txHash = tx.GetHash();
+            CNameReservation conflictingRes;
+            for (auto r : results)
+            {
+                if (r.first.txhash == txHash)
+                {
+                    continue;
+                }
+                CTransaction mpTx;
+                if (lookup(r.first.txhash, mpTx))
+                {
+                    conflicting.push_back(mpTx);
+                }
+            }
+        }
     }
 
-    std::vector<std::pair<uint160, int>> addresses = std::vector<std::pair<uint160, int>>({{identity.GetID(), CScript::P2ID}});
-    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> results;
-    if (mempool.getAddressIndex(addresses, results) && results.size())
+    for (auto &oneCurID : newCurrencies)
     {
-        std::map<uint256, std::pair<CTransaction, int>> txesAndSources;   // first hash is transaction of input of prior identity or commitment output in the mempool, second pair is tx and ID output num if identity
-
-        uint256 txHash = tx.GetHash();
-        CNameReservation conflictingRes;
-        for (auto r : results)
+        std::vector<std::pair<uint160, int>> addresses =
+            std::vector<std::pair<uint160, int>>({{CCrossChainRPCData::GetConditionID(oneCurID, CCurrencyDefinition::CurrencyDefinitionKey()), CScript::P2IDX}});
+        std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> results;
+        if (mempool.getAddressIndex(addresses, results) && results.size())
         {
-            if (r.first.txhash == txHash)
+            std::map<uint256, std::pair<CTransaction, int>> txesAndSources;   // first hash is transaction of input of prior identity or commitment output in the mempool, second pair is tx and ID output num if identity
+
+            uint256 txHash = tx.GetHash();
+            CNameReservation conflictingRes;
+            for (auto r : results)
             {
-                continue;
-            }
-            CTransaction mpTx;
-            if (lookup(r.first.txhash, mpTx))
-            {
-                COptCCParams p;
-                if (mpTx.vout[r.first.index].scriptPubKey.IsPayToCryptoCondition(p) && 
-                    p.IsValid() && 
-                    p.evalCode == EVAL_IDENTITY_RESERVATION && 
-                    p.vData.size() > 1 && 
-                    (conflictingRes = CNameReservation(p.vData[0])).IsValid() &&
-                    CIdentity(mpTx).IsValid())
+                if (r.first.txhash == txHash)
+                {
+                    continue;
+                }
+                CTransaction mpTx;
+                if (lookup(r.first.txhash, mpTx))
                 {
                     conflicting.push_back(mpTx);
                 }
@@ -1009,7 +1034,7 @@ void CTxMemPool::ClearPrioritisation(const uint256 hash)
     mapReserveTransactions.erase(hash);
 }
 
-bool CTxMemPool::PrioritiseReserveTransaction(const CReserveTransactionDescriptor &txDesc, const CCurrencyState &currencyState)
+bool CTxMemPool::PrioritiseReserveTransaction(const CReserveTransactionDescriptor &txDesc)
 {
     LOCK(cs);
     uint256 hash = txDesc.ptx->GetHash();
@@ -1017,7 +1042,16 @@ bool CTxMemPool::PrioritiseReserveTransaction(const CReserveTransactionDescripto
     if (txDesc.IsValid())
     {
         mapReserveTransactions[hash] = txDesc;
-        CAmount feeDelta = txDesc.AllFeesAsNative(currencyState);
+        CAmount feeDelta = txDesc.NativeFees();
+        if (!IsVerusActive())
+        {
+            CCurrencyValueMap reserveFees = txDesc.ReserveFees();
+            auto it = reserveFees.valueMap.find(VERUS_CHAINID);
+            if (it != reserveFees.valueMap.end())
+            {
+                feeDelta += it->second;
+            }
+        }
         PrioritiseTransaction(hash, hash.GetHex().c_str(), (double)feeDelta * 100.0, feeDelta);
         return true;
     }
