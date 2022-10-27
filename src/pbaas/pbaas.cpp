@@ -277,6 +277,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
         p.IsValid() &&
         p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
         p.vData.size() > 1 &&
+        p.IsEvalPKOut() &&
         (cci = CCrossChainImport(p.vData[0])).IsValid() &&
         cci.GetImportInfo(tx, height, outNum, ccx, sysCCI, sysOutNum, notarization, notarizationOut, evidenceOutStart, evidenceOutEnd, reserveTransfers, state))
     {
@@ -679,7 +680,8 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
            (ccx.sourceSystemID == ASSETCHAINS_CHAINID &&
             ((destSystem = ConnectedChains.GetCachedCurrency(ccx.destSystemID)).IsValid() || ccx.IsChainDefinition()) &&
              ccx.GetExportInfo(tx, outNum, primaryExportOut, nextOutput, notarization, reserveTransfers, state, 
-                ccx.IsChainDefinition() ? CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR : (CCurrencyDefinition::EProofProtocol)destSystem.proofProtocol)))))
+                ccx.IsChainDefinition() ? CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR : (CCurrencyDefinition::EProofProtocol)destSystem.proofProtocol))) &&
+          p.IsEvalPKOut()))
     {
         return state.Error("Invalid cross chain export");
     }
@@ -919,6 +921,13 @@ bool PreCheckFinalizeExport(const CTransaction &tx, int32_t outNum, CValidationS
 {
     // TODO: HARDENING - ensure that this finalization represents an export that is either the clear launch beacon of
     // the currency or a same-chain export to be spent by the matching import
+    COptCCParams p;
+    if (!(tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+          p.IsValid() &&
+          p.IsEvalPKOut()))
+    {
+        return state.Error("Invalid export finalization output");
+    }
     return true;
 }
 
@@ -2248,7 +2257,8 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         p.evalCode == EVAL_RESERVE_TRANSFER &&
         p.vData.size() &&
         (rt = CReserveTransfer(p.vData[0])).IsValid() &&
-        rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID] == tx.vout[outNum].nValue)
+        rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID] == tx.vout[outNum].nValue &&
+        p.IsEvalPKOut())
     {
         // arbitrage tranactions are determined by their context and statically setting the flags is prohibited
         if (rt.IsArbitrageOnly())

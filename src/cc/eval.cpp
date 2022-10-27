@@ -124,14 +124,6 @@ bool Eval::Dispatch(const CC *cond, const CTransaction &txTo, unsigned int nIn, 
         case EVAL_STAKEGUARD:
             return(ProcessCC(cp,this, vparams, txTo, nIn, fulfilled));
             break;
-
-        case EVAL_IMPORTPAYOUT:
-            //return ImportPayout(vparams, txTo, nIn);
-            break;
-            
-        case EVAL_IMPORTCOIN:
-            //return ImportCoin(vparams, txTo, nIn);
-            break;
     }
     return Invalid("invalid-code, dont forget to add EVAL_NEWCC to Eval::Dispatch");
 }

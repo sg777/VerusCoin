@@ -4919,12 +4919,13 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
     COptCCParams p;
     CPBaaSNotarization currentNotarization;
     if (!(tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
-         p.IsValid() &&
-         (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
-         p.vData.size() &&
-         (currentNotarization = CPBaaSNotarization(p.vData[0])).IsValid() &&
-         currentNotarization.currencyState.IsValid() &&
-         currentNotarization.currencyState.GetID() == currentNotarization.currencyID))
+          p.IsValid() &&
+          (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
+          p.vData.size() &&
+          (currentNotarization = CPBaaSNotarization(p.vData[0])).IsValid() &&
+          currentNotarization.currencyState.IsValid() &&
+          currentNotarization.currencyState.GetID() == currentNotarization.currencyID &&
+          p.IsEvalPKOut()))
     {
         return state.Error("Invalid notarization output");
     }
@@ -5325,6 +5326,23 @@ std::vector<CNotaryEvidence> CObjectFinalization::GetFinalizationEvidence(const 
     return evidenceVec;
 }
 
+bool PreCheckNotaryEvidence(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    // TODO: HARDENING - ensure that evidence is valid as expected
+    COptCCParams p;
+    CNotaryEvidence currentEvidence;
+    if (!(tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+          p.IsValid() &&
+          p.evalCode == EVAL_NOTARY_EVIDENCE &&
+          p.vData.size() &&
+          (currentEvidence = CNotaryEvidence(p.vData[0])).IsValid()) &&
+          p.IsEvalPKOut())
+    {
+        return state.Error("Invalid notary evidence output");
+    }
+    return true;
+}
+
 bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
     // ensure that if we are finalizing a notarization, we have followed all rules to do so
@@ -5353,7 +5371,8 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
           p.IsValid() &&
           p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
           p.vData.size() &&
-          (currentFinalization = CObjectFinalization(p.vData[0])).IsValid()))
+          (currentFinalization = CObjectFinalization(p.vData[0])).IsValid()) &&
+          p.IsEvalPKOut())
     {
         return state.Error("Invalid finalization for notarization output");
     }

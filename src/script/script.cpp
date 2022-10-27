@@ -1530,6 +1530,35 @@ std::vector<CTxDestination> COptCCParams::GetDestinations() const
     return destinations;
 }
 
+bool COptCCParams::IsEvalPKOut() const
+{
+    if (evalCode > EVAL_LAST)
+    {
+        return false;
+    }
+    CCcontract_info CC;
+    CCcontract_info *cp;
+
+    cp = CCinit(&CC, evalCode);
+    uint160 evalPKH = CPubKey(ParseHex(CC.CChexstr)).GetID();
+
+    COptCCParams master;
+    if (version >= VERSION_V3 &&
+        vData.size() == 2 &&
+        (master = COptCCParams(vData.back())).IsValid() &&
+        master.m == 1)
+    {
+        for (auto &oneKey : vKeys)
+        {
+            if ((oneKey.which() == ADDRTYPE_PK || oneKey.which() == ADDRTYPE_PKH) && GetDestinationID(oneKey) == evalPKH)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 std::vector<CTxDestination> CScript::GetDestinations() const
 {
     std::vector<CTxDestination> destinations;
