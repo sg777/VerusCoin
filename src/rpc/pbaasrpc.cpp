@@ -11369,7 +11369,13 @@ UniValue setidentitytimelock(const UniValue& params, bool fHelp)
     }
 
     std::string idString = uni_get_str(params[0]);
-    CIdentity oldIdentity = ValidateIdentityParameter(idString);
+    CIdentity oldIdentity;
+    
+    {
+        LOCK(cs_main);
+        oldIdentity = ValidateIdentityParameter(idString);
+    }
+
     if (!oldIdentity.IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity, " + idString + " not found ");
