@@ -5121,8 +5121,9 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             }
             else
             {
-                if ((curDef.IsPBaaSChain() || curDef.IsGateway()) &&
-                     curDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
+                if (!currentNotarization.IsRefunding() &&
+                    (curDef.IsPBaaSChain() || curDef.IsGateway()) &&
+                    curDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
                 {
                     // we should only approve accepted notarizations that have the following qualifications
                     // for the following protocols:
