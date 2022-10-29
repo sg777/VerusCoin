@@ -1898,7 +1898,7 @@ void GetDeltaOutputDetails(UniValue &delta, const CTransaction &curTx)
     }
 }
 
-UniValue AddressMemPoolUni(const std::vector<std::pair<uint160, int>> &addresses, bool friendlyNames)
+UniValue AddressMemPoolUni(const std::vector<std::pair<uint160, int>> &addresses, bool friendlyNames, int verbosity)
 {
     CTransaction curTx;
 
@@ -1929,7 +1929,7 @@ UniValue AddressMemPoolUni(const std::vector<std::pair<uint160, int>> &addresses
         if (!it->first.txhash.IsNull() && it->first.txhash == curTx.GetHash() || mempool.lookup(it->first.txhash, curTx))
         {
             CurrencyValuesAndNames(delta, it->first.spending, curTx, it->first.index, it->second.amount, friendlyNames);
-            if (it->first.spending)
+            if (verbosity && it->first.spending)
             {
                 GetDeltaOutputDetails(delta, curTx);
             }
@@ -1979,19 +1979,22 @@ UniValue getaddressmempool(const UniValue& params, bool fHelp)
     std::vector<std::pair<uint160, int> > addresses;
     UniValue result(UniValue::VARR);
 
+    int verbosity = uni_get_bool(find_value(params[0].get_obj(), "verbosity"));
+    bool friendlyNames = uni_get_bool(find_value(params[0].get_obj(), "friendlynames"), true);
+
     if (!getAddressesFromParams(params, addresses)) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid address");
     }
     
-    if (uni_get_bool(find_value(params[0].get_obj(), "friendlynames")))
+    if (verbosity || friendlyNames)
     {
         LOCK2(cs_main, mempool.cs);
-        result = AddressMemPoolUni(addresses, true);
+        result = AddressMemPoolUni(addresses, friendlyNames, verbosity);
     }
     else
     {
         LOCK(mempool.cs);
-        result = AddressMemPoolUni(addresses, false);
+        result = AddressMemPoolUni(addresses, false, 0);
     }
     return result;
 }
@@ -2219,10 +2222,10 @@ UniValue getaddressdeltas(const UniValue& params, bool fHelp)
             }
 
             uint256 blockHash;
-            if (verbosity && !it->first.txhash.IsNull() && (it->first.txhash == curTx.GetHash() || myGetTransaction(it->first.txhash, curTx, blockHash)))
+            if (friendlyNames && !it->first.txhash.IsNull() && (it->first.txhash == curTx.GetHash() || myGetTransaction(it->first.txhash, curTx, blockHash)))
             {
                 CurrencyValuesAndNames(delta, it->first.spending, curTx, it->first.index, it->second, friendlyNames);
-                if (it->first.spending)
+                if (verbosity && it->first.spending)
                 {
                     GetDeltaOutputDetails(delta, curTx);
                 }
