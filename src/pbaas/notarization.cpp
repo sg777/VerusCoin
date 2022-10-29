@@ -2947,6 +2947,19 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         return state.Error("no-new-stable-proof-root");
     }
 
+    std::set<uint160> proofRootsToDelete;
+    for (auto &oneProofRoot : notarization.proofRoots)
+    {
+        if (oneProofRoot.first != ASSETCHAINS_CHAINID)
+        {
+            proofRootsToDelete.insert(oneProofRoot.first);
+        }
+    }
+    for (auto &oneProofRootID : proofRootsToDelete)
+    {
+        notarization.proofRoots.erase(oneProofRootID);
+    }
+
     notarization.proofRoots[latestProofRoot.systemID] = latestProofRoot;
     notarization.notarizationHeight = latestProofRoot.rootHeight;
 
