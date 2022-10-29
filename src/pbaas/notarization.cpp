@@ -2947,6 +2947,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         return state.Error("no-new-stable-proof-root");
     }
 
+    // remove any proof roots from other cross-chain imports that may have been put into the proof root array
     std::set<uint160> proofRootsToDelete;
     for (auto &oneProofRoot : notarization.proofRoots)
     {
