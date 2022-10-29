@@ -1793,7 +1793,112 @@ void CurrencyValuesAndNames(UniValue &output, bool spending, const CTransaction 
     CurrencyValuesAndNames(output, spending, script, satoshis, friendlyNames);
 }
 
-UniValue AddressMemPoolUni(const std::vector<std::pair<uint160, int>> &addresses, bool friendlyNames)
+void GetDeltaOutputDetails(UniValue &delta, const CTransaction &curTx)
+{
+    std::map<std::set<CTxDestination>, CCurrencyValueMap> destMap;
+    UniValue functions(UniValue::VARR);
+    for (auto &oneOut : curTx.vout)
+    {
+        txnouttype typeRet;
+        std::vector<CTxDestination> addresses;
+        int requiredRet;
+        if (ExtractDestinations(oneOut.scriptPubKey, typeRet, addresses, requiredRet) && addresses.size())
+        {
+            COptCCParams p;
+            if (typeRet == txnouttype::TX_CRYPTOCONDITION &&
+                oneOut.scriptPubKey.IsPayToCryptoCondition(p))
+            {
+                if (p.IsValid())
+                {
+                    switch (p.evalCode)
+                    {
+                        case EVAL_RESERVE_TRANSFER:
+                        {
+                            functions.push_back(Pair("reservetransfer", CReserveTransfer(p.vData[0]).ToUniValue()));
+                            break;
+                        }
+                        case EVAL_IDENTITY_ADVANCEDRESERVATION:
+                        {
+                            functions.push_back(Pair("identityregistration", CAdvancedNameReservation(p.vData[0]).ToUniValue()));
+                            break;
+                        }
+                        case EVAL_RESERVE_DEPOSIT:
+                        {
+                            functions.push_back(Pair("reservedeposit", CReserveDeposit(p.vData[0]).ToUniValue()));
+                            break;
+                        }
+                        case EVAL_CROSSCHAIN_IMPORT:
+                        {
+                            functions.push_back(Pair("crosschainimport", CCrossChainImport(p.vData[0]).ToUniValue()));
+                            break;
+                        }
+                        case EVAL_CROSSCHAIN_EXPORT:
+                        {
+                            functions.push_back(Pair("crosschainexport", CCrossChainExport(p.vData[0]).ToUniValue()));
+                            break;
+                        }
+                        case EVAL_IDENTITY_COMMITMENT:
+                        {
+                            functions.push_back(Pair("identitycommitment", CCommitmentHash(p.vData[0]).ToUniValue()));
+                            break;
+                        }
+                        case EVAL_IDENTITY_PRIMARY:
+                        {
+                            functions.push_back(Pair("identity", CIdentity(p.vData[0]).ToUniValue()));
+                            break;
+                        }
+                        case EVAL_IDENTITY_RESERVATION:
+                        {
+                            functions.push_back(Pair("identityregistration", CNameReservation(p.vData[0]).ToUniValue()));
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    functions.push_back("invalid");
+                }
+            }
+            std::set<CTxDestination> addrSet;
+            for (auto &oneAddr : addresses)
+            {
+                addrSet.insert(oneAddr);
+            }
+            CCurrencyValueMap outVal = oneOut.ReserveOutValue();
+            outVal.valueMap[ASSETCHAINS_CHAINID] = oneOut.nValue;
+            destMap[addrSet] += outVal;
+        }
+    }
+    UniValue sentToUni(UniValue::VOBJ);
+    UniValue outputsUni(UniValue::VARR);
+    if (functions.size())
+    {
+        sentToUni.pushKV("outputfunctions", functions);
+    }
+    for (auto &oneDestSet : destMap)
+    {
+        UniValue addressesUni(UniValue::VARR);
+        for (auto &oneAddr : oneDestSet.first)
+        {
+            addressesUni.push_back(EncodeDestination(oneAddr));
+        }
+        UniValue oneDestAmount(UniValue::VOBJ);
+        oneDestAmount.pushKV("addresses", addressesUni.size() == 1 ? addressesUni[0] : addressesUni);
+        oneDestAmount.pushKV("amounts", oneDestSet.second.ToUniValue());
+        outputsUni.push_back(oneDestAmount);
+    }
+    sentToUni.pushKV("outputs", outputsUni);
+    if (curTx.valueBalance < 0)
+    {
+        sentToUni.pushKV("privateoutput", -curTx.valueBalance);
+    }
+    if (sentToUni.size())
+    {
+        delta.pushKV("sent", sentToUni);
+    }
+}
+
+UniValue AddressMemPoolUni(const std::vector<std::pair<uint160, int>> &addresses, bool friendlyNames, int verbosity)
 {
     CTransaction curTx;
 
@@ -1824,6 +1929,10 @@ UniValue AddressMemPoolUni(const std::vector<std::pair<uint160, int>> &addresses
         if (!it->first.txhash.IsNull() && it->first.txhash == curTx.GetHash() || mempool.lookup(it->first.txhash, curTx))
         {
             CurrencyValuesAndNames(delta, it->first.spending, curTx, it->first.index, it->second.amount, friendlyNames);
+            if (verbosity && it->first.spending)
+            {
+                GetDeltaOutputDetails(delta, curTx);
+            }
         }
         delta.push_back(Pair("timestamp", it->second.time));
         if (it->second.amount < 0) {
@@ -1870,19 +1979,22 @@ UniValue getaddressmempool(const UniValue& params, bool fHelp)
     std::vector<std::pair<uint160, int> > addresses;
     UniValue result(UniValue::VARR);
 
+    int verbosity = uni_get_bool(find_value(params[0].get_obj(), "verbosity"));
+    bool friendlyNames = uni_get_bool(find_value(params[0].get_obj(), "friendlynames"), true);
+
     if (!getAddressesFromParams(params, addresses)) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid address");
     }
     
-    if (uni_get_bool(find_value(params[0].get_obj(), "friendlynames")))
+    if (verbosity || friendlyNames)
     {
         LOCK2(cs_main, mempool.cs);
-        result = AddressMemPoolUni(addresses, true);
+        result = AddressMemPoolUni(addresses, friendlyNames, verbosity);
     }
     else
     {
         LOCK(mempool.cs);
-        result = AddressMemPoolUni(addresses, false);
+        result = AddressMemPoolUni(addresses, false, 0);
     }
     return result;
 }
@@ -2110,112 +2222,12 @@ UniValue getaddressdeltas(const UniValue& params, bool fHelp)
             }
 
             uint256 blockHash;
-            if (verbosity && !it->first.txhash.IsNull() && (it->first.txhash == curTx.GetHash() || myGetTransaction(it->first.txhash, curTx, blockHash)))
+            if (friendlyNames && !it->first.txhash.IsNull() && (it->first.txhash == curTx.GetHash() || myGetTransaction(it->first.txhash, curTx, blockHash)))
             {
                 CurrencyValuesAndNames(delta, it->first.spending, curTx, it->first.index, it->second, friendlyNames);
-                if (it->first.spending)
+                if (verbosity && it->first.spending)
                 {
-                    std::map<std::set<CTxDestination>, CCurrencyValueMap> destMap;
-                    UniValue functions(UniValue::VARR);
-                    for (auto &oneOut : curTx.vout)
-                    {
-                        txnouttype typeRet;
-                        std::vector<CTxDestination> addresses;
-                        int requiredRet;
-                        if (ExtractDestinations(oneOut.scriptPubKey, typeRet, addresses, requiredRet) && addresses.size())
-                        {
-                            COptCCParams p;
-                            if (typeRet == txnouttype::TX_CRYPTOCONDITION &&
-                                oneOut.scriptPubKey.IsPayToCryptoCondition(p))
-                            {
-                                if (p.IsValid())
-                                {
-                                    switch (p.evalCode)
-                                    {
-                                        case EVAL_RESERVE_TRANSFER:
-                                        {
-                                            functions.push_back(Pair("reservetransfer", CReserveTransfer(p.vData[0]).ToUniValue()));
-                                            break;
-                                        }
-                                        case EVAL_IDENTITY_ADVANCEDRESERVATION:
-                                        {
-                                            functions.push_back(Pair("identityregistration", CAdvancedNameReservation(p.vData[0]).ToUniValue()));
-                                            break;
-                                        }
-                                        case EVAL_RESERVE_DEPOSIT:
-                                        {
-                                            functions.push_back(Pair("reservedeposit", CReserveDeposit(p.vData[0]).ToUniValue()));
-                                            break;
-                                        }
-                                        case EVAL_CROSSCHAIN_IMPORT:
-                                        {
-                                            functions.push_back(Pair("crosschainimport", CCrossChainImport(p.vData[0]).ToUniValue()));
-                                            break;
-                                        }
-                                        case EVAL_CROSSCHAIN_EXPORT:
-                                        {
-                                            functions.push_back(Pair("crosschainexport", CCrossChainExport(p.vData[0]).ToUniValue()));
-                                            break;
-                                        }
-                                        case EVAL_IDENTITY_COMMITMENT:
-                                        {
-                                            functions.push_back(Pair("identitycommitment", CCommitmentHash(p.vData[0]).ToUniValue()));
-                                            break;
-                                        }
-                                        case EVAL_IDENTITY_PRIMARY:
-                                        {
-                                            functions.push_back(Pair("identity", CIdentity(p.vData[0]).ToUniValue()));
-                                            break;
-                                        }
-                                        case EVAL_IDENTITY_RESERVATION:
-                                        {
-                                            functions.push_back(Pair("identityregistration", CNameReservation(p.vData[0]).ToUniValue()));
-                                            break;
-                                        }
-                                    }
-                                }
-                                else
-                                {
-                                    functions.push_back("invalid");
-                                }
-                            }
-                            std::set<CTxDestination> addrSet;
-                            for (auto &oneAddr : addresses)
-                            {
-                                addrSet.insert(oneAddr);
-                            }
-                            CCurrencyValueMap outVal = oneOut.ReserveOutValue();
-                            outVal.valueMap[ASSETCHAINS_CHAINID] = oneOut.nValue;
-                            destMap[addrSet] += outVal;
-                        }
-                    }
-                    UniValue sentToUni(UniValue::VOBJ);
-                    UniValue outputsUni(UniValue::VARR);
-                    if (functions.size())
-                    {
-                        sentToUni.pushKV("outputfunctions", functions);
-                    }
-                    for (auto &oneDestSet : destMap)
-                    {
-                        UniValue addressesUni(UniValue::VARR);
-                        for (auto &oneAddr : oneDestSet.first)
-                        {
-                            addressesUni.push_back(EncodeDestination(oneAddr));
-                        }
-                        UniValue oneDestAmount(UniValue::VOBJ);
-                        oneDestAmount.pushKV("addresses", addressesUni.size() == 1 ? addressesUni[0] : addressesUni);
-                        oneDestAmount.pushKV("amounts", oneDestSet.second.ToUniValue());
-                        outputsUni.push_back(oneDestAmount);
-                    }
-                    sentToUni.pushKV("outputs", outputsUni);
-                    if (curTx.valueBalance < 0)
-                    {
-                        sentToUni.pushKV("privateoutput", -curTx.valueBalance);
-                    }
-                    if (sentToUni.size())
-                    {
-                        delta.pushKV("sent", sentToUni);
-                    }
+                    GetDeltaOutputDetails(delta, curTx);
                 }
             }
 
