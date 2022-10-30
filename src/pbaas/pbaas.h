@@ -220,8 +220,10 @@ public:
     enum {
         VERSION_INVALID = 0,
         VERSION_FIRST = 1,
-        VERSION_LAST = 1,
-        VERSION_CURRENT = 1,
+        VERSION_PBAAS = 1,
+        VERSION_PBAAS2 = 2,
+        VERSION_LAST = 2,
+        VERSION_CURRENT = 2,
         FINAL_CONFIRMATIONS = 9,
         DEFAULT_NOTARIZATION_FEE = 10000,               // price of a notarization fee in native or launch system currency
         MAX_NODES = 2,                                  // only provide 2 nodes per notarization
@@ -314,41 +316,79 @@ public:
         READWRITE(hashPrevCrossNotarization);
         READWRITE(prevHeight);
 
-        std::vector<std::pair<uint160, CCoinbaseCurrencyState>> vecCurrencyStates;
-        if (ser_action.ForRead())
+        if (nVersion == VERSION_PBAAS2)
         {
-            READWRITE(vecCurrencyStates);
-            for (auto &oneState : vecCurrencyStates)
+            std::vector<CCoinbaseCurrencyState> vecCurrencyStates;
+            if (ser_action.ForRead())
             {
-                currencyStates.insert(oneState);
+                READWRITE(vecCurrencyStates);
+                for (auto &oneState : vecCurrencyStates)
+                {
+                    currencyStates.insert(std::make_pair(oneState.GetID(), oneState));
+                }
+            }
+            else
+            {
+                for (auto &oneState : currencyStates)
+                {
+                    vecCurrencyStates.push_back(oneState.second);
+                }
+                READWRITE(vecCurrencyStates);
+            }
+            std::vector<CProofRoot> vecProofRoots;
+            if (ser_action.ForRead())
+            {
+                READWRITE(vecProofRoots);
+                for (auto &oneRoot : vecProofRoots)
+                {
+                    proofRoots.insert(std::make_pair(oneRoot.systemID, oneRoot));
+                }
+            }
+            else
+            {
+                for (auto &oneRoot : proofRoots)
+                {
+                    vecProofRoots.push_back(oneRoot.second);
+                }
+                READWRITE(vecProofRoots);
             }
         }
         else
         {
-            for (auto &oneState : currencyStates)
+            std::vector<std::pair<uint160, CCoinbaseCurrencyState>> vecCurrencyStates;
+            if (ser_action.ForRead())
             {
-                vecCurrencyStates.push_back(oneState);
+                READWRITE(vecCurrencyStates);
+                for (auto &oneState : vecCurrencyStates)
+                {
+                    currencyStates.insert(oneState);
+                }
             }
-            READWRITE(vecCurrencyStates);
-        }
-
-        std::vector<std::pair<uint160, CProofRoot>> vecProofRoots;
-
-        if (ser_action.ForRead())
-        {
-            READWRITE(vecProofRoots);
-            for (auto &oneRoot : vecProofRoots)
+            else
             {
-                proofRoots.insert(oneRoot);
+                for (auto &oneState : currencyStates)
+                {
+                    vecCurrencyStates.push_back(oneState);
+                }
+                READWRITE(vecCurrencyStates);
             }
-        }
-        else
-        {
-            for (auto &oneRoot : proofRoots)
+            std::vector<std::pair<uint160, CProofRoot>> vecProofRoots;
+            if (ser_action.ForRead())
             {
-                vecProofRoots.push_back(oneRoot);
+                READWRITE(vecProofRoots);
+                for (auto &oneRoot : vecProofRoots)
+                {
+                    proofRoots.insert(oneRoot);
+                }
             }
-            READWRITE(vecProofRoots);
+            else
+            {
+                for (auto &oneRoot : proofRoots)
+                {
+                    vecProofRoots.push_back(oneRoot);
+                }
+                READWRITE(vecProofRoots);
+            }
         }
 
         READWRITE(nodes);
