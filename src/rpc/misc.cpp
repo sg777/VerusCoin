@@ -2222,7 +2222,7 @@ UniValue getaddressdeltas(const UniValue& params, bool fHelp)
             }
 
             uint256 blockHash;
-            if (friendlyNames && !it->first.txhash.IsNull() && (it->first.txhash == curTx.GetHash() || myGetTransaction(it->first.txhash, curTx, blockHash)))
+            if (!it->first.txhash.IsNull() && (it->first.txhash == curTx.GetHash() || myGetTransaction(it->first.txhash, curTx, blockHash)))
             {
                 CurrencyValuesAndNames(delta, it->first.spending, curTx, it->first.index, it->second, friendlyNames);
                 if (verbosity && it->first.spending)
