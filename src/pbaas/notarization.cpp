@@ -4030,6 +4030,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                             for (auto &oneID : myIDSet)
                             {
                                 printf("Signing notarization (%s:%u) to confirm for %s\n", ne.output.hash.GetHex().c_str(), ne.output.n, EncodeDestination(oneID).c_str());
+                                LogPrint("notarization", "Signing notarization (%s:%u) to confirm for %s\n", ne.output.hash.GetHex().c_str(), ne.output.n, EncodeDestination(oneID).c_str());
 
                                 auto signResult = ne.SignConfirmed(notarySet, minimumNotariesConfirm, *pWallet, txes[idx].first, oneID, signingHeight, hashType);
 
@@ -4900,12 +4901,18 @@ bool ValidateAcceptedNotarization(struct CCcontract_info *cp, Eval* eval, const 
     {
         COptCCParams p;
         CPBaaSNotarization nextPbn;
+        CObjectFinalization of;
         if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
             p.IsValid() &&
-            p.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
-            p.vData.size() &&
-            (nextPbn = CPBaaSNotarization(p.vData[0])).IsValid() &&
-            nextPbn.currencyID == pbn.currencyID)
+            ((p.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
+              p.vData.size() &&
+              (nextPbn = CPBaaSNotarization(p.vData[0])).IsValid() &&
+              nextPbn.currencyID == pbn.currencyID) ||
+             (p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+              p.vData.size() &&
+              (of = CObjectFinalization(p.vData[0])).IsValid() &&
+              (of.IsConfirmed() || of.IsRejected()) &&
+              of.currencyID == pbn.currencyID)))
         {
             break;
         }
@@ -5454,11 +5461,9 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
 
     CTransaction notarizationTx;
 
-    if (currentFinalization.IsConfirmed())
+    if (haveFullChain && (currentFinalization.IsConfirmed() || currentFinalization.IsRejected()))
     {
-        // if confirmed, combine and verify all evidence
-        // ensure the finalization adheres to the following on-chain rules:
-
+        // combine and verify all evidence
         evidenceVec = currentFinalization.GetFinalizationEvidence(tx, state, &notarizationTx);
         if (state.IsError())
         {
@@ -5481,94 +5486,122 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                 evidenceMap[e.systemID] = e;
             }
         }
-
-        if (p.evalCode == EVAL_EARNEDNOTARIZATION)
+        if (currentFinalization.IsConfirmed())
         {
-            if (!ConnectedChains.notarySystems.count(notarization.currencyID))
+            if (p.evalCode == EVAL_EARNEDNOTARIZATION)
             {
-                return state.Error("insufficient foundation for proof of notary chain");
+                if (!ConnectedChains.notarySystems.count(notarization.currencyID))
+                {
+                    return state.Error("insufficient foundation for proof of notary chain");
+                }
+
+                // 1) for earned notarizations:
+                //  a) Notarization being confirmed must be agreed to by 2 subsequent consecutive notarizations for auto-notarization and
+                //     1 for centralized notarization and in all cases, have no interceding disagreements
+                //  b) Block height must be at least 1 after last required agreed notarization
+                //  c) evidence up to this point on chain must all be spent or output by this transaction and must contain necessary
+                //     signatures from valid, unrevoked notaries to confirm, as well as none of the following counter evidence:
+                //      i) disagreeing earned notarization between the notarization and the second agreed notarization
+                //      ii) other forms of proof that render the to-be-confirmed proof root invalid, such as rejecting signatures
+                //          by the confirming IDs that cancel enough confirming, or proof of a more powerful, provably mined and
+                //          staked chain since the last notarization
+                // 2) for accepted notarizations (see below after else):
+
+                if (!evidenceMap.count(ASSETCHAINS_CHAINID) ||
+                    evidenceMap[ASSETCHAINS_CHAINID].CheckSignatureConfirmation(objHash,
+                                                                                notarySet,
+                                                                                pNotaryCurrency->minNotariesConfirm,
+                                                                                height) != CNotaryEvidence::STATE_CONFIRMED)
+                {
+                    return state.Error("insufficient evidence for finalization");
+                }
+
+                // get simulated notarization data assuming the notarization confirmed, starting from that notarization
+                // to now and ensure that we have sufficient earned notarization confirmation
+
+                // ensure that we meet all counter-evidence requirements
+
+                // if we get here, store the verified proof root of this chain as notarized
+                ConnectedChains.notarySystems[notarization.currencyID].lastConfirmedNotarization = notarization;
             }
-
-            // 1) for earned notarizations:
-            //  a) Notarization being confirmed must be agreed to by 2 subsequent consecutive notarizations for auto-notarization and
-            //     1 for centralized notarization and in all cases, have no interceding disagreements
-            //  b) Block height must be at least 1 after last required agreed notarization
-            //  c) evidence up to this point on chain must all be spent or output by this transaction and must contain necessary
-            //     signatures from valid, unrevoked notaries to confirm, as well as none of the following counter evidence:
-            //      i) disagreeing earned notarization between the notarization and the second agreed notarization
-            //      ii) other forms of proof that render the to-be-confirmed proof root invalid, such as rejecting signatures
-            //          by the confirming IDs that cancel enough confirming, or proof of a more powerful, provably mined and
-            //          staked chain since the last notarization
-            // 2) for accepted notarizations (see below after else):
-
-            if (!evidenceMap.count(ASSETCHAINS_CHAINID) ||
-                evidenceMap[ASSETCHAINS_CHAINID].CheckSignatureConfirmation(objHash,
-                                                                            notarySet,
-                                                                            pNotaryCurrency->minNotariesConfirm,
-                                                                            height) != CNotaryEvidence::STATE_CONFIRMED)
+            else
             {
-                return state.Error("insufficient evidence for finalization");
+                // accepted notarization
+                // 2) for accepted notarizations:
+                //  a) Confirmed finalizations must accompany a valid, notary signed, earned notarization with proof and notary
+                //     agreement from the other chain.
+                //  b) All on-chain evidence will be retrieved to ensure there is none of the following counter evidence:
+                //      i) on-chain rejection signatures in blocks prior to this one
+                //      ii) IDs revoked that result in less than majority for the confirmation
+                //      iii) proof of a more powerful, provably mined/staked chain since the last notarization that is different than
+                //           the accepted notarization.
+
+                if (notarization.currencyID != ASSETCHAINS_CHAINID &&
+                    (notaryCurrencyDef.IsPBaaSChain() || notaryCurrencyDef.IsGateway()) &&
+                    !notarization.IsPreLaunch() &&
+                    (notaryCurrencyDef.launchSystemID != ASSETCHAINS_CHAINID ||
+                    !evidenceMap.count(notarization.currencyID) ||
+                    evidenceMap[notarization.currencyID].CheckSignatureConfirmation(objHash,
+                                                                                    notarySet,
+                                                                                    pNotaryCurrency->minNotariesConfirm,
+                                                                                    height) != CNotaryEvidence::STATE_CONFIRMED))
+                {
+                    return state.Error("insufficient evidence from notary system to accept finalization");
+                }
             }
-
-            // get simulated notarization data assuming the notarization confirmed, starting from that notarization
-            // to now and ensure that we have sufficient earned notarization confirmation
-
-            // ensure that we meet all counter-evidence requirements
-
-            // if we get here, store the verified proof root of this chain as notarized
-            ConnectedChains.notarySystems[notarization.currencyID].lastConfirmedNotarization = notarization;
         }
         else
         {
-            // accepted notarization
-            // 2) for accepted notarizations:
-            //  a) Confirmed finalizations must accompany a valid, notary signed, earned notarization with proof and notary
-            //     agreement from the other chain.
-            //  b) All on-chain evidence will be retrieved to ensure there is none of the following counter evidence:
-            //      i) on-chain rejection signatures in blocks prior to this one
-            //      ii) IDs revoked that result in less than majority for the confirmation
-            //      iii) proof of a more powerful, provably mined/staked chain since the last notarization that is different than
-            //           the accepted notarization.
-
-            if (notarization.currencyID != ASSETCHAINS_CHAINID &&
-                (notaryCurrencyDef.IsPBaaSChain() || notaryCurrencyDef.IsGateway()) &&
-                !notarization.IsPreLaunch() &&
-                (notaryCurrencyDef.launchSystemID != ASSETCHAINS_CHAINID ||
-                 !evidenceMap.count(notarization.currencyID) ||
-                 evidenceMap[notarization.currencyID].CheckSignatureConfirmation(objHash,
-                                                                                 notarySet,
-                                                                                 pNotaryCurrency->minNotariesConfirm,
-                                                                                 height) != CNotaryEvidence::STATE_CONFIRMED))
+            evidenceVec = currentFinalization.GetFinalizationEvidence(tx, state, &notarizationTx);
+            if (state.IsError())
             {
-                return state.Error("insufficient evidence from notary system to accept finalization");
+                return false;
             }
-        }
-    }
-    else if (currentFinalization.IsRejected())
-    {
-        evidenceVec = currentFinalization.GetFinalizationEvidence(tx, state, &notarizationTx);
-        if (state.IsError())
-        {
-            return false;
-        }
 
-        // this is asserting rejection, so we must confirm that it can be rejected and that it only spends
-        // inputs that are now invalidated due to the rejection
-        if (p.evalCode == EVAL_EARNEDNOTARIZATION)
-        {
-            // 1) for earned notarizations:
-            //  a) disagreeing earned notarization between the notarization and the second agreed notarization
-            //  b) other forms of proof that render the to-be-confirmed proof root invalid, such as rejecting signatures
-            //     by the confirming IDs that cancel enough confirming, or proof of a more powerful, provably mined and
-            //     staked chain since the last notarization
-        }
-        else
-        {
-            // 2) for accepted notarizations:
-            //  a) Majority on-chain rejection signatures in blocks prior to this one
-            //  b) IDs revoked that result in less than majority for the confirmation
-            //  c) proof of a more powerful, provably mined/staked chain since the last notarization that is different than
-            //     the accepted notarization.
+            // this is asserting rejection, so we must confirm that it can be rejected and that it only spends
+            // inputs that are now invalidated due to the rejection
+            if (p.evalCode == EVAL_EARNEDNOTARIZATION)
+            {
+                if (!ConnectedChains.notarySystems.count(notarization.currencyID))
+                {
+                    return state.Error("insufficient foundation for rejection proof of notarization");
+                }
+
+                // 1) for earned notarizations:
+                //  a) disagreeing earned notarization between the notarization and the second agreed notarization
+                //  b) other forms of proof that render the to-be-confirmed proof root invalid, such as rejecting signatures
+                //     by the confirming IDs that cancel enough confirming, or proof of a more powerful, provably mined and
+                //     staked chain since the last notarization
+
+                if (!evidenceMap.count(ASSETCHAINS_CHAINID) ||
+                    evidenceMap[ASSETCHAINS_CHAINID].CheckSignatureConfirmation(objHash,
+                                                                                notarySet,
+                                                                                pNotaryCurrency->minNotariesConfirm,
+                                                                                height) != CNotaryEvidence::STATE_REJECTED)
+                {
+                    return state.Error("insufficient evidence to reject finalization");
+                }
+            }
+            else
+            {
+                // 2) for accepted notarizations:
+                //  a) Majority on-chain rejection signatures in blocks prior to this one
+                //  b) IDs revoked that result in less than majority for the confirmation
+                //  c) proof of a more powerful, provably mined/staked chain since the last notarization that is different than
+                //     the accepted notarization.
+                if (notarization.currencyID != ASSETCHAINS_CHAINID &&
+                    (notaryCurrencyDef.IsPBaaSChain() || notaryCurrencyDef.IsGateway()) &&
+                    !notarization.IsPreLaunch() &&
+                    (notaryCurrencyDef.launchSystemID != ASSETCHAINS_CHAINID ||
+                    !evidenceMap.count(notarization.currencyID) ||
+                    evidenceMap[notarization.currencyID].CheckSignatureConfirmation(objHash,
+                                                                                    notarySet,
+                                                                                    pNotaryCurrency->minNotariesConfirm,
+                                                                                    height) != CNotaryEvidence::STATE_REJECTED))
+                {
+                    return state.Error("insufficient evidence from notary system to reject finalization");
+                }
+            }
         }
     }
     else
