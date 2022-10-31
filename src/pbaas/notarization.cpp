@@ -5454,7 +5454,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
 
     CTransaction notarizationTx;
 
-    if (currentFinalization.IsConfirmed())
+    if (haveFullChain && currentFinalization.IsConfirmed())
     {
         // if confirmed, combine and verify all evidence
         // ensure the finalization adheres to the following on-chain rules:
@@ -5544,7 +5544,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             }
         }
     }
-    else if (currentFinalization.IsRejected())
+    else if (haveFullChain && currentFinalization.IsRejected())
     {
         evidenceVec = currentFinalization.GetFinalizationEvidence(tx, state, &notarizationTx);
         if (state.IsError())
