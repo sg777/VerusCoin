@@ -4030,6 +4030,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                             for (auto &oneID : myIDSet)
                             {
                                 printf("Signing notarization (%s:%u) to confirm for %s\n", ne.output.hash.GetHex().c_str(), ne.output.n, EncodeDestination(oneID).c_str());
+                                LogPrint("notarization", "Signing notarization (%s:%u) to confirm for %s\n", ne.output.hash.GetHex().c_str(), ne.output.n, EncodeDestination(oneID).c_str());
 
                                 auto signResult = ne.SignConfirmed(notarySet, minimumNotariesConfirm, *pWallet, txes[idx].first, oneID, signingHeight, hashType);
 
@@ -4900,12 +4901,18 @@ bool ValidateAcceptedNotarization(struct CCcontract_info *cp, Eval* eval, const 
     {
         COptCCParams p;
         CPBaaSNotarization nextPbn;
+        CObjectFinalization of;
         if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
             p.IsValid() &&
-            p.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
-            p.vData.size() &&
-            (nextPbn = CPBaaSNotarization(p.vData[0])).IsValid() &&
-            nextPbn.currencyID == pbn.currencyID)
+            ((p.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
+              p.vData.size() &&
+              (nextPbn = CPBaaSNotarization(p.vData[0])).IsValid() &&
+              nextPbn.currencyID == pbn.currencyID) ||
+             (p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+              p.vData.size() &&
+              (of = CObjectFinalization(p.vData[0])).IsValid() &&
+              of.IsConfirmed() &&
+              of.currencyID == pbn.currencyID)))
         {
             break;
         }
