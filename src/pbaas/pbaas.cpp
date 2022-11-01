@@ -7128,6 +7128,7 @@ void CConnectedChains::ProcessLocalImports()
 
     if (GetAddressUnspent(finalizeExportKey, CScript::P2IDX, unspentOutputs))
     {
+        LOCK2(smartTransactionCS, mempool.cs);
         std::map<uint160, std::map<uint32_t, std::pair<std::pair<CInputDescriptor,CTransaction>,CCrossChainExport>>> 
             orderedExportsToFinalize;
         for (auto &oneFinalization : unspentOutputs)
