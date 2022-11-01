@@ -7291,6 +7291,7 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
                 return exports;
             }
             pbn = CPBaaSNotarization(find_value(result, "lastconfirmednotarization"));
+            lastConfirmedUTXO = CUTXORef(find_value(result, "lastconfirmedutxo"));
             found = true;
         } catch (...)
         {
@@ -7299,8 +7300,24 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
         }
         if (!pbn.IsValid())
         {
-            LogPrint("notarization", "%s: Invalid notarization from external chain %s\n", __func__, uni_get_str(params[0]).c_str());
-            return exports;
+            LOCK2(cs_main, mempool.cs);
+            CTransaction confNotTx;
+            uint256 blockHash;
+            COptCCParams lcP;
+
+            if (lastConfirmedUTXO.hash.IsNull() ||
+                lastConfirmedUTXO.n < 0 ||
+                !(lastConfirmedUTXO.GetOutputTransaction(confNotTx, blockHash) &&
+                  confNotTx.vout.size() > lastConfirmedUTXO.n &&
+                  confNotTx.vout[lastConfirmedUTXO.n].scriptPubKey.IsPayToCryptoCondition(lcP) &&
+                  lcP.IsValid() &&
+                  (lcP.evalCode == EVAL_EARNEDNOTARIZATION || lcP.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
+                  lcP.vData.size() &&
+                  (pbn = CPBaaSNotarization(lcP.vData[0])).IsValid()))
+            {
+                LogPrint("notarization", "%s: Invalid notarization from external chain %s\n", __func__, uni_get_str(params[0]).c_str());
+                return exports;
+            }
         }
         if (pbn.IsDefinitionNotarization())
         {
@@ -7318,7 +7335,6 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
             return exports;
         }
         lastConfirmed = pbn;
-        lastConfirmedUTXO = CUTXORef(find_value(result, "lastconfirmedutxo"));
         if (lastConfirmedUTXO.hash.IsNull() || lastConfirmedUTXO.n < 0)
         {
             LogPrintf("%s: No confirmed notarization available to support export to %s\n", __func__, uni_get_str(params[0]).c_str());
@@ -7397,7 +7413,7 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
             return exports;
         }
 
-        LOCK(cs_main);
+        LOCK2(cs_main, mempool.cs);
 
         bool foundCurrent = false;
         for (int i = 0; i < result.size(); i++)
