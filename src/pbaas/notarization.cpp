@@ -1979,7 +1979,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                                 !myGetTransaction(pEvidenceOutputTx->vin[oneIn].prevout.hash, priorOutputTx, hashBlock))
                             {
                                 printf("%s: cannot access transaction for notarization evidence\n", __func__);
-                                LogPrint("%s: cannot access transaction for notarization evidence\n", __func__);
+                                LogPrint("notarization", "%s: cannot access transaction for notarization evidence\n", __func__);
                                 return false;
                             }
 
@@ -2032,7 +2032,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                             else
                             {
                                 printf("%s: invalid multipart evidence on input\n", __func__);
-                                LogPrint("%s: invalid multipart evidence on input\n", __func__);
+                                LogPrint("notarization", "%s: invalid multipart evidence on input\n", __func__);
                                 return false;
                             }
                         }
