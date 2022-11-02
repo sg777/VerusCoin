@@ -190,7 +190,7 @@ UniValue getinfo(const UniValue& params, bool fHelp)
         obj.push_back(Pair("p2pport",        ASSETCHAINS_P2PPORT));
         obj.push_back(Pair("rpcport",        ASSETCHAINS_RPCPORT));
         obj.push_back(Pair("magic",        (int)ASSETCHAINS_MAGIC));
-        
+
         obj.push_back(Pair("premine",        ASSETCHAINS_SUPPLY));
 
         if (ASSETCHAINS_ISSUANCE)
@@ -366,8 +366,8 @@ UniValue coinsupply(const UniValue& params, bool fHelp)
             + HelpExampleRpc("coinsupply", "420")
         );
 
-    uint32_t height = 0; 
-    int64_t zfunds = 0, supply = 0, immature = 0; 
+    uint32_t height = 0;
+    int64_t zfunds = 0, supply = 0, immature = 0;
     UniValue result(UniValue::VOBJ);
 
     if ( params.size() == 0 )
@@ -711,7 +711,7 @@ uint256 HashFile(const std::string &filepath, CNativeHashWriter &ss)
                 ss.write(&vch[0], readNum);
             }
         } while (readNum != 0 && !ifs.eof());
-        
+
         ifs.close();
 
         return ss.GetHash();
@@ -748,7 +748,7 @@ UniValue hashdata(const UniValue& params, bool fHelp)
             "\nAs json rpc\n"
             + HelpExampleRpc("verifymessage", "\"RNKiEBduBru6Siv1cZRVhp4fkZNyPska6z\", \"signature\", \"my message\"")
         );
-    
+
     std::string hexMessage = uni_get_str(params[0]);
     if (!hexMessage.size())
     {
@@ -764,7 +764,7 @@ UniValue hashdata(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Message to hash must be in hexadecimal format");
     }
-    
+
     std::string hashType = params.size() > 1 ? uni_get_str(params[1]) : "sha256";
 
     uint256 result;
@@ -878,7 +878,7 @@ CIdentitySignature::ESignatureVerification CheckBasicIDSignature(uint256 msgHash
         else
         {
             msgHash = signature.IdentitySignatureHash(std::vector<uint160>(),
-                                                      std::vector<std::string>(), 
+                                                      std::vector<std::string>(),
                                                       std::vector<uint256>(),
                                                       systemID,
                                                       signature.blockHeight,
@@ -1001,7 +1001,7 @@ UniValue verifyhash(const UniValue& params, bool fHelp)
 
     if (destination.which() == COptCCParams::ADDRTYPE_ID)
     {
-        return CheckBasicIDSignature(msgHash, 
+        return CheckBasicIDSignature(msgHash,
                                      strSign,
                                      ConnectedChains.ThisChain().GetID(),
                                      GetDestinationID(destination),
@@ -1080,7 +1080,7 @@ UniValue verifymessage(const UniValue& params, bool fHelp)
         ss << strMessage;
         uint256 msgHash = ss.GetHash();
 
-        return CheckBasicIDSignature(msgHash, 
+        return CheckBasicIDSignature(msgHash,
                                      strSign,
                                      ConnectedChains.ThisChain().GetID(),
                                      GetDestinationID(destination),
@@ -1160,7 +1160,7 @@ UniValue verifyfile(const UniValue& params, bool fHelp)
         }
         else
         {
-            return CheckBasicIDSignature(msgHash, 
+            return CheckBasicIDSignature(msgHash,
                                         strSign,
                                         ConnectedChains.ThisChain().GetID(),
                                         GetDestinationID(destination),
@@ -1358,14 +1358,20 @@ UniValue verifysignature(const UniValue& params, bool fHelp)
         {
             if (!IsHex(strHex))
             {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "\"messagehex\" must be hex string with no additional characters");
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "\"messagehex\" must be hex string with no extra characters");
             }
-            hw << ParseHex(strHex);
+            std::vector<unsigned char> vmsg = ParseHex(strHex);
+            hw.write((const char *)vmsg.data(), vmsg.size());
             msgHash = hw.GetHash();
         }
         else if (!strBase64.empty())
         {
-            hw << DecodeBase64(strBase64);
+            std::string vString = DecodeBase64(strBase64);
+            if (vString.empty())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "\"messagebase64\" must be a base64 string with non-empty value and no extra characters");
+            }
+            hw.write(vString.data(), vString.size());
             msgHash = hw.GetHash();
         }
         else if (!strDataHash.empty() && IsHex(strDataHash))
@@ -1484,7 +1490,7 @@ UniValue verifysignature(const UniValue& params, bool fHelp)
 
             CIdentitySignature::ESignatureVerification sigCheckResult =
                 identitySig.CheckSignature(identity, vdxfCodes, vdxfCodeNames, statements, ASSETCHAINS_CHAINID, strPrefix, msgHash);
-            
+
             std::string sigCheckStr;
             switch (sigCheckResult)
             {
@@ -1985,7 +1991,7 @@ UniValue getaddressmempool(const UniValue& params, bool fHelp)
     if (!getAddressesFromParams(params, addresses)) {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid address");
     }
-    
+
     if (verbosity || friendlyNames)
     {
         LOCK2(cs_main, mempool.cs);
@@ -2056,7 +2062,7 @@ UniValue getaddressutxos(const UniValue& params, bool fHelp)
 
     for (std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> >::const_iterator it=unspentOutputs.begin(); it!=unspentOutputs.end(); it++) {
         UniValue output(UniValue::VOBJ);
-        
+
         std::string address = "";
 
         COptCCParams p;
@@ -2082,7 +2088,7 @@ UniValue getaddressutxos(const UniValue& params, bool fHelp)
                 }
             }
         }
-        if (address == "" && !getAddressFromIndex(it->first.type, it->first.hashBytes, address)) 
+        if (address == "" && !getAddressFromIndex(it->first.type, it->first.hashBytes, address))
         {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Unknown address type");
         }
