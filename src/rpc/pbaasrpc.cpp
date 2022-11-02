@@ -7687,11 +7687,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             {
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot get notarization data for destination system of transfer 2");
                             }
-                            feeConversionRate = cnd.IsConfirmed() && cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(offChainDef.SystemOrGatewayID()) ?
+                            feeConversionRate = cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(offChainDef.SystemOrGatewayID()) ?
                                                     cnd.vtx[cnd.lastConfirmed].second.proofRoots[offChainDef.SystemOrGatewayID()].gasPrice :
-                                                    nextSys.conversions.size() ?
-                                                        cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice[0] :
-                                                        feeConversionRate;
+                                                    cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice[0];
                         }
 
                         // determine required fees
