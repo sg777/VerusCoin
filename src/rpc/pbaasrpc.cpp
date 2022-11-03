@@ -6656,10 +6656,21 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     std::vector<SendManyRecipient> tOutputs;
     std::vector<SendManyRecipient> zOutputs;
 
+    static std::set<std::string> paramSet({"currency", "amount", "convertto", "exportto", "feecurrency", "via", "address", "exportid", "exportcurrency", "refundto", "memo", "preconvert",  "burn", "burnweight", "mintnew"});
+
     try
     {
         for (int i = 0; i < uniOutputs.size(); i++)
         {
+            auto allKeys = uniOutputs[i].getKeys();
+            for (auto oneKey : allKeys)
+            {
+                if (!paramSet.count(oneKey))
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid parameter : " + oneKey);
+                }
+            }
+
             auto currencyStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "currency")));
             CAmount sourceAmount = AmountFromValue(find_value(uniOutputs[i], "amount"));
             auto convertToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "convertto")));
@@ -6941,6 +6952,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     exportToStr = "";
                     exportToCurrencyID.SetNull();
                 }
+            }
+            else if (convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot implicitly convert with a cross-chain send without explicitly specifying the \"exportto\" parameter");
             }
 
             if (!exportToCurrencyID.IsNull())
