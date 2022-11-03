@@ -6926,6 +6926,11 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     exportToCurrencyDef = convertToCurrencyDef;
                     exportToCurrencyID = convertToCurrencyID;
                 }
+                else if (convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID)
+                {
+                    // if the converter is neither on this chain nor the explicit export chain, fail
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Export system and converter currency destinations do not match");
+                }
                 else
                 {
                     exportToCurrencyID = explicitExportID;
