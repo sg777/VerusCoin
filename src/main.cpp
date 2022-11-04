@@ -3844,7 +3844,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         auto consensusBranchId = CurrentEpochBranchId(nHeight, consensus);
 
         // on non-Verus reserve chains, we'll want a block-wide currency state for calculations
-        CCoinbaseCurrencyState prevCurrencyState = ConnectedChains.GetCurrencyState(nHeight ? nHeight - 1 : 0);
+        CCoinbaseCurrencyState prevCurrencyState = ConnectedChains.GetCurrencyState(nHeight ? nHeight - 1 : 0, true);
         CCurrencyDefinition thisChain = ConnectedChains.ThisChain();
 
         // emit new currency before other calculations

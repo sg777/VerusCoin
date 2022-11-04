@@ -3018,7 +3018,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                    nextLegTransfer.nFees <
                    curState.ReserveToNativeRaw(nextSys.GetCurrencyImportFee(exportCurDef.ChainOptions() & exportCurDef.OPTION_NFT_TOKEN), feeConversionRate)) ||
                   (IsIdentityExport() &&
-                  nextLegTransfer.nFees < curState.ReserveToNativeRaw(nextSys.IDImportFee(), feeConversionRate)))))
+                   nextLegTransfer.nFees < curState.ReserveToNativeRaw(nextSys.IDImportFee(), feeConversionRate)))))
             {
                 LogPrintf("%s: Insufficient fee currency for next leg of transfer %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str());
 

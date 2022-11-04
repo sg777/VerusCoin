@@ -1185,7 +1185,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                         LogPrintf("%s: Invalid co-launch currency - likely corruption\n", __func__);
                         return false;
                     }
-                    coLaunchState = ConnectedChains.GetCurrencyState(coLaunchCurrency, notaHeight);
+                    coLaunchState = ConnectedChains.GetCurrencyState(coLaunchCurrency, notaHeight, true);
 
                     if (!coLaunchState.IsValid())
                     {
@@ -2484,7 +2484,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
             if (!oldCurState.IsValid() ||
                 ::GetHash(oldCurState) != ::GetHash(oneCur.second))
             {
-                return state.Error(errorPrefix + "currecy state is invalid in accepted notarization. is:\n" +
+                return state.Error(errorPrefix + "currency state is invalid in accepted notarization. is:\n" +
                                                  oneCur.second.ToUniValue().write(1,2) +
                                                  "\nshould be:\n" +
                                                  oldCurState.ToUniValue().write(1,2) + "\n");
@@ -4811,6 +4811,61 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
     CPBaaSNotarization lastConfirmedNotarization = cnd.vtx[cnd.lastConfirmed].second;
 
+    bool submit = GetBoolArg("-alwayssubmitnotarizations", false) || !crosschainCND.IsConfirmed();
+
+    if (!submit)
+    {
+        for (auto &oneCurState : lastConfirmedNotarization.currencyStates)
+        {
+            if (!crosschainCND.vtx[crosschainCND.lastConfirmed].second.currencyStates.count(oneCurState.first) ||
+                (crosschainCND.vtx[crosschainCND.lastConfirmed].second.currencyStates[oneCurState.first].IsPrelaunch() &&
+                 !oneCurState.second.IsPrelaunch()))
+            {
+                submit = true;
+                break;
+            }
+        }
+        if (!submit && lastConfirmedNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
+        {
+            // check exports in our range
+            // submit notarization only if there are exports pending on this chain and the last submitted notarization
+            // is too old to be used to prove the exports
+            uint32_t lastCrossHeight = (crosschainCND.IsConfirmed() &&
+                                        crosschainCND.vtx[crosschainCND.lastConfirmed].second.proofRoots.count(ASSETCHAINS_CHAINID)) ?
+                                            crosschainCND.vtx[crosschainCND.lastConfirmed].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight :
+                                            0;
+
+            // get exports since last cross height, and if there are any that would be enabled by this notarization, submit
+            UniValue params(UniValue::VARR);
+            params = UniValue(UniValue::VARR);
+            params.push_back(EncodeDestination(CIdentityID(systemID)));
+            params.push_back((int64_t)lastCrossHeight);
+            params.push_back((int64_t)lastConfirmedNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight);
+
+            UniValue result = NullUniValue;
+            try
+            {
+                UniValue getexports(const UniValue& params, bool fHelp);
+                result = getexports(params, false);
+            } catch (exception e)
+            {
+                LogPrint("notarization", "Could not determine pending exports to external chain %s\n", uni_get_str(params[0]).c_str());
+                return retVal;
+            }
+            if (result.isArray() && result.size())
+            {
+                submit = true;
+            }
+        }
+    }
+
+    LogPrint("notarization", "%s: ready to submit accepted notarization with evidence:\n%s\n", __func__, allEvidence.ToUniValue().write(1,2).c_str());
+    if (!submit)
+    {
+        LogPrint("notarization", "skipping submission due to no pending exports or currency transitions\n");
+        return retVal;
+    }
+
     // now, we should have enough evidence to prove
     // the notarization. the API call will ensure that we do
     params = UniValue(UniValue::VARR);
@@ -4819,7 +4874,6 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     params.push_back(lastConfirmedNotarization.ToUniValue());
     params.push_back(allEvidence.ToUniValue());
 
-    LogPrint("notarization", "%s: sending evidence:\n%s\n", __func__, allEvidence.ToUniValue().write(1,2).c_str());
     LogPrint("notarization", "submitting notarization with parameters:\n%s\n%s\n", params[0].write(1,2).c_str(), params[1].write(1,2).c_str());
 
     /*
