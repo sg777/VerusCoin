@@ -6953,7 +6953,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     exportToCurrencyID.SetNull();
                 }
             }
-            else if (convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID)
+            else if (convertToCurrencyDef.IsValid() && convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID)
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot implicitly convert with a cross-chain send without explicitly specifying the \"exportto\" parameter");
             }
