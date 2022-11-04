@@ -244,7 +244,7 @@ int TLSManager::waitFor(SSLConnectionRoutine eRoutine, SOCKET hSocket, SSL* ssl,
                 }
                 catch(...)
                 {
-                    retOp = 0;
+                    return 0;
                 }
             }
             break;
