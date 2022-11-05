@@ -608,14 +608,13 @@ void CurrencyNotarizationTypeQuery(CCurrencyDefinition::EQueryOptions launchStat
                                    std::map<CUTXORef, int> &currenciesFound,
                                    std::vector<std::pair<std::pair<CUTXORef, std::vector<CNodeData>>, CCurrencyDefinition>> &curDefVec,
                                    uint32_t startBlock=0,
-                                   uint32_t endBlock=0)
+                                   uint32_t endBlock=0,
+                                   const uint160 &converter=uint160())
 {
     uint160 queryID;
-    bool checkUnspent = false;
     if (launchStateQuery == CCurrencyDefinition::QUERY_LAUNCHSTATE_PRELAUNCH)
     {
         queryID = CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchPrelaunchKey());
-        checkUnspent = true;
     }
     else if (launchStateQuery == CCurrencyDefinition::QUERY_LAUNCHSTATE_REFUND)
     {
@@ -631,8 +630,7 @@ void CurrencyNotarizationTypeQuery(CCurrencyDefinition::EQueryOptions launchStat
     }
     else if (launchStateQuery == CCurrencyDefinition::QUERY_ISCONVERTER)
     {
-        queryID = CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCoinbaseCurrencyState::IndexConverterKey(ASSETCHAINS_CHAINID));
-        checkUnspent = true;
+        queryID = CCoinbaseCurrencyState::IndexConverterKey(converter.IsNull() ? ASSETCHAINS_CHAINID : converter);
     }
 
     if (launchStateQuery != CCurrencyDefinition::QUERY_LAUNCHSTATE_PRELAUNCH && (startBlock || endBlock))
@@ -715,7 +713,7 @@ void GetCurrencyDefinitions(const uint160 &systemIDQualifier,
                             std::vector<std::pair<std::pair<CUTXORef, std::vector<CNodeData>>, CCurrencyDefinition>> &chains,
                             CCurrencyDefinition::EQueryOptions launchStateQuery,
                             CCurrencyDefinition::EQueryOptions systemTypeQuery,
-                            bool isConverter,
+                            const std::set<uint160> &converters,
                             uint32_t startBlock=0,
                             uint32_t endBlock=0)
 {
@@ -817,26 +815,60 @@ void GetCurrencyDefinitions(const uint160 &systemIDQualifier,
 
     // two options are is converter as narrowing or just is converter
     // for narrowing, we ignore start and end blocks to determine state now
-    if (isConverter)
+    if (converters.size())
     {
-        if (isNarrowing)
+        std::map<CUTXORef, std::pair<std::vector<CNodeData>, CCurrencyDefinition>> totalCurrencies;
+
+        // get converters and return only those already found that are converters
+        for (auto &oneCurID : converters)
         {
             std::map<CUTXORef, int> converterCurrenciesFound;
             std::vector<std::pair<std::pair<CUTXORef, std::vector<CNodeData>>, CCurrencyDefinition>> converterCurVec;
-
-            // get converters and return only those already found that are converters
-            CurrencyNotarizationTypeQuery(CCurrencyDefinition::QUERY_ISCONVERTER, converterCurrenciesFound, converterCurVec, startBlock, endBlock);
+            CurrencyNotarizationTypeQuery(CCurrencyDefinition::QUERY_ISCONVERTER, converterCurrenciesFound, converterCurVec, startBlock, endBlock, oneCurID);
+            if (!converterCurrenciesFound.size())
+            {
+                totalCurrencies.clear();
+                break;
+            }
+            if (totalCurrencies.size())
+            {
+                std::map<CUTXORef, std::pair<std::vector<CNodeData>, CCurrencyDefinition>> newTotalCurrencies;
+                for (auto &oneCurRef : converterCurrenciesFound)
+                {
+                    if (totalCurrencies.count(oneCurRef.first))
+                    {
+                        newTotalCurrencies.insert(std::make_pair(oneCurRef.first, std::make_pair(converterCurVec[oneCurRef.second].first.second,
+                                                                                                    converterCurVec[oneCurRef.second].second)));
+                    }
+                }
+                totalCurrencies = newTotalCurrencies;
+                if (!totalCurrencies.size())
+                {
+                    break;
+                }
+            }
+            else
+            {
+                for (auto &oneCurRef : converterCurrenciesFound)
+                {
+                    totalCurrencies.insert(std::make_pair(oneCurRef.first, std::make_pair(converterCurVec[oneCurRef.second].first.second,
+                                                                                            converterCurVec[oneCurRef.second].second)));
+                }
+            }
+        }
+        if (isNarrowing)
+        {
             std::vector<CUTXORef> toRemove;
             for (auto &oneFound : currenciesFound)
             {
-                if (!converterCurrenciesFound.count(oneFound.first))
+                if (!totalCurrencies.count(oneFound.first))
                 {
                     toRemove.push_back(oneFound.first);
                 }
                 else if (currenciesFound[oneFound.first] == -1)
                 {
                     currenciesFound[oneFound.first] = curDefVec.size();
-                    curDefVec.push_back(converterCurVec[converterCurrenciesFound[oneFound.first]]);
+                    curDefVec.push_back(std::make_pair(std::make_pair(oneFound.first, totalCurrencies[oneFound.first].first), totalCurrencies[oneFound.first].second));
                 }
             }
             if (currenciesFound.size() == toRemove.size())
@@ -850,8 +882,11 @@ void GetCurrencyDefinitions(const uint160 &systemIDQualifier,
         }
         else
         {
-            // the only query is converters
-            CurrencyNotarizationTypeQuery(CCurrencyDefinition::QUERY_ISCONVERTER, currenciesFound, curDefVec, startBlock, endBlock);
+            for (auto &oneCurFound : totalCurrencies)
+            {
+                currenciesFound[oneCurFound.first] = curDefVec.size();
+                curDefVec.push_back(std::make_pair(std::make_pair(oneCurFound.first, oneCurFound.second.first), oneCurFound.second.second));
+            }
         }
     }
     else if (!isNarrowing)
@@ -2143,7 +2178,7 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
             "   \"launchstate\" :                   (\"prelaunch\" | \"launched\" | \"refund\" | \"complete\") (optional) return only currencies in that state\n"
             "   \"systemtype\" :                    (\"local\" | \"imported\" | \"gateway\" | \"pbaas\")\n"
             "   \"fromsystem\" :                    (\"systemnameeorid\") default is the local chain, but if currency is from another system, specify here\n"
-            "   \"converter\": bool                 (bool, optional) default false, only return fractional currency converters\n"
+            "   \"converter\": [\"currency1\", (\"currency2\")] (array, optional) default empty, only return fractional currency converters of one or more currencies\n"
             "}\n"
 
             "\nResult:\n"
@@ -2223,9 +2258,9 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
 
     CCurrencyDefinition::EQueryOptions launchStateQuery = CCurrencyDefinition::QUERY_NULL;
     CCurrencyDefinition::EQueryOptions systemTypeQuery = CCurrencyDefinition::QUERY_NULL;
-    bool isConverter = false;
     uint32_t startBlock = 0;
     uint32_t endBlock = 0;
+    std::set<uint160> converters;
     uint160 fromSystemID = ASSETCHAINS_CHAINID;
     if (params.size())
     {
@@ -2247,12 +2282,24 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
             systemType = "local";
         }
 
-        UniValue isConverterUni = find_value(params[0], "converter");
-        if (!isConverterUni.isNull())
+        UniValue convertersUni = find_value(params[0], "converter");
+        if (!convertersUni.isNull())
         {
+            if (!(convertersUni.isArray() && convertersUni.size()))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "If converters are specified, they should consist of one or more valid currencies");
+            }
             numKeys--;
+            for (int i = 0; i < convertersUni.size(); i++)
+            {
+                uint160 oneCurID = ValidateCurrencyName(uni_get_str(convertersUni[i]));
+                if (oneCurID.IsNull())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency: " + uni_get_str(convertersUni[i]));
+                }
+                converters.insert(oneCurID);
+            }
         }
-        isConverter = uni_get_bool(isConverterUni);
         if (launchStates.count(launchState))
         {
             launchStateQuery = launchStates[launchState];
@@ -2280,7 +2327,7 @@ UniValue listcurrencies(const UniValue& params, bool fHelp)
     std::vector<std::pair<std::pair<CUTXORef, std::vector<CNodeData>>, CCurrencyDefinition>> chains;
     {
         LOCK2(cs_main, mempool.cs);
-        GetCurrencyDefinitions(fromSystemID, chains, launchStateQuery, systemTypeQuery, isConverter, startBlock, endBlock);
+        GetCurrencyDefinitions(fromSystemID, chains, launchStateQuery, systemTypeQuery, converters, startBlock, endBlock);
     }
 
     for (auto oneDef : chains)
@@ -10909,10 +10956,13 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
             "\n\n"
 
             "\nArguments\n"
+            "       \"jsonidentity\"                    (obj, required)    new definition of the identity\n"
             "       \"returntx\"                        (bool,   optional) defaults to false and transaction is sent, if true, transaction is signed by this wallet and returned\n"
             "       \"tokenupdate\"                     (bool,   optional) defaults to false, if true, the tokenized ID control token, if one exists, will be used to update\n"
             "                                                              which enables changing the revocation or recovery IDs, even if the wallet holding the token does not\n"
             "                                                              control either.\n"
+            "       \"feeoffer\"                        (bool,   optional) non-standard fee amount to pay for the transaction\n"
+            "       \"sourceoffunds\"                   (string,   optional) transparent or private address to source all funds for fees to preserve privacy of the identity\n"
 
             "\nResult:\n"
             "   hex string of either the txid if returnhex is false or the hex serialized transaction if returntx is true\n"
@@ -11368,6 +11418,9 @@ UniValue setidentitytimelock(const UniValue& params, bool fHelp)
             "  \"setunlockdelay\"               (number, optional) delay this many blocks after unlock request to unlock, can only be\n"
             "                                                      circumvented by revoke/recover\n"
             "}\n"
+            "       \"returntx\"                        (bool,   optional) defaults to false and transaction is sent, if true, transaction is signed by this wallet and returned\n"
+            "       \"feeoffer\"                        (bool,   optional) non-standard fee amount to pay for the transaction\n"
+            "       \"sourceoffunds\"                   (string,   optional) transparent or private address to source all funds for fees to preserve privacy of the identity\n"
 
             "\nResult:\n"
             "   Hex string of either the txid if returnhex is false or the hex serialized transaction if returntx is true.\n"
@@ -11454,6 +11507,8 @@ UniValue revokeidentity(const UniValue& params, bool fHelp)
             "\nArguments\n"
             "       \"returntx\"                        (bool,   optional) defaults to false and transaction is sent, if true, transaction is signed by this wallet and returned\n"
             "       \"tokenrevoke\"                     (bool,   optional) defaults to false, if true, the tokenized ID control token, if one exists, will be used to revoke\n"
+            "       \"feeoffer\"                        (bool,   optional) non-standard fee amount to pay for the transaction\n"
+            "       \"sourceoffunds\"                   (string,   optional) transparent or private address to source all funds for fees to preserve privacy of the identity\n"
 
             "\nResult:\n"
 
@@ -11551,6 +11606,8 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
             "\nArguments\n"
             "       \"returntx\"                        (bool,   optional) defaults to false and transaction is sent, if true, transaction is signed by this wallet and returned\n"
             "       \"tokenrecover\"                    (bool,   optional) defaults to false, if true, the tokenized ID control token, if one exists, will be used to recover\n"
+            "       \"feeoffer\"                        (bool,   optional) non-standard fee amount to pay for the transaction\n"
+            "       \"sourceoffunds\"                   (string,   optional) transparent or private address to source all funds for fees to preserve privacy of the identity\n"
 
             "\nResult:\n"
 
