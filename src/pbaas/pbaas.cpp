@@ -354,7 +354,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 // if from this system, we
 
                 CTransaction priorImportTx;
-                CCrossChainImport priorImport = cci.GetPriorImport(tx, outNum, state, height, &priorImportTx);
+                CCrossChainImport priorImport = cci.GetPriorImport(tx, state, &priorImportTx);
                 if (!priorImport.IsValid())
                 {
                     // TODO: HARDENING for now, we skip checks if we fail to get prior import, but
@@ -1035,32 +1035,16 @@ bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTran
                     !ccx.IsSystemThreadExport() &&
                     ccx.destCurrencyID == importCurrencyID)
                 {
-                    CCurrencyDefinition systemDef;
+                    if (ccx.firstInput < 0 || nIn < ccx.firstInput || nIn > ccx.firstInput + ccx.numInputs)
+                    {
+                        return eval->Error("Reserve transfer spend not accounted for in cross-chain export");
+                    }
                     if (!(ccx.destSystemID == (importCurrencyDef.IsGateway() ? importCurrencyDef.gatewayID : importCurrencyDef.systemID)))
                     {
                         if (ccx.destSystemID != importCurrencyDef.launchSystemID ||
                             ccx.destSystemID != ASSETCHAINS_CHAINID)
                         {
                             return eval->Error("Invalid destination system " + EncodeDestination(CIdentityID(ccx.destSystemID)) + " for export");
-                        }
-                        systemDef = ConnectedChains.ThisChain();
-                        if (!ccx.GetExportInfo(tx, i, primaryExportOut, nextOutput, pbn, reserveTransfers, (CCurrencyDefinition::EProofProtocol)systemDef.proofProtocol))
-                        {
-                            return eval->Error("Invalid or malformed export 1");
-                        }
-
-                        // the only case this makes sense is if we are refunding back to the launch chain from the system chain
-                        if (!pbn.IsRefunding())
-                        {
-                            return eval->Error("Attempt to export to launch chain from external home chain that is not refunding");
-                        }
-                    }
-                    else
-                    {
-                        systemDef = ConnectedChains.GetCachedCurrency(ccx.destSystemID);
-                        if (!ccx.GetExportInfo(tx, i, primaryExportOut, nextOutput, pbn, reserveTransfers, (CCurrencyDefinition::EProofProtocol)systemDef.proofProtocol))
-                        {
-                            return eval->Error("Invalid or malformed export 1");
                         }
                     }
                     if (ccx.numInputs > 0 &&
@@ -1080,19 +1064,15 @@ bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTran
                          rt.IsConversion() &&
                          !rt.IsPreConversion())
                 {
-                    CCrossChainImport sysCCI;
-                    CPBaaSNotarization importNotarization;
-                    int32_t sysCCIOut, importNotarizationOut, eOutStart = -1, eOutEnd = -1;
-                    std::vector<CReserveTransfer> reserveTransfers;
-                    // ensure that this spend is accounted for in the
-                    // import. if this reserve transfer is equivalent to the last retrieved by this import,
-                    // via GetImportInfo(), we consider it valid
-                    if (cci.GetImportInfo(tx, spendingFromHeight, i, ccx, sysCCI, sysCCIOut, importNotarization, importNotarizationOut, eOutStart, eOutEnd, reserveTransfers) &&
-                        reserveTransfers.size() &&
-                        ::AsVector(reserveTransfers.back()) == ::AsVector(rt) &&
-                        cci.hashReserveTransfers != ccx.hashReserveTransfers)
+                    CTransaction arbTx;
+                    int32_t arbOut;
+                    CReserveTransfer arbTransfer = cci.GetArbitrageTransfer(tx, eval->state, &arbTx, &arbOut);
+
+                    // TODO: HARDENING - make sure that this arbitrage transaction is not coming from a pre-existing transaction
+                    // on the chain
+                    if (arbTransfer.IsValid() && arbTx.GetHash() == tx.vin[nIn].prevout.hash && arbOut == tx.vin[nIn].prevout.n)
                     {
-                        return true;
+                        return eval->Error("Reserve transfer spend not accounted for in cross-chain import as arbitrage transaction");
                     }
                 }
             }

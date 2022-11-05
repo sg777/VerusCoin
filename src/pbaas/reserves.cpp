@@ -571,7 +571,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
         {
             // if we don't have an arbitrage reserve transfer, this is an error that the hashes don't match
             // if we do, they cannot match, so get it
-            CReserveTransfer arbitrageTransfer = GetArbitrageTransfer(importTx, numImportOut, state, nHeight);
+            CReserveTransfer arbitrageTransfer = GetArbitrageTransfer(importTx, state);
             if (!arbitrageTransfer.IsValid())
             {
                 return state.Error(strprintf("%s: export and import hash mismatch without valid arbitrage transfer",__func__));
@@ -729,14 +729,12 @@ CCurrencyValueMap CCoinbaseCurrencyState::TargetConversionPricesReverse(const ui
     return retVal;
 }
 
-// returns the prior import from a given import
+// returns the arbitrage transfer for a given import
 CReserveTransfer CCrossChainImport::GetArbitrageTransfer(const CTransaction &tx,
-                                                         int32_t outNum,
                                                          CValidationState &state,
-                                                         uint32_t height,
-                                                         CTransaction *ppriorTx,
-                                                         int32_t *ppriorOutNum,
-                                                         uint256 *ppriorTxBlockHash) const
+                                                         CTransaction *parbTx,
+                                                         int32_t *parbOutNum,
+                                                         uint256 *parbTxBlockHash) const
 {
     // get the prior import
     CReserveTransfer rt;
@@ -744,21 +742,20 @@ CReserveTransfer CCrossChainImport::GetArbitrageTransfer(const CTransaction &tx,
     int transferCount = 0;
     for (auto &oneIn : tx.vin)
     {
-        CTransaction _priorTx;
-        int32_t _priorOutNum;
-        uint256 _priorTxBlockHash;
-        CTransaction &priorTx = ppriorTx ? *ppriorTx : _priorTx;
-        int32_t &priorOutNum = ppriorOutNum ? *ppriorOutNum : _priorOutNum;
-        uint256 &priorTxBlockHash = ppriorTxBlockHash ? *ppriorTxBlockHash : _priorTxBlockHash;
+        CTransaction _arbTx;
+        int32_t _arbOutNum;
+        uint256 _arbTxBlockHash;
+        CTransaction &arbTx = parbTx ? *parbTx : _arbTx;
+        int32_t &arbOutNum = parbOutNum ? *parbOutNum : _arbOutNum;
+        uint256 &arbTxBlockHash = parbTxBlockHash ? *parbTxBlockHash : _arbTxBlockHash;
 
-        uint256 priorTxHash;
         COptCCParams p;
         if (!IsDefinitionImport() &&
-            (myGetTransaction(oneIn.prevout.hash, _priorTx, priorTxBlockHash)))
+            (myGetTransaction(oneIn.prevout.hash, _arbTx, arbTxBlockHash)))
         {
             if (cci.IsValid() &&
-                _priorTx.vout.size() > oneIn.prevout.n &&
-                _priorTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                _arbTx.vout.size() > oneIn.prevout.n &&
+                _arbTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.IsValid() &&
                 p.evalCode == EVAL_RESERVE_TRANSFER &&
                 p.vData.size() &&
@@ -772,8 +769,8 @@ CReserveTransfer CCrossChainImport::GetArbitrageTransfer(const CTransaction &tx,
                     break;
                 }
                 transferCount++;
-                priorTx = _priorTx;
-                priorOutNum = oneIn.prevout.n;
+                arbTx = _arbTx;
+                arbOutNum = oneIn.prevout.n;
                 rt.SetArbitrageOnly();
                 // TODO: right now, only one reserve transfer will be used for any import,
                 // and any additional ones should be rejected as invalid spends, so ignore them here
@@ -802,9 +799,7 @@ CReserveTransfer CCrossChainImport::GetArbitrageTransfer(const CTransaction &tx,
 
 // returns the prior import from a given import
 CCrossChainImport CCrossChainImport::GetPriorImport(const CTransaction &tx,
-                                                    int32_t outNum,
                                                     CValidationState &state,
-                                                    uint32_t height,
                                                     CTransaction *ppriorTx,
                                                     int32_t *ppriorOutNum,
                                                     uint256 *ppriorTxBlockHash) const
@@ -820,7 +815,6 @@ CCrossChainImport CCrossChainImport::GetPriorImport(const CTransaction &tx,
         int32_t &priorOutNum = ppriorOutNum ? *ppriorOutNum : _priorOutNum;
         uint256 &priorTxBlockHash = ppriorTxBlockHash ? *ppriorTxBlockHash : _priorTxBlockHash;
 
-        uint256 priorTxHash;
         COptCCParams p;
         if (!IsDefinitionImport() &&
             (myGetTransaction(oneIn.prevout.hash, _priorTx, priorTxBlockHash)))
@@ -849,9 +843,7 @@ CCrossChainImport CCrossChainImport::GetPriorImport(const CTransaction &tx,
 // returns the prior import from the same system as a given import. this enables export order checking to ensure
 // that all exports from any system are imported in order.
 CCrossChainImport CCrossChainImport::GetPriorImportFromSystem(const CTransaction &tx,
-                                                              int32_t outNum,
                                                               CValidationState &state,
-                                                              uint32_t height,
                                                               CTransaction *ppriorTx,
                                                               int32_t *ppriorOutNum,
                                                               uint256 *ppriorTxBlockHash) const
@@ -867,7 +859,6 @@ CCrossChainImport CCrossChainImport::GetPriorImportFromSystem(const CTransaction
         int32_t &priorOutNum = ppriorOutNum ? *ppriorOutNum : _priorOutNum;
         uint256 &priorTxBlockHash = ppriorTxBlockHash ? *ppriorTxBlockHash : _priorTxBlockHash;
 
-        uint256 priorTxHash;
         COptCCParams p;
         if (!IsDefinitionImport() &&
             !(IsInitialLaunchImport() && cci.sourceSystemID != ASSETCHAINS_CHAINID) &&
@@ -979,7 +970,7 @@ CCurrencyValueMap CCrossChainImport::GetBestPriorConversions(const CTransaction 
 
     priorImport = *this;
     reserveTransfers.clear();
-    while ((priorImport = priorImport.GetPriorImport(lastTx, lastOutNum, state, height, &lastTx, &lastOutNum)).IsValid() &&
+    while ((priorImport = priorImport.GetPriorImport(lastTx, state, &lastTx, &lastOutNum)).IsValid() &&
            priorImport.GetImportInfo(lastTx, height, lastOutNum, ccx, sysCCI, sysCCIOut, importNot, importNotarizationOut, eOutStart, eOutEnd, reserveTransfers))
     {
         reserveTransfers.clear();
@@ -1093,7 +1084,7 @@ bool CCrossChainImport::UnconfirmedNameImports(const CTransaction &tx,
     }
 
     uint256 priorTxBlockHash;
-    for (priorImport = *this; (priorImport = GetPriorImport(lastTx, lastOutNum, state, height, &lastTx, &lastOutNum, &priorTxBlockHash)).IsValid(); )
+    for (priorImport = *this; (priorImport = GetPriorImport(lastTx, state, &lastTx, &lastOutNum, &priorTxBlockHash)).IsValid(); )
     {
         // if lastTx is not confirmed, check for conflicts, otherwise, we're done
         if (!priorTxBlockHash.IsNull())
@@ -1179,7 +1170,7 @@ bool CCrossChainImport::VerifyNameTransfers(const CTransaction &tx,
     }
 
     uint256 priorTxBlockHash;
-    for (priorImport = *this; (priorImport = GetPriorImport(lastTx, lastOutNum, state, height, &lastTx, &lastOutNum, &priorTxBlockHash)).IsValid(); )
+    for (priorImport = *this; (priorImport = GetPriorImport(lastTx, state, &lastTx, &lastOutNum, &priorTxBlockHash)).IsValid(); )
     {
         // if lastTx is not confirmed, check for conflicts, otherwise, we're done
         if (!priorTxBlockHash.IsNull())
