@@ -7571,7 +7571,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                 validFeeCurrencies = BaseBridgeCurrencies(offChainDef, height + 1, true);
                                 feeConversionPrices = feePriceState.TargetConversionPricesReverse(offChainID, true);
 
-                                // TODO: HARDENING - confirm rules such that no currency could slip through here and have a 1:1
+                                // confirm rules such that no currency could slip through here and have a 1:1
                                 // conversion that could be exploited in some way
                                 for (auto &oneCur : validFeeCurrencies)
                                 {

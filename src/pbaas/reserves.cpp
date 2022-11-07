@@ -4362,7 +4362,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     LogPrintf("%s: Conversion does not specify two currencies\n", __func__);
                     // TODO: HARDENING - we may allow this, but we need to make sure that we charge enough of a fee
                     // on all conversions.
-                    //return false;
+                    // return false;
                 }
 
                 // either the source or destination must be a reserve currency of the other fractional currency

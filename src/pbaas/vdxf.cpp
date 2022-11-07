@@ -1,19 +1,17 @@
 /********************************************************************
  * (C) 2020 Michael Toutonghi
- * 
+ *
  * Distributed under the MIT software license, see the accompanying
  * file COPYING or http://www.opensource.org/licenses/mit-license.php.
- * 
+ *
  * Support for the Verus Data Exchange Format (VDXF)
- * 
+ *
  */
 
 #include "vdxf.h"
 #include "crosschainrpc.h"
 
 std::string CVDXF::DATA_KEY_SEPARATOR = "::";
-
-// TODO: HARDENING - ensure discussion on question of data limits
 
 uint160 CVDXF::STRUCTURED_DATA_KEY = CVDXF_StructuredData::StructuredDataKey();
 uint160 CVDXF::ZMEMO_MESSAGE_KEY = CVDXF_Data::ZMemoMessageKey();
@@ -87,7 +85,7 @@ std::vector<std::string> CVDXF::ParseSubNames(const std::string &Name, std::stri
     {
         ChainOut = retNames[1];
         explicitChain = true;
-    }    
+    }
 
     nameCopy = retNames[0];
     boost::split(retNames, nameCopy, boost::is_any_of("."));
@@ -110,7 +108,7 @@ std::vector<std::string> CVDXF::ParseSubNames(const std::string &Name, std::stri
             std::vector<std::string> chainOutNames;
             boost::split(chainOutNames, ChainOut, boost::is_any_of("."));
             std::string lastChainOut = boost::to_lower_copy(chainOutNames.back());
-            
+
             if (lastChainOut != "" && lastChainOut != verusChainName)
             {
                 chainOutNames.push_back(verusChainName);

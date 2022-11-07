@@ -1478,11 +1478,6 @@ int8_t ObjTypeCode(const CCrossChainProof &obj)
     return CHAINOBJ_CROSSCHAINPROOF;
 }
 
-int8_t ObjTypeCode(const CCompositeChainObject &obj)
-{
-    return CHAINOBJ_COMPOSITEOBJECT;
-}
-
 int8_t ObjTypeCode(const CNotarySignature &obj)
 {
     return CHAINOBJ_NOTARYSIGNATURE;
@@ -2217,6 +2212,82 @@ bool IsValidExportCurrency(const CCurrencyDefinition &systemDest, const uint160 
     return false;
 }
 
+bool CheckIdentitySpends(const CTransaction &tx, const uint160 idID, CValidationState &state, uint32_t height)
+{
+    // spent by currency ID
+    bool authorizedController = false;
+
+    CIdentity signingID = CIdentity::LookupIdentity(idID, height);
+    std::set<uint160> signingKeys;
+    for (auto &oneDest : signingID.primaryAddresses)
+    {
+        signingKeys.insert(GetDestinationID(oneDest));
+    }
+    if (!signingID.IsValid())
+    {
+        return state.Error("Invalid identity or identity not found for currency mint or burn with weight change");
+    }
+
+    for (auto &oneIn : tx.vin)
+    {
+        CTransaction inputTx;
+        uint256 blockHash;
+
+        // this is not an input check, but we will check if the input is available
+        // the precheck's can be called sometimes before their antecedents are available, but
+        // if they are available, which will be checked on the input check, they will also be
+        // available here at least once in the verification of the tx
+        if (myGetTransaction(oneIn.prevout.hash, inputTx, blockHash))
+        {
+            if (oneIn.prevout.n >= inputTx.vout.size())
+            {
+                return state.Error("Invalid input number for source transaction");
+            }
+
+            COptCCParams p;
+
+            // make sure that no form of complex output could circumvent the test for controller
+            // this should be encapsulated as a test that can handle complex cases, but until then
+            // require them to be simple when validating
+            if (!(inputTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    p.version >= p.VERSION_V3 &&
+                    inputTx.vout[oneIn.prevout.n].scriptPubKey.IsSpendableOutputType(p)))
+            {
+                continue;
+            }
+
+            CSmartTransactionSignatures smartSigs;
+            std::vector<unsigned char> ffVec = GetFulfillmentVector(oneIn.scriptSig);
+            if (!(ffVec.size() &&
+                    (smartSigs = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec.begin(), ffVec.end()))).IsValid() &&
+                    smartSigs.sigHashType == SIGHASH_ALL))
+            {
+                continue;
+            }
+
+            int numIDSigs = 0;
+
+            // ensure that the transaction is sent to the ID and signed by a valid ID signature
+            for (auto &oneSig : smartSigs.signatures)
+            {
+                if (signingKeys.count(oneSig.first))
+                {
+                    numIDSigs++;
+                }
+            }
+
+            if (numIDSigs < signingID.minSigs)
+            {
+                continue;
+            }
+            authorizedController = true;
+            break;
+        }
+    }
+    return authorizedController;
+}
+
 bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
     // do a basic sanity check that this reserve transfer's values are consistent and that it includes the
@@ -2670,6 +2741,31 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     return state.Error("Invalid identity export in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
 
+                // only an identity can export itself
+                if (!CheckIdentitySpends(tx, registeredIdentity.GetID(), state, height))
+                {
+                    // if this output to export an identity comes from an import, the check will already have happened
+                    bool importPassThrough = false;
+                    for (int loop=0; loop < outNum; loop++)
+                    {
+                        COptCCParams importP;
+                        CCrossChainImport cci;
+                        if (tx.vout[loop].scriptPubKey.IsPayToCryptoCondition(importP) &&
+                            importP.IsValid() &&
+                            importP.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                            p.vData.size() &&
+                            (cci = CCrossChainImport(p.vData[0])).IsValid() &&
+                            (loop + cci.numOutputs) >= outNum)
+                        {
+                            importPassThrough = true;
+                        }
+                    }
+                    if (!importPassThrough)
+                    {
+                        return state.Error("Only the controller of " + ConnectedChains.GetFriendlyIdentityName(registeredIdentity) + " may export it to another system");
+                    }
+                }
+
                 if (rt.IsCrossSystem())
                 {
                     // validate everything relating to name and control
@@ -2767,79 +2863,9 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 {
                     return state.Error("Minting and/or burning while changing reserve ratios is only allowed in centralized (\"proofprotocol\":2) currencies on their native chain " + rt.ToUniValue().write(1,2));
                 }
-                // spent by currency ID
-                bool authorizedController = false;
 
-                CIdentity signingID = CIdentity::LookupIdentity(importCurrencyID, height);
-                std::set<uint160> signingKeys;
-                for (auto &oneDest : signingID.primaryAddresses)
-                {
-                    signingKeys.insert(GetDestinationID(oneDest));
-                }
-                if (!signingID.IsValid())
-                {
-                    return state.Error("Invalid identity or identity not found for currency mint or burn with weight change");
-                }
-
-                for (auto &oneIn : tx.vin)
-                {
-                    CTransaction inputTx;
-                    uint256 blockHash;
-
-                    // this is not an input check, but we will check if the input is available
-                    // the precheck's can be called sometimes before their antecedents are available, but
-                    // if they are available, which will be checked on the input check, they will also be
-                    // available here at least once in the verification of the tx
-                    if (myGetTransaction(oneIn.prevout.hash, inputTx, blockHash))
-                    {
-                        if (oneIn.prevout.n >= inputTx.vout.size())
-                        {
-                            return state.Error("Invalid input number for source transaction");
-                        }
-
-                        COptCCParams p;
-
-                        // make sure that no form of complex output could circumvent the test for controller
-                        // this should be encapsulated as a test that can handle complex cases, but until then
-                        // require them to be simple when validating
-                        if (!(inputTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-                              p.IsValid() &&
-                              p.version >= p.VERSION_V3 &&
-                              inputTx.vout[oneIn.prevout.n].scriptPubKey.IsSpendableOutputType(p)))
-                        {
-                            continue;
-                        }
-
-                        CSmartTransactionSignatures smartSigs;
-                        std::vector<unsigned char> ffVec = GetFulfillmentVector(oneIn.scriptSig);
-                        if (!(ffVec.size() &&
-                              (smartSigs = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec.begin(), ffVec.end()))).IsValid() &&
-                              smartSigs.sigHashType == SIGHASH_ALL))
-                        {
-                            continue;
-                        }
-
-                        int numIDSigs = 0;
-
-                        // ensure that the transaction is sent to the ID and signed by a valid ID signature
-                        for (auto &oneSig : smartSigs.signatures)
-                        {
-                            if (signingKeys.count(oneSig.first))
-                            {
-                                numIDSigs++;
-                            }
-                        }
-
-                        if (numIDSigs < signingID.minSigs)
-                        {
-                            continue;
-                        }
-                        authorizedController = true;
-                        break;
-                    }
-                }
-
-                if (!authorizedController)
+                // ensure that this mint or burnchangeweight is spent by the currency ID
+                if (!CheckIdentitySpends(tx, importCurrencyID, state, height))
                 {
                     return state.Error("Minting and/or burning while changing reserve ratios is only allowed by the controller of a centralized currency " + rt.ToUniValue().write(1,2));
                 }
@@ -4788,7 +4814,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                 // for gateways or other chains, they must use the same output number and adjust on the other
                 // side as needed
 
-                // TODO: HARDENING - this requirement needs to be cleaned up to provide for
+                // TODO: this requirement needs to be cleaned up to provide for
                 // the ETH-like model, which doesn't benefit from this and the PBaaS model, which does
                 // being an option for external chains as well
                 if (sourceSystemDef.IsPBaaSChain())
@@ -6178,57 +6204,6 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         intermediateNotarization.currencyState.SetLaunchCompleteMarker();
     }
 
-    bool forcedRefunding = false;
-
-    // TODO: HARDENING - see if we can remove this block, as its function
-    // has been moved to NextNotarizationInfo
-    // now, if we are clearing launch, determine if we should refund or launch and set notarization appropriately
-    if (isClearLaunchExport)
-    {
-        // if we are connected to another currency, make sure it will also start before we confirm that we can
-        CCurrencyDefinition coLaunchCurrency;
-        CCoinbaseCurrencyState coLaunchState;
-        bool coLaunching = false;
-        if (_curDef.IsGatewayConverter())
-        {
-            // PBaaS or gateway converters have a parent which is the PBaaS chain or gateway
-            coLaunching = true;
-            coLaunchCurrency = ConnectedChains.GetCachedCurrency(_curDef.parent);
-        }
-        else if (_curDef.IsPBaaSChain() && !_curDef.GatewayConverterID().IsNull())
-        {
-            coLaunching = true;
-            coLaunchCurrency = GetCachedCurrency(_curDef.GatewayConverterID());
-        }
-
-        if (coLaunching)
-        {
-            if (!coLaunchCurrency.IsValid())
-            {
-                printf("%s: Invalid co-launch currency - likely corruption\n", __func__);
-                LogPrintf("%s: Invalid co-launch currency - likely corruption\n", __func__);
-                return false;
-            }
-            coLaunchState = GetCurrencyState(coLaunchCurrency, addHeight);
-
-            if (!coLaunchState.IsValid())
-            {
-                printf("%s: Invalid co-launch currency state - likely corruption\n", __func__);
-                LogPrintf("%s: Invalid co-launch currency state - likely corruption\n", __func__);
-                return false;
-            }
-
-            // check our currency and any co-launch currency to determine our eligibility, as ALL
-            // co-launch currencies must launch for one to launch
-            if (coLaunchCurrency.IsValid() &&
-                CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn) <
-                    CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert))
-            {
-                forcedRefunding = true;
-            }
-        }
-    }
-
     if (!intermediateNotarization.NextNotarizationInfo(ConnectedChains.ThisChain(),
                                                         _curDef,
                                                         sinceHeight,
@@ -6241,7 +6216,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                                                         gatewayDepositsUsed,
                                                         spentCurrencyOut,
                                                         feeRecipient,
-                                                        forcedRefunding))
+                                                        false))
     {
         printf("%s: cannot create notarization\n", __func__);
         LogPrintf("%s: cannot create notarization\n", __func__);
