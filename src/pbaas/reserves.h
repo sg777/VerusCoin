@@ -1033,6 +1033,9 @@ public:
     {
         return nVersion >= VERSION_FIRST &&
                nVersion <= VERSION_LAST &&
+               firstInput >= -1 &&
+               numInputs >= 0 &&
+               numInputs <= (CCurrencyDefinition::MAX_TRANSFER_EXPORTS_PER_BLOCK << 2) &&
                !sourceSystemID.IsNull() &&
                (IsSupplemental() ||
                (!destSystemID.IsNull() &&

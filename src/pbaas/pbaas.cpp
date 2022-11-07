@@ -678,6 +678,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
           (ccx = CCrossChainExport(p.vData[0])).IsValid() &&
           (ccx.IsSupplemental() ||
            (ccx.sourceSystemID == ASSETCHAINS_CHAINID &&
+            ccx.numInputs < tx.vin.size() &&
             ((destSystem = ConnectedChains.GetCachedCurrency(ccx.destSystemID)).IsValid() || ccx.IsChainDefinition()) &&
              ccx.GetExportInfo(tx, outNum, primaryExportOut, nextOutput, notarization, reserveTransfers, state,
                 ccx.IsChainDefinition() ? CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR : (CCurrencyDefinition::EProofProtocol)destSystem.proofProtocol))) &&
