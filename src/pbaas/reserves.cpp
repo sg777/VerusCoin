@@ -163,7 +163,7 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
         }
 
         // retrieve reserve transfers from export transaction inputs
-        if (numInputs > 0)
+        if (firstInput >= 0 && numInputs > 0 && (firstInput + numInputs) <= exportTx.vin.size())
         {
             for (int i = firstInput; i < (firstInput + numInputs); i++)
             {
@@ -188,6 +188,10 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
                 hw << rt;
                 reserveTransfers.push_back(rt);
             }
+        }
+        else if (numInputs != 0)
+        {
+            return state.Error(strprintf("%s: invalid export output", __func__));
         }
     }
     else
@@ -2650,9 +2654,12 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         flags |= IS_REJECT;
                         return;
                     }
-                    //printf("%s: ccx: %s\n", __func__, ccx.ToUniValue().write(1,2).c_str());
-                    importGeneratedCurrency -= ccx.totalBurned;
-                    flags |= IS_EXPORT;
+                    if (!ccx.IsSupplemental())
+                    {
+                        //printf("%s: ccx: %s\n", __func__, ccx.ToUniValue().write(1,2).c_str());
+                        importGeneratedCurrency -= ccx.totalBurned;
+                        flags |= IS_EXPORT;
+                    }
                 }
                 break;
 

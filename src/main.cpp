@@ -2825,6 +2825,10 @@ namespace Consensus {
         CCrossChainImport cci(tx, &outNum);
 
         CReserveTransactionDescriptor rtxd(tx, inputs, nSpendHeight);
+        if (!rtxd.IsValid())
+        {
+            return state.DoS(10, error("Invalid reserve transaction"), REJECT_INVALID, "bad-txns-invalid-reservetx");
+        }
 
         CCurrencyValueMap ReserveValueIn = rtxd.ReserveInputMap();
 
@@ -2933,9 +2937,9 @@ namespace Consensus {
         {
             fprintf(stderr,"spentheight.%d reservevaluein: %s\nis less than out: %s\n", nSpendHeight,
                     ReserveValueIn.ToUniValue().write(1, 2).c_str(), tx.GetReserveValueOut().ToUniValue().write(1, 2).c_str());
-            //UniValue jsonTx(UniValue::VOBJ);
-            //TxToUniv(tx, uint256(), jsonTx);
-            //fprintf(stderr,"%s\n", jsonTx.write(1,2).c_str());
+            UniValue jsonTx(UniValue::VOBJ);
+            TxToUniv(tx, uint256(), jsonTx);
+            fprintf(stderr,"%s\n", jsonTx.write(1,2).c_str());
             return state.DoS(100, error("CheckInputs(): reserve value in < reserve value out"), REJECT_INVALID, "bad-txns-reservein-belowout");
         }
 
