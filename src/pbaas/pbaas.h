@@ -950,8 +950,7 @@ public:
                           const CUTXORef &lastNotarizationUTXO,
                           CPBaaSNotarization &newNotarization,
                           int &newNotarizationOutNum,
-                          bool onlyIfRequired=true,
-                          const ChainTransferData *addInputTx=nullptr);
+                          bool onlyIfRequired=true);
 
     // create a set of imports on the current chain for a set of exports
     bool CreateLatestImports(const CCurrencyDefinition &sourceSystemDef,                            // transactions imported from system

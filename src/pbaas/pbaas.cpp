@@ -6008,8 +6008,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                                         const CUTXORef &lastNotarizationUTXO,
                                         CPBaaSNotarization &newNotarization,
                                         int &newNotarizationOutNum,
-                                        bool createOnlyIfRequired,
-                                        const ChainTransferData *addInputTx)
+                                        bool createOnlyIfRequired)
 {
     // Accepts all reserve transfer inputs to a particular currency destination.
     // Generates a new export transactions and any required notarizations.
@@ -6034,7 +6033,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                        !lastNotarization.IsLaunchCleared();
     bool isClearLaunchExport = isPreLaunch && curHeight >= _curDef.startBlock && !lastNotarization.IsLaunchCleared();
 
-    if (!isClearLaunchExport && (!_txInputs.size() || _txInputs.rbegin()->first <= sinceHeight) && !addInputTx)
+    if (!isClearLaunchExport && (!_txInputs.size() || _txInputs.rbegin()->first <= sinceHeight))
     {
         // no error, just nothing to do
        return true;
@@ -6045,10 +6044,8 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     //    aggregation can be made as an export transaction.
     // 2. We will include as many reserveTransfers as we can, block by block until the
     //    first block that allows us to meet MIN_INPUTS on this export.
-    // 3. One additional *conversion* input may be added in the export transaction as
-    //    a "what if", for the estimation API.
+    // 3. Additional *conversion* input(s) may be added in the import transaction.
     //
-    // If the addInputTx is included, this function will add it to the export transaction created.
 
     // determine inputs to include in next export
     // early out if createOnlyIfRequired is true
@@ -6092,7 +6089,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         inputNum++;
     }
 
-    if (!isClearLaunchExport && !inputNum && !addInputTx)
+    if (!isClearLaunchExport && !inputNum)
     {
         // no error, just nothing to do
         return true;
@@ -6111,28 +6108,6 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
     // all we expect to add are in txInputs now
     inputsConsumed = inputNum;
-
-    // check to see if we need to add the optional input, not counted as "consumed"
-    if (addInputTx)
-    {
-        uint32_t rtHeight = std::get<0>(*addInputTx);
-        CReserveTransfer reserveTransfer = std::get<2>(*addInputTx);
-        // ensure that any pre-conversions or conversions are all valid, based on mined height and
-        if (reserveTransfer.IsPreConversion())
-        {
-            printf("%s: Invalid optional pre-conversion\n", __func__);
-            LogPrintf("%s: Invalid optional pre-conversion\n", __func__);
-        }
-        else if (reserveTransfer.IsConversion() && rtHeight < _curDef.startBlock)
-        {
-            printf("%s: Invalid optional conversion added before start block\n", __func__);
-            LogPrintf("%s: Invalid optional conversion added before start block\n", __func__);
-        }
-        else
-        {
-            txInputs.push_back(*addInputTx);
-        }
-    }
 
     // if we are not the clear launch export and have no inputs, including the optional one, we are done
     if (!isClearLaunchExport && txInputs.size() == 0)
