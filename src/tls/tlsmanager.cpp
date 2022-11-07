@@ -238,14 +238,10 @@ int TLSManager::waitFor(SSLConnectionRoutine eRoutine, SOCKET hSocket, SSL* ssl,
                     }
                     LogPrint("tls", "TLS: shutting down fd=%d, peer=%s\n", hSocket, disconnectedPeer);
                 }
-                try
-                {
-                    retOp = SSL_shutdown(ssl);
-                }
-                catch(...)
-                {
-                    return 0;
-                }
+                void (*old)(int);
+                old = signal(SIGPIPE, SIG_IGN);
+                retOp = SSL_shutdown(ssl);
+                signal(SIGPIPE, old);
             }
             break;
 
