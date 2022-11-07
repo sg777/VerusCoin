@@ -12,6 +12,10 @@
 #include "tlsmanager.h"
 #include "utiltls.h"
 
+#ifndef _WIN32
+#include <signal.h>
+#endif
+
 using namespace std;
 namespace tls
 {
