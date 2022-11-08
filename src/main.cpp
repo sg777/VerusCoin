@@ -2824,8 +2824,10 @@ namespace Consensus {
         int32_t outNum;
         CCrossChainImport cci(tx, &outNum);
 
+        bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(nSpendHeight) >= CActivationHeight::ACTIVATE_PBAAS;
+
         CReserveTransactionDescriptor rtxd(tx, inputs, nSpendHeight);
-        if (!rtxd.IsValid())
+        if (isPBaaS && !rtxd.IsValid())
         {
             return state.DoS(10, error("Invalid reserve transaction"), REJECT_INVALID, "bad-txns-invalid-reservetx");
         }
