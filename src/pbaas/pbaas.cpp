@@ -2762,7 +2762,11 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     }
                     if (!importPassThrough)
                     {
-                        return state.Error("Only the controller of " + ConnectedChains.GetFriendlyIdentityName(registeredIdentity) + " may export it to another system");
+                        // TODO: HARDENING - remove this if statement and always error when here before mainnet release
+                        if (chainActive.Height() >= (height - 1) && chainActive[height - 1]->nTime > 1668067200)
+                        {
+                            return state.Error("Only the controller of " + ConnectedChains.GetFriendlyIdentityName(registeredIdentity) + " may export it to another system");
+                        }
                     }
                 }
 
@@ -6025,7 +6029,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     newNotarization.prevNotarization = lastNotarizationUTXO;
     inputsConsumed = 0;
 
-    uint160 destSystemID = _curDef.IsGateway() ? _curDef.gatewayID : _curDef.systemID;
+    uint160 destSystemID = _curDef.SystemOrGatewayID();
     uint160 currencyID = _curDef.GetID();
     bool crossSystem = destSystemID != ASSETCHAINS_CHAINID;
     bool isPreLaunch = _curDef.launchSystemID == ASSETCHAINS_CHAINID &&
@@ -6049,7 +6053,6 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
     // determine inputs to include in next export
     // early out if createOnlyIfRequired is true
-    std::vector<ChainTransferData> txInputs;
     if (!isClearLaunchExport &&
         curHeight - sinceHeight < CCrossChainExport::MIN_BLOCKS &&
         _txInputs.size() < CCrossChainExport::MIN_INPUTS &&
@@ -6060,10 +6063,35 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
     uint32_t addHeight = sinceHeight;
     uint32_t nextHeight = 0;
-    int inputNum = 0;
+    std::vector<ChainTransferData> txInputs;
 
-    for (auto &oneInput : _txInputs)
+    int maxInputs = _curDef.proofProtocol == _curDef.PROOF_ETHNOTARIZATION ?
+                                                CCurrencyDefinition::MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK :
+                                                CCurrencyDefinition::MAX_TRANSFER_EXPORTS_PER_BLOCK;
+    int maxIDExports = _curDef.proofProtocol == _curDef.PROOF_ETHNOTARIZATION ?
+                                                CCurrencyDefinition::MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK :
+                                                CCurrencyDefinition::MAX_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK;
+    int maxCurrencyExports = _curDef.proofProtocol == _curDef.PROOF_ETHNOTARIZATION ?
+                                                CCurrencyDefinition::MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK :
+                                                CCurrencyDefinition::MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK;
+
+    // loop until we have gained a qualified set of transfers over one or more blocks
+    // a qualified set occurs when:
+    // 1) we know we have passed the minimum blocks or we have more than the minimum inputs - this is true
+    // 2) if we reach a maximum per block number of transfers, identities, or currency exports,
+    // .  we must determine if the block hitting that number gets grouped with the blocks before it
+    // .  or the block(s) after it based on a random bit pulled from the block after it, either nonce
+    // .  if POS or block hash if POW block.
+    //
+    // Each time we pass the minimum number of blocks, minimum number of transfers, or hit the maximum number
+    // of any type, we must make a decision of the current block going with the next or prior
+
+    int curIDExports = 0;
+    int curCurrencyExports = 0;
+
+    for (auto it = _txInputs.begin(); it != _txInputs.end(); it++)
     {
+        auto &oneInput = *it;
         if (oneInput.first <= sinceHeight)
         {
             continue;
@@ -6076,20 +6104,88 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                 addHeight = _curDef.startBlock - 1;
                 break;
             }
-            // if we have skipped to the next block, and we have enough to make an export, we cannot take any more
-            // except the optional block to add
-            if ((isClearLaunchExport && inputNum >= CCrossChainExport::MAX_FEE_INPUTS) || (!isClearLaunchExport && inputNum >= CCrossChainExport::MIN_INPUTS))
+
+            // if we have skipped to the next block, and we have enough to make a clear launch export, we cannot take any more
+            // for now
+            if (isClearLaunchExport && txInputs.size() >= CCrossChainExport::MAX_FEE_INPUTS)
             {
+                nextHeight = oneInput.first;
+                break;
+            }
+
+            if (!isClearLaunchExport && (txInputs.size() >= CCrossChainExport::MIN_INPUTS || (oneInput.first - sinceHeight) >= CCrossChainExport::MIN_BLOCKS))
+            {
+                // we're now at a qualified block boundary, so either this marks the next export, or, if we have reached
+                // maximum on any dimension, the block after this one is used to determine whether this block is
+                // paired with blocks looking forward or the blocks behind us
+                //
+                if (txInputs.size() <= maxInputs && curIDExports <= maxIDExports && curCurrencyExports <= maxCurrencyExports)
+                {
+                    // assume we include the next block, but it will have a 50% chance of separating from this block and starting
+                    // a new sequence
+                }
+                else
+                {
+                    // we exceed the maximum, so we cannot plan to include a next block without separating from the last
+
+                    // our default action is to wrap up this export here
+                    // if this height is more than prior height + 1 (if we had at least one block with no transfers),
+                    // we cap this block here and include no more
+                    //
+                    // if this height is (priorheight + 1), we need a random bit from (priorheight + 2), then use that bit
+                    // to determine if we will take the last block away
+                    //
+                    // if there is no next block to get the random number from, we cannot make the export
+                    if (oneInput.first == (addHeight + 1))
+                    {
+                        if (chainActive.Height() <= oneInput.first)
+                        {
+                            // no error, just nothing to do, as we can't decide to include this with the prior block
+                            // until we have at least one more block
+                            return true;
+                        }
+
+                        // if we have a block after with no transfers and we also have enough space to include all remaining, do so
+                        // otherwise, if the block after has transfers or if we can't fit this block into the prior group, use a random
+                        // bit from the block after this to determine if we revert one block to add to the blocks in front or cap here
+
+                        // do we have nothing in the following block and enough space to absorb what's left?
+
+                        // the block just after determines if we finish the export now or remove the prior block's entries
+                        bool revertOneBlock =
+                            UintToArith256(CMMRNode<>::HashObj(chainActive[oneInput.first + 1]->GetVerusEntropyHashComponent())).GetLow64() & 1;
+
+                        //
+                        // this, combined with the earning potential of export fees from including larger conversions ensure
+                        // that no miner or staker creating a block can be certain that if they exclude transactions to front-run,
+                        // that they will not just join the transactions they attempted to front run, defeating their intended
+                        // advantage. instead, if they take the simpler route and just include the largest possible economic value
+                        // of conversions as a priority, they will earn a more consistent percentage in fees and can reserve their
+                        // liquidity to arbitrage imports, which will earn a consistent and deterministic amount vs. risk
+                        // front running failure & loss
+                    }
+                }
+
                 nextHeight = oneInput.first;
                 break;
             }
             addHeight = oneInput.first;
         }
+
+        // figure out if this is a cross-chain export of identity or currency
+        if (std::get<2>(oneInput.second).IsCurrencyExport())
+        {
+            curCurrencyExports++;
+        }
+        else if (std::get<2>(oneInput.second).IsIdentityExport())
+        {
+            curIDExports++;
+        }
+
         txInputs.push_back(oneInput.second);
-        inputNum++;
     }
 
-    if (!isClearLaunchExport && !inputNum)
+    if (!isClearLaunchExport && !txInputs.size())
     {
         // no error, just nothing to do
         return true;
@@ -6107,7 +6203,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     }
 
     // all we expect to add are in txInputs now
-    inputsConsumed = inputNum;
+    inputsConsumed = txInputs.size();
 
     // if we are not the clear launch export and have no inputs, including the optional one, we are done
     if (!isClearLaunchExport && txInputs.size() == 0)
