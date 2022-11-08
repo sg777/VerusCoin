@@ -259,6 +259,7 @@ int TLSManager::waitFor(SSLConnectionRoutine eRoutine, SOCKET hSocket, SSL* ssl,
                     }
                     LogPrint("tls", "TLS: shutting down fd=%d, peer=%s\n", hSocket, disconnectedPeer);
                 }
+#ifndef _WIN32
                 {
                     LOCK(sigPipeCs);
                     if (!oldSigPipeHandler)
@@ -266,6 +267,7 @@ int TLSManager::waitFor(SSLConnectionRoutine eRoutine, SOCKET hSocket, SSL* ssl,
                         oldSigPipeHandler = signal(SIGPIPE, handleSigPipeException);
                     }
                 }
+#endif
                 retOp = SSL_shutdown(ssl);
             }
             break;
