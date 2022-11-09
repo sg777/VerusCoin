@@ -125,14 +125,14 @@ static bool HTTPReq_JSONRPC(HTTPRequest* req, const std::string &)
             std::string reqBody = req->ReadBody();
             if (!valRequest.read(reqBody))
             {
+                LogPrintf("raw request: %s\n", reqBody.c_str());
+                LogPrintf("function: %s, params: %s\n", jreq.strMethod.c_str(), jreq.params.write().c_str());
+                if (LogAcceptCategory("rpcapiconsole"))
+                {
+                    printf("raw request: %s\n", reqBody.c_str());
+                    printf("function: %s, params: %s\n", jreq.strMethod.c_str(), jreq.params.write().c_str());
+                }
                 throw JSONRPCError(RPC_PARSE_ERROR, "Parse error");
-            }
-            LogPrintf("raw request: %s\n", reqBody.c_str());
-            LogPrintf("function: %s, params: %s\n", jreq.strMethod.c_str(), jreq.params.write().c_str());
-            if (LogAcceptCategory("rpcapiconsole"))
-            {
-                printf("raw request: %s\n", reqBody.c_str());
-                printf("function: %s, params: %s\n", jreq.strMethod.c_str(), jreq.params.write().c_str());
             }
         }
         else
