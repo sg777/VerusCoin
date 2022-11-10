@@ -6091,7 +6091,7 @@ bool EntropyCoinFlip(const uint160 &conditionID, uint32_t nHeight)
 bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                                         const std::multimap<uint32_t, ChainTransferData> &_txInputs,
                                         const std::vector<CInputDescriptor> &priorExports,
-                                        const CTransferDestination &feeRecipient,
+                                        const CTransferDestination &_feeRecipient,
                                         uint32_t sinceHeight,
                                         uint32_t curHeight, // the height of the next block
                                         int32_t inputStartNum,
@@ -6114,6 +6114,8 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     // 3) the last export transaction is added as input outside of this call
 
     AssertLockHeld(cs_main);
+
+    CTransferDestination feeRecipient = _feeRecipient;
 
     newNotarization = lastNotarization;
     newNotarization.prevNotarization = lastNotarizationUTXO;
@@ -6272,12 +6274,6 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         txInputs.push_back(oneInput.second);
     }
 
-    if (!isClearLaunchExport && !txInputs.size())
-    {
-        // no error, just nothing to do
-        return true;
-    }
-
     // if we have too many exports to clear launch yet, this is no longer clear launch
     isClearLaunchExport = isClearLaunchExport && !(nextHeight && nextHeight < _curDef.startBlock);
 
@@ -6293,9 +6289,35 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     inputsConsumed = txInputs.size();
 
     // if we are not the clear launch export and have no inputs, including the optional one, we are done
-    if (!isClearLaunchExport && txInputs.size() == 0)
+    if (!isClearLaunchExport)
     {
-        return true;
+        if (txInputs.size() == 0)
+        {
+            return true;
+        }
+        // after launch, the fee recipient must be the first recipient of the coinbase reward for the last
+        // block in the export sequence
+        CBlock block;
+        CBlockIndex* pblockindex = chainActive[addHeight];
+
+        if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus(), 1))
+        {
+            if (LogAcceptCategory("crosshainexports"))
+            {
+                printf("%s: Unable to read block from disk for fee recipient\n", __func__);
+                LogPrintf("%s: Unable to read block from disk for fee recipient\n", __func__);
+            }
+            return false;
+        }
+
+        CTxDestination addressRet;
+        if (!block.vtx.size() ||
+            !block.vtx[0].vout.size() ||
+            !ExtractDestination(block.vtx[0].vout[0].scriptPubKey, addressRet) ||
+            addressRet.which() == COptCCParams::ADDRTYPE_INVALID)
+        {
+            feeRecipient = DestinationToTransferDestination(addressRet);
+        }
     }
 
     // currency from reserve transfers will be stored appropriately for export as follows:
