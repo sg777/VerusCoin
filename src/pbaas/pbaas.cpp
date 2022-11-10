@@ -351,8 +351,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             // TODO: HARDENING - this needs full coverage of all cases, including pre-conversion
             if (!isPreSync && !cci.IsDefinitionImport())
             {
-                // if from this system, we
-
                 CTransaction priorImportTx;
                 CCrossChainImport priorImport = cci.GetPriorImport(tx, state, &priorImportTx);
                 if (!priorImport.IsValid())
@@ -394,7 +392,13 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                                     (priorImport.exportTxId != exportTx.vin[ccx.firstInput - 1].prevout.hash ||
                                     priorImport.exportTxOutNum != exportTx.vin[ccx.firstInput - 1].prevout.n))
                                 {
-                                    //printf("%s: Out of order export tx(%s) from %s to %s for import %s\n", __func__, exportTx.GetHash().GetHex().c_str(), ConnectedChains.GetFriendlyCurrencyName(cci.sourceSystemID).c_str(), ConnectedChains.GetFriendlyCurrencyName(cci.importCurrencyID).c_str(), cci.ToUniValue().write(1,2).c_str());
+                                    LogPrint("crosschainimports", "%s: Out of order export tx(%s) from %s to %s for import %s, priorimport(%s)\n",
+                                             __func__,
+                                             exportTx.GetHash().GetHex().c_str(),
+                                             ConnectedChains.GetFriendlyCurrencyName(cci.sourceSystemID).c_str(),
+                                             ConnectedChains.GetFriendlyCurrencyName(cci.importCurrencyID).c_str(),
+                                             cci.ToUniValue().write(1,2).c_str(),
+                                             priorImport.ToUniValue().write(1,2).c_str());
                                     return state.Error("Out of order export for import 2: " + cci.ToUniValue().write(1,2));
                                 }
                             }
@@ -4269,6 +4273,43 @@ bool CConnectedChains::GetExportProofs(uint32_t height,
     return true;
 }
 
+std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> GetUnspentFromMempool(const std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> &memPoolOutputs)
+{
+    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> retVal;
+    std::set<COutPoint> spentTxOuts;
+    std::set<COutPoint> txOuts;
+
+    for (const auto &oneOut : memPoolOutputs)
+    {
+        // get last one in spending list
+        if (oneOut.first.spending)
+        {
+            CTransaction priorOutTx;
+            uint256 blockHash;
+            CTransaction curTx;
+
+            if (mempool.lookup(oneOut.first.txhash, curTx) &&
+                curTx.vin.size() > oneOut.first.index)
+            {
+                spentTxOuts.insert(curTx.vin[oneOut.first.index].prevout);
+            }
+            else
+            {
+                LogPrint("crosschainimports","Unable to retrieve data for prior import\n");
+                return retVal;
+            }
+        }
+    }
+    for (auto &oneOut : memPoolOutputs)
+    {
+        if (!oneOut.first.spending && !spentTxOuts.count(COutPoint(oneOut.first.txhash, oneOut.first.index)))
+        {
+            retVal.push_back(oneOut);
+        }
+    }
+    return retVal;
+}
+
 bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, const CCoinsViewCache &view, std::vector<CInputDescriptor> &reserveDeposits)
 {
     std::vector<CAddressUnspentDbEntry> confirmedUTXOs;
@@ -4298,8 +4339,12 @@ bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, const CCoin
 
     // we need to remove those that are spent
     std::map<COutPoint, CInputDescriptor> memPoolOuts;
-    for (auto &oneUnconfirmed : unconfirmedUTXOs)
+    for (auto &oneUnconfirmed : GetUnspentFromMempool(unconfirmedUTXOs))
     {
+        const CTransaction oneTx = mempool.mapTx.find(oneUnconfirmed.first.txhash)->GetTx();
+        reserveDeposits.push_back(CInputDescriptor(oneTx.vout[oneUnconfirmed.first.index].scriptPubKey, oneUnconfirmed.second.amount,
+                                                    CTxIn(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)));
+        /*
         COptCCParams p;
         if (!oneUnconfirmed.first.spending &&
             !mempool.mapNextTx.count(COutPoint(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)) &&
@@ -4310,6 +4355,42 @@ bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, const CCoin
             reserveDeposits.push_back(CInputDescriptor(oneTx.vout[oneUnconfirmed.first.index].scriptPubKey, oneUnconfirmed.second.amount,
                                                         CTxIn(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)));
         }
+        */
+    }
+    return true;
+}
+
+bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<CInputDescriptor> &unspentOutptus)
+{
+    std::vector<CAddressUnspentDbEntry> confirmedUTXOs;
+    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> unconfirmedUTXOs;
+
+    CCoins coin;
+
+    if (!GetAddressUnspent(indexID, CScript::P2IDX, confirmedUTXOs) ||
+        !mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexID, CScript::P2IDX}}), unconfirmedUTXOs))
+    {
+        LogPrintf("%s: Cannot read address indexes\n", __func__);
+        return false;
+    }
+    for (auto &oneConfirmed : confirmedUTXOs)
+    {
+        COptCCParams p;
+        if (!mempool.mapNextTx.count(COutPoint(oneConfirmed.first.txhash, oneConfirmed.first.index)) &&
+            oneConfirmed.second.script.IsPayToCryptoCondition(p) && p.IsValid())
+        {
+            unspentOutptus.push_back(CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis,
+                                                        CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index)));
+        }
+    }
+
+    // we need to remove those that are spent
+    std::map<COutPoint, CInputDescriptor> memPoolOuts;
+    for (auto &oneUnconfirmed : GetUnspentFromMempool(unconfirmedUTXOs))
+    {
+        const CTransaction oneTx = mempool.mapTx.find(oneUnconfirmed.first.txhash)->GetTx();
+        unspentOutptus.push_back(CInputDescriptor(oneTx.vout[oneUnconfirmed.first.index].scriptPubKey, oneUnconfirmed.second.amount,
+                                                    CTxIn(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)));
     }
     return true;
 }
@@ -5171,6 +5252,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             printf("%s: building:\n%s\n", __func__, jsonTx.write(1,2).c_str()); //*/
         }
 
+        tb.SetExpiryHeight(nHeight + 5);
         TransactionBuilderResult result = tb.Build();
         if (result.IsError())
         {
@@ -5227,8 +5309,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             } //*/
 
             // put our transaction in place of any others
-            //std::list<CTransaction> removed;
-            //mempool.removeConflicts(newImportTx, removed);
+            // std::list<CTransaction> removed;
+            // mempool.removeConflicts(newImportTx, removed);
 
             // add to mem pool and relay
             if (!myAddtomempool(newImportTx, &state))
@@ -7155,10 +7237,135 @@ void CConnectedChains::ProcessLocalImports()
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
     std::set<uint160> currenciesProcessed;
     uint160 finalizeExportKey(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CObjectFinalization::ObjectFinalizationExportKey()));
+    std::vector<CInputDescriptor> inputDescriptors;
 
+    {
+        LOCK2(smartTransactionCS, mempool.cs);
+
+        if (!ConnectedChains.GetUnspentByIndex(finalizeExportKey, inputDescriptors) || !inputDescriptors.size())
+        {
+            return;
+        }
+        std::map<uint160, std::map<uint32_t, std::pair<std::pair<CInputDescriptor,CTransaction>,CCrossChainExport>>>
+            orderedExportsToFinalize;
+        for (auto &oneFinalization : inputDescriptors)
+        {
+            COptCCParams p;
+            CObjectFinalization of;
+            CCrossChainExport ccx;
+            CCrossChainImport cci;
+            CTransaction scratchTx;
+            int32_t importOutputNum;
+            uint256 hashBlock;
+            if (oneFinalization.scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_FINALIZE_EXPORT &&
+                p.vData.size() &&
+                (of = CObjectFinalization(p.vData[0])).IsValid() &&
+                myGetTransaction(of.output.hash.IsNull() ? oneFinalization.txIn.prevout.hash : of.output.hash, scratchTx, hashBlock) &&
+                scratchTx.vout.size() > of.output.n &&
+                scratchTx.vout[of.output.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
+                p.vData.size() &&
+                (ccx = CCrossChainExport(p.vData[0])).IsValid())
+            {
+                orderedExportsToFinalize[ccx.destCurrencyID].insert(
+                    std::make_pair(ccx.sourceHeightStart,
+                                   std::make_pair(std::make_pair(CInputDescriptor(scratchTx.vout[of.output.n].scriptPubKey,
+                                                                                  scratchTx.vout[of.output.n].nValue,
+                                                                                  CTxIn(of.output.hash.IsNull() ? oneFinalization.txIn.prevout.hash : of.output.hash,
+                                                                                  of.output.n)),
+                                                                 scratchTx),
+                                                  ccx)));
+            }
+        }
+        // now, we have a map of all currencies with ordered exports that have work to do and if pre-launch, may have more from this chain
+        // export finalizations are either on the same transaction as the export, or in the case of a clear launch export,
+        // there may be any number of pre-launch exports still to process prior to spending it
+        for (auto &oneCurrencyExports : orderedExportsToFinalize)
+        {
+            CCrossChainExport &ccx = oneCurrencyExports.second.begin()->second.second;
+            COptCCParams p;
+            CCrossChainImport cci;
+            CTransaction scratchTx;
+            int32_t importOutputNum;
+            uint256 hashBlock;
+            if (GetLastImport(ccx.destCurrencyID, scratchTx, importOutputNum) &&
+                scratchTx.vout.size() > importOutputNum &&
+                scratchTx.vout[importOutputNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                p.vData.size() &&
+                (cci = CCrossChainImport(p.vData[0])).IsValid() &&
+                (cci.IsPostLaunch() || cci.IsDefinitionImport() || cci.sourceSystemID == ASSETCHAINS_CHAINID))
+            {
+                // if not post launch, we are launching from this chain and need to get exports after the last import's source height
+                if (ccx.IsClearLaunch())
+                {
+                    std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> exportsFound;
+                    if (GetCurrencyExports(ccx.destCurrencyID, exportsFound, cci.sourceSystemHeight, nHeight))
+                    {
+                        uint256 cciExportTxHash = cci.exportTxId.IsNull() ? scratchTx.GetHash() : cci.exportTxId;
+                        if (exportsFound.size())
+                        {
+                            // make sure we start from the first export not imported and skip the rest
+                            auto startingIt = exportsFound.begin();
+                            for ( ; startingIt != exportsFound.end(); startingIt++)
+                            {
+                                // if this is the first. then the first is the one we will always use
+                                if (cci.IsDefinitionImport())
+                                {
+                                    break;
+                                }
+                                if (startingIt->first.first.txIn.prevout.hash == cciExportTxHash && startingIt->first.first.txIn.prevout.n == cci.exportTxOutNum)
+                                {
+                                    startingIt++;
+                                    break;
+                                }
+                            }
+                            exportsOut.insert(exportsOut.end(), startingIt, exportsFound.end());
+                        }
+                        currenciesProcessed.insert(ccx.destCurrencyID);
+                    }
+                    continue;
+                }
+                else
+                {
+                    // import all entries that are present, since that is the correct set
+                    for (auto &oneExport : oneCurrencyExports.second)
+                    {
+                        int primaryExportOutNumOut;
+                        int32_t nextOutput;
+                        CPBaaSNotarization exportNotarization;
+                        std::vector<CReserveTransfer> reserveTransfers;
+
+                        if (!oneExport.second.second.GetExportInfo(oneExport.second.first.second,
+                                                                   oneExport.second.first.first.txIn.prevout.n,
+                                                                   primaryExportOutNumOut,
+                                                                   nextOutput,
+                                                                   exportNotarization,
+                                                                   reserveTransfers))
+                        {
+                            printf("%s: Invalid export output %s : output - %u\n",
+                                __func__,
+                                oneExport.second.first.first.txIn.prevout.hash.GetHex().c_str(),
+                                oneExport.second.first.first.txIn.prevout.n);
+                            break;
+                        }
+                        exportsOut.push_back(std::make_pair(std::make_pair(oneExport.second.first.first, CPartialTransactionProof()),
+                                                            reserveTransfers));
+                    }
+                }
+            }
+        }
+    }
+
+    /*
     if (GetAddressUnspent(finalizeExportKey, CScript::P2IDX, unspentOutputs))
     {
         LOCK2(smartTransactionCS, mempool.cs);
+
         std::map<uint160, std::map<uint32_t, std::pair<std::pair<CInputDescriptor,CTransaction>,CCrossChainExport>>>
             orderedExportsToFinalize;
         for (auto &oneFinalization : unspentOutputs)
@@ -7273,6 +7480,7 @@ void CConnectedChains::ProcessLocalImports()
             }
         }
     }
+    */
 
     std::map<uint160, std::vector<std::pair<int, CTransaction>>> newImports;
     if (exportsOut.size())

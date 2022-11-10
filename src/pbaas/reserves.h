@@ -459,7 +459,9 @@ public:
                   int64_t nativeAmount,
                   CTxOut &txOut,
                   std::vector<CTxOut> &txOutputs,
-                  uint32_t height) const;
+                  uint32_t height,
+                  std::set<uint160> &exportedIDs,
+                  std::set<uint160> &exportedCurrencies) const;
 };
 
 class CReserveDeposit : public CTokenOutput

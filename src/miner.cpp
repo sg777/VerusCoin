@@ -1477,13 +1477,12 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         }
 
         CCoinbaseCurrencyState currencyState;
-        CCoinsViewCache view(pcoinsTip);
-        uint32_t expired; uint64_t commission;
 
-        SaplingMerkleTree sapling_tree;
+        uint32_t expired; uint64_t commission;
 
         {
             LOCK2(cs_main, mempool.cs);
+
             if (pindexPrev != chainActive.LastTip())
             {
                 // try again
@@ -1493,12 +1492,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             pblock->nTime = GetAdjustedTime();
 
             currencyState = ConnectedChains.GetCurrencyState(nHeight, true);
-
-            if (!(view.GetSaplingAnchorAt(view.GetBestAnchor(SAPLING), sapling_tree)))
-            {
-                LogPrintf("%s: failed to get Sapling anchor\n", __func__);
-                assert(false);
-            }
         }
 
         // Priority order to process transactions
@@ -1649,6 +1642,25 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             pblock->nTime = blocktime;
             nStakeTxSize = GetSerializeSize(txStaked, SER_NETWORK, PROTOCOL_VERSION);
             nBlockSize += nStakeTxSize;
+        }
+
+        {
+            LOCK(mempool.cs);
+            std::vector<CTransaction> txesToRemove;
+            for (CTxMemPool::indexed_transaction_set::iterator mi = mempool.mapTx.begin();
+                mi != mempool.mapTx.end(); ++mi)
+            {
+                const CTransaction& tx = mi->GetTx();
+                if (IsExpiredTx(tx, nHeight))
+                {
+                    txesToRemove.push_back(tx);
+                }
+            }
+            for (auto &oneTx : txesToRemove)
+            {
+                std::list<CTransaction> expiredRemoved;
+                mempool.remove(oneTx, expiredRemoved, true);
+            }
         }
 
         ConnectedChains.AggregateChainTransfers(DestinationToTransferDestination(firstDestination), nHeight);
@@ -2092,6 +2104,15 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         LOCK(cs_main);
         LOCK2(smartTransactionCS, mempool.cs);
 
+        CCoinsViewCache view(pcoinsTip);
+        SaplingMerkleTree sapling_tree;
+
+        if (!(view.GetSaplingAnchorAt(view.GetBestAnchor(SAPLING), sapling_tree)))
+        {
+            LogPrintf("%s: failed to get Sapling anchor\n", __func__);
+            assert(false);
+        }
+
         totalEmission = GetBlockSubsidy(nHeight, consensusParams);
         blockSubsidy = totalEmission;
 
@@ -2130,6 +2151,12 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         uint32_t reserveExchangeLimitSize = 0;
         std::vector<CReserveTransactionDescriptor> limitOrders;
 
+        if (LogAcceptCategory("createblock"))
+        {
+            UniValue getrawmempool(const UniValue& params, bool fHelp);
+            LogPrint("createblock", "%s: mempool: %s\n", __func__, getrawmempool(UniValue(UniValue::VARR), false).write(1,2).c_str());
+        }
+
         // now add transactions from the mem pool to the priority heap
         for (CTxMemPool::indexed_transaction_set::iterator mi = mempool.mapTx.begin();
              mi != mempool.mapTx.end(); ++mi)
@@ -2144,12 +2171,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             if (tx.IsCoinBase() || !IsFinalTx(tx, nHeight, nLockTimeCutoff) || IsExpiredTx(tx, nHeight))
             {
                 //fprintf(stderr,"coinbase.%d finaltx.%d expired.%d\n",tx.IsCoinBase(),IsFinalTx(tx, nHeight, nLockTimeCutoff),IsExpiredTx(tx, nHeight));
-                continue;
-            }
-
-            if ( ASSETCHAINS_SYMBOL[0] == 0 && komodo_validate_interest(tx,nHeight,(uint32_t)pblock->nTime,0) < 0 )
-            {
-                //fprintf(stderr,"CreateNewBlock: komodo_validate_interest failure nHeight.%d nTime.%u vs locktime.%u\n",nHeight,(uint32_t)pblock->nTime,(uint32_t)tx.nLockTime);
                 continue;
             }
 
@@ -2240,7 +2261,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                     }
                     else
                     {
-                        dPriority += ((double)((reserveValueIn.valueMap.size() ? currencyState.ReserveToNative(reserveValueIn) : 0) + nValueIn)) * nConf;
+                        dPriority += ((double)((reserveValueIn.valueMap.size() ? currencyState.ReserveToNative(reserveValueIn) : 1) + nValueIn)) * nConf;
                     }
 
                     if (!isReserve)
@@ -2280,7 +2301,9 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                 porphan->feeRate = feeRate;
             }
             else
+            {
                 vecPriority.push_back(TxPriority(dPriority, feeRate, &(mi->GetTx())));
+            }
         }
 
         //
@@ -2297,7 +2320,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         std::make_heap(vecPriority.begin(), vecPriority.end(), comparer);
 
         std::vector<int> reservePositions;
-
 
         // store export counts to ensure we don't exceed any limits
         std::set<uint160> newIDRegistrations;
@@ -2319,6 +2341,11 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         std::set<std::pair<uint160, uint160>> tmpIDDestAndExport;
         std::set<std::pair<uint160, uint160>> tmpCurrencyDestAndExport;
 
+        if (LogAcceptCategory("createblock"))
+        {
+            printf("%s: vecPriority.size(): %d\n", __func__, (int)vecPriority.size());
+        }
+
         // now loop and fill the block, leaving space for reserve exchange limit transactions
         while (!vecPriority.empty())
         {
@@ -2334,7 +2361,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             unsigned int nTxSize = ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
             if (nBlockSize + nTxSize >= maxNormalTXBlockSize) // room for extra autotx
             {
-                LogPrint("mining","nBlockSize %d + %d nTxSize >= %d maxNormalTXBlockSize\n",(int32_t)nBlockSize,(int32_t)nTxSize,(int32_t)maxNormalTXBlockSize);
+                LogPrint("mining", "nBlockSize %d + %d nTxSize >= %d maxNormalTXBlockSize\n",(int32_t)nBlockSize,(int32_t)nTxSize,(int32_t)maxNormalTXBlockSize);
                 continue;
             }
 
@@ -2401,6 +2428,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             // go through all outputs and record all currency and identity definitions, either import-based definitions or
             // identity reservations to check for collision, which is disallowed
             bool disqualified = false;
+            bool isImport = false;
             for (int j = 0; j < tx.vout.size(); j++)
             {
                 auto &oneOut = tx.vout[j];
@@ -2503,42 +2531,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
 
                         case EVAL_CROSSCHAIN_IMPORT:
                         {
-                            CCrossChainImport cci, sysCCI;
-                            CCrossChainExport ccx;
-                            int sysCCIOut, importNotarizationOut, eOutS, eOutE;
-                            int32_t nextOutput;
-                            CPBaaSNotarization importNotarization;
-                            CCurrencyDefinition destSystem;
-                            std::vector<CReserveTransfer> reserveTransfers;
-                            if ((cci = CCrossChainImport(p.vData[0])).IsValid() &&
-                                !cci.IsSourceSystemImport() &&
-                                cci.GetImportInfo(tx, nHeight, j, ccx, sysCCI, sysCCIOut, importNotarization, importNotarizationOut, eOutS, eOutE, reserveTransfers, state))
-                            {
-                                for (auto &oneTransfer : reserveTransfers)
-                                {
-                                    if (oneTransfer.IsCurrencyExport())
-                                    {
-                                        if (currencyImports.count(oneTransfer.FirstCurrency()) || tmpCurrencyImports.count(oneTransfer.FirstCurrency()))
-                                        {
-                                            disqualified = true;
-                                            break;
-                                        }
-                                        usedImportExportIDCounters = true;
-                                        tmpCurrencyImports.insert(oneTransfer.FirstCurrency());
-                                    }
-                                    else if (oneTransfer.IsIdentityExport())
-                                    {
-                                        uint160 checkKey = GetDestinationID(TransferDestinationToDestination(oneTransfer.destination));
-                                        if (newIDRegistrations.count(checkKey) || tmpNewIDRegistrations.count(checkKey))
-                                        {
-                                            disqualified = true;
-                                            break;
-                                        }
-                                        tmpNewIDRegistrations.insert(checkKey);
-                                        usedImportExportIDCounters = true;
-                                    }
-                                }
-                            }
+                            isImport = true;
                             break;
                         }
 
@@ -2570,7 +2563,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                     if (rt.IsCurrencyExport())
                                     {
                                         std::pair<uint160, uint160> checkKey({destCurrency.SystemOrGatewayID(), rt.FirstCurrency()});
-                                        if (currencyDestAndExport.count(checkKey) || tmpCurrencyDestAndExport.count(checkKey))
+                                        if (!isImport && (currencyDestAndExport.count(checkKey) || tmpCurrencyDestAndExport.count(checkKey)))
                                         {
                                             disqualified = true;
                                             break;
@@ -2580,7 +2573,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                     else if (rt.IsIdentityExport())
                                     {
                                         std::pair<uint160, uint160> checkKey({destCurrency.SystemOrGatewayID(), GetDestinationID(TransferDestinationToDestination(rt.destination))});
-                                        if (idDestAndExport.count(checkKey) || tmpIDDestAndExport.count(checkKey))
+                                        if (!isImport && (idDestAndExport.count(checkKey) || tmpIDDestAndExport.count(checkKey)))
                                         {
                                             disqualified = true;
                                             break;
@@ -2607,6 +2600,13 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             }
             if (disqualified)
             {
+                if (LogAcceptCategory("createblock"))
+                {
+                    UniValue jsonTxOut(UniValue::VOBJ);
+                    TxToUniv(tx, uint256(), jsonTxOut);
+                    printf("%s: disqualified transaction (dup ID or currency): %s\n", __func__, jsonTxOut.write(1,2).c_str());
+                    LogPrintf("%s: disqualified transaction (dup ID or currency): %s\n", __func__, jsonTxOut.write(1,2).c_str());
+                }
                 continue;
             }
 

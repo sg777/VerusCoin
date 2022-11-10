@@ -1074,20 +1074,32 @@ bool CConnectedChains::GetLastImport(const uint160 &currencyID,
         // make sure it isn't just a burned transaction to that address, drop out on first match
         COptCCParams p;
         CAddressUnspentDbEntry foundOutput;
-        std::set<uint256> spentTxOuts;
-        std::set<uint256> txOuts;
+        std::set<COutPoint> spentTxOuts;
+        std::set<COutPoint> txOuts;
 
         for (const auto &oneOut : memPoolOutputs)
         {
             // get last one in spending list
             if (oneOut.first.spending)
             {
-                spentTxOuts.insert(oneOut.first.txhash);
+                CTransaction priorOutTx;
+                uint256 blockHash;
+                CTransaction curTx;
+
+                if (mempool.lookup(oneOut.first.txhash, curTx) &&
+                    curTx.vin.size() > oneOut.first.index)
+                {
+                    spentTxOuts.insert(curTx.vin[oneOut.first.index].prevout);
+                }
+                else
+                {
+                    throw JSONRPCError(RPC_DATABASE_ERROR, "Unable to retrieve data for prior import");
+                }
             }
         }
         for (auto &oneOut : memPoolOutputs)
         {
-            if (!spentTxOuts.count(oneOut.first.txhash))
+            if (!oneOut.first.spending && !spentTxOuts.count(COutPoint(oneOut.first.txhash, oneOut.first.index)))
             {
                 lastImport = mempool.mapTx.find(oneOut.first.txhash)->GetTx();
                 outputNum = oneOut.first.index;
@@ -1151,20 +1163,32 @@ bool CConnectedChains::GetLastSourceImport(const uint160 &sourceSystemID,
         // make sure it isn't just a burned transaction to that address, drop out on first match
         COptCCParams p;
         CAddressUnspentDbEntry foundOutput;
-        std::set<uint256> spentTxOuts;
-        std::set<uint256> txOuts;
+        std::set<COutPoint> spentTxOuts;
+        std::set<COutPoint> txOuts;
 
         for (const auto &oneOut : memPoolOutputs)
         {
             // get last one in spending list
             if (oneOut.first.spending)
             {
-                spentTxOuts.insert(oneOut.first.txhash);
+                CTransaction priorOutTx;
+                uint256 blockHash;
+                CTransaction curTx;
+
+                if (mempool.lookup(oneOut.first.txhash, curTx) &&
+                    curTx.vin.size() > oneOut.first.index)
+                {
+                    spentTxOuts.insert(curTx.vin[oneOut.first.index].prevout);
+                }
+                else
+                {
+                    throw JSONRPCError(RPC_DATABASE_ERROR, "Unable to retrieve data for prior import");
+                }
             }
         }
         for (auto &oneOut : memPoolOutputs)
         {
-            if (!spentTxOuts.count(oneOut.first.txhash))
+            if (!oneOut.first.spending && !spentTxOuts.count(COutPoint(oneOut.first.txhash, oneOut.first.index)))
             {
                 lastImport = mempool.mapTx.find(oneOut.first.txhash)->GetTx();
                 outputNum = oneOut.first.index;

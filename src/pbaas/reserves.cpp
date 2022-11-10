@@ -2857,7 +2857,9 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                                 int64_t nativeAmount,
                                 CTxOut &txOut,
                                 std::vector<CTxOut> &txOutputs,
-                                uint32_t height) const
+                                uint32_t height,
+                                std::set<uint160> &exportedIDs,
+                                std::set<uint160> &exportedCurrencies) const
 {
     bool makeNormalOutput = true;
     CTxDestination dest = TransferDestinationToDestination(destination);
@@ -3127,8 +3129,8 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             // if on this chain, not enough fees or currency is already registered, don't define
             // if not on this chain, it is a simulation, and allow it
             if (destSystem.GetID() == ASSETCHAINS_CHAINID &&
-                (GetCurrencyDefinition(FirstCurrency(), preExistingCur, &curHeight, false) &&
-                curHeight < height))
+                ((GetCurrencyDefinition(FirstCurrency(), preExistingCur, &curHeight, false) && curHeight < height) ||
+                  exportedCurrencies.count(FirstCurrency())))
             {
                 std::string qualifiedName = ConnectedChains.GetFriendlyCurrencyName(FirstCurrency());
                 LogPrint("crosschain", "%s: Currency already registered for %s\n", __func__, qualifiedName.c_str());
@@ -3136,6 +3138,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 // drop through and make an output that will not be added
                 nativeAmount = -1;
             }
+            exportedCurrencies.insert(FirstCurrency());
             txOut = CTxOut(nativeAmount, MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, std::vector<CTxDestination>({dest}), 1, &registeredCurrency)));
             return true;
         }
@@ -3209,8 +3212,10 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                     return true;
                 }
             }
-            else if (!preexistingID.IsValid())
+            else if (!exportedIDs.count(importedID.GetID()) && !preexistingID.IsValid())
             {
+                exportedIDs.insert(importedID.GetID());
+
                 LOCK(mempool.cs);
                 // check mempool for collision, and if none, make the ID output
                 uint160 identityKeyID(CCrossChainRPCData::GetConditionID(importedID.GetID(), EVAL_IDENTITY_PRIMARY));
@@ -3400,6 +3405,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     CCurrencyValueMap preConvertedOutput;
     CCurrencyValueMap preConvertedReserves;
     CAmount preAllocTotal = 0;
+
+    std::set<uint160> exportedIDs;
+    std::set<uint160> exportedCurrencies;
 
     // determine if we are importing from a gateway currency
     // if so, we can use it to mint gateway currencies via the gateway, and deal with fees and conversions on
@@ -4334,7 +4342,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                              newCurrencyConverted,
                                              newOut,
                                              vOutputs,
-                                             height);
+                                             height,
+                                             exportedIDs,
+                                             exportedCurrencies);
                     }
                     else // all conversions are to primary currency
                     {
@@ -4350,7 +4360,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                              importCurrencyState,
                                              CCurrencyValueMap(std::vector<uint160>({curTransfer.destCurrencyID}),
                                              std::vector<int64_t>({newCurrencyConverted})),
-                                             0, newOut, vOutputs, height);
+                                             0, newOut, vOutputs, height,
+                                             exportedIDs,
+                                             exportedCurrencies);
                     }
                 }
             }
@@ -4511,7 +4523,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                              newCurrencyConverted,
                                              newOut,
                                              vOutputs,
-                                             height);
+                                             height,
+                                             exportedIDs,
+                                             exportedCurrencies);
                     }
                     else
                     {
@@ -4521,7 +4535,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                              importCurrencyState,
                                              CCurrencyValueMap(std::vector<uint160>({outputCurrencyID}),
                                                                std::vector<int64_t>({newCurrencyConverted})),
-                                             0, newOut, vOutputs, height);
+                                             0, newOut, vOutputs, height,
+                                             exportedIDs,
+                                             exportedCurrencies);
                     }
                 }
             }
@@ -4572,7 +4588,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                              curTransfer.FirstValue(),
                                              newOut,
                                              vOutputs,
-                                             height))
+                                             height,
+                                             exportedIDs,
+                                             exportedCurrencies))
                     {
                         printf("%s: invalid transfer %s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
                         LogPrintf("%s: invalid transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
@@ -4624,7 +4642,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                          importCurrencyDef,
                                          importCurrencyState,
                                          CCurrencyValueMap(std::vector<uint160>({destCurID}), std::vector<int64_t>({curTransfer.FirstValue()})),
-                                         0, newOut, vOutputs, height);
+                                         0, newOut, vOutputs, height,
+                                         exportedIDs,
+                                         exportedCurrencies);
                 }
             }
             if (newOut.nValue < 0)
