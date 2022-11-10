@@ -6080,6 +6080,14 @@ bool CConnectedChains::CurrencyImportStatus(const CCurrencyValueMap &totalImport
     return CurrencyExportStatus(totalImports, sourceSystemID, destSystemID, mintNew, reserveDepositsRequired);
 }
 
+bool EntropyCoinFlip(const uint160 &conditionID, uint32_t nHeight)
+{
+    auto hw = CMMRNode<>::GetHashWriter();
+    hw << conditionID;
+    hw << chainActive[nHeight]->GetVerusEntropyHashComponent();
+    return UintToArith256(hw.GetHash()).GetLow64() & 1;
+}
+
 bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                                         const std::multimap<uint32_t, ChainTransferData> &_txInputs,
                                         const std::vector<CInputDescriptor> &priorExports,
@@ -6178,6 +6186,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         {
             continue;
         }
+
         if (addHeight != oneInput.first)
         {
             // if this is a launch export, we create one at the boundary
@@ -6197,61 +6206,57 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
             if (!isClearLaunchExport && (txInputs.size() >= CCrossChainExport::MIN_INPUTS || (oneInput.first - sinceHeight) >= CCrossChainExport::MIN_BLOCKS))
             {
-                // we're now at a qualified block boundary, so either this marks the next export, or, if we have reached
-                // maximum on any dimension, the block after this one is used to determine whether this block is
-                // paired with blocks looking forward or the blocks behind us
-                //
-                if (txInputs.size() <= maxInputs && curIDExports <= maxIDExports && curCurrencyExports <= maxCurrencyExports)
+                // if we have one or more empty blocks between the next block with transfers, go ahead and process
+                if (oneInput.first != (addHeight + 1))
                 {
-                    // assume we include the next block, but it will have a 50% chance of separating from this block and starting
-                    // a new sequence
+                    nextHeight = oneInput.first;
+                    break;
                 }
-                else
-                {
-                    // we exceed the maximum, so we cannot plan to include a next block without separating from the last
 
-                    // our default action is to wrap up this export here
-                    // if this height is more than prior height + 1 (if we had at least one block with no transfers),
-                    // we cap this block here and include no more
-                    //
-                    // if this height is (priorheight + 1), we need a random bit from (priorheight + 2), then use that bit
-                    // to determine if we will take the last block away
-                    //
-                    // if there is no next block to get the random number from, we cannot make the export
-                    if (oneInput.first == (addHeight + 1))
+                // we're now at a qualified block boundary, so either this marks the next export with a gap of transfers, or,
+                // the block after this one is used to determine whether this block is combined with blocks in front of it,
+                // or the blocks behind. if we don't have the block after to check, return until we do
+                if (curHeight <= oneInput.first)
+                {
+                    // no error, just nothing to do, as we can't decide to include this with the prior block
+                    // until we have at least one more block
+                    return true;
+                }
+
+                // if we get the coin flip using the entropy of the block after the next block in question,
+                // separate here, otherwise, the next block will be added, either by adding or separating,
+                // depending on how many transfers we already have
+                if (EntropyCoinFlip(currencyID, oneInput.first + 1))
+                {
+                    nextHeight = oneInput.first;
+                    break;
+                }
+
+                if (txInputs.size() > maxInputs || curIDExports > maxIDExports || curCurrencyExports > maxCurrencyExports)
+                {
+                    // we exceed the maximum, so we separate from the last and make the
+                    // export out of one less than we currently have
+
+                    // take addheight off of the last and break, as it has been determined to go with those in front of it
+                    while (std::get<0>(txInputs.back()) == addHeight)
                     {
-                        if (chainActive.Height() <= oneInput.first)
-                        {
-                            // no error, just nothing to do, as we can't decide to include this with the prior block
-                            // until we have at least one more block
-                            return true;
-                        }
-
-                        // if we have a block after with no transfers and we also have enough space to include all remaining, do so
-                        // otherwise, if the block after has transfers or if we can't fit this block into the prior group, use a random
-                        // bit from the block after this to determine if we revert one block to add to the blocks in front or cap here
-
-                        // do we have nothing in the following block and enough space to absorb what's left?
-
-                        // the block just after determines if we finish the export now or remove the prior block's entries
-                        bool revertOneBlock =
-                            UintToArith256(CMMRNode<>::HashObj(chainActive[oneInput.first + 1]->GetVerusEntropyHashComponent())).GetLow64() & 1;
-
-                        //
-                        // this, combined with the earning potential of export fees from including larger conversions ensure
-                        // that no miner or staker creating a block can be certain that if they exclude transactions to front-run,
-                        // that they will not just join the transactions they attempted to front run, defeating their intended
-                        // advantage. instead, if they take the simpler route and just include the largest possible economic value
-                        // of conversions as a priority, they will earn a more consistent percentage in fees and can reserve their
-                        // liquidity to arbitrage imports, which will earn a consistent and deterministic amount vs. risk
-                        // front running failure & loss
+                        txInputs.pop_back();
                     }
-                }
+                    assert(txInputs.size());
 
-                nextHeight = oneInput.first;
-                break;
+                    nextHeight = addHeight;
+                    addHeight = std::get<0>(txInputs.back());
+                    break;
+                }
             }
             addHeight = oneInput.first;
+        }
+
+        if (!isClearLaunchExport && curHeight <= addHeight + 1)
+        {
+            // no error, just nothing to do, as we can't decide to include this with the prior block
+            // until we have at least one more block
+            return true;
         }
 
         // figure out if this is a cross-chain export of identity or currency
