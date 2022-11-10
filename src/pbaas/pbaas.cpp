@@ -2317,9 +2317,12 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         p.IsEvalPKOut())
     {
         // arbitrage tranactions are determined by their context and statically setting the flags is prohibited
-        if (rt.IsArbitrageOnly())
+        if (rt.IsArbitrageOnly() &&
+            (rt.IsCurrencyExport() ||
+             rt.IsIdentityExport() ||
+             rt.IsCrossSystem()))
         {
-            return state.Error("Reserve transfers may not be statically set as arbitrage transfers " + rt.ToUniValue().write(1,2));
+            return state.Error("Arbitrage transfers must be simple and from/to same chain, even when arbitraging cross-chain imports " + rt.ToUniValue().write(1,2));
         }
 
         // TODO: HARDENING - all cases of potential protocol issues with having a too large output need to be covered

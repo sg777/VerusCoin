@@ -352,7 +352,7 @@ CIdentity TransferDestinationToIdentity(const CTransferDestination &dest)
         {
             ::FromVector(dest.destination, retIdentity);
             break;
-        }        
+        }
     }
     return retIdentity;
 }
@@ -371,7 +371,7 @@ CCurrencyDefinition TransferDestinationToCurrency(const CTransferDestination &de
         {
             ::FromVector(dest.destination, retCurrency);
             break;
-        }        
+        }
     }
     return retCurrency;
 }
@@ -474,7 +474,7 @@ bool CScript::IsPayToScriptHash() const
             (*this)[22] == OP_EQUAL);
 }
 
-// this returns true if either there is nothing left and pc points at the end, or 
+// this returns true if either there is nothing left and pc points at the end, or
 // all instructions from the pc to the end of the script are balanced pushes and pops
 // if there is data, it also returns all the values as byte vectors in a list of vectors
 bool CScript::GetBalancedData(const_iterator& pc, std::vector<std::vector<unsigned char>>& vSolutions) const
@@ -493,8 +493,8 @@ bool CScript::GetBalancedData(const_iterator& pc, std::vector<std::vector<unsign
                 // this should never pop what it hasn't pushed (like a success code)
                 if (--netPushes < 0)
                     return false;
-            } 
-            else 
+            }
+            else
             {
                 // push or fail
                 netPushes++;
@@ -631,9 +631,9 @@ bool CScript::IsInstantSpend() const
     if (IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
     {
         // instant spends can be spent from a coinbase before block maturity, but cannot carry any currency value
-        if (p.evalCode == EVAL_EARNEDNOTARIZATION || 
-            p.evalCode == EVAL_FINALIZE_NOTARIZATION || 
-            p.evalCode == EVAL_FINALIZE_EXPORT || 
+        if (p.evalCode == EVAL_EARNEDNOTARIZATION ||
+            p.evalCode == EVAL_FINALIZE_NOTARIZATION ||
+            p.evalCode == EVAL_FINALIZE_EXPORT ||
             p.evalCode == EVAL_CROSSCHAIN_IMPORT ||
             p.evalCode == EVAL_CROSSCHAIN_EXPORT)
         {
@@ -649,8 +649,8 @@ bool CScript::IsInstantSpendOrUnspendable() const
     bool isInstantSpend = false;
     if (IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
     {
-        if (p.evalCode == EVAL_EARNEDNOTARIZATION || 
-            p.evalCode == EVAL_FINALIZE_NOTARIZATION || 
+        if (p.evalCode == EVAL_EARNEDNOTARIZATION ||
+            p.evalCode == EVAL_FINALIZE_NOTARIZATION ||
             p.evalCode == EVAL_CROSSCHAIN_IMPORT ||
             p.evalCode == EVAL_CROSSCHAIN_EXPORT ||
             p.evalCode == EVAL_FEE_POOL)
@@ -1092,8 +1092,8 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                     // notary signature
                     case CNotaryEvidence::TYPE_NOTARY_EVIDENCE:
                     {
-                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CNotaryEvidence::NotarySignatureKey(), 
-                                                                                        evidence.output.hash, 
+                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CNotaryEvidence::NotarySignatureKey(),
+                                                                                        evidence.output.hash,
                                                                                         evidence.output.n)));
                         break;
                     }
@@ -1107,8 +1107,8 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                     // data broken into multiple parts
                     case CNotaryEvidence::TYPE_MULTIPART_DATA:
                     {
-                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CNotaryEvidence::NotarySignatureKey(), 
-                                                                                        evidence.output.hash, 
+                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CNotaryEvidence::NotarySignatureKey(),
+                                                                                        evidence.output.hash,
                                                                                         evidence.output.n)));
                         break;
                     }
@@ -1268,14 +1268,14 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
         {
             CReserveTransfer rt;
 
-            if (vData.size() && (rt = CReserveTransfer(vData[0])).IsValid())
+            if (vData.size() && (rt = CReserveTransfer(vData[0])).IsValid() && !rt.IsArbitrageOnly())
             {
                 destinations.insert(CIndexID(rt.ReserveTransferKey()));
             }
 
             // if this is a currency export, we return a currency export key to mark that this currency is
             // now committed to be exported when this block of transfers is exported to the target chain
-            if (rt.IsCurrencyExport() && 
+            if (rt.IsCurrencyExport() &&
                 rt.flags & rt.CROSS_SYSTEM &&
                 !rt.destSystemID.IsNull() &&
                 rt.destination.TypeNoFlags() == rt.destination.DEST_REGISTERCURRENCY)
@@ -1874,7 +1874,7 @@ CCurrencyValueMap CCurrencyValueMap::IntersectingValues(const CCurrencyValueMap&
         {
             auto it = operand.valueMap.find(oneVal.first);
             if (it != operand.valueMap.end() &&
-                it->second != 0 && 
+                it->second != 0 &&
                 oneVal.second != 0)
             {
                 retVal.valueMap[oneVal.first] = oneVal.second;
