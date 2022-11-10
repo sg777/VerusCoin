@@ -3870,7 +3870,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         // enable us to confirm the exports and imports effectively. Until PBaaS, these extra checks on exports and imports are not required, making the
         // duplicate identity definition checks redundant as well, as they will remain in ContextualCheckBlock.
         std::set<uint160> newIDRegistrations;
-        std::set<uint160> currencyImports;
+        std::set<uint160> currencyDefinitions;
         std::set<std::pair<uint160, uint160>> idDestAndExport;
         std::set<std::pair<uint160, uint160>> currencyDestAndExport;
 
@@ -3949,11 +3949,40 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                             {
                                 // if this is a straight up currency definition of our native currency, record it
                                 CCurrencyDefinition curDef;
-                                if (!(rtxd.flags & rtxd.IS_IMPORT) &&
-                                    (curDef = CCurrencyDefinition(p.vData[0])).IsValid() &&
+                                if ((curDef = CCurrencyDefinition(p.vData[0])).IsValid() &&
+                                    !currencyDefinitions.count(curDef.GetID()) &&
+                                    !rtxd.IsImport() &&
                                     curDef.GetID() == ASSETCHAINS_CHAINID)
                                 {
                                     newThisChain = curDef;
+                                }
+                                else if (curDef.IsValid())
+                                {
+                                    if (currencyDefinitions.count(curDef.GetID()))
+                                    {
+                                        return state.DoS(10, error("%s: attempt to submit block with invalid or duplicate currency definitions", __func__), REJECT_INVALID, "bad-txns-dup-currency");
+                                    }
+                                    currencyDefinitions.insert(curDef.GetID());
+                                }
+                                break;
+                            }
+
+                            case EVAL_IDENTITY_PRIMARY:
+                            {
+                                // if this is a straight up currency definition of our native currency, record it
+                                CIdentity curID;
+                                if (rtxd.IsImport() &&
+                                    (curID = CIdentity(p.vData[0])).IsValid())
+                                {
+                                    uint160 idID = curID.GetID();
+                                    if (!newIDRegistrations.count(idID))
+                                    {
+                                        newIDRegistrations.insert(idID);
+                                    }
+                                    else
+                                    {
+                                        return state.DoS(10, error("%s: attempt to submit block with invalid or duplicate identity 2", __func__), REJECT_INVALID, "bad-txns-dup-id");
+                                    }
                                 }
                                 break;
                             }
@@ -4003,43 +4032,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 break;
                             }
 
-                            case EVAL_CROSSCHAIN_IMPORT:
-                            {
-                                CCrossChainImport cci, sysCCI;
-                                CCrossChainExport ccx;
-                                int sysCCIOut, importNotarizationOut, eOutS, eOutE;
-                                int32_t nextOutput;
-                                CPBaaSNotarization importNotarization;
-                                CCurrencyDefinition destSystem;
-                                std::vector<CReserveTransfer> reserveTransfers;
-                                if ((cci = CCrossChainImport(p.vData[0])).IsValid() &&
-                                    !cci.IsSourceSystemImport() &&
-                                    cci.GetImportInfo(tx, nHeight, j, ccx, sysCCI, sysCCIOut, importNotarization, importNotarizationOut, eOutS, eOutE, reserveTransfers, state))
-                                {
-                                    for (auto &oneTransfer : reserveTransfers)
-                                    {
-                                        if (oneTransfer.IsCurrencyExport())
-                                        {
-                                            if (currencyImports.count(oneTransfer.FirstCurrency()))
-                                            {
-                                                return state.DoS(10, error("%s: attempt to import same currency more than once in block", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
-                                            }
-                                            currencyImports.insert(oneTransfer.FirstCurrency());
-                                        }
-                                        else if (oneTransfer.IsIdentityExport())
-                                        {
-                                            uint160 checkKey = GetDestinationID(TransferDestinationToDestination(oneTransfer.destination));
-                                            if (newIDRegistrations.count(checkKey))
-                                            {
-                                                return state.DoS(10, error("%s: attempt to import same identity more than once in block", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
-                                            }
-                                            newIDRegistrations.insert(checkKey);
-                                        }
-                                    }
-                                }
-                                break;
-                            }
-
                             case EVAL_RESERVE_TRANSFER:
                             {
                                 // make sure we don't export the same identity or currency to the same destination more than once in any block
@@ -4074,7 +4066,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                         if (rt.IsCurrencyExport())
                                         {
                                             std::pair<uint160, uint160> checkKey({destCurrency.SystemOrGatewayID(), rt.FirstCurrency()});
-                                            if (currencyDestAndExport.count(checkKey))
+                                            if (!rtxd.IsImport() && currencyDestAndExport.count(checkKey))
                                             {
                                                 return state.DoS(10, error("%s: attempt to transfer currency definition more than once to same network", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
                                             }
@@ -4083,7 +4075,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                         else if (rt.IsIdentityExport())
                                         {
                                             std::pair<uint160, uint160> checkKey({destCurrency.SystemOrGatewayID(), GetDestinationID(TransferDestinationToDestination(rt.destination))});
-                                            if (idDestAndExport.count(checkKey))
+                                            if (!rtxd.IsImport() && idDestAndExport.count(checkKey))
                                             {
                                                 return state.DoS(10, error("%s: attempt to transfer identity definition more than once to same network", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
                                             }

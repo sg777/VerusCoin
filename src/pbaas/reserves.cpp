@@ -2355,6 +2355,10 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         return;
                     }
                     flags |= IS_IDENTITY;
+                    if (IsImport())
+                    {
+                        flags |= IS_IDENTITY_DEFINITION;
+                    }
                     if (reservationValid)
                     {
                         if (advancedReservationValid && identity.name == anr.name)
