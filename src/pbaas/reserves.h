@@ -31,6 +31,7 @@ class CCoinsViewCache;
 class CInputDescriptor;
 class CBaseChainObject;
 class CTransaction;
+class CUTXORef;
 class CMutableTransaction;
 class CTxOut;
 class CReserveTransactionDescriptor;
@@ -805,12 +806,11 @@ public:
         return key;
     }
 
-    CReserveTransfer GetArbitrageTransfer(const CTransaction &tx,
-                                          CValidationState &state,
-                                          CTransaction *arbTx=nullptr,
-                                          int32_t *arbOutNum=nullptr,
-                                          uint256 *parbTxBlockHash=nullptr) const;
-
+    std::vector<CReserveTransfer> GetArbitrageTransfers(const CTransaction &tx,
+                                                        CValidationState &state,
+                                                        std::vector<CTransaction> *pArbTxes=nullptr,
+                                                        std::vector<CUTXORef> *pArbOuts=nullptr,
+                                                        std::vector<uint256> *pArbTxBlockHash=nullptr) const;
 
     CCrossChainImport GetPriorImport(const CTransaction &tx,
                                      CValidationState &state,

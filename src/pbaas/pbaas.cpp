@@ -1066,25 +1066,32 @@ bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTran
                          exportP.vData.size() > 1 &&
                          (cci = CCrossChainImport(exportP.vData[0])).IsValid() &&
                          cci.importCurrencyID == importCurrencyID &&
-                         rt.IsConversion() &&
-                         !rt.IsPreConversion())
+                         rt.IsArbitrageOnly())
                 {
-                    CTransaction arbTx;
-                    int32_t arbOut;
-                    CReserveTransfer arbTransfer = cci.GetArbitrageTransfer(tx, eval->state, &arbTx, &arbOut);
-
-                    // TODO: HARDENING - make sure that this arbitrage transaction is not coming from a pre-existing transaction
-                    // on the chain
-                    if (arbTransfer.IsValid() && arbTx.GetHash() == tx.vin[nIn].prevout.hash && arbOut == tx.vin[nIn].prevout.n)
+                    std::vector<CUTXORef> arbOuts;
+                    std::vector<CReserveTransfer> arbTransfers = cci.GetArbitrageTransfers(tx, eval->state, nullptr, &arbOuts);
+                    CUTXORef thisUTXORef(tx.vin[nIn].prevout);
+                    for (auto &oneOut : arbOuts)
                     {
-                        return eval->Error("Reserve transfer spend not accounted for in cross-chain import as arbitrage transaction");
+                        if (oneOut == thisUTXORef)
+                        {
+                            return true;
+                        }
                     }
+                    return eval->Error("Reserve transfer spend not accounted for in cross-chain import as arbitrage transaction");
+                }
+                else if (exportP.IsValid() &&
+                         !exportP.IsEvalPKOut())
+                {
+                    // if this is an arbitrage transfer with a wallet spend, it can just be spent
+                    // back to a wallet
+                    return true;
                 }
             }
             return eval->Error("Unauthorized reserve transfer spend without valid export");
         }
 
-        // TODO: HARDENING - ensure the only valid reason to approve at this point requires verification that the
+        // ensure the only valid reason to approve at this point requires verification that the
         // spending transaction is signed by the refunding address.
         return true;
     }
@@ -2314,7 +2321,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         p.vData.size() &&
         (rt = CReserveTransfer(p.vData[0])).IsValid() &&
         rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID] == tx.vout[outNum].nValue &&
-        p.IsEvalPKOut())
+        (p.IsEvalPKOut() || rt.IsArbitrageOnly()))
     {
         // arbitrage tranactions are determined by their context and statically setting the flags is prohibited
         if (rt.IsArbitrageOnly() &&

@@ -575,12 +575,12 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
         {
             // if we don't have an arbitrage reserve transfer, this is an error that the hashes don't match
             // if we do, they cannot match, so get it
-            CReserveTransfer arbitrageTransfer = GetArbitrageTransfer(importTx, state);
-            if (!arbitrageTransfer.IsValid())
+            std::vector<CReserveTransfer> arbitrageTransfers = GetArbitrageTransfers(importTx, state);
+            if (!arbitrageTransfers.size())
             {
-                return state.Error(strprintf("%s: export and import hash mismatch without valid arbitrage transfer",__func__));
+                return state.Error(strprintf("%s: export and import hash mismatch without valid arbitrage transfer(s)",__func__));
             }
-            reserveTransfers.push_back(arbitrageTransfer);
+            reserveTransfers.insert(reserveTransfers.end(), arbitrageTransfers.begin(), arbitrageTransfers.end());
             CNativeHashWriter nhw1(hashType);
             CNativeHashWriter nhw2(hashType);
             for (int i = 0; i < reserveTransfers.size(); i++)
@@ -734,71 +734,70 @@ CCurrencyValueMap CCoinbaseCurrencyState::TargetConversionPricesReverse(const ui
 }
 
 // returns the arbitrage transfer for a given import
-CReserveTransfer CCrossChainImport::GetArbitrageTransfer(const CTransaction &tx,
-                                                         CValidationState &state,
-                                                         CTransaction *parbTx,
-                                                         int32_t *parbOutNum,
-                                                         uint256 *parbTxBlockHash) const
+std::vector<CReserveTransfer> CCrossChainImport::GetArbitrageTransfers(const CTransaction &tx,
+                                                                       CValidationState &state,
+                                                                       std::vector<CTransaction> *pArbTxes,
+                                                                       std::vector<CUTXORef> *pArbOuts,
+                                                                       std::vector<uint256> *pArbTxBlockHashes) const
 {
-    // get the prior import
-    CReserveTransfer rt;
-    CCrossChainImport cci;
-    int transferCount = 0;
-    for (auto &oneIn : tx.vin)
-    {
-        CTransaction _arbTx;
-        int32_t _arbOutNum;
-        uint256 _arbTxBlockHash;
-        CTransaction &arbTx = parbTx ? *parbTx : _arbTx;
-        int32_t &arbOutNum = parbOutNum ? *parbOutNum : _arbOutNum;
-        uint256 &arbTxBlockHash = parbTxBlockHash ? *parbTxBlockHash : _arbTxBlockHash;
+    std::vector<CReserveTransfer> retVal;
 
-        COptCCParams p;
-        if (!IsDefinitionImport() &&
-            (myGetTransaction(oneIn.prevout.hash, _arbTx, arbTxBlockHash)))
+    if (!IsDefinitionImport())
+    {
+        // get the prior import
+        CReserveTransfer rt;
+        CCrossChainImport cci;
+
+        for (auto &oneIn : tx.vin)
         {
-            if (cci.IsValid() &&
-                _arbTx.vout.size() > oneIn.prevout.n &&
-                _arbTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-                p.IsValid() &&
-                p.evalCode == EVAL_RESERVE_TRANSFER &&
-                p.vData.size() &&
-                (rt = CReserveTransfer(p.vData[0])).IsValid())
+            COptCCParams p;
+            CTransaction arbTx;
+            uint256 arbTxBlockHash;
+            if (myGetTransaction(oneIn.prevout.hash, arbTx, arbTxBlockHash))
             {
-                // only one allowed, even though we currently don't
-                // loop after finding the first
-                if (transferCount)
+                if (cci.IsValid() &&
+                    arbTx.vout.size() > oneIn.prevout.n &&
+                    arbTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    p.evalCode == EVAL_RESERVE_TRANSFER &&
+                    p.vData.size() &&
+                    (rt = CReserveTransfer(p.vData[0])).IsValid() &&
+                    rt.IsArbitrageOnly())
                 {
-                    rt = CReserveTransfer();
+                    retVal.push_back(rt);
+                    if (pArbTxes)
+                    {
+                        pArbTxes->push_back(arbTx);
+                    }
+                    if (pArbOuts)
+                    {
+                        pArbOuts->push_back(CUTXORef(oneIn.prevout.hash, oneIn.prevout.n));
+                    }
+                    if (pArbTxBlockHashes)
+                    {
+                        pArbTxBlockHashes->push_back(arbTxBlockHash);
+                    }
+                }
+                else if (!cci.IsValid() &&
+                        p.IsValid() &&
+                        p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                        p.vData.size())
+                {
+                    cci = CCrossChainImport(p.vData[0]);
+                }
+                else if (cci.IsValid() &&
+                        p.IsValid() &&
+                        p.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
+                        p.vData.size())
+                {
+                    // any reserve transfer should be after the import and before the notarization spend
+                    cci = CCrossChainImport();
                     break;
                 }
-                transferCount++;
-                arbTx = _arbTx;
-                arbOutNum = oneIn.prevout.n;
-                rt.SetArbitrageOnly();
-                // TODO: right now, only one reserve transfer will be used for any import,
-                // and any additional ones should be rejected as invalid spends, so ignore them here
-                break;
-            }
-            else if (!cci.IsValid() &&
-                     p.IsValid() &&
-                     p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
-                     p.vData.size())
-            {
-                cci = CCrossChainImport(p.vData[0]);
-            }
-            else if (cci.IsValid() &&
-                     p.IsValid() &&
-                     p.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
-                     p.vData.size())
-            {
-                // any reserve transfer should be after the import and before the notarization spend
-                cci = CCrossChainImport();
-                break;
             }
         }
     }
-    return rt;
+    return retVal;
 }
 
 // returns the prior import from a given import
@@ -3375,6 +3374,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     bool isFractional = importCurrencyDef.IsFractional();
 
     int arbitrageCount = 0;
+    int maxArbitrage = importCurrencyState.IsFractional() && importCurrencyState.IsLaunchCompleteMarker() ?
+                            ((importCurrencyState.currencies.size() >> 1) + (importCurrencyState.currencies.size() & 1)) :
+                            0;
 
     // reserve currency amounts converted to fractional
     CCurrencyValueMap reserveConverted;
@@ -3869,10 +3871,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         LogPrint("reservetransfers", "%s: arbitrage transactions invalid until after currency launch is complete for %s\n", __func__, importCurrencyDef.name.c_str());
                         return false;
                     }
-                    if (arbitrageCount++)
+                    if (++arbitrageCount > maxArbitrage)
                     {
-                        printf("%s: only one arbitrage transaction is allowed on an import for %s\n", __func__, importCurrencyDef.name.c_str());
-                        LogPrint("reservetransfers", "%s: only one arbitrage transaction is allowed on an import for %s\n", __func__, importCurrencyDef.name.c_str());
+                        printf("%s: only %d arbitrage transactions allowed on an import for %s\n", __func__, maxArbitrage, importCurrencyDef.name.c_str());
+                        LogPrint("reservetransfers", "%s: only %d arbitrage transactions allowed on an import for %s\n", __func__, maxArbitrage, importCurrencyDef.name.c_str());
                         return false;
                     }
                     if (curTransfer.IsCurrencyExport() ||
