@@ -6219,7 +6219,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
             if (!isClearLaunchExport && (txInputs.size() >= CCrossChainExport::MIN_INPUTS || (oneInput.first - sinceHeight) >= CCrossChainExport::MIN_BLOCKS))
             {
                 // if we have one or more empty blocks between the next block with transfers, go ahead and process
-                if (oneInput.first != (addHeight + 1))
+                if (txInputs.size() && oneInput.first != (addHeight + 1))
                 {
                     nextHeight = oneInput.first;
                     break;
