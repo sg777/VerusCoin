@@ -160,25 +160,6 @@ static void dumpCertificateDebugInfo(int preverify_ok, X509_STORE_CTX* chainCont
     }
 }
 
-#ifndef _WIN32
-    void (*oldSigPipeHandler)(int) = nullptr;
-    CCriticalSection sigPipeCs;
-    void handleSigPipeException(int exCode)
-    {
-        // if this is ever set, it is for an occasional broken pipe exception
-        // if we get a broken pipe exception, revert our handler back to the original handler
-        // and zero our old handler value. this handler is set before SSL_shutdown
-        {
-            LOCK(sigPipeCs);
-            if (oldSigPipeHandler)
-            {
-                signal(SIGPIPE, oldSigPipeHandler);
-                oldSigPipeHandler = nullptr;
-            }
-        }
-    }
-#endif
-
 /**
 * @brief If verify_callback always returns 1, the TLS/SSL handshake will not be terminated with respect to verification failures and the connection will be established.
 *
@@ -261,15 +242,6 @@ int TLSManager::waitFor(SSLConnectionRoutine eRoutine, SOCKET hSocket, SSL* ssl,
                     }
                     LogPrint("tls", "TLS: shutting down fd=%d, peer=%s\n", hSocket, disconnectedPeer);
                 }
-#ifndef _WIN32
-                {
-                    LOCK(sigPipeCs);
-                    if (!oldSigPipeHandler)
-                    {
-                        oldSigPipeHandler = signal(SIGPIPE, handleSigPipeException);
-                    }
-                }
-#endif
                 retOp = SSL_shutdown(ssl);
             }
             break;
