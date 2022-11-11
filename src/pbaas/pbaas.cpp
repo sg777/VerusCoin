@@ -6125,6 +6125,8 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
 
     AssertLockHeld(cs_main);
 
+    uint32_t nHeight = chainActive.Height();
+
     CTransferDestination feeRecipient = _feeRecipient;
 
     newNotarization = lastNotarization;
@@ -6228,7 +6230,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                 // we're now at a qualified block boundary, so either this marks the next export with a gap of transfers, or,
                 // the block after this one is used to determine whether this block is combined with blocks in front of it,
                 // or the blocks behind. if we don't have the block after to check, return until we do
-                if (curHeight <= oneInput.first)
+                if (std::min(curHeight, nHeight) <= oneInput.first)
                 {
                     // no error, just nothing to do, as we can't decide to include this with the prior block
                     // until we have at least one more block
