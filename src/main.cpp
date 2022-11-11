@@ -4012,19 +4012,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                         if (oneTransfer.IsCurrencyExport())
                                         {
                                             std::pair<uint160, uint160> checkKey({ccx.destSystemID, oneTransfer.FirstCurrency()});
-                                            if (currencyDestAndExport.count(checkKey))
-                                            {
-                                                return state.DoS(10, error("%s: attempt to export same currency more than once to same network", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
-                                            }
                                             currencyDestAndExport.insert(checkKey);
                                         }
                                         else if (oneTransfer.IsIdentityExport())
                                         {
                                             std::pair<uint160, uint160> checkKey({ccx.destSystemID, GetDestinationID(TransferDestinationToDestination(oneTransfer.destination))});
-                                            if (idDestAndExport.count(checkKey))
-                                            {
-                                                return state.DoS(10, error("%s: attempt to export same identity more than once to same network", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
-                                            }
                                             idDestAndExport.insert(checkKey);
                                         }
                                     }
