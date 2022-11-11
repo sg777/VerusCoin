@@ -1,14 +1,14 @@
 /********************************************************************
  * (C) 2019 Michael Toutonghi
- * 
+ *
  * Distributed under the MIT software license, see the accompanying
  * file COPYING or http://www.opensource.org/licenses/mit-license.php.
- * 
+ *
  * This implements the public blockchains as a service (PBaaS) notarization protocol, VerusLink.
- * VerusLink is a new distributed consensus protocol that enables multiple public blockchains 
- * to operate as a decentralized ecosystem of chains, which can interact and easily engage in cross 
+ * VerusLink is a new distributed consensus protocol that enables multiple public blockchains
+ * to operate as a decentralized ecosystem of chains, which can interact and easily engage in cross
  * chain transactions.
- * 
+ *
  */
 
 #include <univalue.h>
@@ -237,11 +237,11 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
 
         uint256 signatureHash = idSignature.IdentitySignatureHash(std::vector<uint160>({NotaryConfirmedKey()}),
                                                                   std::vector<std::string>(),
-                                                                  std::vector<uint256>({outputUTXOHash}), 
+                                                                  std::vector<uint256>({outputUTXOHash}),
                                                                   systemID,
                                                                   height,
                                                                   signWithID,
-                                                                  "", 
+                                                                  "",
                                                                   objHash);
 
         std::set<CTxDestination> validKeys;
@@ -285,12 +285,12 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
             AddToSignatures(notarySet, signWithID, idSignature, STATE_CONFIRMING);
         }
 
-        CIdentitySignature::ESignatureVerification sigResult = idSignature.CheckSignature(sigIdentity, 
-                                                                                        std::vector<uint160>({NotaryConfirmedKey()}), 
+        CIdentitySignature::ESignatureVerification sigResult = idSignature.CheckSignature(sigIdentity,
+                                                                                        std::vector<uint160>({NotaryConfirmedKey()}),
                                                                                         std::vector<std::string>(),
-                                                                                        std::vector<uint256>({outputUTXOHash}), 
-                                                                                        systemID, 
-                                                                                        "", 
+                                                                                        std::vector<uint256>({outputUTXOHash}),
+                                                                                        systemID,
+                                                                                        "",
                                                                                         objHash);
 
         if (sigResult == CIdentitySignature::ESignatureVerification::SIGNATURE_EMPTY ||
@@ -395,13 +395,13 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
 
         CIdentitySignature idSignature(height, std::set<std::vector<unsigned char>>(), hashType);
 
-        uint256 signatureHash = idSignature.IdentitySignatureHash(std::vector<uint160>({NotaryRejectedKey()}), 
+        uint256 signatureHash = idSignature.IdentitySignatureHash(std::vector<uint160>({NotaryRejectedKey()}),
                                                                   std::vector<std::string>(),
-                                                                  std::vector<uint256>({outputUTXOHash}), 
+                                                                  std::vector<uint256>({outputUTXOHash}),
                                                                   systemID,
                                                                   height,
                                                                   signWithID,
-                                                                  "", 
+                                                                  "",
                                                                   objHash);
 
         std::set<CTxDestination> validKeys;
@@ -445,14 +445,14 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
             AddToSignatures(notarySet, signWithID, idSignature, STATE_REJECTING);
         }
 
-        CIdentitySignature::ESignatureVerification sigResult = idSignature.CheckSignature(sigIdentity, 
-                                                                                          std::vector<uint160>({NotaryRejectedKey()}), 
+        CIdentitySignature::ESignatureVerification sigResult = idSignature.CheckSignature(sigIdentity,
+                                                                                          std::vector<uint160>({NotaryRejectedKey()}),
                                                                                           std::vector<std::string>(),
-                                                                                          std::vector<uint256>({outputUTXOHash}), 
-                                                                                          systemID, 
-                                                                                          "", 
+                                                                                          std::vector<uint256>({outputUTXOHash}),
+                                                                                          systemID,
+                                                                                          "",
                                                                                           objHash);
-        
+
         if (sigResult == CIdentitySignature::ESignatureVerification::SIGNATURE_EMPTY ||
             sigResult == CIdentitySignature::ESignatureVerification::SIGNATURE_INVALID)
         {
@@ -504,16 +504,16 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
                 break;
             }
         }
-        
+
         CNativeHashWriter hw(hashType);
         hw << output;
         outputUTXOHash = hw.GetHash();
     }
 
-    // for every height, we check and merge 
+    // for every height, we check and merge
     uint32_t lastHeight = 0;
     std::map<CIdentityID, std::set<std::vector<unsigned char>>> notarySetRejects;
-    std::map<CIdentityID, std::set<std::vector<unsigned char>>> notarySetConfirms; 
+    std::map<CIdentityID, std::set<std::vector<unsigned char>>> notarySetConfirms;
 
     for (auto &oneSigBlock : notarySignatures)
     {
@@ -564,11 +564,11 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
 
                 std::vector<std::vector<unsigned char>> dupSigs;
                 CIdentitySignature::ESignatureVerification result = oneIDSig.second.CheckSignature(sigIdentity,
-                                                                                                   std::vector<uint160>({NotaryConfirmedKey()}), 
+                                                                                                   std::vector<uint160>({NotaryConfirmedKey()}),
                                                                                                    std::vector<std::string>(),
-                                                                                                   std::vector<uint256>({outputUTXOHash}), 
-                                                                                                   systemID, 
-                                                                                                   "", 
+                                                                                                   std::vector<uint256>({outputUTXOHash}),
+                                                                                                   systemID,
+                                                                                                   "",
                                                                                                    objHash,
                                                                                                    &dupSigs);
 
@@ -616,11 +616,11 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
 
                 std::vector<std::vector<unsigned char>> dupSigs;
                 CIdentitySignature::ESignatureVerification result = oneIDSig.second.CheckSignature(sigIdentity,
-                                                                                                   std::vector<uint160>({NotaryRejectedKey()}), 
+                                                                                                   std::vector<uint160>({NotaryRejectedKey()}),
                                                                                                    std::vector<std::string>(),
-                                                                                                   std::vector<uint256>({outputUTXOHash}), 
-                                                                                                   systemID, 
-                                                                                                   "", 
+                                                                                                   std::vector<uint256>({outputUTXOHash}),
+                                                                                                   systemID,
+                                                                                                   "",
                                                                                                    objHash,
                                                                                                    &dupSigs);
 
@@ -656,7 +656,7 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
             break;
         }
     }
-    
+
     if (pDecisionHeight)
     {
         *pDecisionHeight = lastHeight;
@@ -692,7 +692,7 @@ CPBaaSNotarization::CPBaaSNotarization(const CScript &scriptPubKey) :
                     prevHeight(0)
 {
     COptCCParams p;
-    if (scriptPubKey.IsPayToCryptoCondition(p) && 
+    if (scriptPubKey.IsPayToCryptoCondition(p) &&
         p.IsValid() &&
         (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
         p.vData.size())
@@ -714,15 +714,15 @@ CPBaaSNotarization::CPBaaSNotarization(const CTransaction &tx, int32_t *pOutIdx)
 
     int32_t _outIdx;
     int32_t &outIdx = pOutIdx ? *pOutIdx : _outIdx;
-    
-    // a notarization must have notarization output that spends to the address indicated by the 
-    // ChainID, an opret, that there is only one, and that it can be properly decoded to a notarization 
+
+    // a notarization must have notarization output that spends to the address indicated by the
+    // ChainID, an opret, that there is only one, and that it can be properly decoded to a notarization
     // output, whether or not validate is true
     bool found = false;
     for (int i = 0; i < tx.vout.size(); i++)
     {
         COptCCParams p;
-        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) && 
+        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
             p.IsValid() &&
             (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
             p.vData.size())
@@ -849,10 +849,10 @@ CProofRoot CProofRoot::GetProofRoot(uint32_t blockHeight)
     }
     auto mmv = chainActive.GetMMV();
     mmv.resize(blockHeight + 1);
-    return CProofRoot(ASSETCHAINS_CHAINID, 
-                      blockHeight, 
-                      mmv.GetRoot(), 
-                      chainActive[blockHeight]->GetBlockHash(), 
+    return CProofRoot(ASSETCHAINS_CHAINID,
+                      blockHeight,
+                      mmv.GetRoot(),
+                      chainActive[blockHeight]->GetBlockHash(),
                       chainActive[blockHeight]->chainPower.CompactChainPower());
 }
 
@@ -983,10 +983,10 @@ bool CPBaaSNotarization::GetLastUnspentNotarization(const uint160 &currencyID,
     return notarization.IsValid();
 }
 
-bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceSystem, 
-                                              const CCurrencyDefinition &destCurrency, 
-                                              uint32_t lastExportHeight, 
-                                              uint32_t notaHeight, 
+bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceSystem,
+                                              const CCurrencyDefinition &destCurrency,
+                                              uint32_t lastExportHeight,
+                                              uint32_t notaHeight,
                                               std::vector<CReserveTransfer> &exportTransfers,       // both in and out. this may refund conversions
                                               uint256 &transferHash,
                                               CPBaaSNotarization &newNotarization,
@@ -1012,8 +1012,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     // if we are communicating with an external system that uses a different hash, use it for everything
     CCurrencyDefinition::EHashTypes hashType = CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR;
 
-    uint160 externalSystemID = sourceSystem.SystemOrGatewayID() == ASSETCHAINS_CHAINID ? 
-                                ((destSystemID == ASSETCHAINS_CHAINID) ? uint160() : destSystemID) : 
+    uint160 externalSystemID = sourceSystem.SystemOrGatewayID() == ASSETCHAINS_CHAINID ?
+                                ((destSystemID == ASSETCHAINS_CHAINID) ? uint160() : destSystemID) :
                                 sourceSystem.GetID();
 
     CCurrencyDefinition externalSystemDef;
@@ -1089,7 +1089,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             else
             {
                 // check if it exceeds pre-conversion maximums, and refund if so
-                CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({reserveTransfer.FirstCurrency()}), 
+                CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({reserveTransfer.FirstCurrency()}),
                                                                    std::vector<int64_t>({reserveTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(reserveTransfer.FirstValue())}));
                 CCurrencyValueMap newTotalReserves;
                 if (IsPreLaunch())
@@ -1145,7 +1145,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
           notaHeight == 1)))
     {
         // we get one pre-launch coming through here, initial supply is set and ready for pre-convert
-        if (((thisIsLaunchSys && notaHeight == (destCurrency.startBlock - 1)) || sourceSystemID != ASSETCHAINS_CHAINID) && 
+        if (((thisIsLaunchSys && notaHeight == (destCurrency.startBlock - 1)) || sourceSystemID != ASSETCHAINS_CHAINID) &&
             newNotarization.IsPreLaunch())
         {
             // the first block executes the second time through
@@ -1185,7 +1185,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                         LogPrintf("%s: Invalid co-launch currency - likely corruption\n", __func__);
                         return false;
                     }
-                    coLaunchState = ConnectedChains.GetCurrencyState(coLaunchCurrency, notaHeight);
+                    coLaunchState = ConnectedChains.GetCurrencyState(coLaunchCurrency, notaHeight, true);
 
                     if (!coLaunchState.IsValid())
                     {
@@ -1249,7 +1249,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         }
 
         // NOTE: destcurrency systemID is correct here, since this is only prelaunch or block 1, which doesn't apply for gateway's
-        CCurrencyDefinition destSystem = newNotarization.IsRefunding() ? ConnectedChains.GetCachedCurrency(destCurrency.launchSystemID) : 
+        CCurrencyDefinition destSystem = newNotarization.IsRefunding() ? ConnectedChains.GetCachedCurrency(destCurrency.launchSystemID) :
                                                                          ConnectedChains.GetCachedCurrency(destCurrency.systemID);
 
         CCoinbaseCurrencyState tempState = newNotarization.currencyState;
@@ -1266,13 +1266,13 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         std::vector<CTxOut> tempOutputs;
         bool retVal = rtxd.AddReserveTransferImportOutputs(newNotarization.IsRefunding() ? destSystem : sourceSystem,
                                                            newNotarization.IsRefunding() ? sourceSystem : destSystem,
-                                                           destCurrency, 
-                                                           newNotarization.currencyState, 
-                                                           exportTransfers, 
+                                                           destCurrency,
+                                                           newNotarization.currencyState,
+                                                           exportTransfers,
                                                            currentHeight,
-                                                           tempOutputs, 
+                                                           tempOutputs,
                                                            importedCurrency,
-                                                           gatewayDepositsUsed, 
+                                                           gatewayDepositsUsed,
                                                            spentCurrencyOut,
                                                            &tempState,
                                                            feeRecipient,
@@ -1291,13 +1291,13 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
             retVal = rtxd.AddReserveTransferImportOutputs(newNotarization.IsRefunding() ? destSystem : sourceSystem,
                                                           newNotarization.IsRefunding() ? sourceSystem : destSystem,
-                                                          destCurrency, 
-                                                          newNotarization.currencyState, 
+                                                          destCurrency,
+                                                          newNotarization.currencyState,
                                                           exportTransfers,
                                                           currentHeight,
-                                                          importOutputs, 
+                                                          importOutputs,
                                                           importedCurrency,
-                                                          gatewayDepositsUsed, 
+                                                          gatewayDepositsUsed,
                                                           spentCurrencyOut,
                                                           &tempState,
                                                           feeRecipient,
@@ -1314,8 +1314,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         // if we are in the pre-launch phase, all reserves in are cumulative and then calculated together at launch
         // reserves in represent all reserves in, and fees are taken out after launch or refund as well
         //
-        // we add up until the end, then stop adding reserves at launch clear. this gives us the ability to reverse the 
-        // pre-launch state for validation. we continue adding fees up to pre-launch to easily get a total of unconverted 
+        // we add up until the end, then stop adding reserves at launch clear. this gives us the ability to reverse the
+        // pre-launch state for validation. we continue adding fees up to pre-launch to easily get a total of unconverted
         // fees, which we need when creating a PBaaS chain, as all currency, both reserves and fees exported to the new
         // chain must be either output to specific addresses, taken as fees by miners, or stored in reserve deposits.
         if (tempState.IsPrelaunch())
@@ -1343,13 +1343,13 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                     }
                 }
             }
-    
+
             // use double entry to enable pass through of the accumulated reserve such that when
             // reverting supply and reserves, we end up with what we started, after prelaunch and
             // before all post launch functions are complete, we use primaryCurrencyIn to accumulate
             // reserves to enforce maxPreconvert
             tempState.primaryCurrencyIn = tempState.AddVectors(this->currencyState.primaryCurrencyIn, tempReserves.AsCurrencyVector(tempState.currencies));
-            tempState.reserveOut = 
+            tempState.reserveOut =
                     tempState.AddVectors(tempState.reserveOut,
                                          (CCurrencyValueMap(tempState.currencies, tempState.reserveIn) * -1).AsCurrencyVector(tempState.currencies));
             tempState.reserveIn = tempReserves.AsCurrencyVector(tempState.currencies);
@@ -1369,23 +1369,23 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         }
         newNotarization.currencyState.SetLaunchClear(false);
 
-        CCurrencyDefinition destSystem = newNotarization.IsRefunding() ? ConnectedChains.GetCachedCurrency(destCurrency.launchSystemID) : 
+        CCurrencyDefinition destSystem = newNotarization.IsRefunding() ? ConnectedChains.GetCachedCurrency(destCurrency.launchSystemID) :
                                                                          ConnectedChains.GetCachedCurrency(destCurrency.SystemOrGatewayID());
 
         // calculate new state from processing all transfers
         // we are not refunding, and it is possible that we also have
-        // normal conversions in addition to pre-conversions. add any conversions that may 
+        // normal conversions in addition to pre-conversions. add any conversions that may
         // be present into the new currency state
         CCoinbaseCurrencyState intermediateState = newNotarization.currencyState;
         bool isValidExport = rtxd.AddReserveTransferImportOutputs(sourceSystem,
                                                                   destSystem,
-                                                                  destCurrency, 
-                                                                  intermediateState, 
-                                                                  exportTransfers, 
+                                                                  destCurrency,
+                                                                  intermediateState,
+                                                                  exportTransfers,
                                                                   currentHeight,
-                                                                  dummyImportOutputs, 
+                                                                  dummyImportOutputs,
                                                                   importedCurrency,
-                                                                  gatewayDepositsUsed, 
+                                                                  gatewayDepositsUsed,
                                                                   spentCurrencyOut,
                                                                   &newNotarization.currencyState,
                                                                   feeRecipient,
@@ -1405,13 +1405,13 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             rtxd = CReserveTransactionDescriptor();
             isValidExport = rtxd.AddReserveTransferImportOutputs(sourceSystem,
                                                                  destSystem,
-                                                                 destCurrency, 
-                                                                 tempCurState, 
-                                                                 exportTransfers, 
+                                                                 destCurrency,
+                                                                 tempCurState,
+                                                                 exportTransfers,
                                                                  currentHeight,
-                                                                 importOutputs, 
+                                                                 importOutputs,
                                                                  importedCurrency,
-                                                                 gatewayDepositsUsed, 
+                                                                 gatewayDepositsUsed,
                                                                  spentCurrencyOut,
                                                                  &newNotarization.currencyState,
                                                                  feeRecipient,
@@ -1427,7 +1427,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         {
             importOutputs.insert(importOutputs.end(), dummyImportOutputs.begin(), dummyImportOutputs.end());
         }
-        
+
         if (!isValidExport)
         {
             LogPrintf("%s: invalid export\n", __func__);
@@ -2111,7 +2111,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     // can be used as proof.
     //
     // after a notarization is mined in, it is not considered actually finalized until one notarization period of blocks where it
-    // has remained on the blockchain. at the 10th block, if a majority of the voting notaries are revoked, 
+    // has remained on the blockchain. at the 10th block, if a majority of the voting notaries are revoked,
 
     // now, verify the evidence. accepted notarizations for another system must have at least one
     // valid piece of evidence, which currently means at least one notary signature
@@ -2152,7 +2152,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
 
     CPBaaSNotarization lastConfirmedNotarization = cnd.vtx[cnd.lastConfirmed].second;
 
-    lastHeight = lastConfirmedNotarization.IsPreLaunch() ? 
+    lastHeight = lastConfirmedNotarization.IsPreLaunch() ?
                             lastConfirmedNotarization.notarizationHeight :
                             lastConfirmedNotarization.proofRoots.count(ASSETCHAINS_CHAINID) ?
                                 lastConfirmedNotarization.proofRoots.find(ASSETCHAINS_CHAINID)->second.rootHeight :
@@ -2194,13 +2194,13 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         evidenceTypes.insert(CHAINOBJ_HEADER_REF);
         CCrossChainProof autoProof(notaryEvidence.GetSelectEvidence(evidenceTypes));
 
-        // in auto-notarization, the first CPartialTransactionProof should be a proof 
+        // in auto-notarization, the first CPartialTransactionProof should be a proof
         // of the last notarization output that was confirmed on the other chain, proven by this new notarization
 
         // the proof must contain:
         // 1) A notarization merge mined or staked that references the last modulo period of blocks on this
         //    chain. If mined, it must have a merge mining entry with prior data matching this chain, and it must
-        //    contain a proof of a prior staked notarization that it agrees with. If staked, it must 
+        //    contain a proof of a prior staked notarization that it agrees with. If staked, it must
         //    contain a proof of a prior merge mined entry that it agrees with. Further, it must have a proof using
         //    the second notarization that further references either the last pending notarization, or the last
         //    confirmed notarization. If it references the last pending then the last pending will be
@@ -2209,7 +2209,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         // 2) The new pending notarization signed by all unrevoked notaries.
         //
         // Once verified, the prior pending notarization will be confirmed and all alternate notarizations
-        // closed by being spent, and the new pending notarization that closed the last will be placed onto the 
+        // closed by being spent, and the new pending notarization that closed the last will be placed onto the
         // chain in a pending state.
         //
 
@@ -2222,14 +2222,14 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         // PoW or PoS header on the other chain.
         //
         // that first notarization should point to a second notarization mined or staked
-        // in an alternate validation type to the first and a transaction output proof, 
+        // in an alternate validation type to the first and a transaction output proof,
         // proven against the proof root of the first notarization.
         //
         // finally, that second notarization must then refer to and prove with its proof root,
         // a new notarization to enter as pending. the new notarization must include proof
         // of either the last confirmed or one of the last pending notarizations on this chain.
         //
-        // each proof includes a power proof of the block before, committing to and enabling 
+        // each proof includes a power proof of the block before, committing to and enabling
         // determination of PoW or PoS for the block containing the earned notarization, based on
         // its change in work or stake from the block before. this enables a lighter weight
         // proof with a header commitment vs. requiring headers initially.
@@ -2251,7 +2251,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         // as the new pending notarization. In addition, it has a proof for a prior notarization, which
         // must be either the last confirmed on this chain or one of the last pending, which will then
         // become the last confirmedd.
-        // 
+        //
 
         CTransaction fNTx;
 
@@ -2259,7 +2259,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         {
             // TODO: HARDENING - enable this error and require the evidence
             // return state.Error(errorPrefix + "insufficient cross chain proof for notarization");
-            LogPrint("notarization", "%s: insufficient cross chain proof for notarization\n");
+            //LogPrint("notarization", "%s: insufficient cross chain proof for notarization\n", __func__);
             if (cnd.forks.size() != 1)
             {
                 return state.Error(errorPrefix + "cannot resolve conflict without sufficient evidence");
@@ -2451,9 +2451,9 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     if (!oldCurState.IsValid() ||
         ::GetHash(oldCurState) != ::GetHash(earnedNotarization.currencyState))
     {
-        return state.Error(errorPrefix + "currency state is invalid in accepted notarization. is:\n" + 
-                                            newNotarization.currencyState.ToUniValue().write(1,2) + 
-                                            "\nshould be:\n" + 
+        return state.Error(errorPrefix + "currency state is invalid in accepted notarization. is:\n" +
+                                            newNotarization.currencyState.ToUniValue().write(1,2) +
+                                            "\nshould be:\n" +
                                             oldCurState.ToUniValue().write(1,2) + "\n");
     }
 
@@ -2484,9 +2484,9 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
             if (!oldCurState.IsValid() ||
                 ::GetHash(oldCurState) != ::GetHash(oneCur.second))
             {
-                return state.Error(errorPrefix + "currecy state is invalid in accepted notarization. is:\n" + 
-                                                 oneCur.second.ToUniValue().write(1,2) + 
-                                                 "\nshould be:\n" + 
+                return state.Error(errorPrefix + "currency state is invalid in accepted notarization. is:\n" +
+                                                 oneCur.second.ToUniValue().write(1,2) +
+                                                 "\nshould be:\n" +
                                                  oldCurState.ToUniValue().write(1,2) + "\n");
             }
         }
@@ -2693,7 +2693,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
                                     cnd.vtx[priorNotarizationIdx].first.n,
                                     height);
     }
-    of.SetConfirmed(); 
+    of.SetConfirmed();
     txBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &of)), 0);
 
     /* UniValue univTx(UniValue::VOBJ);
@@ -3158,16 +3158,16 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
     std::vector<std::pair<uint32_t, CInputDescriptor>> retVal;
     std::vector<CAddressUnspentDbEntry> indexUnspent;
     std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> mempoolUnspent;
-    
+
     uint160 indexKey = CCrossChainRPCData::GetConditionID(
-        CCrossChainRPCData::GetConditionID(currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey()), 
+        CCrossChainRPCData::GetConditionID(currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey()),
         ObjectFinalizationConfirmedKey());
     if ((GetAddressUnspent(indexKey, CScript::P2IDX, indexUnspent) &&
          mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexKey, CScript::P2IDX}}), mempoolUnspent)) &&
         (indexUnspent.size() || mempoolUnspent.size()))
     {
         /* printf("%s: confirmedNotarizationKey: %s / 0x%s\nconfirmed finalizations\n",
-            __func__, 
+            __func__,
             EncodeDestination(CIdentityID(indexKey)).c_str(),
             indexKey.GetHex().c_str()); */
         std::vector<int> toRemove;
@@ -3233,7 +3233,7 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
                 //printf("%s: txid: %s, vout: %u\n", __func__, oneConfirmed.first.txhash.GetHex().c_str(), oneConfirmed.first.index);
                 retVal.push_back(std::make_pair(0,
                                  CInputDescriptor(tx.vout[oneConfirmed.first.index].scriptPubKey,
-                                                  tx.vout[oneConfirmed.first.index].nValue, 
+                                                  tx.vout[oneConfirmed.first.index].nValue,
                                                   CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index))));
             }
         }
@@ -3249,14 +3249,14 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
     std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> mempoolUnspent;
 
     uint160 indexKey = CCrossChainRPCData::GetConditionID(
-        CCrossChainRPCData::GetConditionID(currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey()), 
+        CCrossChainRPCData::GetConditionID(currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey()),
         ObjectFinalizationPendingKey());
     if ((GetAddressUnspent(indexKey, CScript::P2IDX, indexUnspent) &&
          mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexKey, CScript::P2IDX}}), mempoolUnspent)) &&
         (indexUnspent.size() || mempoolUnspent.size()))
     {
         /* printf("%s: pendingNotarizationKey: %s / 0x%s\npending finalizations\n",
-            __func__, 
+            __func__,
             EncodeDestination(CIdentityID(indexKey)).c_str(),
             indexKey.GetHex().c_str()); */
 
@@ -3322,7 +3322,7 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
                 auto &tx = mpEntry.GetTx();
                 retVal.push_back(std::make_pair(0,
                                  CInputDescriptor(tx.vout[oneUnconfirmed.first.index].scriptPubKey,
-                                                  tx.vout[oneUnconfirmed.first.index].nValue, 
+                                                  tx.vout[oneUnconfirmed.first.index].nValue,
                                                   CTxIn(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index))));
             }
         }
@@ -3345,7 +3345,7 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
         (indexUnspent.size() || mempoolUnspent.size()))
     {
         /* printf("%s: unspentEvidenceKey: %s / 0x%s\nunspent evidence\n",
-            __func__, 
+            __func__,
             EncodeDestination(CIdentityID(indexKey)).c_str(),
             indexKey.GetHex().c_str()); */
 
@@ -3411,7 +3411,7 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
                 auto &tx = mpEntry.GetTx();
                 retVal.push_back(std::make_pair(0,
                                  CInputDescriptor(tx.vout[oneUnconfirmed.first.index].scriptPubKey,
-                                                  tx.vout[oneUnconfirmed.first.index].nValue, 
+                                                  tx.vout[oneUnconfirmed.first.index].nValue,
                                                   CTxIn(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index))));
             }
         }
@@ -3627,7 +3627,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     //   d) The miner or staker has entered accurate information about the other system, which must be confirmed by the notary
     //
     // 2) Each earned notarization in a staked block contains a proof of the stake transaction in the header.
-    // 
+    //
     // 3) Each includes a proof of the prior notarization with which it agrees and either a PoW or PoS proof of its own.
     //
     // 4) Once a notarization gets 3 uncontested and agreed notarizations in a row, notaries of an auto-notarized chain
@@ -3856,7 +3856,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                 std::set<CIdentityID> sigSet;
 
                 std::set<CIdentityID> notarySetRejects;
-                std::map<CIdentityID, CInputDescriptor> notarySetConfirms; 
+                std::map<CIdentityID, CInputDescriptor> notarySetConfirms;
 
                 std::vector<std::vector<CNotaryEvidence>> evidenceVec;
                 std::vector<std::vector<CInputDescriptor>> spendsToClose;
@@ -3870,13 +3870,13 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                         std::vector<std::pair<uint160, int32_t>>({
                             {CCrossChainRPCData::GetConditionID(CObjectFinalization::ObjectFinalizationFinalizedKey(),
                                                                 cnd.vtx[idx].first.hash,
-                                                                cnd.vtx[idx].first.n), 
-                             CScript::P2IDX}}), 
+                                                                cnd.vtx[idx].first.n),
+                             CScript::P2IDX}}),
                         mempoolUnspent) &&
                     mempoolUnspent.size())
                 {
                     /* printf("%s: confirmedNotarizationKey: %s / 0x%s\nconfirmed finalizations\n",
-                        __func__, 
+                        __func__,
                         EncodeDestination(CIdentityID(indexKey)).c_str(),
                         indexKey.GetHex().c_str()); */
                     std::vector<int> toRemove;
@@ -4187,8 +4187,8 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
                             if (makeInputTx)
                             {
-                                CObjectFinalization oneConfirmedFinalization = 
-                                    CObjectFinalization(isConfirmed ? 
+                                CObjectFinalization oneConfirmedFinalization =
+                                    CObjectFinalization(isConfirmed ?
                                                             CObjectFinalization::FINALIZE_NOTARIZATION + CObjectFinalization::FINALIZE_CONFIRMED :
                                                             CObjectFinalization::FINALIZE_NOTARIZATION,
                                                         SystemID,
@@ -4588,7 +4588,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                         return retVal;
                     }
                 }
-            } 
+            }
         }
 
         // if we have pending notarizations, see which of the possible ones we agree with
@@ -4811,6 +4811,61 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
     CPBaaSNotarization lastConfirmedNotarization = cnd.vtx[cnd.lastConfirmed].second;
 
+    bool submit = GetBoolArg("-alwayssubmitnotarizations", false) || !crosschainCND.IsConfirmed();
+
+    if (!submit)
+    {
+        for (auto &oneCurState : lastConfirmedNotarization.currencyStates)
+        {
+            if (!crosschainCND.vtx[crosschainCND.lastConfirmed].second.currencyStates.count(oneCurState.first) ||
+                (crosschainCND.vtx[crosschainCND.lastConfirmed].second.currencyStates[oneCurState.first].IsPrelaunch() &&
+                 !oneCurState.second.IsPrelaunch()))
+            {
+                submit = true;
+                break;
+            }
+        }
+        if (!submit && lastConfirmedNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
+        {
+            // check exports in our range
+            // submit notarization only if there are exports pending on this chain and the last submitted notarization
+            // is too old to be used to prove the exports
+            uint32_t lastCrossHeight = (crosschainCND.IsConfirmed() &&
+                                        crosschainCND.vtx[crosschainCND.lastConfirmed].second.proofRoots.count(ASSETCHAINS_CHAINID)) ?
+                                            crosschainCND.vtx[crosschainCND.lastConfirmed].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight :
+                                            0;
+
+            // get exports since last cross height, and if there are any that would be enabled by this notarization, submit
+            UniValue params(UniValue::VARR);
+            params = UniValue(UniValue::VARR);
+            params.push_back(EncodeDestination(CIdentityID(systemID)));
+            params.push_back((int64_t)lastCrossHeight);
+            params.push_back((int64_t)lastConfirmedNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight);
+
+            UniValue result = NullUniValue;
+            try
+            {
+                UniValue getexports(const UniValue& params, bool fHelp);
+                result = getexports(params, false);
+            } catch (exception e)
+            {
+                LogPrint("notarization", "Could not determine pending exports to external chain %s\n", uni_get_str(params[0]).c_str());
+                return retVal;
+            }
+            if (result.isArray() && result.size())
+            {
+                submit = true;
+            }
+        }
+    }
+
+    LogPrint("notarization", "%s: ready to submit accepted notarization with evidence:\n%s\n", __func__, allEvidence.ToUniValue().write(1,2).c_str());
+    if (!submit)
+    {
+        LogPrint("notarization", "skipping submission due to no pending exports or currency transitions\n");
+        return retVal;
+    }
+
     // now, we should have enough evidence to prove
     // the notarization. the API call will ensure that we do
     params = UniValue(UniValue::VARR);
@@ -4818,8 +4873,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     std::string strTxId;
     params.push_back(lastConfirmedNotarization.ToUniValue());
     params.push_back(allEvidence.ToUniValue());
-    
-    LogPrint("notarization", "%s: sending evidence:\n%s\n", __func__, allEvidence.ToUniValue().write(1,2).c_str());
+
     LogPrint("notarization", "submitting notarization with parameters:\n%s\n%s\n", params[0].write(1,2).c_str(), params[1].write(1,2).c_str());
 
     /*
@@ -4847,11 +4901,11 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
 /*
  * Validates a notarization output spend by ensuring that the spending transaction fulfills all requirements.
- * to accept an earned notarization as valid on the Verus blockchain, it must prove a transaction on the alternate chain, which is 
- * either the original chain definition transaction, which CAN and MUST be proven ONLY in block 1, or the latest notarization transaction 
+ * to accept an earned notarization as valid on the Verus blockchain, it must prove a transaction on the alternate chain, which is
+ * either the original chain definition transaction, which CAN and MUST be proven ONLY in block 1, or the latest notarization transaction
  * on the alternate chain that represents an accurate MMR for this chain.
  * In addition, any accepted notarization must fullfill the following requirements:
- * 1) Must prove either a PoS block from the alternate chain or a merge mined block that is owned by the submitter and in either case, 
+ * 1) Must prove either a PoS block from the alternate chain or a merge mined block that is owned by the submitter and in either case,
  *    the block must be exactly 8 blocks behind the submitted MMR used for proof.
  * 2) Must prove a chain definition tx and be block 1 or asserts a previous, valid MMR for the notarizing
  *    chain and properly prove objects using that MMR.
@@ -4861,7 +4915,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
  *      a) finalization output of the expected reward amount, which will be sent when finalized
  *      b) normal output of reward from validated/finalized input if present, 50% to recipient / 50% to block miner less miner fee this tx
  *      c) main notarization thread output with remaining funds, no other output or fee deduction
- * 
+ *
  */
 bool ValidateAcceptedNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
@@ -4970,7 +5024,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             return state.Error("Incorrect proof root in notarization transaction");
         }
 
-        // earned notarizations are only supported for 
+        // earned notarizations are only supported for
         if (p.evalCode == EVAL_EARNEDNOTARIZATION &&
             !currentNotarization.IsBlockOneNotarization() &&
             !currentNotarization.proofRoots.count(currentNotarization.currencyID))
@@ -5318,7 +5372,7 @@ std::vector<CNotaryEvidence> CObjectFinalization::GetFinalizationEvidence(const 
                 auto priorFinalizationVec = priorFinalization.GetFinalizationEvidence(priorOutputTx, state, &priorFinalizationTx);
 
                 // TODO: HARDENING - this assumes that evidence inputs for a finalization are consecutive to calculate how to get
-                // to the end of the inputs as a result, we MUST enforce that inputs from a prior finalization are consecutive. 
+                // to the end of the inputs as a result, we MUST enforce that inputs from a prior finalization are consecutive.
                 // they are made that way now, but not yet enforced as of this note.
                 if (priorFinalizationVec.size())
                 {
@@ -5447,8 +5501,8 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
     CNativeHashWriter hw(
         (pNotaryCurrency->IsGateway() &&
         pNotaryCurrency->launchSystemID == ASSETCHAINS_CHAINID &&
-        pNotaryCurrency->proofProtocol == pNotaryCurrency->PROOF_ETHNOTARIZATION) ? 
-            notaryCurrencyDef.PROOF_ETHNOTARIZATION : 
+        pNotaryCurrency->proofProtocol == pNotaryCurrency->PROOF_ETHNOTARIZATION) ?
+            notaryCurrencyDef.PROOF_ETHNOTARIZATION :
             pNotaryCurrency->PROOF_PBAASMMR);
 
     if (!notarization.SetMirror(false))
@@ -5708,8 +5762,8 @@ CObjectFinalization GetOldFinalization(const CTransaction &spendingTx, uint32_t 
         }
         COptCCParams p;
         if (sourceTx.vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-            p.IsValid() && 
-            (p.evalCode == EVAL_FINALIZE_NOTARIZATION || p.evalCode == EVAL_FINALIZE_EXPORT) && 
+            p.IsValid() &&
+            (p.evalCode == EVAL_FINALIZE_NOTARIZATION || p.evalCode == EVAL_FINALIZE_EXPORT) &&
             p.version >= COptCCParams::VERSION_V3 &&
             p.vData.size() > 1)
         {
@@ -5786,7 +5840,7 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
         // get the notarization this finalizes and its index output
         int32_t notaryOutNum;
         CTransaction notarizationTx;
-        
+
         if (oldFinalization.output.IsOnSameTransaction())
         {
             notarizationTx = sourceTx;
@@ -5816,7 +5870,7 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
         // confirm that the spender contains one finalization output either correctly confirming or invalidating
         // the finalization. rejection may be implicit by confirming another, later notarization.
 
-        // First. make sure the oldFinalization is not referring to an earlier notarization than the 
+        // First. make sure the oldFinalization is not referring to an earlier notarization than the
         // one most recently confirmed. If so. then it can be spent by anyone.
         CChainNotarizationData cnd;
         if (!GetNotarizationData(SystemID, cnd) || !cnd.IsConfirmed())
@@ -5953,10 +6007,10 @@ bool ValidateNotarizationEvidence(const CTransaction &tx, int32_t outNum, CValid
     confirmedCount = 0;         // if a unit of evidence, whether signature or otherwise, is validated as confirming
     provenFalse = false;        // if the notarization is proven false
 
-    if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) && 
-        p.IsValid() && 
-        p.version >= p.VERSION_V3 && 
-        p.vData.size() && 
+    if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+        p.IsValid() &&
+        p.version >= p.VERSION_V3 &&
+        p.vData.size() &&
         (notarySig = CNotaryEvidence(p.vData[0])).IsValid() &&
         (curDef = ConnectedChains.GetCachedCurrency(notarySig.systemID)).IsValid())
     {
@@ -5988,9 +6042,9 @@ bool ValidateNotarizationEvidence(const CTransaction &tx, int32_t outNum, CValid
             // that way, the information we put into the vdxfCodes have some meaning beyond
             // the blockchain on which it was signed, and we do not have to carry the
             // finalization mechanism cross-chain.
-            std::vector<uint160> vdxfCodes = {CCrossChainRPCData::GetConditionID(notarySig.systemID, 
-                                                                                 CNotaryEvidence::NotarySignatureKey(), 
-                                                                                 notarizationTxId, 
+            std::vector<uint160> vdxfCodes = {CCrossChainRPCData::GetConditionID(notarySig.systemID,
+                                                                                 CNotaryEvidence::NotarySignatureKey(),
+                                                                                 notarizationTxId,
                                                                                  of.output.n)};
             std::vector<uint256> statements;
 
@@ -6012,7 +6066,7 @@ bool ValidateNotarizationEvidence(const CTransaction &tx, int32_t outNum, CValid
                     {
                         std::set<uint160> idAddresses;
                         std::set<uint160> verifiedSignatures;
-                        
+
                         for (const CTxDestination &oneAddress : signer.primaryAddresses)
                         {
                             if (oneAddress.which() != COptCCParams::ADDRTYPE_PK || oneAddress.which() != COptCCParams::ADDRTYPE_PKH)
@@ -6067,7 +6121,7 @@ bool ValidateNotarizationEvidence(const CTransaction &tx, int32_t outNum, CValid
     {
         return state.Error("Invalid or non-evidence output");
     }
-    
+
     if (!confirmedCount)
     {
         return state.Error("No evidence present");

@@ -1,24 +1,24 @@
 /********************************************************************
  * (C) 2019 Michael Toutonghi
- * 
+ *
  * Distributed under the MIT software license, see the accompanying
  * file COPYING or http://www.opensource.org/licenses/mit-license.php.
- * 
+ *
  * This provides support for PBaaS cross chain communication.
- * 
+ *
  * In merge mining and notarization, Verus acts as a hub that other PBaaS chains
  * call via RPC in order to get information that allows earning and submitting
  * notarizations.
- * 
+ *
  * All PBaaS chains communicate with their primary reserve chain, which is either Verus
  * or the chain that is their reserve coin. The child PBaaS chain initiates all of
  * the communication with the parent / reserve daemon.
- * 
+ *
  * Generally, the PBaaS chain will call the Verus chain to either get information needed
  * to create an earned or accepted notarization. If there is no Verus daemon available
  * staking and mining of a PBaaS chain proceeds as usual, but without notarization
  * reward opportunities.
- * 
+ *
  */
 
 #include "chainparamsbase.h"
@@ -329,13 +329,13 @@ CIdentitySignature::CIdentitySignature(const UniValue &uni)
     }
 }
 
-uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vdxfCodes, 
-                                                  const std::vector<std::string> &vdxfCodeNames, 
-                                                  const std::vector<uint256> &statements, 
-                                                  const uint160 &systemID, 
-                                                  uint32_t blockHeight, 
+uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vdxfCodes,
+                                                  const std::vector<std::string> &vdxfCodeNames,
+                                                  const std::vector<uint256> &statements,
+                                                  const uint160 &systemID,
+                                                  uint32_t blockHeight,
                                                   const uint160 &idID,
-                                                  const std::string &prefixString, 
+                                                  const std::string &prefixString,
                                                   const uint256 &msgHash) const
 {
     uint256 retVal;
@@ -452,11 +452,11 @@ uint256 CIdentitySignature::IdentitySignatureHash(const std::vector<uint160> &vd
 }
 
 CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(const CIdentity &signingID,
-                                                                              const std::vector<uint160> &vdxfCodes, 
+                                                                              const std::vector<uint160> &vdxfCodes,
                                                                               const std::vector<std::string> &vdxfCodeNames,
-                                                                              const std::vector<uint256> &statements, 
-                                                                              const uint160 systemID, 
-                                                                              const std::string &prefixString, 
+                                                                              const std::vector<uint256> &statements,
+                                                                              const uint160 systemID,
+                                                                              const std::string &prefixString,
                                                                               const uint256 &msgHash,
                                                                               std::vector<std::vector<unsigned char>> *pDupSigs) const
 {
@@ -869,7 +869,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                 // if we are fractional, explicit conversion values are not valid
                 // and are based on non-zero, initial contributions relative to supply
                 if ((conversionArr.isArray() && conversionArr.size() != currencyArr.size()) ||
-                    !initialContributionArr.isArray() || 
+                    !initialContributionArr.isArray() ||
                     initialContributionArr.size() != currencyArr.size() ||
                     weights.size() != currencyArr.size() ||
                     !IsFractional())
@@ -1101,7 +1101,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
             blockTime = uni_get_int64(find_value(obj, "blocktime"), DEFAULT_BLOCKTIME_TARGET);
             powAveragingWindow = uni_get_int64(find_value(obj, "powaveragingwindow"), DEFAULT_AVERAGING_WINDOW);
-            blockNotarizationModulo = uni_get_int64(find_value(obj, "notarizationperiod"), 
+            blockNotarizationModulo = uni_get_int64(find_value(obj, "notarizationperiod"),
                                                     std::max((int64_t)(DEFAULT_BLOCK_NOTARIZATION_TIME / blockTime), (int64_t)MIN_BLOCK_NOTARIZATION_BLOCKS));
 
             for (auto era : vEras)
@@ -1342,12 +1342,6 @@ void DeleteOpRetObjects(std::vector<CBaseChainObject *> &ora)
                 break;
             }
 
-            case CHAINOBJ_COMPOSITEOBJECT:
-            {
-                delete (CChainObject<CCompositeChainObject> *)pobj;
-                break;
-            }
-
             case CHAINOBJ_NOTARYSIGNATURE:
             {
                 delete (CChainObject<CNotarySignature> *)pobj;
@@ -1358,7 +1352,7 @@ void DeleteOpRetObjects(std::vector<CBaseChainObject *> &ora)
             {
                 printf("ERROR: invalid object type (%u), likely corrupt pointer %p\n", pobj->objectType, pobj);
                 printf("generate code that won't be optimized away %s\n", CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<CAmount>({200000000})).ToUniValue().write(1,2).c_str());
-                
+
                 delete pobj;
             }
         }
@@ -1439,7 +1433,6 @@ CCrossChainProof::CCrossChainProof(const UniValue &uniObj)
                     }
 
                     case CHAINOBJ_CROSSCHAINPROOF:
-                    case CHAINOBJ_COMPOSITEOBJECT:
                     {
                         chainObjects.push_back(new CChainObject<CCrossChainProof>(CHAINOBJ_CROSSCHAINPROOF, CCrossChainProof(obj)));
                         break;
@@ -1546,7 +1539,6 @@ UniValue CCrossChainProof::ToUniValue() const
                     }
 
                     case CHAINOBJ_CROSSCHAINPROOF:
-                    case CHAINOBJ_COMPOSITEOBJECT:
                     {
                         UniValue crossChainProofUni(UniValue::VOBJ);
                         crossChainProofUni.pushKV("vdxftype", EncodeDestination(CIdentityID(CCrossChainProof::CrossChainProofKey())));

@@ -57,7 +57,7 @@ CTxMemPoolEntry::GetPriority(unsigned int currentHeight) const
     CCurrencyState currencyState;
     unsigned int lastHeight = currentHeight < 1 ? 0 : currentHeight - 1;
     AssertLockHeld(cs_main);
-    if (hasReserve && (currencyState = ConnectedChains.GetCurrencyState(currentHeight - 1)).IsValid())
+    if (hasReserve && (currencyState = ConnectedChains.GetCurrencyState(currentHeight - 1, false)).IsValid())
     {
         nValueIn += currencyState.ReserveToNative(tx.GetReserveValueOut());
     }
@@ -407,8 +407,8 @@ void CTxMemPool::removeForReorg(const CCoinsViewCache *pcoins, unsigned int nMem
 		        if (nCheckFrequency != 0) assert(coins);
 
                 if (!coins || (coins->IsCoinBase() &&
-                               (((signed long)nMemPoolHeight) - coins->nHeight < COINBASE_MATURITY) || 
-                                    ((signed long)nMemPoolHeight < komodo_block_unlocktime(coins->nHeight) && 
+                               (((signed long)nMemPoolHeight) - coins->nHeight < COINBASE_MATURITY) ||
+                                    ((signed long)nMemPoolHeight < komodo_block_unlocktime(coins->nHeight) &&
                                         coins->IsAvailable(0) && coins->vout[0].nValue >= ASSETCHAINS_TIMELOCKGTE))) {
                     transactionsToRemove.push_back(tx);
                     break;
