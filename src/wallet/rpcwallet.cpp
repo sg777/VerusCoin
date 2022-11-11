@@ -801,10 +801,10 @@ UniValue listaddressgroupings(const UniValue& params, bool fHelp)
 CIdentitySignature::ESignatureVerification CIdentitySignature::AddSignature(const CIdentity &signingID,
                                                                             const std::vector<uint160> &vdxfCodes,
                                                                             const std::vector<std::string> &vdxfCodeNames,
-                                                                            const std::vector<uint256> &statements, 
-                                                                            const uint160 &systemID, 
+                                                                            const std::vector<uint256> &statements,
+                                                                            const uint160 &systemID,
                                                                             uint32_t height,
-                                                                            const std::string &prefixString, 
+                                                                            const std::string &prefixString,
                                                                             const uint256 &msgHash,
                                                                             const CKeyStore *pWallet)
 {
@@ -826,7 +826,7 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::AddSignature(cons
     }
 
     uint256 signatureHash = IdentitySignatureHash(vdxfCodes, vdxfCodeNames, statements, systemID, height, sID, prefixString, msgHash);
-    
+
     for (auto &oneSig : signatures)
     {
         CPubKey pubkey;
@@ -875,11 +875,11 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::AddSignature(cons
 CIdentitySignature::ESignatureVerification CIdentitySignature::NewSignature(const CIdentity &signingID,
                                                                             const std::vector<uint160> &vdxfCodes,
                                                                             const std::vector<std::string> &vdxfCodeNames,
-                                                                            const std::vector<uint256> &statements, 
-                                                                            const uint160 &systemID, 
+                                                                            const std::vector<uint256> &statements,
+                                                                            const uint160 &systemID,
                                                                             uint32_t height,
-                                                                            const std::string &prefixString, 
-                                                                            const uint256 &msgHash, 
+                                                                            const std::string &prefixString,
+                                                                            const uint256 &msgHash,
                                                                             const CKeyStore *pWallet)
 {
     signatures.clear();
@@ -943,7 +943,7 @@ std::string SignMessageHash(const CIdentity &identity, const uint256 &_msgHash, 
 
     std::set<uint160> signatureKeyIDs;
     std::map<uint160, std::vector<unsigned char>> signatureMap;
-    
+
     for (auto &oneSig : signature.signatures)
     {
         CPubKey pubkey;
@@ -1235,7 +1235,7 @@ UniValue signmessage(const UniValue& params, bool fHelp)
         ss.Reset();
         ss << verusDataSignaturePrefix;
         ss << msgHash;
- 
+
         vector<unsigned char> vchSig;
         if (!key.SignCompact(ss.GetHash(), vchSig))
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Sign failed");
@@ -1547,12 +1547,18 @@ UniValue signdata(const UniValue& params, bool fHelp)
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "\"messagehex\" must be hex string with no additional characters");
             }
-            hw << ParseHex(strHex);
+            std::vector<unsigned char> vmsg = ParseHex(strHex);
+            hw.write((const char *)vmsg.data(), vmsg.size());
             msgHash = hw.GetHash();
         }
         else if (!strBase64.empty())
         {
-            hw << DecodeBase64(strBase64);
+            std::string vString = DecodeBase64(strBase64);
+            if (vString.empty())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "\"messagebase64\" must be a base64 string with non-empty value and no additional characters");
+            }
+            hw.write(vString.data(), vString.size());
             msgHash = hw.GetHash();
         }
         else if (!strDataHash.empty() && IsHex(strDataHash))
@@ -2604,7 +2610,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
                 if(involvesWatchonly || (::IsMine(*pwalletMain, r.destination) & ISMINE_WATCH_ONLY))
                     entry.push_back(Pair("involvesWatchonly", true));
                 entry.push_back(Pair("account", account));
-                
+
                 CTxDestination dest;
                 if (!isFromZ && CScriptExt::ExtractVoutDestination(wtx, r.vout, dest))
                     MaybePushAddress(entry, dest);
@@ -2628,7 +2634,7 @@ void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDe
                 {
                     entry.push_back(Pair("category", bIsStake ? "stake" : "receive"));
                 }
-                
+
                 COptCCParams p;
                 if (!isFromZ && wtx.vout[r.vout].scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
                 {
@@ -3656,9 +3662,9 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
             txout.fSpendable &&
             (txout.nDepth >= VERUS_MIN_STAKEAGE) &&
             ((txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) &&
-                p.IsValid() && 
+                p.IsValid() &&
                 txout.tx->vout[txout.i].scriptPubKey.IsSpendableOutputType(p)) ||
-            (!p.IsValid() && 
+            (!p.IsValid() &&
                 Solver(txout.tx->vout[txout.i].scriptPubKey, whichType, vSolutions) &&
                 (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH))))
         {
@@ -4010,11 +4016,11 @@ UniValue z_listunspent(const UniValue& params, bool fHelp)
         // User did not provide zaddrs, so use default i.e. all addresses
         std::set<libzcash::SproutPaymentAddress> sproutzaddrs = {};
         pwalletMain->GetSproutPaymentAddresses(sproutzaddrs);
-        
+
         // Sapling support
         std::set<libzcash::SaplingPaymentAddress> saplingzaddrs = {};
         pwalletMain->GetSaplingPaymentAddresses(saplingzaddrs);
-        
+
         zaddrs.insert(sproutzaddrs.begin(), sproutzaddrs.end());
         zaddrs.insert(saplingzaddrs.begin(), saplingzaddrs.end());
     }
@@ -4026,7 +4032,7 @@ UniValue z_listunspent(const UniValue& params, bool fHelp)
         std::vector<SaplingNoteEntry> saplingEntries;
         pwalletMain->GetFilteredNotes(sproutEntries, saplingEntries, zaddrs, nMinDepth, nMaxDepth, true, !fIncludeWatchonly, false);
         std::set<std::pair<PaymentAddress, uint256>> nullifierSet = pwalletMain->GetNullifiersForAddresses(zaddrs);
-        
+
         for (auto & entry : sproutEntries) {
             UniValue obj(UniValue::VOBJ);
             obj.push_back(Pair("txid", entry.jsop.hash.ToString()));
@@ -4044,7 +4050,7 @@ UniValue z_listunspent(const UniValue& params, bool fHelp)
             }
             results.push_back(obj);
         }
-        
+
         for (auto & entry : saplingEntries) {
             UniValue obj(UniValue::VOBJ);
             obj.push_back(Pair("txid", entry.op.hash.ToString()));
@@ -4722,19 +4728,19 @@ CAmount getBalanceTaddr(std::string transparentAddress, int minDepth=1, bool ign
 
     pwalletMain->AvailableCoins(vecOutputs, false, NULL, true);
 
-    BOOST_FOREACH(const COutput& out, vecOutputs) 
+    BOOST_FOREACH(const COutput& out, vecOutputs)
     {
-        if (out.nDepth < minDepth) 
+        if (out.nDepth < minDepth)
         {
             continue;
         }
 
-        if (ignoreUnspendable && !out.fSpendable) 
+        if (ignoreUnspendable && !out.fSpendable)
         {
             continue;
         }
 
-        if (wildCardRAddress || wildCardiAddress || IsValidDestination(destination)) 
+        if (wildCardRAddress || wildCardiAddress || IsValidDestination(destination))
         {
             std::vector<CTxDestination> addresses;
             txnouttype typeRet;
@@ -4825,12 +4831,12 @@ CCurrencyValueMap getCurrencyBalanceTaddr(std::string transparentAddress, int mi
 
     BOOST_FOREACH(const COutput& out, vecOutputs)
     {
-        if (out.nDepth < minDepth) 
+        if (out.nDepth < minDepth)
         {
             continue;
         }
 
-        if (ignoreUnspendable && !out.fSpendable) 
+        if (ignoreUnspendable && !out.fSpendable)
         {
             continue;
         }
@@ -5215,7 +5221,7 @@ UniValue getcurrencybalance(const UniValue& params, bool fHelp)
     }
     for (auto &oneBalance : balance.valueMap)
     {
-        std::string name = friendlyNames ? ConnectedChains.GetFriendlyCurrencyName(oneBalance.first) : 
+        std::string name = friendlyNames ? ConnectedChains.GetFriendlyCurrencyName(oneBalance.first) :
                                            EncodeDestination(CIdentityID(oneBalance.first));
         currencyBal.push_back(make_pair(name, ValueFromAmount(oneBalance.second)));
     }
@@ -7716,7 +7722,7 @@ UniValue oraclessubscribe(const UniValue& params, bool fHelp)
 
 UniValue oraclessamples(const UniValue& params, bool fHelp)
 {
-    UniValue result(UniValue::VOBJ); uint256 txid,batontxid; int32_t num; 
+    UniValue result(UniValue::VOBJ); uint256 txid,batontxid; int32_t num;
     if ( fHelp || params.size() != 3 )
         throw runtime_error("oraclessamples oracletxid batonutxo num\n");
     if ( ensure_CCrequirements() < 0 )
