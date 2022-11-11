@@ -2777,7 +2777,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     if (!importPassThrough)
                     {
                         // TODO: HARDENING - remove this if statement and always error when here before mainnet release
-                        if (chainActive.Height() >= (height - 1) && chainActive[height - 1]->nTime > 1668067200)
+                        if (chainActive.Height() >= (height - 1) && chainActive[height - 1]->nTime > 1668194634)
                         {
                             return state.Error("Only the controller of " + ConnectedChains.GetFriendlyIdentityName(registeredIdentity) + " may export it to another system");
                         }
