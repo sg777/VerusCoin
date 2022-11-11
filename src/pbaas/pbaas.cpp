@@ -4703,14 +4703,17 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                    exportTx.vin[ccx.firstInput - 1].prevout.hash == lastSourceCCI.exportTxId &&
                    exportTx.vin[ccx.firstInput - 1].prevout.n == lastSourceCCI.exportTxOutNum)))
             {
-                printf("%s: out of order export for cci:\n%s\n, expected: (%s, %d) found: (%s, %u)\n",
-                    __func__,
-                    lastSourceCCI.ToUniValue().write(1,2).c_str(),
-                    lastSourceCCI.exportTxId.GetHex().c_str(),
-                    lastSourceCCI.exportTxOutNum,
-                    exportTx.vin[ccx.firstInput - 1].prevout.hash.GetHex().c_str(),
-                    exportTx.vin[ccx.firstInput - 1].prevout.n);
-                LogPrintf("%s: out of order export %s, %d\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str(), sourceOutputNum);
+                if (LogAcceptCategory("crosschainimports"))
+                {
+                    printf("%s: out of order export for cci:\n%s\n, expected: (%s, %d) found: (%s, %u)\n",
+                        __func__,
+                        lastSourceCCI.ToUniValue().write(1,2).c_str(),
+                        lastSourceCCI.exportTxId.GetHex().c_str(),
+                        lastSourceCCI.exportTxOutNum,
+                        exportTx.vin[ccx.firstInput - 1].prevout.hash.GetHex().c_str(),
+                        exportTx.vin[ccx.firstInput - 1].prevout.n);
+                    LogPrintf("%s: out of order export %s, %d\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str(), sourceOutputNum);
+                }
                 return false;
             }
             else if (useProofs)
