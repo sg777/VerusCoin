@@ -6240,7 +6240,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                 // if we get the coin flip using the entropy of the block after the next block in question,
                 // separate here, otherwise, the next block will be added, either by adding or separating,
                 // depending on how many transfers we already have
-                if (EntropyCoinFlip(currencyID, oneInput.first + 1))
+                if (txInputs.size() && EntropyCoinFlip(currencyID, oneInput.first + 1))
                 {
                     nextHeight = oneInput.first;
                     break;
