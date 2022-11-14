@@ -4577,7 +4577,9 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                           (checkNotarization1 = CPBaaSNotarization(nP.vData[0])).IsValid() &&
                           checkNotarization2.SetMirror(false) &&
                           ::AsVector(checkNotarization1) == ::AsVector(checkNotarization2) &&
-                          checkNotarization1.proofRoots.count(ASSETCHAINS_CHAINID)))
+                          checkNotarization1.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                          cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                          checkNotarization1.proofRoots[ASSETCHAINS_CHAINID].rootHeight < cnd.vtx[cnd.lastConfirmed].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight))
                     {
                         LogPrintf("Invalid notarization index entry for txid: %s\n", earnedNotarizationIndexEntry.first.txhash.GetHex().c_str());
                         printf("Invalid notarization index entry for txid: %s\n", earnedNotarizationIndexEntry.first.txhash.GetHex().c_str());
