@@ -1169,7 +1169,6 @@ public:
         uint160 vdxfd;                      // vdxfDescriptor is only for non-multipart types
     };
 
-public:
     std::vector<unsigned char> dataVec;     // actual data or reference, depending on type
 
     CEvidenceData(uint32_t EvidenceType=TYPE_DATA, uint32_t nVersion=VERSION_CURRENT) : type(EvidenceType), version(nVersion) {}

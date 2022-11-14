@@ -2253,7 +2253,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                     nValueIn = coins->vout[txin.prevout.n].nValue;
                     int nConf = nHeight - coins->nHeight;
 
-                    // TODO: HARDENING - prioritize notarizations and finalizations for our notary chain
+                    // TODO: HARDENING - prioritize notarizations, finalizations, and exports for our notary chain
                     if (rtxd.IsNotaryPrioritized())
                     {
                         // always very high priority

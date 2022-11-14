@@ -2964,7 +2964,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     notarization.proofRoots[latestProofRoot.systemID] = latestProofRoot;
     notarization.notarizationHeight = latestProofRoot.rootHeight;
 
-    // TODO: HARDENING - this must be checked in precheck to ensure that the correct/consensus gas price
+    // this must be checked in precheck to ensure that the correct/consensus gas price
     // is passed through and used at all times
     if (systemDef.proofProtocol == systemDef.PROOF_ETHNOTARIZATION &&
         notarization.currencyState.conversionPrice.size())
@@ -3797,8 +3797,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
     LogPrint("notarization", "%s: proofRootArr: %s\n", __func__, proofRootArr.write().c_str());
 
-    // we seem to be getting an extra element at times
-    // TODO: HARDENING - fix this in bridgekeeper
     if (proofRootArr.size() > bestFork.size())
     {
         UniValue tempArr(UniValue::VARR);
@@ -4573,15 +4571,13 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                     if (!myGetTransaction(earnedNotarizationIndexEntry.first.txhash, notarizationTx, blkHash) ||
                         earnedNotarizationIndexEntry.first.index >= notarizationTx.vout.size() ||
                         !(notarizationTx.vout[earnedNotarizationIndexEntry.first.index].scriptPubKey.IsPayToCryptoCondition(nP) &&
-                        nP.IsValid() &&
-                        nP.evalCode == EVAL_EARNEDNOTARIZATION &&
-                        nP.vData.size() &&
-                        (checkNotarization1 = CPBaaSNotarization(nP.vData[0])).IsValid() &&
-                        checkNotarization2.SetMirror(false) &&
-                        ::AsVector(checkNotarization1) == ::AsVector(checkNotarization2) &&
-                        checkNotarization1.proofRoots.count(ASSETCHAINS_CHAINID) &&
-                        checkNotarization2.proofRoots.count(ASSETCHAINS_CHAINID) &&
-                        checkNotarization1.proofRoots[ASSETCHAINS_CHAINID].rootHeight < checkNotarization2.proofRoots[ASSETCHAINS_CHAINID].rootHeight))
+                          nP.IsValid() &&
+                          nP.evalCode == EVAL_EARNEDNOTARIZATION &&
+                          nP.vData.size() &&
+                          (checkNotarization1 = CPBaaSNotarization(nP.vData[0])).IsValid() &&
+                          checkNotarization2.SetMirror(false) &&
+                          ::AsVector(checkNotarization1) == ::AsVector(checkNotarization2) &&
+                          checkNotarization1.proofRoots.count(ASSETCHAINS_CHAINID)))
                     {
                         LogPrintf("Invalid notarization index entry for txid: %s\n", earnedNotarizationIndexEntry.first.txhash.GetHex().c_str());
                         printf("Invalid notarization index entry for txid: %s\n", earnedNotarizationIndexEntry.first.txhash.GetHex().c_str());
@@ -5144,9 +5140,9 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                          currentNotarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
                          currentNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight != 0) ||
                         (!currentNotarization.IsBlockOneNotarization() &&
-                        (currentNotarization.proofRoots.size() < 2 ||
-                        !currentNotarization.proofRoots.count(ASSETCHAINS_CHAINID) ||
-                        currentNotarization.proofRoots[ASSETCHAINS_CHAINID] !=
+                         (currentNotarization.proofRoots.size() < 2 ||
+                         !currentNotarization.proofRoots.count(ASSETCHAINS_CHAINID) ||
+                         currentNotarization.proofRoots[ASSETCHAINS_CHAINID] !=
                             CProofRoot::GetProofRoot(currentNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight))))
                     {
                         LogPrint("notarization", "%s: Invalid earned notarization:\n%s\n", __func__, currentNotarization.ToUniValue().write(1,2).c_str());

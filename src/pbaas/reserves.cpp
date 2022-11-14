@@ -4374,13 +4374,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             }
             else if (curTransfer.IsConversion())
             {
-                if (curTransfer.FirstCurrency() == curTransfer.destCurrencyID)
+                if (LogAcceptCategory("defi") && curTransfer.FirstCurrency() == curTransfer.destCurrencyID)
                 {
                     printf("%s: Conversion does not specify two currencies\n", __func__);
                     LogPrintf("%s: Conversion does not specify two currencies\n", __func__);
-                    // TODO: HARDENING - we may allow this, but we need to make sure that we charge enough of a fee
-                    // on all conversions.
-                    // return false;
                 }
 
                 // either the source or destination must be a reserve currency of the other fractional currency
