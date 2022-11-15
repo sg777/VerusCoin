@@ -1,15 +1,15 @@
 /********************************************************************
  * (C) 2019 Michael Toutonghi
- * 
+ *
  * Distributed under the MIT software license, see the accompanying
  * file COPYING or http://www.opensource.org/licenses/mit-license.php.
- * 
+ *
  * This provides support for PBaaS cross chain communication.
- * 
+ *
  * In merge mining and notarization, Verus acts as a hub that other PBaaS chains
  * call via RPC in order to get information that allows earning and submitting
  * notarizations.
- * 
+ *
  */
 
 #ifndef CROSSCHAINRPC_H
@@ -44,13 +44,13 @@ public:
 
     CCrossChainRPCData(std::string Host, int32_t Port, std::string Credentials) :
         host(Host), port(Port), credentials(Credentials) {}
-    
+
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(host);
-        READWRITE(port);        
+        READWRITE(port);
         READWRITE(credentials);
     }
 
@@ -126,11 +126,11 @@ public:
 };
 
 // credentials for now are "user:password"
-UniValue RPCCall(const std::string& strMethod, 
-                 const UniValue& params, 
-                 const std::string credentials="user:pass", 
-                 int port=27486, 
-                 const std::string host="127.0.0.1", 
+UniValue RPCCall(const std::string& strMethod,
+                 const UniValue& params,
+                 const std::string credentials="user:pass",
+                 int port=27486,
+                 const std::string host="127.0.0.1",
                  int timeout=DEFAULT_RPC_TIMEOUT);
 
 UniValue RPCCallRoot(const std::string& strMethod, const UniValue& params, int timeout=DEFAULT_RPC_TIMEOUT);
@@ -145,13 +145,13 @@ public:
     CNodeData(const UniValue &uni);
     CNodeData(std::string netAddr, uint160 paymentID) : networkAddress(netAddr), nodeIdentity(paymentID) {}
     CNodeData(std::string netAddr, std::string paymentAddr);
-    
+
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(networkAddress);
-        READWRITE(nodeIdentity);        
+        READWRITE(nodeIdentity);
     }
 
     UniValue ToUniValue() const;
@@ -227,11 +227,11 @@ public:
                          std::vector<unsigned char> Destination,
                          const uint160 &GatewayID=uint160(),
                          const uint160 &GatewayCode=uint160(),
-                         int64_t Fees=0) : 
-                         type(Type), 
-                         destination(Destination), 
-                         gatewayID(GatewayID), 
-                         gatewayCode(GatewayCode), 
+                         int64_t Fees=0) :
+                         type(Type),
+                         destination(Destination),
+                         gatewayID(GatewayID),
+                         gatewayCode(GatewayCode),
                          fees(Fees) {}
 
     ADD_SERIALIZE_METHODS;
@@ -321,8 +321,8 @@ public:
     static uint160 DecodeEthDestination(const std::string &destStr)
     {
         uint160 retVal;
-        if (destStr.substr(0,2) == "0x" && 
-                destStr.length() == 42 && 
+        if (destStr.substr(0,2) == "0x" &&
+                destStr.length() == 42 &&
                 IsHex(destStr.substr(2,40)))
         {
             retVal = uint160(ParseHex(destStr.substr(2,64)));
@@ -488,7 +488,7 @@ public:
         OPTION_GATEWAY = 0x80,              // if set, this routes external currencies
         OPTION_PBAAS = 0x100,               // this is a PBaaS chain definition
         OPTION_GATEWAY_CONVERTER = 0x200,   // this means that for a specific PBaaS gateway, this is the default converter and will publish prices
-        OPTION_GATEWAY_NAMECONTROLLER = 0x400, // when not set on a gateway, top level ID and currency registration happen on launch chain 
+        OPTION_GATEWAY_NAMECONTROLLER = 0x400, // when not set on a gateway, top level ID and currency registration happen on launch chain
         OPTION_NFT_TOKEN = 0x800,           // single satoshi NFT token, tokenizes control over the root ID
         OPTIONS_FLAG_MASK = 0xfff
     };
@@ -575,11 +575,11 @@ public:
     CTransferDestination nativeCurrencyID;  // ID of the currency in its native system (for gateways)
     uint160 gatewayID;                      // ID of the gateway used for gateway currencies as import/export
 
-    // notaries, if present on a gateway or PBaaS chain, have the power to finalize notarizations on either blockchain. notarizations can be 
+    // notaries, if present on a gateway or PBaaS chain, have the power to finalize notarizations on either blockchain. notarizations can be
     // used as anchors to prove transactions on other currency systems that may import/export tokens, IDs or other things from other networks
     std::vector<uint160> notaries;          // a list of notary IDs, which if present, are the only identities capable of confirming notarizations
 
-    // TODO: HARDENING - make sure this is at least a majority to be valid & avoid forks
+    // this is enforced to be at least a majority to be valid & avoid forks
     int32_t minNotariesConfirm;             // requires this many unique notaries to confirm a notarization
 
     // costs to register and import IDs
@@ -613,7 +613,7 @@ public:
 
     std::string gatewayConverterName;       // reserved ID and currency that is a basket of all currencies accepted on launch, parent chain, and native
 
-    CCurrencyDefinition() : nVersion(VERSION_INVALID), 
+    CCurrencyDefinition() : nVersion(VERSION_INVALID),
                             options(0),
                             notarizationProtocol(NOTARIZATION_INVALID),
                             proofProtocol(PROOF_INVALID),
@@ -647,11 +647,11 @@ public:
     CCurrencyDefinition(const CScript &scriptPubKey);
     static std::vector<CCurrencyDefinition> GetCurrencyDefinitions(const CTransaction &tx);
 
-    CCurrencyDefinition(uint32_t Options, uint160 Parent, const std::string &Name, const uint160 &LaunchSystemID, const uint160 &SystemID, 
-                        ENotarizationProtocol NotarizationProtocol, EProofProtocol ProofProtocol, 
-                        int32_t StartBlock, int32_t EndBlock, int64_t InitialFractionalSupply, std::vector<std::pair<uint160, int64_t>> PreAllocation, 
-                        int64_t ConverterIssuance, std::vector<uint160> Currencies, std::vector<int32_t> Weights, std::vector<int64_t> Conversions, 
-                        std::vector<int64_t> MinPreconvert, std::vector<int64_t> MaxPreconvert, std::vector<int64_t> Contributions, 
+    CCurrencyDefinition(uint32_t Options, uint160 Parent, const std::string &Name, const uint160 &LaunchSystemID, const uint160 &SystemID,
+                        ENotarizationProtocol NotarizationProtocol, EProofProtocol ProofProtocol,
+                        int32_t StartBlock, int32_t EndBlock, int64_t InitialFractionalSupply, std::vector<std::pair<uint160, int64_t>> PreAllocation,
+                        int64_t ConverterIssuance, std::vector<uint160> Currencies, std::vector<int32_t> Weights, std::vector<int64_t> Conversions,
+                        std::vector<int64_t> MinPreconvert, std::vector<int64_t> MaxPreconvert, std::vector<int64_t> Contributions,
                         std::vector<int64_t> Preconverted, int32_t PreLaunchDiscount, int32_t PreLaunchCarveOut,
                         const CTransferDestination &NativeID, const uint160 &GatewayID,
                         const std::vector<uint160> &Notaries, int32_t MinNotariesConfirm,
@@ -660,7 +660,7 @@ public:
                         const std::string &LaunchGatewayName,
                         int64_t TransactionTransferFee=TRANSACTION_CROSSCHAIN_FEE, int64_t CurrencyRegistrationFee=CURRENCY_REGISTRATION_FEE,
                         int64_t PBaaSSystemRegistrationFee=PBAAS_SYSTEM_LAUNCH_FEE,
-                        int64_t CurrencyImportFee=CURRENCY_IMPORT_FEE, int64_t IDRegistrationAmount=IDENTITY_REGISTRATION_FEE, 
+                        int64_t CurrencyImportFee=CURRENCY_IMPORT_FEE, int64_t IDRegistrationAmount=IDENTITY_REGISTRATION_FEE,
                         int32_t IDReferralLevels=DEFAULT_ID_REFERRAL_LEVELS, int64_t IDImportFee=IDENTITY_IMPORT_FEE,
                         uint32_t InitialBits=DEFAULT_START_TARGET,
                         uint32_t BlockTime=DEFAULT_BLOCKTIME_TARGET,
@@ -729,9 +729,9 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(nVersion);
-        READWRITE(options);        
-        READWRITE(parent);        
-        READWRITE(LIMITED_STRING(name, MAX_NAME_LEN));        
+        READWRITE(options);
+        READWRITE(parent);
+        READWRITE(LIMITED_STRING(name, MAX_NAME_LEN));
         READWRITE(launchSystemID);
         READWRITE(systemID);
         READWRITE(notarizationProtocol);
@@ -1059,9 +1059,10 @@ public:
     bool IsValid() const
     {
         return (nVersion != PBAAS_VERSION_INVALID) &&
+                // TODO: HARDENING - remove this comment at next reset before PBaaS mainnet (!notaries.size() || minNotariesConfirm > (notaries.size() >> 1)) &&
                 !(options & ~OPTIONS_FLAG_MASK) &&
                 idReferralLevels <= MAX_ID_REFERRAL_LEVELS &&
-                name.size() > 0 && 
+                name.size() > 0 &&
                 name.size() <= (KOMODO_ASSETCHAIN_MAXLEN - 1) &&
                 std::max({rewards.size(), rewardsDecay.size(), halving.size(), eraEnd.size()}) <= ASSETCHAINS_MAX_ERAS;
     }
@@ -1221,7 +1222,7 @@ public:
     int32_t GetTotalCarveOut() const;
 };
 
-// an identity signature is a compound signature consisting of the block height of its creation, and one or more cryptographic 
+// an identity signature is a compound signature consisting of the block height of its creation, and one or more cryptographic
 // signatures of the controlling addresses. validation can be performed based on the validity when signed, using the block height
 // stored in the signature instance, or based on the continued signature validity of the current identity, which may automatically
 // invalidate when the identity is updated.
@@ -1256,7 +1257,7 @@ public:
     std::set<std::vector<unsigned char>> signatures;
 
     CIdentitySignature(const UniValue &uni);
-    CIdentitySignature(CCurrencyDefinition::EHashTypes hType=CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR, uint8_t ver=VERSION_DEFAULT) : 
+    CIdentitySignature(CCurrencyDefinition::EHashTypes hType=CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR, uint8_t ver=VERSION_DEFAULT) :
         version(ver), hashType(hType), blockHeight(0)
     {
         if (IsValidHashType(hType) &&
@@ -1267,7 +1268,7 @@ public:
     }
 
     CIdentitySignature(uint32_t height, const std::vector<unsigned char> &oneSig,
-        CCurrencyDefinition::EHashTypes hType=CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR, uint8_t ver=VERSION_DEFAULT) : 
+        CCurrencyDefinition::EHashTypes hType=CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR, uint8_t ver=VERSION_DEFAULT) :
         version(ver), hashType(hType), blockHeight(height), signatures({oneSig})
     {
         if (IsValidHashType(hType) &&
@@ -1277,7 +1278,7 @@ public:
         }
     }
     CIdentitySignature(uint32_t height, const std::set<std::vector<unsigned char>> &sigs,
-        CCurrencyDefinition::EHashTypes hType=CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR, uint8_t ver=VERSION_DEFAULT) : 
+        CCurrencyDefinition::EHashTypes hType=CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR, uint8_t ver=VERSION_DEFAULT) :
         version(ver), hashType(hType), blockHeight(height), signatures(sigs)
     {
         if (IsValidHashType(hType) &&
@@ -1354,39 +1355,39 @@ public:
 
     uint256 IdentitySignatureHash(const std::vector<uint160> &vdxfCodes,
                                   const std::vector<std::string> &vdxfCodeNames,
-                                  const std::vector<uint256> &statements, 
-                                  const uint160 &systemID, 
-                                  uint32_t blockHeight, 
+                                  const std::vector<uint256> &statements,
+                                  const uint160 &systemID,
+                                  uint32_t blockHeight,
                                   const uint160 &signingID,
-                                  const std::string &prefixString, 
+                                  const std::string &prefixString,
                                   const uint256 &msgHash) const;
 
     ESignatureVerification NewSignature(const CIdentity &signingID,
                                         const std::vector<uint160> &vdxfCodes,
                                         const std::vector<std::string> &vdxfCodeNames,
-                                        const std::vector<uint256> &statements, 
-                                        const uint160 &systemID, 
+                                        const std::vector<uint256> &statements,
+                                        const uint160 &systemID,
                                         uint32_t height,
-                                        const std::string &prefixString, 
+                                        const std::string &prefixString,
                                         const uint256 &msgHash,
                                         const CKeyStore *pWallet=nullptr);
 
     ESignatureVerification AddSignature(const CIdentity &signingID,
                                         const std::vector<uint160> &vdxfCodes,
                                         const std::vector<std::string> &vdxfCodeNames,
-                                        const std::vector<uint256> &statements, 
-                                        const uint160 &systemID, 
+                                        const std::vector<uint256> &statements,
+                                        const uint160 &systemID,
                                         uint32_t blockHeight,
-                                        const std::string &prefixString, 
+                                        const std::string &prefixString,
                                         const uint256 &msgHash,
                                         const CKeyStore *pWallet=nullptr);
 
     ESignatureVerification CheckSignature(const CIdentity &signingID,
                                           const std::vector<uint160> &vdxfCodes,
                                           const std::vector<std::string> &vdxfCodeNames,
-                                          const std::vector<uint256> &statements, 
-                                          const uint160 systemID, 
-                                          const std::string &prefixString, 
+                                          const std::vector<uint256> &statements,
+                                          const uint160 systemID,
+                                          const std::string &prefixString,
                                           const uint256 &msgHash,
                                           std::vector<std::vector<unsigned char>> *pDupSigs=nullptr) const;
 
@@ -1442,7 +1443,7 @@ public:
 
     uint32_t IsValid()
     {
-        return version <= VERSION_LAST && version >= VERSION_FIRST && 
+        return version <= VERSION_LAST && version >= VERSION_FIRST &&
             (hashType == CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR || (version >= VERSION_ETHBRIDGE && IsValidHashType((CCurrencyDefinition::EHashTypes)hashType)));
     }
 };
@@ -1475,14 +1476,14 @@ public:
 
     CProofRoot(int Type=TYPE_PBAAS, int Version=VERSION_CURRENT) : type(Type), version(Version), rootHeight(0) {}
     CProofRoot(const UniValue &uni);
-    CProofRoot(const uint160 &sysID, 
-                uint32_t nHeight, 
-                const uint256 &root, 
-                const uint256 &blkHash, 
+    CProofRoot(const uint160 &sysID,
+                uint32_t nHeight,
+                const uint256 &root,
+                const uint256 &blkHash,
                 const uint256 &power,
                 int64_t GasPrice=0,
                 int16_t Type=TYPE_PBAAS,
-                int16_t Version=VERSION_CURRENT) : 
+                int16_t Version=VERSION_CURRENT) :
                 systemID(sysID), rootHeight(nHeight), stateRoot(root), blockHash(blkHash), compactPower(power), version(Version), type(Type), gasPrice(GasPrice) {}
 
     ADD_SERIALIZE_METHODS;
@@ -1575,7 +1576,7 @@ public:
         }
     }
 
-    CNativeHashWriter(CCurrencyDefinition::EProofProtocol proofProtocol, const unsigned char *personal=nullptr) : 
+    CNativeHashWriter(CCurrencyDefinition::EProofProtocol proofProtocol, const unsigned char *personal=nullptr) :
         CNativeHashWriter((CCurrencyDefinition::EHashTypes)proofProtocol, personal) {}
 
     ~CNativeHashWriter()

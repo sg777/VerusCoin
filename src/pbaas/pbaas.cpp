@@ -357,7 +357,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 {
                     // TODO: HARDENING for now, we skip checks if we fail to get prior import, but
                     // we need to look deeper to ensure that there really is not one or that we use it
-                    LogPrintf("Cannot retrieve prior import: %s\n", cci.ToUniValue().write(1,2).c_str());
+                    return state.Error("Cannot retrieve prior import: " + cci.ToUniValue().write(1,2));
                 }
                 else if (priorImport.exportTxId.IsNull())
                 {
@@ -1753,10 +1753,10 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
     CCurrencyDefinition newCurrency;
     COptCCParams currencyOptParams;
     if (!(spendingTx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(currencyOptParams) &&
-         currencyOptParams.IsValid() &&
-         currencyOptParams.evalCode == EVAL_CURRENCY_DEFINITION &&
-         currencyOptParams.vData.size() > 1 &&
-         (newCurrency = CCurrencyDefinition(currencyOptParams.vData[0])).IsValid()))
+          currencyOptParams.IsValid() &&
+          currencyOptParams.evalCode == EVAL_CURRENCY_DEFINITION &&
+          currencyOptParams.vData.size() > 1 &&
+          (newCurrency = CCurrencyDefinition(currencyOptParams.vData[0])).IsValid()))
     {
         return state.Error("Invalid currency definition in output");
     }
@@ -3892,7 +3892,6 @@ CCurrencyDefinition CConnectedChains::GetCachedCurrency(const uint160 &currencyI
     if ((it != currencyDefCache.end() && !(currencyDef = it->second).IsValid()) ||
         (it == currencyDefCache.end() && !GetCurrencyDefinition(currencyID, currencyDef, &defHeight, true)))
     {
-        LogPrint("notarization", "%s: definition for transfer currency ID %s not found\n\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
         return currencyDef;
     }
     if (it == currencyDefCache.end())
@@ -6101,6 +6100,135 @@ bool EntropyCoinFlip(const uint160 &conditionID, uint32_t nHeight)
     return UintToArith256(hw.GetHash()).GetLow64() & 1;
 }
 
+std::vector<ChainTransferData> CalcTxInputs(const CCurrencyDefinition &_curDef,
+                                            bool &isClearLaunchExport,
+                                            uint32_t sinceHeight,
+                                            uint32_t &addHeight,
+                                            uint32_t &nextHeight,
+                                            uint32_t untilHeight,
+                                            uint32_t nHeight,
+                                            int &curIDExports,
+                                            int &curCurrencyExports,
+                                            const std::multimap<uint32_t, ChainTransferData> &_txInputs)
+{
+    std::vector<ChainTransferData> txInputs;
+
+    int maxInputs = _curDef.proofProtocol == _curDef.PROOF_ETHNOTARIZATION ?
+                                                CCurrencyDefinition::MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK :
+                                                CCurrencyDefinition::MAX_TRANSFER_EXPORTS_PER_BLOCK;
+    int maxIDExports = _curDef.proofProtocol == _curDef.PROOF_ETHNOTARIZATION ?
+                                                CCurrencyDefinition::MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK :
+                                                CCurrencyDefinition::MAX_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK;
+    int maxCurrencyExports = _curDef.proofProtocol == _curDef.PROOF_ETHNOTARIZATION ?
+                                                CCurrencyDefinition::MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK :
+                                                CCurrencyDefinition::MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK;
+
+    for (auto it = _txInputs.begin(); it != _txInputs.end(); it++)
+    {
+        auto &oneInput = *it;
+        if (oneInput.first <= sinceHeight)
+        {
+            continue;
+        }
+
+        if (addHeight != oneInput.first)
+        {
+            // if this is a launch export, we create one at the boundary
+            if (isClearLaunchExport && oneInput.first >= _curDef.startBlock)
+            {
+                addHeight = _curDef.startBlock - 1;
+                break;
+            }
+
+            // if we have skipped to the next block, and we have enough to make a clear launch export, we cannot take any more
+            // for now
+            if (isClearLaunchExport && txInputs.size() >= CCrossChainExport::MAX_FEE_INPUTS)
+            {
+                nextHeight = oneInput.first;
+                break;
+            }
+
+            if (!isClearLaunchExport && (txInputs.size() >= CCrossChainExport::MIN_INPUTS || (oneInput.first - sinceHeight) >= CCrossChainExport::MIN_BLOCKS))
+            {
+                // if we have one or more empty blocks between the next block with transfers, go ahead and process
+                if (txInputs.size() && oneInput.first != (addHeight + 1))
+                {
+                    nextHeight = oneInput.first;
+                    break;
+                }
+
+                // we're now at a qualified block boundary, so either this marks the next export with a gap of transfers, or,
+                // the block after this one is used to determine whether this block is combined with blocks in front of it,
+                // or the blocks behind. if we don't have the block after to check, return until we do
+                if (std::min(untilHeight, nHeight) <= oneInput.first)
+                {
+                    // no error, just nothing to do, as we can't decide to include this with the prior block
+                    // until we have at least one more block
+                    return std::vector<ChainTransferData>();
+                }
+
+                // if we get the coin flip using the entropy of the block after the next block in question,
+                // separate here, otherwise, the next block will be added, either by adding or separating,
+                // depending on how many transfers we already have
+                if (txInputs.size() && EntropyCoinFlip(_curDef.GetID(), oneInput.first + 1))
+                {
+                    nextHeight = oneInput.first;
+                    break;
+                }
+
+                if (txInputs.size() > maxInputs || curIDExports > maxIDExports || curCurrencyExports > maxCurrencyExports)
+                {
+                    // we exceed the maximum, so we separate from the last and make the
+                    // export out of one less than we currently have
+
+                    // take addheight off of the last and break, as it has been determined to go with those in front of it
+                    while (std::get<0>(txInputs.back()) == addHeight)
+                    {
+                        txInputs.pop_back();
+                    }
+                    assert(txInputs.size());
+
+                    nextHeight = addHeight;
+                    addHeight = std::get<0>(txInputs.back());
+                    break;
+                }
+            }
+            addHeight = oneInput.first;
+        }
+
+        if (!isClearLaunchExport && untilHeight <= addHeight + 1)
+        {
+            // no error, just nothing to do, as we can't decide to include this with the prior block
+            // until we have at least one more block
+            return std::vector<ChainTransferData>();
+        }
+
+        // figure out if this is a cross-chain export of identity or currency
+        if (std::get<2>(oneInput.second).IsCurrencyExport())
+        {
+            curCurrencyExports++;
+        }
+        else if (std::get<2>(oneInput.second).IsIdentityExport())
+        {
+            curIDExports++;
+        }
+
+        txInputs.push_back(oneInput.second);
+    }
+
+    // if we have too many exports to clear launch yet, this is no longer clear launch
+    isClearLaunchExport = isClearLaunchExport && !(nextHeight && nextHeight < _curDef.startBlock);
+
+    // if we made an export before getting to the end, it doesn't clear launch
+    // if we either early outed, due to height or landed right on the correct height, determine launch state
+    // a clear launch export may have no inputs yet still be created with a clear launch notarization
+    if (isClearLaunchExport)
+    {
+        addHeight = _curDef.startBlock - 1;
+    }
+    return txInputs;
+}
+
 bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                                         const std::multimap<uint32_t, ChainTransferData> &_txInputs,
                                         const std::vector<CInputDescriptor> &priorExports,
@@ -6168,20 +6296,6 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         return true;
     }
 
-    uint32_t addHeight = sinceHeight;
-    uint32_t nextHeight = 0;
-    std::vector<ChainTransferData> txInputs;
-
-    int maxInputs = _curDef.proofProtocol == _curDef.PROOF_ETHNOTARIZATION ?
-                                                CCurrencyDefinition::MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK :
-                                                CCurrencyDefinition::MAX_TRANSFER_EXPORTS_PER_BLOCK;
-    int maxIDExports = _curDef.proofProtocol == _curDef.PROOF_ETHNOTARIZATION ?
-                                                CCurrencyDefinition::MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK :
-                                                CCurrencyDefinition::MAX_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK;
-    int maxCurrencyExports = _curDef.proofProtocol == _curDef.PROOF_ETHNOTARIZATION ?
-                                                CCurrencyDefinition::MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK :
-                                                CCurrencyDefinition::MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK;
-
     // loop until we have gained a qualified set of transfers over one or more blocks
     // a qualified set occurs when:
     // 1) we know we have passed the minimum blocks or we have more than the minimum inputs - this is true
@@ -6193,112 +6307,22 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     // Each time we pass the minimum number of blocks, minimum number of transfers, or hit the maximum number
     // of any type, we must make a decision of the current block going with the next or prior
 
+    uint32_t addHeight = sinceHeight;
+    uint32_t nextHeight = 0;
+
     int curIDExports = 0;
     int curCurrencyExports = 0;
 
-    for (auto it = _txInputs.begin(); it != _txInputs.end(); it++)
-    {
-        auto &oneInput = *it;
-        if (oneInput.first <= sinceHeight)
-        {
-            continue;
-        }
-
-        if (addHeight != oneInput.first)
-        {
-            // if this is a launch export, we create one at the boundary
-            if (isClearLaunchExport && oneInput.first >= _curDef.startBlock)
-            {
-                addHeight = _curDef.startBlock - 1;
-                break;
-            }
-
-            // if we have skipped to the next block, and we have enough to make a clear launch export, we cannot take any more
-            // for now
-            if (isClearLaunchExport && txInputs.size() >= CCrossChainExport::MAX_FEE_INPUTS)
-            {
-                nextHeight = oneInput.first;
-                break;
-            }
-
-            if (!isClearLaunchExport && (txInputs.size() >= CCrossChainExport::MIN_INPUTS || (oneInput.first - sinceHeight) >= CCrossChainExport::MIN_BLOCKS))
-            {
-                // if we have one or more empty blocks between the next block with transfers, go ahead and process
-                if (txInputs.size() && oneInput.first != (addHeight + 1))
-                {
-                    nextHeight = oneInput.first;
-                    break;
-                }
-
-                // we're now at a qualified block boundary, so either this marks the next export with a gap of transfers, or,
-                // the block after this one is used to determine whether this block is combined with blocks in front of it,
-                // or the blocks behind. if we don't have the block after to check, return until we do
-                if (std::min(curHeight, nHeight) <= oneInput.first)
-                {
-                    // no error, just nothing to do, as we can't decide to include this with the prior block
-                    // until we have at least one more block
-                    return true;
-                }
-
-                // if we get the coin flip using the entropy of the block after the next block in question,
-                // separate here, otherwise, the next block will be added, either by adding or separating,
-                // depending on how many transfers we already have
-                if (txInputs.size() && EntropyCoinFlip(currencyID, oneInput.first + 1))
-                {
-                    nextHeight = oneInput.first;
-                    break;
-                }
-
-                if (txInputs.size() > maxInputs || curIDExports > maxIDExports || curCurrencyExports > maxCurrencyExports)
-                {
-                    // we exceed the maximum, so we separate from the last and make the
-                    // export out of one less than we currently have
-
-                    // take addheight off of the last and break, as it has been determined to go with those in front of it
-                    while (std::get<0>(txInputs.back()) == addHeight)
-                    {
-                        txInputs.pop_back();
-                    }
-                    assert(txInputs.size());
-
-                    nextHeight = addHeight;
-                    addHeight = std::get<0>(txInputs.back());
-                    break;
-                }
-            }
-            addHeight = oneInput.first;
-        }
-
-        if (!isClearLaunchExport && curHeight <= addHeight + 1)
-        {
-            // no error, just nothing to do, as we can't decide to include this with the prior block
-            // until we have at least one more block
-            return true;
-        }
-
-        // figure out if this is a cross-chain export of identity or currency
-        if (std::get<2>(oneInput.second).IsCurrencyExport())
-        {
-            curCurrencyExports++;
-        }
-        else if (std::get<2>(oneInput.second).IsIdentityExport())
-        {
-            curIDExports++;
-        }
-
-        txInputs.push_back(oneInput.second);
-    }
-
-    // if we have too many exports to clear launch yet, this is no longer clear launch
-    isClearLaunchExport = isClearLaunchExport && !(nextHeight && nextHeight < _curDef.startBlock);
-
-    // if we made an export before getting to the end, it doesn't clear launch
-    // if we either early outed, due to height or landed right on the correct height, determine launch state
-    // a clear launch export may have no inputs yet still be created with a clear launch notarization
-    if (isClearLaunchExport)
-    {
-        addHeight = _curDef.startBlock - 1;
-    }
+    std::vector<ChainTransferData> txInputs = CalcTxInputs(_curDef,
+                                                           isClearLaunchExport,
+                                                           sinceHeight,
+                                                           addHeight,
+                                                           nextHeight,
+                                                           curHeight,
+                                                           nHeight,
+                                                           curIDExports,
+                                                           curCurrencyExports,
+                                                           _txInputs);
 
     // all we expect to add are in txInputs now
     inputsConsumed = txInputs.size();

@@ -1,17 +1,17 @@
 /********************************************************************
  * (C) 2019 Michael Toutonghi
- * 
+ *
  * Distributed under the MIT software license, see the accompanying
  * file COPYING or http://www.opensource.org/licenses/mit-license.php.
- * 
+ *
  * This provides support for PBaaS identity definition,
- * 
+ *
  * This is a decentralized identity class that provides the minimum
- * basic function needed to enable persistent DID-similar identities, 
+ * basic function needed to enable persistent DID-similar identities,
  * needed for signatories, that will eventually bridge compatibly to
  * DID identities.
- * 
- * 
+ *
+ *
  */
 
 #ifndef IDENTITY_H
@@ -272,7 +272,7 @@ public:
 
     CPrincipal(uint32_t Version,
                uint32_t Flags,
-               const std::vector<CTxDestination> &primary, 
+               const std::vector<CTxDestination> &primary,
                int32_t minPrimarySigs) :
                nVersion(Version),
                flags(Flags),
@@ -341,12 +341,12 @@ public:
                 }
             }
         }
-        return nVersion >= VERSION_FIRSTVALID && 
+        return nVersion >= VERSION_FIRSTVALID &&
                nVersion <= VERSION_LASTVALID &&
                primaryOK &&
-               primaryAddresses.size() && 
+               primaryAddresses.size() &&
                minSigs >= 1 &&
-               minSigs <= primaryAddresses.size() && 
+               minSigs <= primaryAddresses.size() &&
                ((nVersion < VERSION_VAULT &&
                  primaryAddresses.size() <= 10) ||
                 (primaryAddresses.size() <= 25 &&
@@ -367,8 +367,8 @@ public:
             {
                 return true;
             }
-        }       
-        return false; 
+        }
+        return false;
     }
 
     void SetVersion(uint32_t version)
@@ -407,7 +407,7 @@ public:
     //
     // name from another chain == name.chainname
     //      the chainID that would derive from such a name will be Hash(ChainID(chainname) + Hash(name));
-    // 
+    //
     std::string name;
 
     // content hashes, key value, where key is 20 byte ripemd160
@@ -439,7 +439,7 @@ public:
               const uint160 &Recovery,
               const std::vector<libzcash::SaplingPaymentAddress> &PrivateAddresses = std::vector<libzcash::SaplingPaymentAddress>(),
               const uint160 &SystemID=ASSETCHAINS_CHAINID,
-              int32_t unlockTime=0) : 
+              int32_t unlockTime=0) :
               CPrincipal(Version, Flags, primary, minPrimarySigs),
               parent(Parent),
               name(Name),
@@ -738,7 +738,7 @@ public:
         }
 
         return isOK &&
-               CPrincipal::IsValid(strict) && name.size() > 0 && 
+               CPrincipal::IsValid(strict) && name.size() > 0 &&
                (name.size() <= MAX_NAME_LEN) &&
                primaryAddresses.size() &&
                (nVersion < VERSION_VAULT ||
@@ -807,8 +807,6 @@ public:
 
     bool IsPrimaryMutation(const CIdentity &newIdentity, uint32_t height) const
     {
-        // TODO: HARDENING account for a change to content maps to multimap for PBaaS
-
         auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
         bool isPBaaS = nSolVersion >= CActivationHeight::ACTIVATE_PBAAS;
         bool isRevokedExempt = isPBaaS || nSolVersion >= CActivationHeight::ACTIVATE_VERUSVAULT && newIdentity.IsRevoked();
@@ -827,7 +825,7 @@ public:
         return false;
     }
 
-    bool IsRevocation(const CIdentity &newIdentity) const 
+    bool IsRevocation(const CIdentity &newIdentity) const
     {
         if (!IsRevoked() && newIdentity.IsRevoked())
         {
@@ -836,7 +834,7 @@ public:
         return false;
     }
 
-    bool IsRevocationMutation(const CIdentity &newIdentity, uint32_t height) const 
+    bool IsRevocationMutation(const CIdentity &newIdentity, uint32_t height) const
     {
         auto nSolVersion = CConstVerusSolutionVector::GetVersionByHeight(height);
         if (revocationAuthority != newIdentity.revocationAuthority &&
@@ -1199,7 +1197,7 @@ public:
 
     bool IsValid()
     {
-        return version >= VERSION_FIRST && version <= VERSION_LAST && 
+        return version >= VERSION_FIRST && version <= VERSION_LAST &&
                 trustLevel >= TRUST_FIRST && trustLevel <= TRUST_LAST;
     }
 

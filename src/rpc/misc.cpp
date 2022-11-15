@@ -1932,7 +1932,7 @@ UniValue AddressMemPoolUni(const std::vector<std::pair<uint160, int>> &addresses
         delta.push_back(Pair("index", (int)it->first.index));
         delta.push_back(Pair("satoshis", it->second.amount));
         delta.push_back(Pair("spending", (bool)it->first.spending));
-        if (!it->first.txhash.IsNull() && it->first.txhash == curTx.GetHash() || mempool.lookup(it->first.txhash, curTx))
+        if (!it->first.txhash.IsNull() && (it->first.txhash == curTx.GetHash() || mempool.lookup(it->first.txhash, curTx)))
         {
             CurrencyValuesAndNames(delta, it->first.spending, curTx, it->first.index, it->second.amount, friendlyNames);
             if (verbosity && it->first.spending)
@@ -2098,6 +2098,7 @@ UniValue getaddressutxos(const UniValue& params, bool fHelp)
         output.push_back(Pair("address", address));
         output.push_back(Pair("txid", it->first.txhash.GetHex()));
         output.push_back(Pair("outputIndex", (int)it->first.index));
+        output.pushKV("isspendable", it->second.script.IsSpendableOutputType(p));
         output.push_back(Pair("script", HexStr(it->second.script.begin(), it->second.script.end())));
         if (p.IsValid())
         {
