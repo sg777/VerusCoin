@@ -849,7 +849,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
         }
         if (!issuingCurrency.IsValid() || issuingCurrency.systemID != ASSETCHAINS_CHAINID)
         {
-            return state.Error("Invalid issuing currency to register identity");
+            return state.Error("Invalid issuing currency to register identity " + ConnectedChains.GetFriendlyCurrencyName(issuingCurrency.GetID()));
         }
 
         if (issuingCurrency.IsFractional())
