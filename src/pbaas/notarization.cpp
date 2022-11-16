@@ -4841,13 +4841,29 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                         continue;
                     }
 
-                    int64_t ratioOfPriceChange =
-                        CCurrencyDefinition::CalculateRatioOfValue(CCurrencyDefinition::CalculateRatioOfValue(
-                                                                    unMirrored.currencyStates[oneCurState.first].PriceInReserve(curIdxMap[ASSETCHAINS_CHAINID]),
-                                                                    unMirrored.currencyStates[oneCurState.first].PriceInReserve(curIdxMap[externID])),
-                                                                   CCurrencyDefinition::CalculateRatioOfValue(
-                                                                    oneCurState.second.PriceInReserve(curIdxMap[ASSETCHAINS_CHAINID]),
-                                                                    oneCurState.second.PriceInReserve(curIdxMap[externID])));
+                    // if we are so far out of range we can't tell, submit
+                    if (!(unMirrored.currencyStates[oneCurState.first].PriceInReserve(curIdxMap[externID])) ||
+                        !(oneCurState.second.PriceInReserve(curIdxMap[externID])))
+                    {
+                        submit = true;
+                        break;
+                    }
+
+                    int64_t firstRatioOfPrice = CCurrencyDefinition::CalculateRatioOfValue(
+                                                    unMirrored.currencyStates[oneCurState.first].PriceInReserve(curIdxMap[ASSETCHAINS_CHAINID]),
+                                                    unMirrored.currencyStates[oneCurState.first].PriceInReserve(curIdxMap[externID]));
+                    int64_t secondRatioOfPrice = CCurrencyDefinition::CalculateRatioOfValue(
+                                                    oneCurState.second.PriceInReserve(curIdxMap[ASSETCHAINS_CHAINID]),
+                                                    oneCurState.second.PriceInReserve(curIdxMap[externID]));
+
+                    // if second ratio is zero, can't tell, so submit
+                    if (!secondRatioOfPrice)
+                    {
+                        submit = true;
+                        break;
+                    }
+
+                    int64_t ratioOfPriceChange = CCurrencyDefinition::CalculateRatioOfValue(firstRatioOfPrice, secondRatioOfPrice);
 
                     // if we go up or down by 10% from the last confirmed notarization, notarize again
                     if (ratioOfPriceChange > (SATOSHIDEN + (SATOSHIDEN / 10)) || ratioOfPriceChange < (SATOSHIDEN - (SATOSHIDEN / 10)))
