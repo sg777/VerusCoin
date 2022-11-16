@@ -4813,14 +4813,49 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
     if (!submit)
     {
-        for (auto &oneCurState : lastConfirmedNotarization.currencyStates)
+        CPBaaSNotarization unMirrored = crosschainCND.vtx[crosschainCND.lastConfirmed].second;
+        if (!unMirrored.SetMirror(false))
         {
-            if (!crosschainCND.vtx[crosschainCND.lastConfirmed].second.currencyStates.count(oneCurState.first) ||
-                (crosschainCND.vtx[crosschainCND.lastConfirmed].second.currencyStates[oneCurState.first].IsPrelaunch() &&
-                 !oneCurState.second.IsPrelaunch()))
+            submit = true;
+        }
+        else
+        {
+            for (auto &oneCurState : lastConfirmedNotarization.currencyStates)
             {
-                submit = true;
-                break;
+                if (!unMirrored.currencyStates.count(oneCurState.first) ||
+                    (unMirrored.currencyStates[oneCurState.first].IsPrelaunch() &&
+                     !oneCurState.second.IsPrelaunch()))
+                {
+                    submit = true;
+                    break;
+                }
+
+                // if the relative price of the two sided fee currencies has changed more than 15% since last confirmed
+                // notarization, submit
+                if (oneCurState.second.IsFractional())
+                {
+                    auto curIdxMap = oneCurState.second.GetReserveMap();
+                    uint160 externID = externalSystem.GetID();
+                    if (!curIdxMap.count(ASSETCHAINS_CHAINID) || !curIdxMap.count(externID))
+                    {
+                        continue;
+                    }
+
+                    int64_t ratioOfPriceChange =
+                        CCurrencyDefinition::CalculateRatioOfValue(CCurrencyDefinition::CalculateRatioOfValue(
+                                                                    unMirrored.currencyStates[oneCurState.first].PriceInReserve(curIdxMap[ASSETCHAINS_CHAINID]),
+                                                                    unMirrored.currencyStates[oneCurState.first].PriceInReserve(curIdxMap[externID])),
+                                                                   CCurrencyDefinition::CalculateRatioOfValue(
+                                                                    oneCurState.second.PriceInReserve(curIdxMap[ASSETCHAINS_CHAINID]),
+                                                                    oneCurState.second.PriceInReserve(curIdxMap[externID])));
+
+                    // if we go up or down by 10% from the last confirmed notarization, notarize again
+                    if (ratioOfPriceChange > (SATOSHIDEN + (SATOSHIDEN / 10)) || ratioOfPriceChange < (SATOSHIDEN - (SATOSHIDEN / 10)))
+                    {
+                        submit = true;
+                        break;
+                    }
+                }
             }
         }
         if (!submit && lastConfirmedNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
