@@ -18,6 +18,9 @@
 #include <random>
 
 
+LRUCache<CUTXORef, std::tuple<int, CPBaaSNotarization, std::vector<CReserveTransfer>, CCurrencyDefinition::EProofProtocol>>
+    CCrossChainExport::exportInfoCache(200, 0.1F, false);
+
 // calculate fees required in one currency to pay in another
 CAmount CReserveTransfer::CalculateTransferFee(const CTransferDestination &destination, uint32_t flags)
 {
@@ -54,7 +57,7 @@ CCurrencyValueMap CReserveTransfer::ConversionFee() const
     {
         for (auto &oneCur : reserveValues.valueMap)
         {
-            retVal.valueMap[oneCur.first] += CReserveTransactionDescriptor::CalculateConversionFee(oneCur.second);
+            retVal.valueMap[oneCur.first] += CReserveTransactionDescriptor::CalculateConversionFeeNoMin(oneCur.second);
         }
         if (IsReserveToReserve())
         {
@@ -64,7 +67,7 @@ CCurrencyValueMap CReserveTransfer::ConversionFee() const
     return retVal;
 }
 
-CCurrencyValueMap CReserveTransfer::CalculateFee(uint32_t flags, CAmount transferTotal) const
+CCurrencyValueMap CReserveTransfer::CalculateFee() const
 {
     CCurrencyValueMap feeMap;
 
@@ -75,7 +78,7 @@ CCurrencyValueMap CReserveTransfer::CalculateFee(uint32_t flags, CAmount transfe
     {
         for (auto &oneCur : reserveValues.valueMap)
         {
-            feeMap.valueMap[oneCur.first] += CReserveTransactionDescriptor::CalculateConversionFee(oneCur.second);
+            feeMap.valueMap[oneCur.first] += CReserveTransactionDescriptor::CalculateConversionFeeNoMin(oneCur.second);
         }
         if (IsReserveToReserve())
         {
@@ -140,8 +143,6 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
         return state.Error(strprintf("%s: cannot get export data directly from a supplemental data output. must be in context",__func__));
     }
 
-    CNativeHashWriter hw(hashType);
-
     // this can be called passing either a system export or a normal currency export, and it will always
     // retrieve information from the same normal currency export in either case and return the primary output num
     int numOutput = IsSystemThreadExport() ? numExportOut - 1 : numExportOut;
@@ -150,6 +151,17 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
         return state.Error(strprintf("%s: invalid output index for export out or invalid export transaction",__func__));
     }
     primaryExportOutNumOut = numOutput;
+
+    std::tuple<int, CPBaaSNotarization, std::vector<CReserveTransfer>, CCurrencyDefinition::EProofProtocol> exportInfoCached;
+    if (exportInfoCache.Get(CUTXORef(exportTx.GetHash(), numOutput), exportInfoCached))
+    {
+        nextOutput = std::get<0>(exportInfoCached);
+        exportNotarization = std::get<1>(exportInfoCached);
+        reserveTransfers = std::get<2>(exportInfoCached);
+        hashType = std::get<3>(exportInfoCached);
+    }
+
+    CNativeHashWriter hw(hashType);
 
     // if this export is from our system
     if (sourceSystemID == ASSETCHAINS_CHAINID)
@@ -277,6 +289,8 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
         }
     }
     nextOutput = numOutput + 1;
+
+    exportInfoCache.Put(CUTXORef(exportTx.GetHash(), primaryExportOutNumOut), {nextOutput, exportNotarization, reserveTransfers, hashType});
     return true;
 }
 
@@ -2452,7 +2466,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 (oneCurDef = CCurrencyDefinition(tempP.vData[0])).IsValid())
                             {
                                 //printf("%s: Adding currency:\n%s\n", __func__, oneCurDef.ToUniValue().write(1,2).c_str());
-                                ConnectedChains.currencyDefCache.insert(std::make_pair(oneCurDef.GetID(), oneCurDef));
+                                ConnectedChains.currencyDefCache.Put(oneCurDef.GetID(), oneCurDef);
                             }
                         }
                         loadedCurrencies = true;
@@ -4178,17 +4192,21 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                     // now, fees are either in the destination native currency, or this is a fractional currency, and
                     // we convert to see if we meet fee minimums
-                    CAmount feeEquivalent;
                     uint160 feeCurrency;
                     if (curTransfer.IsConversion() && !curTransfer.IsPreConversion())
                     {
-                        feeCurrency = curTransfer.nFees ? curTransfer.feeCurrencyID : curTransfer.FirstCurrency();
-                        feeEquivalent = CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue()) + curTransfer.nFees;
+                        if (!curTransfer.nFees || curTransfer.feeCurrencyID == curTransfer.FirstCurrency())
+                        {
+                            feeCurrency = curTransfer.FirstCurrency();
+                        }
+                        else
+                        {
+                            feeCurrency = curTransfer.feeCurrencyID;
+                        }
                     }
                     else
                     {
                         feeCurrency = curTransfer.feeCurrencyID;
-                        feeEquivalent = curTransfer.nFees;
                     }
 
                     if (feeCurrency != systemDestID)
@@ -4199,11 +4217,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                             LogPrintf("%s: Invalid fee currency for transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                             return false;
                         }
-                        if (curTransfer.feeCurrencyID != importCurrencyID)
-                        {
-                            feeEquivalent = importCurrencyState.ReserveToNativeRaw(feeEquivalent, importCurrencyState.conversionPrice[currencyIndexMap[feeCurrency]]);
-                        }
-                        feeEquivalent = importCurrencyState.NativeToReserveRaw(feeEquivalent, importCurrencyState.viaConversionPrice[systemDestIdx]);
                     }
 
                     if (curTransfer.FirstCurrency() == systemDestID && !curTransfer.IsMint())
@@ -4268,7 +4281,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 CAmount newCurrencyConverted = 0;
                 CAmount valueOut = curTransfer.FirstValue();
 
-                preConversionFee = CalculateConversionFee(curTransfer.FirstValue());
+                preConversionFee = CalculateConversionFeeNoMin(curTransfer.FirstValue());
                 if (preConversionFee > curTransfer.FirstValue())
                 {
                     preConversionFee = curTransfer.FirstValue();
@@ -4435,7 +4448,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                 if (!curTransfer.IsFeeOutput())
                 {
-                    oneConversionFee = CalculateConversionFee(curTransfer.FirstValue());
+                    oneConversionFee = CalculateConversionFeeNoMin(curTransfer.FirstValue());
                     if (curTransfer.IsReserveToReserve())
                     {
                         oneConversionFee <<= 1;

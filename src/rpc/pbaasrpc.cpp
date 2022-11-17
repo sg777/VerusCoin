@@ -306,51 +306,6 @@ CIdentity ValidateIdentityParameter(const std::string &idStr)
     return retVal;
 }
 
-// returns non-null value, if this is a gateway destination
-std::pair<uint160, CTransferDestination> ValidateTransferDestination(const std::string &destStr)
-{
-    uint160 parent;
-    uint160 destID;
-    CTxDestination destination;
-
-    AssertLockHeld(cs_main);
-
-    // One case where the transfer destination is valid, but will not be located on chain
-    // is when the destination is a gateway. In that case, alternate format destinations
-    // can be used. Each format type has its own validation.
-    if (std::count(destStr.begin(), destStr.end(), '@') == 1)
-    {
-        std::string str = CleanName(destStr, parent);
-        if (str != "")
-        {
-            destID = CIdentityID(CIdentity::GetID(str, parent));
-            if (CIdentity::LookupIdentity(destID).IsValid())
-            {
-                return std::make_pair(uint160(), DestinationToTransferDestination(CIdentityID(destID)));
-            }
-            // we haven't found an ID, so this may be a transfer address, but only if
-            // it's parent is a gateway currency and it validates
-            auto gatewayPair = ConnectedChains.GetGateway(parent);
-            if (gatewayPair.first.IsValid() && gatewayPair.second->ValidateDestination(str));
-            {
-                return std::make_pair(parent, gatewayPair.second->ToTransferDestination(str));
-            }
-        }
-    }
-    else
-    {
-        destination = DecodeDestination(destStr);
-        if (destination.which() == COptCCParams::ADDRTYPE_ID)
-        {
-            if (!CIdentity::LookupIdentity(GetDestinationID(destination)).IsValid())
-            {
-                destination = CTxDestination();
-            }
-        }
-    }
-    return std::make_pair(uint160(), DestinationToTransferDestination(destination));
-}
-
 // set default peer nodes in the current connected chains
 bool SetPeerNodes(const UniValue &nodes)
 {
@@ -2482,7 +2437,7 @@ bool GetChainTransfers(multimap<uint160, std::pair<CInputDescriptor, CReserveTra
 
 // returns all chain transfer outputs, both spent and unspent between a specific start and end block with an optional chainFilter. if the chainFilter is not
 // NULL, only transfers to that system are returned
-bool GetChainTransfersUnspentBy(std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter, uint32_t start, uint32_t end, uint32_t unspentBy, uint32_t flags)
+bool GetChainTransfersUnspentBy(std::multimap<std::pair<uint32_t, uint160>, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter, uint32_t start, uint32_t end, uint32_t unspentBy, uint32_t flags)
 {
     if (!flags)
     {
@@ -2540,7 +2495,78 @@ bool GetChainTransfersUnspentBy(std::multimap<uint160, std::pair<CInputDescripto
                     (nofilter || ((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID) == chainFilter) &&
                     (rt.flags & flags) == flags)
                 {
-                    inputDescriptors.insert(std::make_pair(((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID),
+                    inputDescriptors.insert(std::make_pair(std::make_pair(it->first.blockHeight, (rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID),
+                                                std::make_pair(CInputDescriptor(ntx.vout[it->first.index].scriptPubKey, ntx.vout[it->first.index].nValue, CTxIn(COutPoint(it->first.txhash, it->first.index))),
+                                                               rt)));
+                }
+
+                /*
+                uint256 hashBlk;
+                UniValue univTx(UniValue::VOBJ);
+                TxToUniv(ntx, hashBlk, univTx);
+                printf("tx: %s\n", univTx.write(1,2).c_str());
+                */
+            }
+            else
+            {
+                LogPrintf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
+                printf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+// returns all chain transfer outputs, both spent and unspent between a specific start and end block with an optional chainFilter. if the chainFilter is not
+// NULL, only transfers to that system are returned
+bool GetChainTransfersBetween(std::multimap<std::pair<uint32_t, uint160>, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter, uint32_t start, uint32_t end, uint32_t unspentBy, uint32_t flags)
+{
+    if (!flags)
+    {
+        flags = CReserveTransfer::VALID;
+    }
+    bool nofilter = chainFilter.IsNull();
+
+    // which transaction are we in this block?
+    std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
+
+    LOCK2(cs_main, mempool.cs);
+
+    if (!GetAddressIndex(CReserveTransfer::ReserveTransferKey(),
+                         CScript::P2IDX,
+                         addressIndex,
+                         start,
+                         end))
+    {
+        return false;
+    }
+    else
+    {
+        // This call does not include outputs that were mined in as spent at the
+        // end height requested
+        for (auto it = addressIndex.begin(); it != addressIndex.end(); it++)
+        {
+            CTransaction ntx;
+            uint256 blkHash;
+
+            if (it->first.spending)
+            {
+                continue;
+            }
+
+            if (myGetTransaction(it->first.txhash, ntx, blkHash))
+            {
+                COptCCParams p, m;
+                CReserveTransfer rt;
+                if (ntx.vout[it->first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.evalCode == EVAL_RESERVE_TRANSFER &&
+                    p.vData.size() > 1 && (rt = CReserveTransfer(p.vData[0])).IsValid() &&
+                    (m = COptCCParams(p.vData[1])).IsValid() &&
+                    (nofilter || ((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID) == chainFilter) &&
+                    (rt.flags & flags) == flags)
+                {
+                    inputDescriptors.insert(std::make_pair(std::make_pair(it->first.blockHeight, (rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID),
                                                 std::make_pair(CInputDescriptor(ntx.vout[it->first.index].scriptPubKey, ntx.vout[it->first.index].nValue, CTxIn(COutPoint(it->first.txhash, it->first.index))),
                                                                rt)));
                 }

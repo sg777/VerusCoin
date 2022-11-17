@@ -24,6 +24,7 @@
 #include "pbaas/crosschainrpc.h"
 #include "pbaas/reserves.h"
 #include "mmr.h"
+#include "lrucache.h"
 
 #include <boost/algorithm/string.hpp>
 
@@ -787,10 +788,8 @@ public:
     std::map<uint160, CPBaaSMergeMinedChainData> mergeMinedChains;
     std::multimap<arith_uint256, CPBaaSMergeMinedChainData *> mergeMinedTargets;
 
-    std::map<uint160, std::pair<CCurrencyDefinition, const CGateway *>> gateways;       // gateway currencies, which bridge to other blockchains/systems
-
-    // currency definition cache, needs LRU
-    std::map<uint160, CCurrencyDefinition> currencyDefCache;                            // protected by cs_main, which is used for lookup
+    LRUCache<uint160, CCurrencyDefinition> currencyDefCache;        // protected by cs_main, so doesn't need sync
+    LRUCache<std::tuple<uint160, uint32_t, bool>, CCoinbaseCurrencyState> currencyStateCache; // cached currency states @ heights + updated flag
 
     // make earned notarizations for one or more notary chains
     std::map<uint160, CNotarySystemInfo> notarySystems;
@@ -811,7 +810,16 @@ public:
     CCriticalSection cs_mergemining;
     CSemaphore sem_submitthread;
 
-    CConnectedChains() : lastBlockHeight(0), readyToStart(0), sem_submitthread(0), earnedNotarizationHeight(0), dirty(0), lastSubmissionFailed(0) {}
+    CConnectedChains() :
+        currencyDefCache(3000, 0.1F, false),
+        currencyStateCache(1000, 0.1F, false),
+        lastBlockHeight(0),
+        readyToStart(false),
+        earnedNotarizationHeight(0),
+        earnedNotarizationIndex(0),
+        dirty(false),
+        lastSubmissionFailed(false),
+        sem_submitthread(0) {}
 
     arith_uint256 LowestTarget()
     {
@@ -937,6 +945,17 @@ public:
                                      CCurrencyValueMap &newReserveDeposits,
                                      CCurrencyValueMap &exportBurn);
 
+    static std::vector<ChainTransferData> CalcTxInputs(const CCurrencyDefinition &_curDef,
+                                                        bool &isClearLaunchExport,
+                                                        uint32_t sinceHeight,
+                                                        uint32_t &addHeight,
+                                                        uint32_t &nextHeight,
+                                                        uint32_t untilHeight,
+                                                        uint32_t nHeight,
+                                                        int &curIDExports,
+                                                        int &curCurrencyExports,
+                                                        const std::multimap<uint32_t, ChainTransferData> &_txInputs);
+
     bool CreateNextExport(const CCurrencyDefinition &_curDef,
                           const std::multimap<uint32_t, ChainTransferData> &txInputs,
                           const std::vector<CInputDescriptor> &priorExports,
@@ -983,21 +1002,6 @@ public:
     CCurrencyDefinition &ThisChain()
     {
         return thisChain;
-    }
-
-    const std::map<uint160, std::pair<CCurrencyDefinition, const CGateway *>> &Gateways() const
-    {
-        return gateways;
-    }
-
-    std::pair<CCurrencyDefinition, const CGateway *> GetGateway(const uint160 &gatewayID) const
-    {
-        auto it = gateways.find(gatewayID);
-        if (it != gateways.end())
-        {
-            return it->second;
-        }
-        return std::make_pair(CCurrencyDefinition(), nullptr);
     }
 
     int GetThisChainPort() const;
