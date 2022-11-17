@@ -6157,6 +6157,18 @@ bool EntropyCoinFlip(const uint160 &conditionID, uint32_t nHeight)
     return UintToArith256(hw.GetHash()).GetLow64() & 1;
 }
 
+bool IsMaxed(const std::map<uint160, std::pair<int, int>> &maxTrackerMap)
+{
+    for (auto &oneCheck : maxTrackerMap)
+    {
+        if (oneCheck.second.second >= oneCheck.second.first)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDefinition &_curDef,
                                                                 bool &isClearLaunchExport,
                                                                 uint32_t sinceHeight,
@@ -6179,6 +6191,11 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
     int maxCurrencyExports = _curDef.proofProtocol == _curDef.PROOF_ETHNOTARIZATION ?
                                                 CCurrencyDefinition::MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK :
                                                 CCurrencyDefinition::MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK;
+
+    // .first = gateway, .second = {max, curtotal}
+    std::map<uint160, std::pair<int, int>> secondaryTransfers;
+    std::map<uint160, std::pair<int, int>> secondaryCurrencyExports;
+    std::map<uint160, std::pair<int, int>> secondaryIDExports;
 
     for (auto it = _txInputs.begin(); it != _txInputs.end(); it++)
     {
@@ -6205,7 +6222,16 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
                 break;
             }
 
-            if (!isClearLaunchExport && (txInputs.size() >= CCrossChainExport::MIN_INPUTS || (oneInput.first - sinceHeight) >= CCrossChainExport::MIN_BLOCKS))
+            // if we qualify, drop in and find the correct boundary
+            if (!isClearLaunchExport &&
+                (txInputs.size() >= CCrossChainExport::MIN_INPUTS ||
+                 (oneInput.first - sinceHeight) >= CCrossChainExport::MIN_BLOCKS ||
+                 txInputs.size() >= maxInputs ||
+                 curIDExports >= maxIDExports ||
+                 curCurrencyExports >= maxCurrencyExports ||
+                 IsMaxed(secondaryTransfers) ||
+                 IsMaxed(secondaryCurrencyExports) ||
+                 IsMaxed(secondaryIDExports)))
             {
                 // if we have one or more empty blocks between the next block with transfers, go ahead and process
                 if (txInputs.size() && oneInput.first != (addHeight + 1))
@@ -6233,7 +6259,12 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
                     break;
                 }
 
-                if (txInputs.size() > maxInputs || curIDExports > maxIDExports || curCurrencyExports > maxCurrencyExports)
+                if (txInputs.size() > maxInputs ||
+                    curIDExports > maxIDExports ||
+                    curCurrencyExports > maxCurrencyExports ||
+                    IsMaxed(secondaryTransfers) ||
+                    IsMaxed(secondaryCurrencyExports) ||
+                    IsMaxed(secondaryIDExports))
                 {
                     // we exceed the maximum, so we separate from the last and make the
                     // export out of one less than we currently have
@@ -6261,13 +6292,53 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
         }
 
         // figure out if this is a cross-chain export of identity or currency
-        if (std::get<2>(oneInput.second).IsCurrencyExport())
+        CReserveTransfer rt(std::get<2>(oneInput.second));
+
+        bool checkSecondLeg = rt.HasNextLeg() && rt.destination.gatewayID != ASSETCHAINS_CHAINID;
+
+        if (checkSecondLeg)
+        {
+            CCurrencyDefinition secondaryCur;
+            auto rtIt = secondaryTransfers.find(rt.destination.gatewayID);
+            if (rtIt != secondaryTransfers.end())
+            {
+                rtIt->second.second++;
+            }
+            else
+            {
+                secondaryCur = ConnectedChains.GetCachedCurrency(rt.destination.gatewayID);
+                if (secondaryCur.IsValid() && (secondaryCur.IsPBaaSChain() || secondaryCur.IsGateway()))
+                {
+                    secondaryTransfers[rt.destination.gatewayID] = {secondaryCur.MaxTransferExportCount(), 1};
+                    secondaryIDExports[rt.destination.gatewayID] = {secondaryCur.MaxIdentityDefinitionExportCount(), 0};
+                    secondaryCurrencyExports[rt.destination.gatewayID] = {secondaryCur.MaxCurrencyDefinitionExportCount(), 0};
+                }
+            }
+        }
+
+        if (rt.IsCurrencyExport())
         {
             curCurrencyExports++;
+            if (checkSecondLeg)
+            {
+                auto rtIt = secondaryIDExports.find(rt.destination.gatewayID);
+                if (rtIt != secondaryIDExports.end())
+                {
+                    rtIt->second.second++;
+                }
+            }
         }
-        else if (std::get<2>(oneInput.second).IsIdentityExport())
+        else if (rt.IsIdentityExport())
         {
             curIDExports++;
+            if (checkSecondLeg)
+            {
+                auto rtIt = secondaryCurrencyExports.find(rt.destination.gatewayID);
+                if (rtIt != secondaryCurrencyExports.end())
+                {
+                    rtIt->second.second++;
+                }
+            }
         }
 
         txInputs.push_back(oneInput.second);
