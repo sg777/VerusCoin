@@ -906,80 +906,80 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         }
     }
 
-    if (!isPreSync)
+    if (!(height == 1 || ccx.IsChainDefinition()))
     {
-        if (height <= ccx.sourceHeightEnd)
+        if (!isPreSync)
         {
-            if (LogAcceptCategory("crosschainexports"))
-            {
-                printf("%s: Invalid export with sourceHeightEnd greater than or equal to height of block\n", __func__);
-                LogPrintf("%s: Invalid export with sourceHeightEnd greater than or equal to height of block\n", __func__);
-            }
-            return false;
-        }
-        // after launch, the fee recipient must be the first recipient of the coinbase reward for the last
-        // block in the export sequence
-        CBlock block;
-        CBlockIndex* pblockindex = chainActive[ccx.sourceHeightEnd];
-
-        if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus(), 1))
-        {
-            if (LogAcceptCategory("crosschainexports"))
-            {
-                printf("%s: Unable to read block from disk for fee recipient\n", __func__);
-                LogPrintf("%s: Unable to read block from disk for fee recipient\n", __func__);
-            }
-            return false;
-        }
-
-        std::vector<CTxDestination> addresses;
-        int nRequired;
-        COptCCParams frP;
-        txnouttype txOutType;
-        if (block.vtx.size() &&
-            block.vtx[0].vout.size() &&
-            ExtractDestinations(block.vtx[0].vout[0].scriptPubKey, txOutType, addresses, nRequired) &&
-            addresses.size() &&
-            nRequired == 1)
-        {
-            CTxDestination feeRecipient = GetCompatibleAuxDestination(ccx.exporter, CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR);
-            if (block.vtx[0].vout[0].scriptPubKey.IsPayToCryptoCondition(frP) && frP.evalCode != EVAL_NONE)
-            {
-                CCcontract_info CC;
-                CCcontract_info *cp;
-
-                cp = CCinit(&CC, frP.evalCode);
-                CTxDestination evalPKH = CPubKey(ParseHex(CC.CChexstr)).GetID();
-
-                // first non-default address is the fee recipient
-                for (auto &oneDest : addresses)
-                {
-                    if (oneDest == evalPKH || oneDest.which() == COptCCParams::ADDRTYPE_INVALID || oneDest.which() == COptCCParams::ADDRTYPE_INDEX)
-                    {
-                        continue;
-                    }
-                    feeRecipient = oneDest;
-                    break;
-                }
-            }
-            else
-            {
-                feeRecipient = addresses[0];
-            }
-            if (feeRecipient != GetCompatibleAuxDestination(ccx.exporter, CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR))
+            if (height <= ccx.sourceHeightEnd)
             {
                 if (LogAcceptCategory("crosschainexports"))
                 {
-                    printf("%s: Invalid fee recipient for export\n", __func__);
-                    LogPrintf("%s: Invalid fee recipient for export\n", __func__);
+                    printf("%s: Invalid export with sourceHeightEnd greater than or equal to height of block\n", __func__);
+                    LogPrintf("%s: Invalid export with sourceHeightEnd greater than or equal to height of block\n", __func__);
                 }
                 return false;
             }
-        }
-    }
+            // after launch, the fee recipient must be the first recipient of the coinbase reward for the last
+            // block in the export sequence
+            CBlock block;
+            CBlockIndex* pblockindex = chainActive[ccx.sourceHeightEnd];
 
-    if (!(height == 1 || ccx.IsChainDefinition()))
-    {
+            if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus(), 1))
+            {
+                if (LogAcceptCategory("crosschainexports"))
+                {
+                    printf("%s: Unable to read block from disk for fee recipient\n", __func__);
+                    LogPrintf("%s: Unable to read block from disk for fee recipient\n", __func__);
+                }
+                return false;
+            }
+
+            std::vector<CTxDestination> addresses;
+            int nRequired;
+            COptCCParams frP;
+            txnouttype txOutType;
+            if (block.vtx.size() &&
+                block.vtx[0].vout.size() &&
+                ExtractDestinations(block.vtx[0].vout[0].scriptPubKey, txOutType, addresses, nRequired) &&
+                addresses.size() &&
+                nRequired == 1)
+            {
+                CTxDestination feeRecipient = GetCompatibleAuxDestination(ccx.exporter, CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR);
+                if (block.vtx[0].vout[0].scriptPubKey.IsPayToCryptoCondition(frP) && frP.evalCode != EVAL_NONE)
+                {
+                    CCcontract_info CC;
+                    CCcontract_info *cp;
+
+                    cp = CCinit(&CC, frP.evalCode);
+                    CTxDestination evalPKH = CPubKey(ParseHex(CC.CChexstr)).GetID();
+
+                    // first non-default address is the fee recipient
+                    for (auto &oneDest : addresses)
+                    {
+                        if (oneDest == evalPKH || oneDest.which() == COptCCParams::ADDRTYPE_INVALID || oneDest.which() == COptCCParams::ADDRTYPE_INDEX)
+                        {
+                            continue;
+                        }
+                        feeRecipient = oneDest;
+                        break;
+                    }
+                }
+                else
+                {
+                    feeRecipient = addresses[0];
+                }
+                if (feeRecipient != GetCompatibleAuxDestination(ccx.exporter, CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR))
+                {
+                    if (LogAcceptCategory("crosschainexports"))
+                    {
+                        printf("%s: Invalid fee recipient for export\n", __func__);
+                        LogPrintf("%s: Invalid fee recipient for export\n", __func__);
+                    }
+                    return false;
+                }
+            }
+        }
+
         if (notarization.IsValid())
         {
             if (!notarization.IsPreLaunch())
