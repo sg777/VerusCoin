@@ -2399,6 +2399,19 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                         if (destCurrency.SystemOrGatewayID() != ASSETCHAINS_CHAINID ||
                                             (secondLegSystem.IsValid() && secondLegSystem.GetID() != ASSETCHAINS_CHAINID))
                                         {
+                                            bool checkSecondLeg = secondLegSystem.IsValid() &&
+                                                                    secondLegSystem.SystemOrGatewayID() != ASSETCHAINS_CHAINID &&
+                                                                    secondLegSystem.SystemOrGatewayID() != destCurrency.SystemOrGatewayID();
+                                            if (checkSecondLeg)
+                                            {
+                                                uint160 secondLegID = secondLegSystem.SystemOrGatewayID();
+                                                if ((++tmpExportTransfers[secondLegID] + exportTransferCount[secondLegID]) > secondLegSystem.MaxTransferExportCount())
+                                                {
+                                                    disqualified = true;
+                                                    break;
+                                                }
+                                            }
+
                                             if (rt.IsCurrencyExport())
                                             {
                                                 if (destCurrency.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
@@ -2411,9 +2424,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                                     }
                                                     tmpCurrencyDestAndExport.insert(checkKey);
                                                 }
-                                                if (secondLegSystem.IsValid() &&
-                                                    secondLegSystem.SystemOrGatewayID() != ASSETCHAINS_CHAINID &&
-                                                    secondLegSystem.SystemOrGatewayID() != destCurrency.SystemOrGatewayID())
+                                                if (checkSecondLeg)
                                                 {
                                                     std::pair<uint160, uint160> checkKey({secondLegSystem.SystemOrGatewayID(), rt.FirstCurrency()});
                                                     if (!isImport && (currencyDestAndExport.count(checkKey) || tmpCurrencyDestAndExport.count(checkKey)))
@@ -2424,8 +2435,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                                     tmpCurrencyDestAndExport.insert(checkKey);
 
                                                     uint160 secondLegID = secondLegSystem.SystemOrGatewayID();
-                                                    if ((++tmpExportTransfers[secondLegID] + exportTransferCount[secondLegID]) > secondLegSystem.MaxTransferExportCount() ||
-                                                        ((++tmpCurrencyExportTransfers[secondLegID] + currencyExportTransferCount[secondLegID]) > secondLegSystem.MaxCurrencyDefinitionExportCount()))
+                                                    if ((++tmpCurrencyExportTransfers[secondLegID] + currencyExportTransferCount[secondLegID]) > secondLegSystem.MaxCurrencyDefinitionExportCount())
                                                     {
                                                         disqualified = true;
                                                         break;
@@ -2444,9 +2454,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                                     }
                                                     tmpIDDestAndExport.insert(checkKey);
                                                 }
-                                                if (secondLegSystem.IsValid() &&
-                                                    secondLegSystem.SystemOrGatewayID() != ASSETCHAINS_CHAINID &&
-                                                    secondLegSystem.SystemOrGatewayID() != destCurrency.SystemOrGatewayID())
+                                                if (checkSecondLeg)
                                                 {
                                                     std::pair<uint160, uint160> checkKey({secondLegSystem.SystemOrGatewayID(), GetDestinationID(TransferDestinationToDestination(rt.destination))});
                                                     if (!isImport && (idDestAndExport.count(checkKey) || tmpIDDestAndExport.count(checkKey)))
@@ -2457,8 +2465,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                                     tmpIDDestAndExport.insert(checkKey);
 
                                                     uint160 secondLegID = secondLegSystem.SystemOrGatewayID();
-                                                    if ((++tmpExportTransfers[secondLegID] + exportTransferCount[secondLegID]) > secondLegSystem.MaxTransferExportCount() ||
-                                                        ((++tmpIdentityExportTransfers[secondLegID] + identityExportTransferCount[secondLegID]) > secondLegSystem.MaxIdentityDefinitionExportCount()))
+                                                    if ((++tmpIdentityExportTransfers[secondLegID] + identityExportTransferCount[secondLegID]) > secondLegSystem.MaxIdentityDefinitionExportCount())
                                                     {
                                                         disqualified = true;
                                                         break;
