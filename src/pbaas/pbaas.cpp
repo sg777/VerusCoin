@@ -803,6 +803,13 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         if (ccx.reserveTransfers.size() ||
             reserveTransfers.size() != txInputVec.size())
         {
+            if (LogAcceptCategory("crosschainexports"))
+            {
+                printf("%s: mismatch transfer sizes: ccx.reserveTransfers.size(): %ld, reserveTransfers.size(): %ld, txInputVec.size(): %ld\n",
+                       __func__, ccx.reserveTransfers.size(), reserveTransfers.size(), txInputVec.size());
+                LogPrintf("%s: mismatch transfer sizes: ccx.reserveTransfers.size(): %ld, reserveTransfers.size(): %ld, txInputVec.size(): %ld\n",
+                       __func__, ccx.reserveTransfers.size(), reserveTransfers.size(), txInputVec.size());
+            }
             return state.Error("Export is not exporting all cross chain transfers as required by protocol");
         }
 
@@ -6182,15 +6189,15 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
 {
     std::vector<ChainTransferData> txInputs;
 
-    int maxInputs = _curDef.proofProtocol == _curDef.PROOF_ETHNOTARIZATION ?
-                                                CCurrencyDefinition::MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK :
-                                                CCurrencyDefinition::MAX_TRANSFER_EXPORTS_PER_BLOCK;
-    int maxIDExports = _curDef.proofProtocol == _curDef.PROOF_ETHNOTARIZATION ?
-                                                CCurrencyDefinition::MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK :
-                                                CCurrencyDefinition::MAX_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK;
-    int maxCurrencyExports = _curDef.proofProtocol == _curDef.PROOF_ETHNOTARIZATION ?
-                                                CCurrencyDefinition::MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK :
-                                                CCurrencyDefinition::MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK;
+    int maxInputs = _curDef.MaxTransferExportCount();
+    int maxIDExports = _curDef.MaxIdentityDefinitionExportCount();
+    int maxCurrencyExports = _curDef.MaxCurrencyDefinitionExportCount();
+
+
+
+
+
+
 
     // .first = gateway, .second = {max, curtotal}
     std::map<uint160, std::pair<int, int>> secondaryTransfers;

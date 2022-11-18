@@ -159,6 +159,7 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
         exportNotarization = std::get<1>(exportInfoCached);
         reserveTransfers = std::get<2>(exportInfoCached);
         hashType = std::get<3>(exportInfoCached);
+        return true;
     }
 
     CNativeHashWriter hw(hashType);

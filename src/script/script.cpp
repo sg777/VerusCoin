@@ -1313,8 +1313,8 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                         {
                             if (oneRT.IsCurrencyExport())
                             {
-                                // store the unbound and bound currency export index
-                                // for each currency
+                                // this provides a way to find all exports of a specific currency or generally all exports
+                                // that's why it uses sourceSystemID, not dest
                                 destinations.insert(CTransferDestination::GetBoundCurrencyDefinitionExportKey(ccx.sourceSystemID, oneRT.FirstCurrency()));
                                 destinations.insert(CTransferDestination::CurrencyDefinitionExportKeyToSystem(ccx.sourceSystemID));
                             }
