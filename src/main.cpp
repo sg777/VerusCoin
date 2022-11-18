@@ -4054,9 +4054,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                                 printf("%s: invalid or inaccessible second leg destination system in reserve transfer in output %d on tx: %s\n", __func__, j, jsonTx.write(1,2).c_str());
                                                 LogPrintf("%s: invalid or inaccessible second leg destination system in reserve transfer in output %d on tx: %s\n", __func__, j, jsonTx.write(1,2).c_str());
                                             }
-                                            txesToRemove.push_back(tx);
-                                            disqualified = true;
-                                            break;
+                                            return state.DoS(10, error("%s: invalid system for second leg of transfer to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-invalid-system");
                                         }
                                     }
 
