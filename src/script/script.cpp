@@ -210,9 +210,9 @@ uint160 CTransferDestination::GetBoundCurrencyDefinitionExportKey(const uint160 
 
 CTxDestination GetCompatibleAuxDestination(const CTransferDestination &transferDest, CCurrencyDefinition::EProofProtocol addressProtocol)
 {
-    for (int i = 0; i < transferDest.AuxDestCount(); i++)
+    for (int i = -1; i < transferDest.AuxDestCount(); i++)
     {
-        switch (transferDest.GetAuxDest(i).TypeNoFlags())
+        switch (i == -1 ? transferDest.TypeNoFlags() : transferDest.GetAuxDest(i).TypeNoFlags())
         {
             case CTransferDestination::DEST_PKH:
             case CTransferDestination::DEST_PK:
@@ -222,7 +222,7 @@ CTxDestination GetCompatibleAuxDestination(const CTransferDestination &transferD
             {
                 if (addressProtocol != CCurrencyDefinition::PROOF_ETHNOTARIZATION)
                 {
-                    return TransferDestinationToDestination(transferDest.GetAuxDest(i));
+                    return TransferDestinationToDestination(i == -1 ? transferDest : transferDest.GetAuxDest(i));
                 }
                 break;
             }
@@ -231,7 +231,7 @@ CTxDestination GetCompatibleAuxDestination(const CTransferDestination &transferD
             {
                 if (addressProtocol == CCurrencyDefinition::PROOF_ETHNOTARIZATION)
                 {
-                    return TransferDestinationToDestination(transferDest.GetAuxDest(i));
+                    return TransferDestinationToDestination(i == -1 ? transferDest : transferDest.GetAuxDest(i));
                 }
                 break;
             }

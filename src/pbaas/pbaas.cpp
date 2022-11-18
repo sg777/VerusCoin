@@ -766,8 +766,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         // verify all currency totals
         multimap<std::pair<uint32_t, uint160>, std::pair<CInputDescriptor, CReserveTransfer>> inputDescriptors;
 
-        // TODO: HARDENING - if source height start is 0 and this covers an actual range of
-        // potential transfers, we may skip enforcement of inclusion. ensure we use the correct condition
+        // ensure we use the correct condition
         // and that there is no risk of missing valid transfers with the check we end up with here
         if (ccx.sourceHeightStart > 0 &&
             (!GetChainTransfersUnspentBy(inputDescriptors, ccx.destCurrencyID, ccx.sourceHeightStart, ccx.sourceHeightEnd, height) ||
@@ -906,62 +905,138 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             totalCurrencyExported.valueMap[sourceDef.GetID()] += sourceDef.LaunchFeeImportShare(thisDef.ChainOptions());
         }
     }
-    if (!(height == 1 || ccx.IsChainDefinition()) && notarization.IsValid())
+
+    if (!isPreSync)
     {
-        if (!notarization.IsPreLaunch())
+        if (height <= ccx.sourceHeightEnd)
         {
-            return state.Error("Only prelaunch exports should have valid notarizations");
+            if (LogAcceptCategory("crosschainexports"))
+            {
+                printf("%s: Invalid export with sourceHeightEnd greater than or equal to height of block\n", __func__);
+                LogPrintf("%s: Invalid export with sourceHeightEnd greater than or equal to height of block\n", __func__);
+            }
+            return false;
         }
-        CTransaction prevNotTx;
-        uint256 blkHash;
-        CPBaaSNotarization pbn;
-        COptCCParams prevP;
-        if (notarization.prevNotarization.hash.IsNull() ||
-            !myGetTransaction(notarization.prevNotarization.hash, prevNotTx, blkHash) ||
-            notarization.prevNotarization.n < 0 ||
-            notarization.prevNotarization.n >= prevNotTx.vout.size() ||
-            !prevNotTx.vout[notarization.prevNotarization.n].scriptPubKey.IsPayToCryptoCondition(prevP) ||
-            !prevP.IsValid() ||
-            prevP.evalCode != EVAL_ACCEPTEDNOTARIZATION ||
-            !prevP.vData.size() ||
-            !(pbn = CPBaaSNotarization(prevP.vData[0])).IsValid() ||
-            pbn.currencyID != notarization.currencyID)
-        {
-            return state.Error("Non-definition exports with valid notarizations must have prior notarizations");
-        }
-        CCurrencyDefinition destCurrency = ConnectedChains.GetCachedCurrency(ccx.destCurrencyID);
+        // after launch, the fee recipient must be the first recipient of the coinbase reward for the last
+        // block in the export sequence
+        CBlock block;
+        CBlockIndex* pblockindex = chainActive[ccx.sourceHeightEnd];
 
-        if (ccx.sourceSystemID != ASSETCHAINS_CHAINID || !destCurrency.IsValid())
+        if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus(), 1))
         {
-            return state.Error("Invalid export source system or destination currency");
+            if (LogAcceptCategory("crosschainexports"))
+            {
+                printf("%s: Unable to read block from disk for fee recipient\n", __func__);
+                LogPrintf("%s: Unable to read block from disk for fee recipient\n", __func__);
+            }
+            return false;
         }
 
-        uint256 transferHash;
-        CPBaaSNotarization checkNotarization;
-        std::vector<CTxOut> outputs;
-        CCurrencyValueMap importedCurrency, gatewayDepositsIn, spentCurrencyOut;
-        if (!pbn.NextNotarizationInfo(ConnectedChains.ThisChain(),
-                                      destCurrency,
-                                      ccx.sourceHeightStart - 1,
-                                      notarization.notarizationHeight,
-                                      reserveTransfers,
-                                      transferHash,
-                                      checkNotarization,
-                                      outputs,
-                                      importedCurrency,
-                                      gatewayDepositsIn,
-                                      spentCurrencyOut,
-                                      ccx.exporter) ||
-            !checkNotarization.IsValid() ||
-            (checkNotarization.IsRefunding() != notarization.IsRefunding()) ||
-            ::AsVector(checkNotarization.currencyState) != ::AsVector(notarization.currencyState))
+        std::vector<CTxDestination> addresses;
+        int nRequired;
+        COptCCParams frP;
+        txnouttype txOutType;
+        if (block.vtx.size() &&
+            block.vtx[0].vout.size() &&
+            ExtractDestinations(block.vtx[0].vout[0].scriptPubKey, txOutType, addresses, nRequired) &&
+            addresses.size() &&
+            nRequired == 1)
         {
-            return state.Error("Invalid notarization mutation\n");
-        }
+            CTxDestination feeRecipient = GetCompatibleAuxDestination(ccx.exporter, CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR);
+            if (block.vtx[0].vout[0].scriptPubKey.IsPayToCryptoCondition(frP) && frP.evalCode != EVAL_NONE)
+            {
+                CCcontract_info CC;
+                CCcontract_info *cp;
 
-        if (ccx.totalFees != CCurrencyValueMap(notarization.currencyState.currencies, notarization.currencyState.fees))
+                cp = CCinit(&CC, frP.evalCode);
+                CTxDestination evalPKH = CPubKey(ParseHex(CC.CChexstr)).GetID();
+
+                // first non-default address is the fee recipient
+                for (auto &oneDest : addresses)
+                {
+                    if (oneDest == evalPKH || oneDest.which() == COptCCParams::ADDRTYPE_INVALID || oneDest.which() == COptCCParams::ADDRTYPE_INDEX)
+                    {
+                        continue;
+                    }
+                    feeRecipient = oneDest;
+                    break;
+                }
+            }
+            else
+            {
+                feeRecipient = addresses[0];
+            }
+            if (feeRecipient != GetCompatibleAuxDestination(ccx.exporter, CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR))
+            {
+                if (LogAcceptCategory("crosschainexports"))
+                {
+                    printf("%s: Invalid fee recipient for export\n", __func__);
+                    LogPrintf("%s: Invalid fee recipient for export\n", __func__);
+                }
+                return false;
+            }
+        }
+    }
+
+    if (!(height == 1 || ccx.IsChainDefinition()))
+    {
+        if (notarization.IsValid())
         {
-            return state.Error("Export fee estimate doesn't match notarization - may only be result of async loading and not error");
+            if (!notarization.IsPreLaunch())
+            {
+                return state.Error("Only prelaunch exports should have valid notarizations");
+            }
+            CTransaction prevNotTx;
+            uint256 blkHash;
+            CPBaaSNotarization pbn;
+            COptCCParams prevP;
+            if (notarization.prevNotarization.hash.IsNull() ||
+                !myGetTransaction(notarization.prevNotarization.hash, prevNotTx, blkHash) ||
+                notarization.prevNotarization.n < 0 ||
+                notarization.prevNotarization.n >= prevNotTx.vout.size() ||
+                !prevNotTx.vout[notarization.prevNotarization.n].scriptPubKey.IsPayToCryptoCondition(prevP) ||
+                !prevP.IsValid() ||
+                prevP.evalCode != EVAL_ACCEPTEDNOTARIZATION ||
+                !prevP.vData.size() ||
+                !(pbn = CPBaaSNotarization(prevP.vData[0])).IsValid() ||
+                pbn.currencyID != notarization.currencyID)
+            {
+                return state.Error("Non-definition exports with valid notarizations must have prior notarizations");
+            }
+            CCurrencyDefinition destCurrency = ConnectedChains.GetCachedCurrency(ccx.destCurrencyID);
+
+            if (ccx.sourceSystemID != ASSETCHAINS_CHAINID || !destCurrency.IsValid())
+            {
+                return state.Error("Invalid export source system or destination currency");
+            }
+
+            uint256 transferHash;
+            CPBaaSNotarization checkNotarization;
+            std::vector<CTxOut> outputs;
+            CCurrencyValueMap importedCurrency, gatewayDepositsIn, spentCurrencyOut;
+            if (!pbn.NextNotarizationInfo(ConnectedChains.ThisChain(),
+                                        destCurrency,
+                                        ccx.sourceHeightStart - 1,
+                                        notarization.notarizationHeight,
+                                        reserveTransfers,
+                                        transferHash,
+                                        checkNotarization,
+                                        outputs,
+                                        importedCurrency,
+                                        gatewayDepositsIn,
+                                        spentCurrencyOut,
+                                        ccx.exporter) ||
+                !checkNotarization.IsValid() ||
+                (checkNotarization.IsRefunding() != notarization.IsRefunding()) ||
+                ::AsVector(checkNotarization.currencyState) != ::AsVector(notarization.currencyState))
+            {
+                return state.Error("Invalid notarization mutation\n");
+            }
+
+            if (ccx.totalFees != CCurrencyValueMap(notarization.currencyState.currencies, notarization.currencyState.fees))
+            {
+                return state.Error("Export fee estimate doesn't match notarization - may only be result of async loading and not error");
+            }
         }
     }
     if (ccx.totalAmounts != totalCurrencyExported)
@@ -6469,28 +6544,55 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         {
             return true;
         }
-        // after launch, the fee recipient must be the first recipient of the coinbase reward for the last
-        // block in the export sequence
-        CBlock block;
-        CBlockIndex* pblockindex = chainActive[addHeight];
+    }
 
-        if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus(), 1))
+    // after launch, the fee recipient must be the first recipient of the coinbase reward for the last
+    // block in the export sequence
+    CBlock block;
+    CBlockIndex* pblockindex = chainActive[addHeight];
+
+    if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus(), 1))
+    {
+        if (LogAcceptCategory("crosshainexports"))
         {
-            if (LogAcceptCategory("crosshainexports"))
-            {
-                printf("%s: Unable to read block from disk for fee recipient\n", __func__);
-                LogPrintf("%s: Unable to read block from disk for fee recipient\n", __func__);
-            }
-            return false;
+            printf("%s: Unable to read block from disk to get fee recipient from coinbase\n", __func__);
+            LogPrintf("%s: Unable to read block from disk to get fee recipient from coinbase\n", __func__);
         }
+        return false;
+    }
 
-        CTxDestination addressRet;
-        if (!block.vtx.size() ||
-            !block.vtx[0].vout.size() ||
-            !ExtractDestination(block.vtx[0].vout[0].scriptPubKey, addressRet) ||
-            addressRet.which() == COptCCParams::ADDRTYPE_INVALID)
+    std::vector<CTxDestination> addresses;
+    int nRequired;
+    COptCCParams frP;
+    txnouttype txOutType;
+    if (block.vtx.size() &&
+        block.vtx[0].vout.size() &&
+        ExtractDestinations(block.vtx[0].vout[0].scriptPubKey, txOutType, addresses, nRequired) &&
+        addresses.size() &&
+        nRequired == 1)
+    {
+        if (block.vtx[0].vout[0].scriptPubKey.IsPayToCryptoCondition(frP) && frP.evalCode != EVAL_NONE)
         {
-            feeRecipient = DestinationToTransferDestination(addressRet);
+            CCcontract_info CC;
+            CCcontract_info *cp;
+
+            cp = CCinit(&CC, frP.evalCode);
+            CTxDestination evalPKH = CPubKey(ParseHex(CC.CChexstr)).GetID();
+
+            // first non-default address is the fee recipient
+            for (auto &oneDest : addresses)
+            {
+                if (oneDest == evalPKH || oneDest.which() == COptCCParams::ADDRTYPE_INVALID || oneDest.which() == COptCCParams::ADDRTYPE_INDEX)
+                {
+                    continue;
+                }
+                feeRecipient = DestinationToTransferDestination(oneDest);
+                break;
+            }
+        }
+        else
+        {
+            feeRecipient = DestinationToTransferDestination(addresses[0]);
         }
     }
 
