@@ -776,8 +776,8 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         }
 
         thisDef = ConnectedChains.GetCachedCurrency(ccx.destCurrencyID);
-        bool isClearLaunchExport = false;
-        uint32_t addHeight, nextHeight;
+        bool isClearLaunchExport = ccx.IsClearLaunch();
+        uint32_t addHeight = ccx.sourceHeightEnd, nextHeight = std::min(ccx.sourceHeightEnd + 2, height);
         int curIDExports = 0;
         int curCurrencyExports = 0;
 
@@ -789,7 +789,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
 
         std::vector<ChainTransferData> txInputVec = ConnectedChains.CalcTxInputs(thisDef,
                                                     isClearLaunchExport,
-                                                    ccx.sourceHeightStart,
+                                                    ccx.sourceHeightStart ? ccx.sourceHeightStart - 1 : 0,
                                                     addHeight,
                                                     nextHeight,
                                                     std::min(height, ccx.sourceHeightEnd + 2),
@@ -800,7 +800,8 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
 
         // the input vec should be the same as the export transfers
         if (ccx.reserveTransfers.size() ||
-            reserveTransfers.size() != txInputVec.size())
+            reserveTransfers.size() != txInputVec.size() ||
+            ccx.IsClearLaunch() != isClearLaunchExport)
         {
             if (LogAcceptCategory("crosschainexports"))
             {
@@ -809,7 +810,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                 LogPrintf("%s: mismatch transfer sizes: ccx.reserveTransfers.size(): %ld, reserveTransfers.size(): %ld, txInputVec.size(): %ld\n",
                        __func__, ccx.reserveTransfers.size(), reserveTransfers.size(), txInputVec.size());
             }
-            return state.Error("Export is not exporting all cross chain transfers as required by protocol");
+            return state.Error("Export is not exporting cross chain transfers correctly as required by protocol");
         }
 
         std::set<std::pair<uint256, int>> utxos;
@@ -6267,12 +6268,6 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
     int maxInputs = _curDef.MaxTransferExportCount();
     int maxIDExports = _curDef.MaxIdentityDefinitionExportCount();
     int maxCurrencyExports = _curDef.MaxCurrencyDefinitionExportCount();
-
-
-
-
-
-
 
     // .first = gateway, .second = {max, curtotal}
     std::map<uint160, std::pair<int, int>> secondaryTransfers;
