@@ -5303,7 +5303,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     CCurrencyValueMap checkAgainstInputs(spentCurrencyOut);
 
-    if (!newCurrencyState.IsRefunding() && !newCurrencyState.ValidateConversionLimits())
+    if (!newCurrencyState.IsRefunding() &&
+        (newCurrencyState.IsLaunchClear() || newCurrencyState.IsLaunchCompleteMarker()) &&
+        !newCurrencyState.ValidateConversionLimits())
     {
         // if this is the launch, we need to refund the currency
         if (newCurrencyState.IsLaunchClear() && newCurrencyState.IsPrelaunch())
