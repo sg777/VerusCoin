@@ -1135,8 +1135,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     // if this is the clear launch notarization after start, make the notarization and determine if we should launch or refund
     uint256 weakEntropy = proofRoots.count(sourceSystemID) ? proofRoots.find(sourceSystemID)->second.stateRoot : uint256();
 
-    // TODO: HARDENING ensure that the latest proof root of this chain is in on gateway
-
     if (destCurrency.launchSystemID == sourceSystemID &&
         destCurrency.startBlock &&
         ((thisIsLaunchSys && notaHeight <= (destCurrency.startBlock - 1)) ||
@@ -1196,7 +1194,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
                     // check our currency and any co-launch currency to determine our eligibility, as ALL
                     // co-launch currencies must launch for one to launch
-                    if (CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn) < CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert) ||
+                    if (coLaunchState.IsRefunding() ||
+                        !coLaunchState.ValidateConversionLimits() ||
+                        CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn) < CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert) ||
                         (coLaunchCurrency.IsFractional() &&
                          CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn).CanonicalMap().valueMap.size() != coLaunchCurrency.currencies.size()))
                     {
@@ -1281,6 +1281,19 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
         if (retVal)
         {
+            // if we have to refund due to launch validation failure, adjust
+            if (tempState.IsRefunding())
+            {
+                if (!newNotarization.IsRefunding())
+                {
+                    newNotarization.SetRefunding(true);
+                    newNotarization.currencyState.supply = 0;
+                    newNotarization.currencyState.reserves = std::vector<int64_t>(newNotarization.currencyState.reserves.size(), 0);
+                    newNotarization.currencyState.SetRefunding(true);
+                    destSystem = ConnectedChains.GetCachedCurrency(destCurrency.launchSystemID);
+                }
+            }
+
             //printf("%s: importedCurrency: %s\ngatewaysDepositsUsed: %s\n", __func__, importedCurrency.ToUniValue().write(1,2).c_str(), gatewayDepositsUsed.ToUniValue().write(1,2).c_str());
             importedCurrency.valueMap.clear();
             gatewayDepositsUsed.valueMap.clear();

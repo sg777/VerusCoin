@@ -629,6 +629,44 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
     return true;
 }
 
+// ensure that all conversions are within limits far enough away from int64 overflow to reduce risk of accidental overflow
+// to as close to zero as possible. any currency outside of these limits cannot launch, and imports that result in exceeding
+// these limits will refund conversions or fail if it is due to inadequate fee reserves.
+bool CCoinbaseCurrencyState::ValidateConversionLimits() const
+{
+    if (!IsFractional())
+    {
+        return true;
+    }
+    // 1) ensure that no conversion rate, either from reserve to basket or between reserves is negative or exceeds MAX_SUPPLY
+    // 2) ensure that 10x the transaction import fee is available in the native currency
+    std::vector<int64_t> pricesVec = PricesInReserve();
+    for (int i = 0; i < pricesVec.size(); i++)
+    {
+        if (pricesVec[i] <= 0 ||
+            pricesVec[i] > MAX_SUPPLY ||
+            conversionPrice[i] <= 0 ||
+            conversionPrice[i] > MAX_SUPPLY ||
+            viaConversionPrice[i] <= 0 ||
+            viaConversionPrice[i] > MAX_SUPPLY)
+        {
+            return false;
+        }
+    }
+    for (int i = 0; i < currencies.size(); i++)
+    {
+        auto targetPrices = TargetConversionPrices(currencies[i]);
+        for (auto onePrice : targetPrices.valueMap)
+        {
+            if (onePrice.second <= 0 || onePrice.second > MAX_SUPPLY)
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 // returns a currency map that is the price in each currency for the target currency specified
 // based on a given fractional currency state
 int64_t CCoinbaseCurrencyState::TargetConversionPrice(const uint160 &sourceCurrencyID, const uint160 &targetCurrencyID) const
@@ -3374,6 +3412,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                                                     const CTransferDestination &blockNotarizer,
                                                                     const uint256 &entropy)
 {
+    std::vector<CTxOut> vOldOutputs = vOutputs;
+
     // easy way to refer to return currency state or a dummy without conditionals
     CCoinbaseCurrencyState _newCurrencyState;
     if (!pNewCurrencyState)
@@ -5262,6 +5302,80 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     }
 
     CCurrencyValueMap checkAgainstInputs(spentCurrencyOut);
+
+    if (!newCurrencyState.IsRefunding() && !newCurrencyState.ValidateConversionLimits())
+    {
+        // if this is the launch, we need to refund the currency
+        if (newCurrencyState.IsLaunchClear() && newCurrencyState.IsPrelaunch())
+        {
+            CCoinbaseCurrencyState recursiveCurrencyState = importCurrencyState;
+            recursiveCurrencyState.supply = 0;
+            recursiveCurrencyState.reserves = std::vector<int64_t>(recursiveCurrencyState.reserves.size(), 0);
+            recursiveCurrencyState.SetRefunding(true);
+
+            // reset vOutputs to what they were before processing and recurse once
+            vOutputs = vOldOutputs;
+            importedCurrency.valueMap.clear();
+            gatewayDepositsIn.valueMap.clear();
+            spentCurrencyOut.valueMap.clear();
+            CCurrencyDefinition refundDef = ConnectedChains.GetCachedCurrency(importCurrencyDef.launchSystemID);
+            return AddReserveTransferImportOutputs(refundDef,
+                                                   refundDef,
+                                                   importCurrencyDef,
+                                                   recursiveCurrencyState,
+                                                   exportObjects,
+                                                   height,
+                                                   vOutputs,
+                                                   importedCurrency,
+                                                   gatewayDepositsIn,
+                                                   spentCurrencyOut,
+                                                   pNewCurrencyState,
+                                                   feeRecipient,
+                                                   blockNotarizer,
+                                                   entropy);
+        }
+        else if (newCurrencyState.IsLaunchCompleteMarker())
+        {
+            // unless all conversions are already refunded, refund them all and try again
+            bool notRefund = false;
+            std::vector<CReserveTransfer> refundedExports;
+            for (auto oneTransfer : exportObjects)
+            {
+                if (oneTransfer.IsRefund())
+                {
+                    refundedExports.push_back(oneTransfer);
+                }
+                else
+                {
+                    notRefund = true;
+                    refundedExports.push_back(oneTransfer.GetRefundTransfer());
+                }
+            }
+            if (notRefund)
+            {
+                // reset vOutputs to what they were before processing and recurse once
+                vOutputs = vOldOutputs;
+                importedCurrency.valueMap.clear();
+                gatewayDepositsIn.valueMap.clear();
+                spentCurrencyOut.valueMap.clear();
+                CCurrencyDefinition refundDef = ConnectedChains.GetCachedCurrency(importCurrencyDef.launchSystemID);
+                return AddReserveTransferImportOutputs(refundDef,
+                                                       refundDef,
+                                                       importCurrencyDef,
+                                                       importCurrencyState,
+                                                       refundedExports,
+                                                       height,
+                                                       vOutputs,
+                                                       importedCurrency,
+                                                       gatewayDepositsIn,
+                                                       spentCurrencyOut,
+                                                       pNewCurrencyState,
+                                                       feeRecipient,
+                                                       blockNotarizer,
+                                                       entropy);
+            }
+        }
+    }
 
     if (((ReserveInputs + newConvertedReservePool) - checkAgainstInputs).HasNegative())
     {

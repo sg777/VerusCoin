@@ -1530,6 +1530,8 @@ public:
 
     CCoinbaseCurrencyState(const CTransaction &tx, int *pOutIdx=NULL);
 
+    bool ValidateConversionLimits() const;
+
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
