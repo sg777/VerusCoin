@@ -2156,7 +2156,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
 
         // store export counts to ensure we don't exceed any limits
         std::set<uint160> newIDRegistrations;
-        std::map<uint160, int32_t> exportTransferCount;
+        std::map<uint160, std::pair<int32_t, int32_t> exportTransferCount;
         std::map<uint160, int32_t> currencyExportTransferCount;
         std::map<uint160, int32_t> identityExportTransferCount;
 
@@ -2168,7 +2168,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         std::set<std::tuple<uint160, uint160>> currencySecondLegExport;
 
         // we enforce the numeric limits on transactions in precheck exports
-        std::map<uint160, int32_t> tmpExportTransfers;
+        std::map<uint160, std::pair<int32_t, int32_t> tmpExportTransfers;
         std::map<uint160, int32_t> tmpCurrencyExportTransfers;
         std::map<uint160, int32_t> tmpIdentityExportTransfers;
 
@@ -2405,7 +2405,9 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                             if (checkSecondLeg)
                                             {
                                                 uint160 secondLegID = secondLegSystem.SystemOrGatewayID();
-                                                if ((++tmpExportTransfers[secondLegID] + exportTransferCount[secondLegID]) > secondLegSystem.MaxTransferExportCount())
+                                                if ((++tmpExportTransfers[secondLegID].first + exportTransferCount[secondLegID].first) > secondLegSystem.MaxTransferExportCount() ||
+                                                    ((tmpExportTransfers[secondLegID].second += oneOut.scriptPubKey.size()) +
+                                                        exportTransferCount[secondLegID].second) > secondLegSystem.MaxTransferExportSize())
                                                 {
                                                     disqualified = true;
                                                     break;
@@ -2475,6 +2477,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                         }
 
                                         if ((++tmpExportTransfers[destCurrencyID] + exportTransferCount[destCurrencyID]) > destSystem.MaxTransferExportCount() ||
+                                            ((tmpExportTransfers[secondLegID].second += oneOut.scriptPubKey.size()) +
+                                                        exportTransferCount[secondLegID].second) > secondLegSystem.MaxTransferExportSize()) ||
                                             (rt.IsCurrencyExport() && (++tmpCurrencyExportTransfers[destCurrencyID] + currencyExportTransferCount[destCurrencyID]) > destSystem.MaxCurrencyDefinitionExportCount()) ||
                                             (rt.IsIdentityExport() && (++tmpIdentityExportTransfers[destCurrencyID] + identityExportTransferCount[destCurrencyID]) > destSystem.MaxIdentityDefinitionExportCount()))
                                         {

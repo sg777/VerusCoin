@@ -1938,9 +1938,6 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                     outNum > eOutEnd &&
                     outNum <= (eOutEnd + cci.numOutputs))
                 {
-                    // TODO: HARDENING ensure that this currency is valid as an import from the source
-                    // system to this chain.
-                    //
                     isImportDefinition = true;
                     break;
                 }

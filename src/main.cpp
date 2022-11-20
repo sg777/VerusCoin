@@ -3857,7 +3857,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         prevCurrencyState.UpdateWithEmission(GetBlockSubsidy(nHeight, consensus));
         CCoinbaseCurrencyState currencyState = prevCurrencyState;
 
-        std::map<uint160, int32_t> exportTransferCount;
+        std::map<uint160, std::pair<int32_t, int32_t>> exportTransferCount;
         std::map<uint160, int32_t> currencyExportTransferCount;
         std::map<uint160, int32_t> identityExportTransferCount;
         bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_PBAAS;
@@ -4058,7 +4058,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                         }
                                     }
 
-                                    if (++exportTransferCount[destCurrencyID] > destSystem.MaxTransferExportCount())
+                                    if (++exportTransferCount[destCurrencyID].first > destSystem.MaxTransferExportCount() ||
+                                        (exportTransferCount[destCurrencyID].second += oneOut.scriptPubKey.size()) > destSystem.MaxTransferExportSize())
                                     {
                                         return state.DoS(10, error("%s: attempt to submit block with too many transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-transfers");
                                     }
@@ -4071,7 +4072,9 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                     if (checkSecondLeg)
                                     {
                                         secondLegID = secondLegSystem.SystemOrGatewayID();
-                                        if (secondLegID.IsNull() || ++exportTransferCount[secondLegID] > secondLegSystem.MaxTransferExportCount())
+                                        if (secondLegID.IsNull() ||
+                                            ++exportTransferCount[secondLegID].first > secondLegSystem.MaxTransferExportCount() ||
+                                            (exportTransferCount[secondLegID].second += oneOut.scriptPubKey.size()) > secondLegSystem.MaxTransferExportSize())
                                         {
                                             return state.DoS(10, error("%s: attempt to submit block with too many transfers exporting to %s", __func__, EncodeDestination(CIdentityID(secondLegID)).c_str()), REJECT_INVALID, "bad-txns-too-many-transfers");
                                         }

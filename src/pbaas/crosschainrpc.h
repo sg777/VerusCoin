@@ -465,9 +465,11 @@ public:
         MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 20,
         MAX_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK = 100,
         MAX_TRANSFER_EXPORTS_PER_BLOCK = 1000,
+        MAX_TRANSFER_EXPORTS_SIZE_PER_BLOCK = 400000,
         MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 1,
         MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK = 0,
         MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK = 50,
+        MAX_ETH_TRANSFER_EXPORTS_SIZE_PER_BLOCK = 100000,
         DEFAULT_BLOCK_NOTARIZATION_TIME = 600,      // default target time for block notarizations
         MIN_BLOCK_NOTARIZATION_BLOCKS = 2,          // minimum target blocks for notarization period
         MAX_NOTARIZATION_CONVERSION_PRICING_INTERVAL = 100,  // there must be a notarization with conversion at least 100 blocks before reserve transfer
@@ -875,6 +877,11 @@ public:
     int32_t MaxTransferExportCount() const
     {
         return proofProtocol == PROOF_ETHNOTARIZATION ? MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK : MAX_TRANSFER_EXPORTS_PER_BLOCK;
+    }
+
+    int32_t MaxTransferExportSize() const
+    {
+        return proofProtocol == PROOF_ETHNOTARIZATION ? MAX_ETH_TRANSFER_EXPORTS_SIZE_PER_BLOCK : MAX_TRANSFER_EXPORTS_SIZE_PER_BLOCK;
     }
 
     int32_t MaxCurrencyDefinitionExportCount() const
