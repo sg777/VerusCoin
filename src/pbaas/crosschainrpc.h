@@ -1059,7 +1059,7 @@ public:
     bool IsValid() const
     {
         return (nVersion != PBAAS_VERSION_INVALID) &&
-                // TODO: HARDENING - remove this comment at next reset before PBaaS mainnet (!notaries.size() || minNotariesConfirm > (notaries.size() >> 1)) &&
+                (!notaries.size() || minNotariesConfirm > (notaries.size() >> 1)) &&
                 !(options & ~OPTIONS_FLAG_MASK) &&
                 idReferralLevels <= MAX_ID_REFERRAL_LEVELS &&
                 name.size() > 0 &&
