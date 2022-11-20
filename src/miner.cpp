@@ -2536,7 +2536,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                         // update total counts
                         for (auto it = tmpExportTransfers.begin(); it != tmpExportTransfers.end(); it++)
                         {
-                            exportTransferCount[it->first] += it->second;
+                            exportTransferCount[it->first].first += it->second.first;
+                            exportTransferCount[it->first].second += it->second.second;
                         }
                         tmpExportTransfers.clear();
                         for (auto it = tmpCurrencyExportTransfers.begin(); it != tmpCurrencyExportTransfers.end(); it++)
