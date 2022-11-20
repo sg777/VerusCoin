@@ -732,7 +732,7 @@ bool CScript::IsSpendableOutputType(const COptCCParams &p) const
     bool isSpendable = true;
     if (!p.IsValid())
     {
-        return IsOpReturn();
+        return !IsOpReturn();
     }
     switch (p.evalCode)
     {
