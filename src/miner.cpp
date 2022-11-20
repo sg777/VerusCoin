@@ -2156,7 +2156,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
 
         // store export counts to ensure we don't exceed any limits
         std::set<uint160> newIDRegistrations;
-        std::map<uint160, std::pair<int32_t, int32_t> exportTransferCount;
+        std::map<uint160, std::pair<int32_t, int32_t>> exportTransferCount;
         std::map<uint160, int32_t> currencyExportTransferCount;
         std::map<uint160, int32_t> identityExportTransferCount;
 
@@ -2168,7 +2168,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         std::set<std::tuple<uint160, uint160>> currencySecondLegExport;
 
         // we enforce the numeric limits on transactions in precheck exports
-        std::map<uint160, std::pair<int32_t, int32_t> tmpExportTransfers;
+        std::map<uint160, std::pair<int32_t, int32_t>> tmpExportTransfers;
         std::map<uint160, int32_t> tmpCurrencyExportTransfers;
         std::map<uint160, int32_t> tmpIdentityExportTransfers;
 
