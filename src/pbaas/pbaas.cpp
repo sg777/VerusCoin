@@ -179,9 +179,8 @@ bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTra
 
         if (thisExport.IsSupplemental())
         {
-            // TODO: HARDENING - determine if there is any reason to protect this output from being spent. if we don't, ensure
-            // that it is unspent when spending it via protocol
-            return true;
+            // protect this output from being spent just to prevent transactions with no legitimate source
+            return false;
         }
 
         CCrossChainExport matchedExport;
@@ -1138,6 +1137,12 @@ bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTran
     // get reserve transfer to spend
     CReserveTransfer rt = GetReserveTransferToSpend(tx, nIn, txToSpend, spendingFromHeight, p);
 
+    if (p.IsValid() && !p.IsEvalPKOut())
+    {
+        // if this is an arbitrage transfer with a wallet spend, it can be spent by any controller to a wallet
+        return true;
+    }
+
     if (rt.IsValid())
     {
         uint160 systemDestID, importCurrencyID;
@@ -1221,13 +1226,6 @@ bool ValidateReserveTransfer(struct CCcontract_info *cp, Eval* eval, const CTran
                         }
                     }
                     return eval->Error("Reserve transfer spend not accounted for in cross-chain import as arbitrage transaction");
-                }
-                else if (exportP.IsValid() &&
-                         !exportP.IsEvalPKOut())
-                {
-                    // if this is an arbitrage transfer with a wallet spend, it can just be spent
-                    // back to a wallet
-                    return true;
                 }
             }
             return eval->Error("Unauthorized reserve transfer spend without valid export");
