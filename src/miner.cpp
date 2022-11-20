@@ -2476,7 +2476,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                             }
                                         }
 
-                                        if ((++tmpExportTransfers[destCurrencyID].first + exportTransferCount[destCurrencyID]) > destSystem.MaxTransferExportCount() ||
+                                        if ((++tmpExportTransfers[destCurrencyID].first + exportTransferCount[destCurrencyID].first) > destSystem.MaxTransferExportCount() ||
                                             ((tmpExportTransfers[destCurrencyID].second += oneOut.scriptPubKey.size()) +
                                                         exportTransferCount[destCurrencyID].second) > secondLegSystem.MaxTransferExportSize()) ||
                                             (rt.IsCurrencyExport() && (++tmpCurrencyExportTransfers[destCurrencyID] + currencyExportTransferCount[destCurrencyID]) > destSystem.MaxCurrencyDefinitionExportCount()) ||
