@@ -949,10 +949,16 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                 }
                 return false;
             }
-            // after launch, the fee recipient must be the first recipient of the coinbase reward for the last
+
+            uint256 selectBlockEntropy = EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), ccx.sourceHeightEnd);
+            uint64_t intermediateEntropy = UintToArith256(selectBlockEntropy).GetLow64();
+            int modVal = ccx.sourceHeightEnd - (ccx.sourceHeightStart - 1);
+            int blockRewardNum = ccx.sourceHeightStart + (!modVal ? 0 : intermediateEntropy % modVal);
+
+            // after launch, one fee recipient must be the first recipient of the coinbase reward for the last
             // block in the export sequence
             CBlock block;
-            CBlockIndex* pblockindex = chainActive[ccx.sourceHeightEnd];
+            CBlockIndex* pblockindex = chainActive[blockRewardNum];
 
             if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus(), 1))
             {
@@ -998,7 +1004,8 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                 {
                     feeRecipient = addresses[0];
                 }
-                if (feeRecipient != GetCompatibleAuxDestination(ccx.exporter, CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR))
+                if (feeRecipient != TransferDestinationToDestination(ccx.exporter) &&
+                    feeRecipient != TransferDestinationToDestination(ccx.exporter.GetAuxDest(0)))
                 {
                     if (LogAcceptCategory("crosschainexports"))
                     {
@@ -1523,9 +1530,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                                                   &newCurState,
                                                   ccxSource.exporter,
                                                   importNotarization.proposer,
-                                                  importNotarization.proofRoots.count(ccxSource.sourceSystemID) ?
-                                                    importNotarization.proofRoots.find(ccxSource.sourceSystemID)->second.stateRoot :
-                                                    uint256()))
+                                                  EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), importNotarization.notarizationHeight)))
         {
             return eval->Error(std::string(__func__) + ": invalid import transaction");
         }
@@ -6257,11 +6262,19 @@ bool CConnectedChains::CurrencyImportStatus(const CCurrencyValueMap &totalImport
     return CurrencyExportStatus(totalImports, sourceSystemID, destSystemID, mintNew, reserveDepositsRequired);
 }
 
+uint256 EntropyHashFromHeight(const uint160 &conditionID, uint32_t nHeight)
+{
+    auto hw = CMMRNode<>::GetHashWriter();
+    hw << conditionID;
+    hw << (chainActive.Height() >= nHeight ? chainActive[nHeight]->GetVerusEntropyHashComponent() : uint256());
+    return hw.GetHash();
+}
+
 bool EntropyCoinFlip(const uint160 &conditionID, uint32_t nHeight)
 {
     auto hw = CMMRNode<>::GetHashWriter();
     hw << conditionID;
-    hw << chainActive[nHeight]->GetVerusEntropyHashComponent();
+    hw << (chainActive.Height() >= nHeight ? chainActive[nHeight]->GetVerusEntropyHashComponent() : uint256());
     return UintToArith256(hw.GetHash()).GetLow64() & 1;
 }
 
@@ -6574,7 +6587,13 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     // after launch, the fee recipient must be the first recipient of the coinbase reward for the last
     // block in the export sequence
     CBlock block;
-    CBlockIndex* pblockindex = chainActive[addHeight];
+
+    uint256 selectBlockEntropy = EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), addHeight);
+    uint64_t intermediateEntropy = UintToArith256(selectBlockEntropy).GetLow64();
+    int modVal = addHeight - sinceHeight;
+    int blockRewardNum = sinceHeight + 1 + (!modVal ? 0 : intermediateEntropy % modVal);
+
+    CBlockIndex* pblockindex = chainActive[blockRewardNum];
 
     if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus(), 1))
     {
@@ -6611,13 +6630,13 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                 {
                     continue;
                 }
-                feeRecipient = DestinationToTransferDestination(oneDest);
+                feeRecipient.SetAuxDest(DestinationToTransferDestination(oneDest), 0);
                 break;
             }
         }
         else
         {
-            feeRecipient = DestinationToTransferDestination(addresses[0]);
+            feeRecipient.SetAuxDest(DestinationToTransferDestination(addresses[0]), 0);
         }
     }
 

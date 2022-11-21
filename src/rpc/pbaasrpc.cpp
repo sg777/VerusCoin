@@ -2771,6 +2771,7 @@ bool GetUnspentChainTransfers(std::multimap<uint160, ChainTransferData> &inputDe
                 printf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
             }
         }
+
         return true;
     }
 }

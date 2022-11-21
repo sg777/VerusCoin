@@ -1133,7 +1133,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     bool thisIsLaunchSys = destCurrency.launchSystemID == ASSETCHAINS_CHAINID;
 
     // if this is the clear launch notarization after start, make the notarization and determine if we should launch or refund
-    uint256 weakEntropy = proofRoots.count(sourceSystemID) ? proofRoots.find(sourceSystemID)->second.stateRoot : uint256();
+    uint256 weakEntropy = EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), notaHeight);
 
     if (destCurrency.launchSystemID == sourceSystemID &&
         destCurrency.startBlock &&

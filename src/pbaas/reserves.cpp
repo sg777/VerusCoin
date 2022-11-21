@@ -2604,9 +2604,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                                                   &newState,
                                                                   ccx.exporter,
                                                                   importNotarization.proposer,
-                                                                  importNotarization.proofRoots.count(cci.sourceSystemID) ?
-                                                                    importNotarization.proofRoots.find(cci.sourceSystemID)->second.stateRoot :
-                                                                    uint256()))
+                                                                  EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), importNotarization.notarizationHeight)))
                         {
                             flags &= ~IS_VALID;
                             flags |= IS_REJECT;
@@ -3818,8 +3816,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     exporterReserves.valueMap[systemDest.launchSystemID] = CCurrencyDefinition::CalculateRatioOfValue(totalVerusFee, rewardRatio);
                 }
 
-                CTxDestination exporterDest = TransferDestinationToDestination(curTransfer.destination);
-
                 if (notaryReward)
                 {
                     CCurrencyValueMap notaryReserves;
@@ -3869,9 +3865,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                     if (pNotaries->size())
                     {
-                        uint64_t intermediate = (UintToArith256(uint256S(GetDestinationID(exporterDest).GetHex())) ^
-                                                        UintToArith256(uint256S(GetDestinationID(blockNotarizerDest).GetHex())) ^
-                                                        UintToArith256(entropy)).GetLow64();
+                        uint64_t intermediate = UintToArith256(entropy).GetLow64();
                         notaryPayeeDest = CIdentityID((*pNotaries)[(intermediate % pNotaries->size())]);
                     }
 
@@ -3894,10 +3888,51 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     }
                 }
 
-                if (exporterDest.which() == COptCCParams::ADDRTYPE_PK ||
+                CTxDestination exporterDest = TransferDestinationToDestination(curTransfer.destination);
+                CTxDestination exporterDest2;
+                for (int auxDestNum = 0; auxDestNum < curTransfer.destination.AuxDestCount(); auxDestNum++)
+                {
+                    exporterDest2 = TransferDestinationToDestination(curTransfer.destination.GetAuxDest(auxDestNum));
+                    if (exporterDest2.which() == COptCCParams::ADDRTYPE_PK ||
+                        exporterDest2.which() == COptCCParams::ADDRTYPE_PKH ||
+                        exporterDest2.which() == COptCCParams::ADDRTYPE_ID)
+                    {
+                        if (exporterDest.which() == COptCCParams::ADDRTYPE_INVALID)
+                        {
+                            exporterDest = exporterDest2;
+                            exporterDest2 = CTxDestination();
+                        }
+                        break;
+                    }
+                    else
+                    {
+                        exporterDest2 = CTxDestination();
+                    }
+                }
+
+                if (exporterDest.which() != COptCCParams::ADDRTYPE_PK ||
                     exporterDest.which() == COptCCParams::ADDRTYPE_PKH ||
                     exporterDest.which() == COptCCParams::ADDRTYPE_ID)
                 {
+                    if (exporterDest2.which() != COptCCParams::ADDRTYPE_INVALID &&
+                        exporterReward > systemDest.GetTransactionTransferFee())
+                    {
+                        CAmount halfExportReward = exporterReward >> 1;
+                        CCurrencyValueMap halfExportReserves = exporterReserves / 2;
+                        exporterReward -= halfExportReward;
+                        exporterReserves -= halfExportReserves;
+                        CScript outScript;
+                        if (halfExportReserves > CCurrencyValueMap())
+                        {
+                            CTokenOutput ro = CTokenOutput(halfExportReserves);
+                            CScript outScript = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, std::vector<CTxDestination>({exporterDest2}), 1, &ro));
+                        }
+                        else
+                        {
+                            outScript = GetScriptForDestination(exporterDest2);
+                        }
+                        vOutputs.push_back(CTxOut(halfExportReward, outScript));
+                    }
                     CScript outScript;
                     if (exporterReserves > CCurrencyValueMap())
                     {
