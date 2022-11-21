@@ -769,7 +769,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         // and that there is no risk of missing valid transfers with the check we end up with here
         if (ccx.sourceHeightStart > 0 &&
             (!GetChainTransfersUnspentBy(inputDescriptors, ccx.destCurrencyID, ccx.sourceHeightStart, ccx.sourceHeightEnd, height) ||
-             !GetChainTransfersBetween(inputDescriptors, ccx.destCurrencyID, ccx.sourceHeightEnd + 1, std::min(height, ccx.sourceHeightEnd + 2), height)))
+             !GetChainTransfersBetween(inputDescriptors, ccx.destCurrencyID, ccx.sourceHeightEnd + 1, std::min(height, ccx.sourceHeightEnd + 2))))
         {
             return state.Error("Error retrieving cross chain transfers");
         }
@@ -790,13 +790,24 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         {
             printf("%s: checking %ld transfers for inclusion between blocks %u - %u, inclusive at height %d\nHeights:", __func__, _txInputs.size(), ccx.sourceHeightStart ? ccx.sourceHeightStart - 1 : 0, addHeight, chainActive.Height());
             LogPrintf("%s: checking %ld transfers for inclusion between blocks %u - %u, inclusive at height %d\nHeights:", __func__, _txInputs.size(), ccx.sourceHeightStart ? ccx.sourceHeightStart - 1 : 0, addHeight, chainActive.Height());
+            uint32_t curBlockNum = 0;
+            int transferCount = 0;
             for (auto &oneTransfer : _txInputs)
             {
-                printf(" %u", oneTransfer.first);
-                LogPrintf(" %u", oneTransfer.first);
+                if (curBlockNum && curBlockNum != oneTransfer.first)
+                {
+                    printf("%d transfers from block %u\n", transferCount, curBlockNum);
+                    LogPrintf("%d transfers from block %u\n", transferCount, curBlockNum);
+                    curBlockNum = oneTransfer.first;
+                    transferCount = 0;
+                }
+                transferCount++;
             }
-            printf("\n");
-            LogPrintf("\n");
+            if (curBlockNum)
+            {
+                printf("%d transfers from block %u\n", transferCount, curBlockNum);
+                LogPrintf("%d transfers from block %u\n", transferCount, curBlockNum);
+            }
         }
 
         std::vector<ChainTransferData> txInputVec = ConnectedChains.CalcTxInputs(thisDef,
@@ -809,6 +820,12 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                                                                                  curIDExports,
                                                                                  curCurrencyExports,
                                                                                  _txInputs);
+
+        if (LogAcceptCategory("crosschainexports"))
+        {
+            printf("%ld transfers from block %u to %u\n", txInputVec.size(), ccx.sourceHeightStart ? ccx.sourceHeightStart - 1 : 0, txInputVec.size() ? std::get<0>(txInputVec.back()) : addHeight);
+            LogPrintf("%ld transfers from block %u to %u\n", txInputVec.size(), ccx.sourceHeightStart ? ccx.sourceHeightStart - 1 : 0, txInputVec.size() ? std::get<0>(txInputVec.back()) : addHeight);
+        }
 
         // the input vec should be the same as the export transfers
         if (ccx.reserveTransfers.size() ||

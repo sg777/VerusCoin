@@ -2434,6 +2434,9 @@ bool GetChainTransfers(multimap<uint160, std::pair<CInputDescriptor, CReserveTra
     }
 }
 
+// LRUCache<std::tuple<currencyID, blockhash, unspentbyheight>, std::vector<CInputDescriptor>>
+LRUCache<std::tuple<uint160, uint256, uint32_t>, std::vector<CInputDescriptor>> chainTransferCache(500);
+
 // returns all chain transfer outputs, both spent and unspent between a specific start and end block with an optional chainFilter. if the chainFilter is not
 // NULL, only transfers to that system are returned
 bool GetChainTransfersUnspentBy(std::multimap<std::pair<uint32_t, uint160>, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter, uint32_t start, uint32_t end, uint32_t unspentBy, uint32_t flags)
@@ -2448,6 +2451,54 @@ bool GetChainTransfersUnspentBy(std::multimap<std::pair<uint32_t, uint160>, std:
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
     LOCK2(cs_main, mempool.cs);
+
+    if (start && end && chainActive.Height() >= end && (flags == CReserveTransfer::VALID) && !chainFilter.IsNull())
+    {
+        std::vector<std::pair<uint32_t, uint32_t>> blocksToLoad;
+        std::vector<CInputDescriptor> transfersFromCache;
+        for (uint32_t i = start; i <= end; i++)
+        {
+            if (chainTransferCache.Get({chainFilter, chainActive[i]->GetBlockHash(), unspentBy}, transfersFromCache))
+            {
+                // if we got transfers for this block, add them to the map
+                for (auto oneTransfer : transfersFromCache)
+                {
+                    COptCCParams p;
+                    CReserveTransfer rt;
+                    if (oneTransfer.scriptPubKey.IsPayToCryptoCondition(p) &&
+                        (rt = CReserveTransfer(p.vData[0])).IsValid())
+                    {
+                        inputDescriptors.insert(std::make_pair(std::make_pair(i, chainFilter), std::make_pair(oneTransfer, rt)));
+                    }
+                }
+            }
+            else
+            {
+                if (blocksToLoad.empty() || blocksToLoad.back().second < (i - 1))
+                {
+                    blocksToLoad.push_back(std::make_pair(i,i));
+                }
+                else
+                {
+                    blocksToLoad.back().second = i;
+                }
+            }
+        }
+        // if we found any in the cache, fill in the blocks that were not included
+        // since we know none of the missing blocks will be found in the cache, get them with recursion that will cause a lookup
+        // if we didn't find any, drop through and lookup
+        if (!(blocksToLoad.size() == 1 && blocksToLoad[0].first == start && blocksToLoad[0].second == end))
+        {
+            for (auto &onePair : blocksToLoad)
+            {
+                if (!GetChainTransfersUnspentBy(inputDescriptors, chainFilter, onePair.first, onePair.second, unspentBy, flags))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
 
     if (!GetAddressIndex(CReserveTransfer::ReserveTransferKey(),
                          CScript::P2IDX,
@@ -2485,6 +2536,7 @@ bool GetChainTransfersUnspentBy(std::multimap<std::pair<uint32_t, uint160>, std:
 
             if (myGetTransaction(it->first.txhash, ntx, blkHash))
             {
+                // TODO: HARDENING - put this level of check on precheck or script indexing as well
                 COptCCParams p, m;
                 CReserveTransfer rt;
                 if (ntx.vout[it->first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -2513,13 +2565,27 @@ bool GetChainTransfersUnspentBy(std::multimap<std::pair<uint32_t, uint160>, std:
                 return false;
             }
         }
+        if (!chainFilter.IsNull() && (flags == CReserveTransfer::VALID))
+        {
+            for (uint32_t i = start; i <= end && i <= chainActive.Height(); i++)
+            {
+                // find and loop through this block's entries to put in vector then store
+                auto itpair = inputDescriptors.equal_range({i, chainFilter});
+                std::vector<CInputDescriptor> cacheVec;
+                for (auto it = itpair.first; it != itpair.second; it++)
+                {
+                    cacheVec.push_back(it->second.first);
+                }
+                chainTransferCache.Put({chainFilter, chainActive[i]->GetBlockHash(), unspentBy}, cacheVec);
+            }
+        }
         return true;
     }
 }
 
 // returns all chain transfer outputs, both spent and unspent between a specific start and end block with an optional chainFilter. if the chainFilter is not
 // NULL, only transfers to that system are returned
-bool GetChainTransfersBetween(std::multimap<std::pair<uint32_t, uint160>, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter, uint32_t start, uint32_t end, uint32_t unspentBy, uint32_t flags)
+bool GetChainTransfersBetween(std::multimap<std::pair<uint32_t, uint160>, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter, uint32_t start, uint32_t end, uint32_t flags)
 {
     if (!flags)
     {
@@ -2531,6 +2597,54 @@ bool GetChainTransfersBetween(std::multimap<std::pair<uint32_t, uint160>, std::p
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
     LOCK2(cs_main, mempool.cs);
+
+    if (start && end && chainActive.Height() >= end && (flags == CReserveTransfer::VALID) && !chainFilter.IsNull())
+    {
+        std::vector<std::pair<uint32_t, uint32_t>> blocksToLoad;
+        std::vector<CInputDescriptor> transfersFromCache;
+        for (uint32_t i = start; i <= end; i++)
+        {
+            if (chainTransferCache.Get({chainFilter, chainActive[i]->GetBlockHash(), 0}, transfersFromCache))
+            {
+                // if we got transfers for this block, add them to the map
+                for (auto oneTransfer : transfersFromCache)
+                {
+                    COptCCParams p;
+                    CReserveTransfer rt;
+                    if (oneTransfer.scriptPubKey.IsPayToCryptoCondition(p) &&
+                        (rt = CReserveTransfer(p.vData[0])).IsValid())
+                    {
+                        inputDescriptors.insert(std::make_pair(std::make_pair(i, chainFilter), std::make_pair(oneTransfer, rt)));
+                    }
+                }
+            }
+            else
+            {
+                if (blocksToLoad.empty() || blocksToLoad.back().second < (i - 1))
+                {
+                    blocksToLoad.push_back(std::make_pair(i,i));
+                }
+                else
+                {
+                    blocksToLoad.back().second = i;
+                }
+            }
+        }
+        // if we found any in the cache, fill in the blocks that were not included
+        // since we know none of the missing blocks will be found in the cache, get them with recursion that will cause a lookup
+        // if we didn't find any, drop through and lookup
+        if (!(blocksToLoad.size() == 1 && blocksToLoad[0].first == start && blocksToLoad[0].second == end))
+        {
+            for (auto &onePair : blocksToLoad)
+            {
+                if (!GetChainTransfersBetween(inputDescriptors, chainFilter, onePair.first, onePair.second, flags))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
 
     if (!GetAddressIndex(CReserveTransfer::ReserveTransferKey(),
                          CScript::P2IDX,
@@ -2582,6 +2696,20 @@ bool GetChainTransfersBetween(std::multimap<std::pair<uint32_t, uint160>, std::p
                 LogPrintf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
                 printf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
                 return false;
+            }
+        }
+        if (!chainFilter.IsNull() && (flags == CReserveTransfer::VALID))
+        {
+            for (uint32_t i = start; i <= end && i <= chainActive.Height(); i++)
+            {
+                // find and loop through this block's entries to put in vector then store
+                auto itpair = inputDescriptors.equal_range({i, chainFilter});
+                std::vector<CInputDescriptor> cacheVec;
+                for (auto it = itpair.first; it != itpair.second; it++)
+                {
+                    cacheVec.push_back(it->second.first);
+                }
+                chainTransferCache.Put({chainFilter, chainActive[i]->GetBlockHash(), 0}, cacheVec);
             }
         }
         return true;
