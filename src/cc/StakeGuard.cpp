@@ -1,12 +1,12 @@
 /********************************************************************
  * (C) 2018 Michael Toutonghi
- * 
+ *
  * Distributed under the MIT software license, see the accompanying
  * file COPYING or http://www.opensource.org/licenses/mit-license.php.
- * 
+ *
  * This crypto-condition eval solves the problem of nothing-at-stake
  * in a proof of stake consensus system.
- * 
+ *
  */
 
 #include "StakeGuard.h"
@@ -42,8 +42,8 @@ bool UnpackStakeOpRet(const CTransaction &stakeTx, std::vector<std::vector<unsig
         opcodetype op;
         bool moreData = true;
 
-        for (bytesTotal = vch.size(); 
-             bytesTotal <= nMaxDatacarrierBytes && !(isValid = (pc == data.end())) && (moreData = data.GetOp(pc, op, vch)) && IsData(op); 
+        for (bytesTotal = vch.size();
+             bytesTotal <= nMaxDatacarrierBytes && !(isValid = (pc == data.end())) && (moreData = data.GetOp(pc, op, vch)) && IsData(op);
              bytesTotal += vch.size())
         {
             if (op >= OP_1 && op <= OP_16)
@@ -53,7 +53,7 @@ bool UnpackStakeOpRet(const CTransaction &stakeTx, std::vector<std::vector<unsig
             }
             vData.push_back(vch);
         }
-        
+
         // if we ran out of data, we're ok
         if (isValid && (vData.size() >= CStakeParams::STAKE_MINPARAMS) && (vData.size() <= CStakeParams::STAKE_MAXPARAMS))
         {
@@ -74,15 +74,15 @@ CStakeParams::CStakeParams(const std::vector<std::vector<unsigned char>> &vData)
     version = VERSION_INVALID;
     srcHeight = 0;
     blkHeight = 0;
-    if (vData[0].size() == 1 && 
+    if (vData[0].size() == 1 &&
         vData[0][0] == OPRETTYPE_STAKEPARAMS2 &&
         vData.size() == 2)
     {
         ::FromVector(vData[1], *this);
     }
-    else if (vData[0].size() == 1 && 
-        vData[0][0] == OPRETTYPE_STAKEPARAMS && vData[1].size() <= 4 && 
-        vData[2].size() <= 4 && 
+    else if (vData[0].size() == 1 &&
+        vData[0][0] == OPRETTYPE_STAKEPARAMS && vData[1].size() <= 4 &&
+        vData[2].size() <= 4 &&
         vData[3].size() == sizeof(prevHash) &&
         (vData.size() == STAKE_MINPARAMS || (vData.size() == STAKE_MAXPARAMS && vData[4].size() == 33)))
     {
@@ -127,10 +127,10 @@ bool GetStakeParams(const CTransaction &stakeTx, CStakeParams &stakeParams)
 
     //printf("opret stake script: %s\nvalue at scriptPubKey[0]: %x\n", stakeTx.vout[1].scriptPubKey.ToString().c_str(), stakeTx.vout[1].scriptPubKey[0]);
 
-    if (stakeTx.vin.size() == 1 && 
-        stakeTx.vout.size() == 2 && 
-        stakeTx.vout[0].nValue > 0 && 
-        stakeTx.vout[1].scriptPubKey.IsOpReturn() && 
+    if (stakeTx.vin.size() == 1 &&
+        stakeTx.vout.size() == 2 &&
+        stakeTx.vout[0].nValue > 0 &&
+        stakeTx.vout[1].scriptPubKey.IsOpReturn() &&
         UnpackStakeOpRet(stakeTx, vData))
     {
         stakeParams = CStakeParams(vData);
@@ -139,10 +139,10 @@ bool GetStakeParams(const CTransaction &stakeTx, CStakeParams &stakeParams)
     return false;
 }
 
-// this validates the format of the stake transaction and, optionally, whether or not it is 
+// this validates the format of the stake transaction and, optionally, whether or not it is
 // properly signed to spend the source stake.
 // it does not validate the relationship to a coinbase guard, PoS eligibility or the actual stake spend.
-// the only time it matters is to validate a properly formed stake transaction for either pre-check before PoS validity check, 
+// the only time it matters is to validate a properly formed stake transaction for either pre-check before PoS validity check,
 // or to validate the stake transaction on a fork that will be used to spend a winning stake that cheated by being posted
 // on two fork chains
 bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakeParams, bool slowValidation)
@@ -172,10 +172,10 @@ bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakePa
                 bool extendedStake = CConstVerusSolutionVector::GetVersionByHeight(stakeParams.blkHeight) >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
                 COptCCParams p;
 
-                if (stakeParams.srcHeight == pindex->GetHeight() && 
+                if (stakeParams.srcHeight == pindex->GetHeight() &&
                     (stakeParams.blkHeight - stakeParams.srcHeight >= VERUS_MIN_STAKEAGE) &&
                     ((srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-                      extendedStake && 
+                      extendedStake &&
                       p.IsValid() &&
                       srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey.IsSpendableOutputType(p)) ||
                     (!p.IsValid() && Solver(srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey, txType, vAddr))))
@@ -191,11 +191,11 @@ bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakePa
                     {
                         auto consensusBranchId = CurrentEpochBranchId(stakeParams.blkHeight, Params().GetConsensus());
 
-                        std::map<uint160, pair<int, std::vector<std::vector<unsigned char>>>> idAddressMap;
+                        std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> idAddressMap;
                         idAddressMap = ServerTransactionSignatureChecker::ExtractIDMap(srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey, stakeParams.blkHeight, true);
 
-                        if (VerifyScript(stakeTx.vin[0].scriptSig, 
-                                         srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey, 
+                        if (VerifyScript(stakeTx.vin[0].scriptSig,
+                                         srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey,
                                          MANDATORY_SCRIPT_VERIFY_FLAGS,
                                          TransactionSignatureChecker(&stakeTx, (uint32_t)0, srcTx.vout[stakeTx.vin[0].prevout.n].nValue, &idAddressMap),
                                          consensusBranchId))
@@ -242,14 +242,14 @@ bool MakeGuardedOutput(CAmount value, CTxDestination &dest, CTransaction &stakeT
 
             CPubKey ccAddress = CPubKey(ParseHex(cp->CChexstr));
 
-            // return an output that is bound to the stake transaction and can be spent by presenting either a signed condition by the original 
+            // return an output that is bound to the stake transaction and can be spent by presenting either a signed condition by the original
             // destination address or a properly signed stake transaction of the same utxo on a fork
             vout = MakeCC1of2vout(EVAL_STAKEGUARD, value, boost::apply_visitor<GetPubKeyForPubKey>(GetPubKeyForPubKey(), dest), ccAddress);
 
             std::vector<CTxDestination> vKeys;
             vKeys.push_back(dest);
             vKeys.push_back(ccAddress);
-            
+
             std::vector<std::vector<unsigned char>> vData = std::vector<std::vector<unsigned char>>();
 
             vData.push_back(std::vector<unsigned char>(utxo.begin(), utxo.end()));
@@ -267,7 +267,7 @@ bool MakeGuardedOutput(CAmount value, CTxDestination &dest, CTransaction &stakeT
 
             vout.scriptPubKey << ccp.AsVector() << OP_DROP;
         }
-        
+
         return true;
     }
     return false;
@@ -313,14 +313,14 @@ bool ValidateMatchingStake(const CTransaction &ccTx, uint32_t voutNum, const CTr
                         // if block height is equal and we are at the else, prevHash must have been equal
                         else if (p.blkHeight >= stakeInfo.height)
                         {
-                            return true;                            
+                            return true;
                         }
                     }
                 }
                 else if (p.version < p.VERSION_EXTENDED_STAKE &&
                          ccp.version < ccp.VERSION_V3 &&
                          ccp.IsValid() &&
-                         ccp.vData.size() >= 3 && 
+                         ccp.vData.size() >= 3 &&
                          ccp.vData[2].size() <= 4)
                 {
                     hw << stakeTx.vin[0].prevout.hash;
@@ -346,7 +346,7 @@ bool ValidateMatchingStake(const CTransaction &ccTx, uint32_t voutNum, const CTr
                         // if block height is equal and we are at the else, prevHash must have been equal
                         else if (p.blkHeight == height)
                         {
-                            return true;                            
+                            return true;
                         }
                     }
                 }
@@ -431,7 +431,7 @@ typedef struct ccFulfillmentCheck {
 // to figure out which node is signed
 int CCFulfillmentVisitor(CC *cc, struct CCVisitor visitor)
 {
-    //printf("cc_typeName: %s, cc_isFulfilled: %x, cc_isAnon: %x, cc_typeMask: %x, cc_condToJSONString:\n%s\n", 
+    //printf("cc_typeName: %s, cc_isFulfilled: %x, cc_isAnon: %x, cc_typeMask: %x, cc_condToJSONString:\n%s\n",
     //       cc_typeName(cc), cc_isFulfilled(cc), cc_isAnon(cc), cc_typeMask(cc), cc_conditionToJSONString(cc));
 
     if (strcmp(cc_typeName(cc), "secp256k1-sha-256") == 0)
@@ -530,9 +530,9 @@ bool StakeGuardValidate(struct CCcontract_info *cp, Eval* eval, const CTransacti
             // the first condition/key/identity
             signedByFirstKey = fulfilled || !signedByDefaultKey;
 
-            if (!signedByFirstKey && 
+            if (!signedByFirstKey &&
                 params.size() == 2 &&
-                params[0].size() > 0 && 
+                params[0].size() > 0 &&
                 params[0][0] == OPRETTYPE_STAKECHEAT)
             {
                 CDataStream s = CDataStream(std::vector<unsigned char>(params[1].begin(), params[1].end()), SER_DISK, PROTOCOL_VERSION);
@@ -572,11 +572,11 @@ bool StakeGuardValidate(struct CCcontract_info *cp, Eval* eval, const CTransacti
                 ccFulfillmentCheck fc = {keys, vc};
                 signedByFirstKey = (IsCCFulfilled(cc, &fc) != 0);
 
-                if (!signedByFirstKey && 
-                    ccp.evalCode == EVAL_STAKEGUARD && 
+                if (!signedByFirstKey &&
+                    ccp.evalCode == EVAL_STAKEGUARD &&
                     ccp.vKeys.size() == 2 &&
                     params.size() == 2 &&
-                    params[0].size() > 0 && 
+                    params[0].size() > 0 &&
                     params[0][0] == OPRETTYPE_STAKECHEAT)
                 {
                     CDataStream s = CDataStream(std::vector<unsigned char>(params[1].begin(), params[1].end()), SER_DISK, PROTOCOL_VERSION);
@@ -619,7 +619,7 @@ UniValue StakeGuardInfo()
 {
     UniValue result(UniValue::VOBJ); char numstr[64];
     CMutableTransaction mtx;
-    CPubKey pk; 
+    CPubKey pk;
 
     CCcontract_info *cp,C;
 

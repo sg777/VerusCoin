@@ -786,16 +786,29 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             _txInputs.insert(std::make_pair(oneInput.first.first, ChainTransferData({oneInput.first.first, oneInput.second.first, oneInput.second.second})));
         }
 
+        if (LogAcceptCategory("crosschainexports"))
+        {
+            printf("%s: checking %ld transfers for inclusion between blocks %u - %u, inclusive at height %d\nHeights:", __func__, _txInputs.size(), ccx.sourceHeightStart ? ccx.sourceHeightStart - 1 : 0, addHeight, chainActive.Height());
+            LogPrintf("%s: checking %ld transfers for inclusion between blocks %u - %u, inclusive at height %d\nHeights:", __func__, _txInputs.size(), ccx.sourceHeightStart ? ccx.sourceHeightStart - 1 : 0, addHeight, chainActive.Height());
+            for (auto &oneTransfer : _txInputs)
+            {
+                printf(" %u", oneTransfer.first);
+                LogPrintf(" %u", oneTransfer.first);
+            }
+            printf("\n");
+            LogPrintf("\n");
+        }
+
         std::vector<ChainTransferData> txInputVec = ConnectedChains.CalcTxInputs(thisDef,
-                                                    isClearLaunchExport,
-                                                    ccx.sourceHeightStart ? ccx.sourceHeightStart - 1 : 0,
-                                                    addHeight,
-                                                    nextHeight,
-                                                    std::min(height, ccx.sourceHeightEnd + 2),
-                                                    std::min(height, ccx.sourceHeightEnd + 2),
-                                                    curIDExports,
-                                                    curCurrencyExports,
-                                                    _txInputs);
+                                                                                 isClearLaunchExport,
+                                                                                 ccx.sourceHeightStart ? ccx.sourceHeightStart - 1 : 0,
+                                                                                 addHeight,
+                                                                                 nextHeight,
+                                                                                 std::min(height, ccx.sourceHeightEnd + 2),
+                                                                                 std::min(height, ccx.sourceHeightEnd + 2),
+                                                                                 curIDExports,
+                                                                                 curCurrencyExports,
+                                                                                 _txInputs);
 
         // the input vec should be the same as the export transfers
         if (ccx.reserveTransfers.size() ||
@@ -6269,9 +6282,12 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
     std::map<uint160, std::pair<int, int>> secondaryCurrencyExports;
     std::map<uint160, std::pair<int, int>> secondaryIDExports;
 
+    bool isPrelaunch = (isClearLaunchExport || sinceHeight + 1 < _curDef.startBlock);
+
     for (auto it = _txInputs.begin(); it != _txInputs.end(); it++)
     {
         auto &oneInput = *it;
+
         if (oneInput.first <= sinceHeight)
         {
             continue;
@@ -6280,7 +6296,7 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
         if (addHeight != oneInput.first)
         {
             // if this is a launch export, we create one at the boundary
-            if (isClearLaunchExport && oneInput.first >= _curDef.startBlock)
+            if (isPrelaunch && oneInput.first >= _curDef.startBlock)
             {
                 addHeight = _curDef.startBlock - 1;
                 break;
@@ -6288,7 +6304,9 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
 
             // if we have skipped to the next block, and we have enough to make a clear launch export, we cannot take any more
             // for now
-            if (isClearLaunchExport && txInputs.size() >= CCrossChainExport::MAX_FEE_INPUTS)
+            if (isPrelaunch &&
+                (txInputs.size() >= CCrossChainExport::MAX_FEE_INPUTS ||
+                 (txInputs.size() >= CCrossChainExport::MIN_INPUTS && (oneInput.first - sinceHeight) >= CCrossChainExport::MIN_BLOCKS)))
             {
                 nextHeight = oneInput.first;
                 break;
