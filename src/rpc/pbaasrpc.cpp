@@ -8188,7 +8188,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters.");
     }
 
-    // CAmount feeAmount = (numHeavyOutputs || hasZSource) ? (DEFAULT_HEAVY_INOUT_FEE * (hasZSource ? numHeavyOutputs + 1 : numHeavyOutputs)) : DEFAULT_TRANSACTION_FEE;
     CAmount feeAmount = 0;
     if (params.size() > 3)
     {

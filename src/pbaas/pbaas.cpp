@@ -4917,6 +4917,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             }
 
             lastNotarization = cnd.vtx[cnd.lastConfirmed].second;
+
             if (!lastNotarization.IsValid())
             {
                 LogPrintf("%s: invalid notarization for currency %s on system %s\n", __func__, destCur.name.c_str(), EncodeDestination(CIdentityID(destCur.systemID)).c_str());
@@ -7617,6 +7618,12 @@ void CConnectedChains::ProcessLocalImports()
                 p.vData.size() &&
                 (ccx = CCrossChainExport(p.vData[0])).IsValid())
             {
+                // prelaunch exports come with their notarization and
+                // must be mined in before imported to ensure proper launch and refunds
+                if (ccx.IsPrelaunch() && hashBlock.IsNull())
+                {
+                    continue;
+                }
                 orderedExportsToFinalize[ccx.destCurrencyID].insert(
                     std::make_pair(ccx.sourceHeightStart,
                                    std::make_pair(std::make_pair(CInputDescriptor(scratchTx.vout[of.output.n].scriptPubKey,
