@@ -673,6 +673,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
     CPBaaSNotarization notarization;
     std::vector<CReserveTransfer> reserveTransfers;
     CCurrencyDefinition destSystem;
+    std::vector<ChainTransferData> txInputVec;
 
     bool isPreSync = chainActive.Height() < (height - 1);
 
@@ -810,16 +811,16 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             }
         }
 
-        std::vector<ChainTransferData> txInputVec = ConnectedChains.CalcTxInputs(thisDef,
-                                                                                 isClearLaunchExport,
-                                                                                 ccx.sourceHeightStart ? ccx.sourceHeightStart - 1 : 0,
-                                                                                 addHeight,
-                                                                                 nextHeight,
-                                                                                 std::min(height, ccx.sourceHeightEnd + 2),
-                                                                                 std::min(height, ccx.sourceHeightEnd + 2),
-                                                                                 curIDExports,
-                                                                                 curCurrencyExports,
-                                                                                 _txInputs);
+        txInputVec = ConnectedChains.CalcTxInputs(thisDef,
+                                                  isClearLaunchExport,
+                                                  ccx.sourceHeightStart ? ccx.sourceHeightStart - 1 : 0,
+                                                  addHeight,
+                                                  nextHeight,
+                                                  std::min(height, ccx.sourceHeightEnd + 2),
+                                                  std::min(height, ccx.sourceHeightEnd + 2),
+                                                  curIDExports,
+                                                  curCurrencyExports,
+                                                  _txInputs);
 
         if (LogAcceptCategory("crosschainexports"))
         {
@@ -950,69 +951,82 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                 return false;
             }
 
-            uint256 selectBlockEntropy = EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), ccx.sourceHeightEnd);
-            uint64_t intermediateEntropy = UintToArith256(selectBlockEntropy).GetLow64();
-            int modVal = ccx.sourceHeightEnd - (ccx.sourceHeightStart - 1);
-            int blockRewardNum = ccx.sourceHeightStart + (!modVal ? 0 : intermediateEntropy % modVal);
-
-            // after launch, one fee recipient must be the first recipient of the coinbase reward for the last
-            // block in the export sequence
-            CBlock block;
-            CBlockIndex* pblockindex = chainActive[blockRewardNum];
-
-            if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus(), 1))
+            std::set<uint32_t> blockLottery;
+            std::vector<uint32_t> blockLotteryVec;
+            for (auto &oneInput : txInputVec)
             {
-                if (LogAcceptCategory("crosschainexports"))
-                {
-                    printf("%s: Unable to read block from disk for fee recipient\n", __func__);
-                    LogPrintf("%s: Unable to read block from disk for fee recipient\n", __func__);
-                }
-                return false;
+                blockLottery.insert(std::get<0>(oneInput));
+            }
+            for (auto &oneHeight : blockLottery)
+            {
+                blockLotteryVec.push_back(oneHeight);
             }
 
-            std::vector<CTxDestination> addresses;
-            int nRequired;
-            COptCCParams frP;
-            txnouttype txOutType;
-            if (block.vtx.size() &&
-                block.vtx[0].vout.size() &&
-                ExtractDestinations(block.vtx[0].vout[0].scriptPubKey, txOutType, addresses, nRequired) &&
-                addresses.size() &&
-                nRequired == 1)
+            if (blockLotteryVec.size())
             {
-                CTxDestination feeRecipient = GetCompatibleAuxDestination(ccx.exporter, CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR);
-                if (block.vtx[0].vout[0].scriptPubKey.IsPayToCryptoCondition(frP) && frP.evalCode != EVAL_NONE)
-                {
-                    CCcontract_info CC;
-                    CCcontract_info *cp;
+                uint256 selectBlockEntropy = EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), ccx.sourceHeightEnd);
+                uint64_t intermediateEntropy = UintToArith256(selectBlockEntropy).GetLow64();
+                int blockRewardNum = blockLotteryVec[intermediateEntropy % blockLotteryVec.size()];
 
-                    cp = CCinit(&CC, frP.evalCode);
-                    CTxDestination evalPKH = CPubKey(ParseHex(CC.CChexstr)).GetID();
+                // after launch, one fee recipient must be the first recipient of the coinbase reward for the last
+                // block in the export sequence
+                CBlock block;
+                CBlockIndex* pblockindex = chainActive[blockRewardNum];
 
-                    // first non-default address is the fee recipient
-                    for (auto &oneDest : addresses)
-                    {
-                        if (oneDest == evalPKH || oneDest.which() == COptCCParams::ADDRTYPE_INVALID || oneDest.which() == COptCCParams::ADDRTYPE_INDEX)
-                        {
-                            continue;
-                        }
-                        feeRecipient = oneDest;
-                        break;
-                    }
-                }
-                else
-                {
-                    feeRecipient = addresses[0];
-                }
-                if (feeRecipient != TransferDestinationToDestination(ccx.exporter) &&
-                    feeRecipient != TransferDestinationToDestination(ccx.exporter.GetAuxDest(0)))
+                if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus(), 1))
                 {
                     if (LogAcceptCategory("crosschainexports"))
                     {
-                        printf("%s: Invalid fee recipient for export\n", __func__);
-                        LogPrintf("%s: Invalid fee recipient for export\n", __func__);
+                        printf("%s: Unable to read block from disk for fee recipient\n", __func__);
+                        LogPrintf("%s: Unable to read block from disk for fee recipient\n", __func__);
                     }
                     return false;
+                }
+
+                std::vector<CTxDestination> addresses;
+                int nRequired;
+                COptCCParams frP;
+                txnouttype txOutType;
+                if (block.vtx.size() &&
+                    block.vtx[0].vout.size() &&
+                    ExtractDestinations(block.vtx[0].vout[0].scriptPubKey, txOutType, addresses, nRequired) &&
+                    addresses.size() &&
+                    nRequired == 1)
+                {
+                    CTxDestination feeRecipient = GetCompatibleAuxDestination(ccx.exporter, CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR);
+                    if (block.vtx[0].vout[0].scriptPubKey.IsPayToCryptoCondition(frP) && frP.evalCode != EVAL_NONE)
+                    {
+                        CCcontract_info CC;
+                        CCcontract_info *cp;
+
+                        cp = CCinit(&CC, frP.evalCode);
+                        CTxDestination evalPKH = CPubKey(ParseHex(CC.CChexstr)).GetID();
+
+                        // first non-default address is the fee recipient
+                        for (auto &oneDest : addresses)
+                        {
+                            if (oneDest == evalPKH || oneDest.which() == COptCCParams::ADDRTYPE_INVALID || oneDest.which() == COptCCParams::ADDRTYPE_INDEX)
+                            {
+                                continue;
+                            }
+                            feeRecipient = oneDest;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        feeRecipient = addresses[0];
+                    }
+                    if (feeRecipient != TransferDestinationToDestination(ccx.exporter) &&
+                        feeRecipient != TransferDestinationToDestination(ccx.exporter.GetAuxDest(0)))
+                    {
+                        if (LogAcceptCategory("crosschainexports"))
+                        {
+                            printf("%s: Invalid fee recipient for export\n", __func__);
+                            LogPrintf("%s: Invalid fee recipient for export\n", __func__);
+                        }
+                        return false;
+                    }
                 }
             }
         }
@@ -6585,59 +6599,73 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         }
     }
 
-    // after launch, the fee recipient must be the first recipient of the coinbase reward for the last
-    // block in the export sequence
-    CBlock block;
-
-    uint256 selectBlockEntropy = EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), addHeight);
-    uint64_t intermediateEntropy = UintToArith256(selectBlockEntropy).GetLow64();
-    int modVal = addHeight - sinceHeight;
-    int blockRewardNum = sinceHeight + 1 + (!modVal ? 0 : intermediateEntropy % modVal);
-
-    CBlockIndex* pblockindex = chainActive[blockRewardNum];
-
-    if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus(), 1))
+    std::set<uint32_t> blockLottery;
+    std::vector<uint32_t> blockLotteryVec;
+    for (auto &oneInput : txInputs)
     {
-        if (LogAcceptCategory("crosshainexports"))
-        {
-            printf("%s: Unable to read block from disk to get fee recipient from coinbase\n", __func__);
-            LogPrintf("%s: Unable to read block from disk to get fee recipient from coinbase\n", __func__);
-        }
-        return false;
+        blockLottery.insert(std::get<0>(oneInput));
+    }
+    for (auto &oneHeight : blockLottery)
+    {
+        blockLotteryVec.push_back(oneHeight);
     }
 
-    std::vector<CTxDestination> addresses;
-    int nRequired;
-    COptCCParams frP;
-    txnouttype txOutType;
-    if (block.vtx.size() &&
-        block.vtx[0].vout.size() &&
-        ExtractDestinations(block.vtx[0].vout[0].scriptPubKey, txOutType, addresses, nRequired) &&
-        addresses.size() &&
-        nRequired == 1)
+    if (blockLotteryVec.size())
     {
-        if (block.vtx[0].vout[0].scriptPubKey.IsPayToCryptoCondition(frP) && frP.evalCode != EVAL_NONE)
+
+        // after launch, the fee recipient must be the first recipient of the coinbase reward for the last
+        // block in the export sequence
+        CBlock block;
+
+        uint256 selectBlockEntropy = EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), addHeight);
+        uint64_t intermediateEntropy = UintToArith256(selectBlockEntropy).GetLow64();
+        int blockRewardNum = blockLotteryVec[intermediateEntropy % blockLotteryVec.size()];
+
+        CBlockIndex* pblockindex = chainActive[blockRewardNum];
+
+        if (!ReadBlockFromDisk(block, pblockindex, Params().GetConsensus(), 1))
         {
-            CCcontract_info CC;
-            CCcontract_info *cp;
-
-            cp = CCinit(&CC, frP.evalCode);
-            CTxDestination evalPKH = CPubKey(ParseHex(CC.CChexstr)).GetID();
-
-            // first non-default address is the fee recipient
-            for (auto &oneDest : addresses)
+            if (LogAcceptCategory("crosshainexports"))
             {
-                if (oneDest == evalPKH || oneDest.which() == COptCCParams::ADDRTYPE_INVALID || oneDest.which() == COptCCParams::ADDRTYPE_INDEX)
-                {
-                    continue;
-                }
-                feeRecipient.SetAuxDest(DestinationToTransferDestination(oneDest), 0);
-                break;
+                printf("%s: Unable to read block from disk to get fee recipient from coinbase\n", __func__);
+                LogPrintf("%s: Unable to read block from disk to get fee recipient from coinbase\n", __func__);
             }
+            return false;
         }
-        else
+
+        std::vector<CTxDestination> addresses;
+        int nRequired;
+        COptCCParams frP;
+        txnouttype txOutType;
+        if (block.vtx.size() &&
+            block.vtx[0].vout.size() &&
+            ExtractDestinations(block.vtx[0].vout[0].scriptPubKey, txOutType, addresses, nRequired) &&
+            addresses.size() &&
+            nRequired == 1)
         {
-            feeRecipient.SetAuxDest(DestinationToTransferDestination(addresses[0]), 0);
+            if (block.vtx[0].vout[0].scriptPubKey.IsPayToCryptoCondition(frP) && frP.evalCode != EVAL_NONE)
+            {
+                CCcontract_info CC;
+                CCcontract_info *cp;
+
+                cp = CCinit(&CC, frP.evalCode);
+                CTxDestination evalPKH = CPubKey(ParseHex(CC.CChexstr)).GetID();
+
+                // first non-default address is the fee recipient
+                for (auto &oneDest : addresses)
+                {
+                    if (oneDest == evalPKH || oneDest.which() == COptCCParams::ADDRTYPE_INVALID || oneDest.which() == COptCCParams::ADDRTYPE_INDEX)
+                    {
+                        continue;
+                    }
+                    feeRecipient.SetAuxDest(DestinationToTransferDestination(oneDest), 0);
+                    break;
+                }
+            }
+            else
+            {
+                feeRecipient.SetAuxDest(DestinationToTransferDestination(addresses[0]), 0);
+            }
         }
     }
 
