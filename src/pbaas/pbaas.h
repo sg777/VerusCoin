@@ -1207,7 +1207,7 @@ bool SetPeerNodes(const UniValue &nodes);
 bool SetThisChain(const UniValue &chainDefinition, CCurrencyDefinition *retDef);
 
 bool EntropyCoinFlip(const uint160 &conditionID, uint32_t nHeight);
-uint256 EntropyHashFromHeight(const uint160 &conditionID, uint32_t nHeight);
+uint256 EntropyHashFromHeight(const uint160 &conditionID, uint32_t nHeight, const uint160 &extraEntropy=uint160());
 
 extern CConnectedChains ConnectedChains;
 extern uint160 ASSETCHAINS_CHAINID;

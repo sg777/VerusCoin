@@ -964,7 +964,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
 
             if (blockLotteryVec.size())
             {
-                uint256 selectBlockEntropy = EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), ccx.sourceHeightEnd);
+                uint256 selectBlockEntropy = EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), ccx.sourceHeightEnd, thisDef.GetID());
                 uint64_t intermediateEntropy = UintToArith256(selectBlockEntropy).GetLow64();
                 int blockRewardNum = blockLotteryVec[intermediateEntropy % blockLotteryVec.size()];
 
@@ -1544,7 +1544,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                                                   &newCurState,
                                                   ccxSource.exporter,
                                                   importNotarization.proposer,
-                                                  EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), importNotarization.notarizationHeight)))
+                                                  EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), importNotarization.notarizationHeight, destCurDef.GetID())))
         {
             return eval->Error(std::string(__func__) + ": invalid import transaction");
         }
@@ -6277,11 +6277,15 @@ bool CConnectedChains::CurrencyImportStatus(const CCurrencyValueMap &totalImport
     return CurrencyExportStatus(totalImports, sourceSystemID, destSystemID, mintNew, reserveDepositsRequired);
 }
 
-uint256 EntropyHashFromHeight(const uint160 &conditionID, uint32_t nHeight)
+uint256 EntropyHashFromHeight(const uint160 &conditionID, uint32_t nHeight, const uint160 &extraEntropy)
 {
     auto hw = CMMRNode<>::GetHashWriter();
     hw << conditionID;
     hw << (chainActive.Height() >= nHeight ? chainActive[nHeight]->GetVerusEntropyHashComponent() : uint256());
+    if (!extraEntropy.IsNull())
+    {
+        hw << extraEntropy;
+    }
     return hw.GetHash();
 }
 
@@ -6617,7 +6621,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         // block in the export sequence
         CBlock block;
 
-        uint256 selectBlockEntropy = EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), addHeight);
+        uint256 selectBlockEntropy = EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), addHeight, _curDef.GetID());
         uint64_t intermediateEntropy = UintToArith256(selectBlockEntropy).GetLow64();
         int blockRewardNum = blockLotteryVec[intermediateEntropy % blockLotteryVec.size()];
 

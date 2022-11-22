@@ -2604,7 +2604,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                                                   &newState,
                                                                   ccx.exporter,
                                                                   importNotarization.proposer,
-                                                                  EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), importNotarization.notarizationHeight)))
+                                                                  EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), importNotarization.notarizationHeight, importCurrencyDef.GetID())))
                         {
                             flags &= ~IS_VALID;
                             flags |= IS_REJECT;
