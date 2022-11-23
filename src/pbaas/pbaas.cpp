@@ -180,7 +180,7 @@ bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTra
         if (thisExport.IsSupplemental())
         {
             // protect this output from being spent just to prevent transactions with no legitimate source
-            return false;
+            return true;
         }
 
         CCrossChainExport matchedExport;
@@ -5453,10 +5453,14 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         TransactionBuilderResult result = tb.Build();
         if (result.IsError())
         {
-            /*UniValue jsonTx(UniValue::VOBJ);
-            uint256 hashBlk;
-            TxToUniv(tb.mtx, hashBlk, jsonTx);
-            printf("%s\n", jsonTx.write(1,2).c_str()); //*/
+            if (LogAcceptCategory("crosschainimports"))
+            {
+                UniValue jsonTx(UniValue::VOBJ);
+                uint256 hashBlk;
+                TxToUniv(tb.mtx, hashBlk, jsonTx);
+                printf("%s\n", jsonTx.write(1,2).c_str()); //*/
+                LogPrintf("%s\n", jsonTx.write(1,2).c_str()); //*/
+            }
             printf("%s: cannot build import transaction for currency %s: %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str(), result.GetError().c_str());
             LogPrintf("%s: cannot build import transaction for currency %s: %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str(), result.GetError().c_str());
             return false;
@@ -5475,35 +5479,48 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         }
 
         {
-            /* // DEBUG output only
-            std::set<uint256> txesToShow;
-            for (auto &oneIn : newImportTx.vin)
+            if (LogAcceptCategory("crosschainimports"))
             {
-                if (!view.HaveCoins(oneIn.prevout.hash))
+                printf("%s: inputs for tx\n", __func__);
+                LogPrintf("%s: inputs for tx\n", __func__);
+                std::vector<CUTXORef> txesToShow;
+                for (auto &oneIn : newImportTx.vin)
                 {
-                    printf("%s: cannot find input in view %s\n", __func__, oneIn.prevout.hash.GetHex().c_str());
+                    if (!view.HaveCoins(oneIn.prevout.hash))
+                    {
+                        printf("%s: cannot find input in view %s\n", __func__, oneIn.prevout.hash.GetHex().c_str());
+                    }
+                    else
+                    {
+                        txesToShow.push_back(CUTXORef(oneIn.prevout.hash, oneIn.prevout.n));
+                    }
                 }
-                else
+
+                for (int i = 0; i < txesToShow.size(); i++)
                 {
-                    txesToShow.insert(oneIn.prevout.hash);
+                    auto &oneTxId = txesToShow[i];
+                    CTransaction inputTx;
+                    uint256 inputBlkHash;
+                    UniValue out(UniValue::VOBJ);
+                    if (myGetTransaction(oneTxId.hash, inputTx, inputBlkHash))
+                    {
+                        const CTxOut& txout = inputTx.vout[oneTxId.n];
+                        out.pushKV("value", ValueFromAmount(txout.nValue));
+                        out.pushKV("n", (int64_t)oneTxId.n);
+
+                        UniValue o(UniValue::VOBJ);
+                        ScriptPubKeyToUniv(txout.scriptPubKey, o, false, false);
+                        out.pushKV("scriptPubKey", o);
+                    }
+                    else
+                    {
+                        printf("%s: unable to retrieve input transaction: %s\n", __func__, oneTxId.ToUniValue().write(1,2).c_str());
+                        LogPrintf("%s: unable to retrieve input transaction: %s\n", __func__, oneTxId.ToUniValue().write(1,2).c_str());
+                    }
+                    printf("input %d:\n%s\n", i, out.write(1,2).c_str());
+                    LogPrintf("input %d:\n%s\n", i, out.write(1,2).c_str());
                 }
             }
-
-            for (auto &oneTxId : txesToShow)
-            {
-                CTransaction inputTx;
-                uint256 inputBlkHash;
-                if (myGetTransaction(oneTxId, inputTx, inputBlkHash))
-                {
-                    UniValue uni(UniValue::VOBJ);
-                    TxToUniv(inputTx, inputBlkHash, uni);
-                    printf("%s: inputTx:\n%s\n", __func__, uni.write(1,2).c_str());
-                }
-                else
-                {
-                    printf("%s: unable to retrieve input transaction: %s\n", __func__, oneTxId.GetHex().c_str());
-                }
-            } //*/
 
             // put our transaction in place of any others
             // std::list<CTransaction> removed;
