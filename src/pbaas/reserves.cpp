@@ -2886,6 +2886,16 @@ CReserveTransfer CReserveTransfer::GetRefundTransfer(bool clearCrossSystem) cons
         }
     }
 
+    CTxDestination refundDest = GetCompatibleAuxDestination(rt.destination, CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR);
+    if (refundDest.which() != COptCCParams::ADDRTYPE_INVALID)
+    {
+        rt.destination = DestinationToTransferDestination(refundDest);
+    }
+    else
+    {
+        rt.destination = DestinationToTransferDestination(CTxDestination(CIdentityID(ASSETCHAINS_CHAINID)));
+    }
+
     if (rt.IsMint())
     {
         rt.flags &= ~MINT_CURRENCY;

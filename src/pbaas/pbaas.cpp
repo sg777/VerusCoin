@@ -179,7 +179,15 @@ bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTra
 
         if (thisExport.IsSupplemental())
         {
-            // protect this output from being spent just to prevent transactions with no legitimate source
+            // TODO HARDENING - protect this output from being spent just to prevent transactions with no legitimate source
+            if (LogAcceptCategory("crosschainexporttracking"))
+            {
+                UniValue jsonTx(UniValue::VOBJ);
+                uint256 hashBlk;
+                TxToUniv(tx, hashBlk, jsonTx);
+                LogPrintf("%s: spending supplemental export to:\n%s\n", __func__, jsonTx.write(1,2).c_str()); //*/
+                printf("%s: spending supplemental export to:\n%s\n", __func__, jsonTx.write(1,2).c_str()); //*/
+            }
             return true;
         }
 
@@ -4965,7 +4973,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         // provide a callout for arbitrage and potentially get an additional reserve transfer
         // input for this import. we should also add it to the exportTransfers vector
         // with the arbitrage flag set
-        CInputDescriptor arbitrageTransferIn;
+        std::vector<CInputDescriptor> arbitrageTransfersIn;
         if (LogAcceptCategory("arbitrageliquidity") &&
             destCur.IsFractional() &&
             lastNotarization.IsLaunchComplete() &&
@@ -5211,9 +5219,12 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             if (lastNotarization.currencyState.IsFractional() &&
                 lastNotarization.IsLaunchComplete() &&
                 !lastNotarization.IsRefunding() &&
-                !arbitrageTransferIn.txIn.prevout.hash.IsNull())
+                !arbitrageTransfersIn.size())
             {
-                tb.AddTransparentInput(arbitrageTransferIn.txIn.prevout, arbitrageTransferIn.scriptPubKey, arbitrageTransferIn.nValue);
+                for (auto &arbitrageTransferIn : arbitrageTransfersIn)
+                {
+                    tb.AddTransparentInput(arbitrageTransferIn.txIn.prevout, arbitrageTransferIn.scriptPubKey, arbitrageTransferIn.nValue);
+                }
             }
 
             if (!lastNotarizationOut.txIn.prevout.hash.IsNull())
