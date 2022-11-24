@@ -1281,16 +1281,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
         if (retVal)
         {
-            // if we have to refund due to launch validation failure, adjust
-            if (tempState.IsRefunding())
-            {
-                newNotarization.SetRefunding(true);
-                newNotarization.currencyState.supply = 0;
-                newNotarization.currencyState.reserves = std::vector<int64_t>(newNotarization.currencyState.reserves.size(), 0);
-                newNotarization.currencyState.SetRefunding(true);
-                destSystem = ConnectedChains.GetCachedCurrency(destCurrency.launchSystemID);
-            }
-
             //printf("%s: importedCurrency: %s\ngatewaysDepositsUsed: %s\n", __func__, importedCurrency.ToUniValue().write(1,2).c_str(), gatewayDepositsUsed.ToUniValue().write(1,2).c_str());
             importedCurrency.valueMap.clear();
             gatewayDepositsUsed.valueMap.clear();
@@ -1312,7 +1302,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                           &tempState,
                                                           feeRecipient,
                                                           proposer,
-                                                          weakEntropy);
+                                                          weakEntropy,
+                                                          true);
         }
         else
         {
@@ -1426,7 +1417,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                  &newNotarization.currencyState,
                                                                  feeRecipient,
                                                                  proposer,
-                                                                 weakEntropy);
+                                                                 weakEntropy,
+                                                                 true);
             if (isValidExport)
             {
                 newNotarization.currencyState.conversionPrice = tempCurState.conversionPrice;

@@ -1814,7 +1814,8 @@ public:
                                          CCoinbaseCurrencyState *pNewCurrencyState=nullptr,
                                          const CTransferDestination &feeRecipient=CTransferDestination(),
                                          const CTransferDestination &blockNotarizer=CTransferDestination(),
-                                         const uint256 &entropy=uint256());
+                                         const uint256 &entropy=uint256(),
+                                         bool finalValidityCheck=false);
 };
 
 struct CCcontract_info;

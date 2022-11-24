@@ -3418,7 +3418,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                                                     CCoinbaseCurrencyState *pNewCurrencyState,
                                                                     const CTransferDestination &feeRecipient,
                                                                     const CTransferDestination &blockNotarizer,
-                                                                    const uint256 &entropy)
+                                                                    const uint256 &entropy,
+                                                                    bool finalValidation)
 {
     std::vector<CTxOut> vOldOutputs = vOutputs;
 
@@ -5345,7 +5346,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     CCurrencyValueMap checkAgainstInputs(spentCurrencyOut);
 
-    if (!newCurrencyState.IsRefunding() &&
+    if (finalValidation &&
+        !newCurrencyState.IsRefunding() &&
         (newCurrencyState.IsLaunchClear() || newCurrencyState.IsLaunchCompleteMarker()) &&
         !newCurrencyState.ValidateConversionLimits())
     {
