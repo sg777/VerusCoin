@@ -8213,18 +8213,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         {
             feeAmount += ((tOutputs.size() > 3 ? (zSize - 1) : (tOutputs.size() > 2) ? zSize - 2 : zSize - 3) * DEFAULT_TRANSACTION_FEE);
         }
-
-        // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
-        // we make allowance for 1 z-output or t-output, 1 native z-change, one token change, and 1 blacklisted change
-        if ((zOutputs.size() > 1 && tOutputs.size() > 3) || (zOutputs.size() > 2 && tOutputs.size() > 2) || zOutputs.size() > 3)
-        {
-            feeAmount += ((tOutputs.size() > 3 ?
-                                (zOutputs.size() - 1) :
-                                (tOutputs.size() > 2) ?
-                                    zOutputs.size() - 2 :
-                                    zOutputs.size() - 3) *
-                           DEFAULT_TRANSACTION_FEE);
-        }
     }
 
     if (returnTx)
