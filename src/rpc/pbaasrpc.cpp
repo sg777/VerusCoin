@@ -8202,6 +8202,18 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         // contentMultiMaps cost an extra standard fee for each 128 bytes in size
         feeAmount = DEFAULT_TRANSACTION_FEE;
 
+        int zSize = zOutputs.size();
+        if (hasZSource || (VERUS_PRIVATECHANGE && !VERUS_DEFAULT_ZADDR.empty()))
+        {
+            zSize++;
+        }
+
+        // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
+        if ((zSize > 1 && tOutputs.size() > 3) || (zSize > 2 && tOutputs.size() > 2) || zSize > 3)
+        {
+            feeAmount += ((tOutputs.size() > 3 ? (zSize - 1) : (tOutputs.size() > 2) ? zSize - 2 : zSize - 3) * DEFAULT_TRANSACTION_FEE);
+        }
+
         // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
         // we make allowance for 1 z-output or t-output, 1 native z-change, one token change, and 1 blacklisted change
         if ((zOutputs.size() > 1 && tOutputs.size() > 3) || (zOutputs.size() > 2 && tOutputs.size() > 2) || zOutputs.size() > 3)
