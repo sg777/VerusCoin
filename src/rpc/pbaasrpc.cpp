@@ -2768,7 +2768,7 @@ bool GetUnspentChainTransfers(std::multimap<uint160, ChainTransferData> &inputDe
             }
             else
             {
-                printf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
+                LogPrint("crosschainexports", "%s: cannot retrieve transaction %s from height %u\n", __func__, it->first.txhash.GetHex().c_str(), it->second.blockHeight);
             }
         }
 

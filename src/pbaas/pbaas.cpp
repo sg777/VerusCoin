@@ -6359,7 +6359,7 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
     std::map<uint160, std::pair<int, int>> secondaryCurrencyExports;
     std::map<uint160, std::pair<int, int>> secondaryIDExports;
 
-    bool isPrelaunch = (isClearLaunchExport || sinceHeight + 1 < _curDef.startBlock);
+    bool isPrelaunch = (isClearLaunchExport || (_curDef.launchSystemID == ASSETCHAINS_CHAINID && sinceHeight + 1 < _curDef.startBlock));
 
     for (auto it = _txInputs.begin(); it != _txInputs.end(); it++)
     {
