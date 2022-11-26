@@ -257,7 +257,6 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
     {
         // checking sourceHeightEnd being creater than 1 ensures that we can legitimately
         // expect an export finalization to follow
-        // TODO: HARDENING - confirm that we leave no issue with an adversarially constructed export with sourceHeightEnd of 1
         if (IsClearLaunch() || (!IsPrelaunch() && sourceHeightEnd > 1))
         {
             numOutput++;
@@ -279,11 +278,11 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
             numOutput++;
             COptCCParams p;
             if (!(exportTx.vout.size() > numOutput &&
-                exportTx.vout[numOutput].scriptPubKey.IsPayToCryptoCondition(p) &&
-                p.IsValid() &&
-                (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
-                p.vData.size() &&
-                (exportNotarization = CPBaaSNotarization(p.vData[0])).IsValid()))
+                  exportTx.vout[numOutput].scriptPubKey.IsPayToCryptoCondition(p) &&
+                  p.IsValid() &&
+                  (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
+                  p.vData.size() &&
+                  (exportNotarization = CPBaaSNotarization(p.vData[0])).IsValid()))
             {
                 return state.Error(strprintf("%s: invalid export notarization",__func__));
             }

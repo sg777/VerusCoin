@@ -2536,7 +2536,6 @@ bool GetChainTransfersUnspentBy(std::multimap<std::pair<uint32_t, uint160>, std:
 
             if (myGetTransaction(it->first.txhash, ntx, blkHash))
             {
-                // TODO: HARDENING - put this level of check on precheck or script indexing as well
                 COptCCParams p, m;
                 CReserveTransfer rt;
                 if (ntx.vout[it->first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -2550,13 +2549,6 @@ bool GetChainTransfersUnspentBy(std::multimap<std::pair<uint32_t, uint160>, std:
                                                 std::make_pair(CInputDescriptor(ntx.vout[it->first.index].scriptPubKey, ntx.vout[it->first.index].nValue, CTxIn(COutPoint(it->first.txhash, it->first.index))),
                                                                rt)));
                 }
-
-                /*
-                uint256 hashBlk;
-                UniValue univTx(UniValue::VOBJ);
-                TxToUniv(ntx, hashBlk, univTx);
-                printf("tx: %s\n", univTx.write(1,2).c_str());
-                */
             }
             else
             {
