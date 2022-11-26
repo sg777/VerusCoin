@@ -121,7 +121,6 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
     std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta> > results;
     CCurrencyDefinition foundDef;
 
-    // TODO: HARDENING - consider converting chain filter to a currency blacklist and/or whitelist check
     if (!ClosedPBaaSChains.count(chainID) && GetAddressUnspent(lookupKey, CScript::P2IDX, unspentOutputs) && unspentOutputs.size())
     {
         for (auto &currencyDefOut : unspentOutputs)
@@ -304,51 +303,6 @@ CIdentity ValidateIdentityParameter(const std::string &idStr)
         retVal = CIdentity::LookupIdentity(GetDestinationID(destination));
     }
     return retVal;
-}
-
-// returns non-null value, if this is a gateway destination
-std::pair<uint160, CTransferDestination> ValidateTransferDestination(const std::string &destStr)
-{
-    uint160 parent;
-    uint160 destID;
-    CTxDestination destination;
-
-    AssertLockHeld(cs_main);
-
-    // One case where the transfer destination is valid, but will not be located on chain
-    // is when the destination is a gateway. In that case, alternate format destinations
-    // can be used. Each format type has its own validation.
-    if (std::count(destStr.begin(), destStr.end(), '@') == 1)
-    {
-        std::string str = CleanName(destStr, parent);
-        if (str != "")
-        {
-            destID = CIdentityID(CIdentity::GetID(str, parent));
-            if (CIdentity::LookupIdentity(destID).IsValid())
-            {
-                return std::make_pair(uint160(), DestinationToTransferDestination(CIdentityID(destID)));
-            }
-            // we haven't found an ID, so this may be a transfer address, but only if
-            // it's parent is a gateway currency and it validates
-            auto gatewayPair = ConnectedChains.GetGateway(parent);
-            if (gatewayPair.first.IsValid() && gatewayPair.second->ValidateDestination(str));
-            {
-                return std::make_pair(parent, gatewayPair.second->ToTransferDestination(str));
-            }
-        }
-    }
-    else
-    {
-        destination = DecodeDestination(destStr);
-        if (destination.which() == COptCCParams::ADDRTYPE_ID)
-        {
-            if (!CIdentity::LookupIdentity(GetDestinationID(destination)).IsValid())
-            {
-                destination = CTxDestination();
-            }
-        }
-    }
-    return std::make_pair(uint160(), DestinationToTransferDestination(destination));
 }
 
 // set default peer nodes in the current connected chains
@@ -2480,9 +2434,12 @@ bool GetChainTransfers(multimap<uint160, std::pair<CInputDescriptor, CReserveTra
     }
 }
 
+// LRUCache<std::tuple<currencyID, blockhash, unspentbyheight>, std::vector<CInputDescriptor>>
+LRUCache<std::tuple<uint160, uint256, uint32_t>, std::vector<CInputDescriptor>> chainTransferCache(500);
+
 // returns all chain transfer outputs, both spent and unspent between a specific start and end block with an optional chainFilter. if the chainFilter is not
 // NULL, only transfers to that system are returned
-bool GetChainTransfersUnspentBy(std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter, uint32_t start, uint32_t end, uint32_t unspentBy, uint32_t flags)
+bool GetChainTransfersUnspentBy(std::multimap<std::pair<uint32_t, uint160>, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter, uint32_t start, uint32_t end, uint32_t unspentBy, uint32_t flags)
 {
     if (!flags)
     {
@@ -2494,6 +2451,54 @@ bool GetChainTransfersUnspentBy(std::multimap<uint160, std::pair<CInputDescripto
     std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
 
     LOCK2(cs_main, mempool.cs);
+
+    if (start && end && chainActive.Height() >= end && (flags == CReserveTransfer::VALID) && !chainFilter.IsNull())
+    {
+        std::vector<std::pair<uint32_t, uint32_t>> blocksToLoad;
+        std::vector<CInputDescriptor> transfersFromCache;
+        for (uint32_t i = start; i <= end; i++)
+        {
+            if (chainTransferCache.Get({chainFilter, chainActive[i]->GetBlockHash(), unspentBy}, transfersFromCache))
+            {
+                // if we got transfers for this block, add them to the map
+                for (auto oneTransfer : transfersFromCache)
+                {
+                    COptCCParams p;
+                    CReserveTransfer rt;
+                    if (oneTransfer.scriptPubKey.IsPayToCryptoCondition(p) &&
+                        (rt = CReserveTransfer(p.vData[0])).IsValid())
+                    {
+                        inputDescriptors.insert(std::make_pair(std::make_pair(i, chainFilter), std::make_pair(oneTransfer, rt)));
+                    }
+                }
+            }
+            else
+            {
+                if (blocksToLoad.empty() || blocksToLoad.back().second < (i - 1))
+                {
+                    blocksToLoad.push_back(std::make_pair(i,i));
+                }
+                else
+                {
+                    blocksToLoad.back().second = i;
+                }
+            }
+        }
+        // if we found any in the cache, fill in the blocks that were not included
+        // since we know none of the missing blocks will be found in the cache, get them with recursion that will cause a lookup
+        // if we didn't find any, drop through and lookup
+        if (!(blocksToLoad.size() == 1 && blocksToLoad[0].first == start && blocksToLoad[0].second == end))
+        {
+            for (auto &onePair : blocksToLoad)
+            {
+                if (!GetChainTransfersUnspentBy(inputDescriptors, chainFilter, onePair.first, onePair.second, unspentBy, flags))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
 
     if (!GetAddressIndex(CReserveTransfer::ReserveTransferKey(),
                          CScript::P2IDX,
@@ -2531,6 +2536,7 @@ bool GetChainTransfersUnspentBy(std::multimap<uint160, std::pair<CInputDescripto
 
             if (myGetTransaction(it->first.txhash, ntx, blkHash))
             {
+                // TODO: HARDENING - put this level of check on precheck or script indexing as well
                 COptCCParams p, m;
                 CReserveTransfer rt;
                 if (ntx.vout[it->first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -2540,7 +2546,7 @@ bool GetChainTransfersUnspentBy(std::multimap<uint160, std::pair<CInputDescripto
                     (nofilter || ((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID) == chainFilter) &&
                     (rt.flags & flags) == flags)
                 {
-                    inputDescriptors.insert(std::make_pair(((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID),
+                    inputDescriptors.insert(std::make_pair(std::make_pair(it->first.blockHeight, (rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID),
                                                 std::make_pair(CInputDescriptor(ntx.vout[it->first.index].scriptPubKey, ntx.vout[it->first.index].nValue, CTxIn(COutPoint(it->first.txhash, it->first.index))),
                                                                rt)));
                 }
@@ -2557,6 +2563,153 @@ bool GetChainTransfersUnspentBy(std::multimap<uint160, std::pair<CInputDescripto
                 LogPrintf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
                 printf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
                 return false;
+            }
+        }
+        if (!chainFilter.IsNull() && (flags == CReserveTransfer::VALID))
+        {
+            for (uint32_t i = start; i <= end && i <= chainActive.Height(); i++)
+            {
+                // find and loop through this block's entries to put in vector then store
+                auto itpair = inputDescriptors.equal_range({i, chainFilter});
+                std::vector<CInputDescriptor> cacheVec;
+                for (auto it = itpair.first; it != itpair.second; it++)
+                {
+                    cacheVec.push_back(it->second.first);
+                }
+                chainTransferCache.Put({chainFilter, chainActive[i]->GetBlockHash(), unspentBy}, cacheVec);
+            }
+        }
+        return true;
+    }
+}
+
+// returns all chain transfer outputs, both spent and unspent between a specific start and end block with an optional chainFilter. if the chainFilter is not
+// NULL, only transfers to that system are returned
+bool GetChainTransfersBetween(std::multimap<std::pair<uint32_t, uint160>, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors, uint160 chainFilter, uint32_t start, uint32_t end, uint32_t flags)
+{
+    if (!flags)
+    {
+        flags = CReserveTransfer::VALID;
+    }
+    bool nofilter = chainFilter.IsNull();
+
+    // which transaction are we in this block?
+    std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
+
+    LOCK2(cs_main, mempool.cs);
+
+    if (start && end && chainActive.Height() >= end && (flags == CReserveTransfer::VALID) && !chainFilter.IsNull())
+    {
+        std::vector<std::pair<uint32_t, uint32_t>> blocksToLoad;
+        std::vector<CInputDescriptor> transfersFromCache;
+        for (uint32_t i = start; i <= end; i++)
+        {
+            if (chainTransferCache.Get({chainFilter, chainActive[i]->GetBlockHash(), 0}, transfersFromCache))
+            {
+                // if we got transfers for this block, add them to the map
+                for (auto oneTransfer : transfersFromCache)
+                {
+                    COptCCParams p;
+                    CReserveTransfer rt;
+                    if (oneTransfer.scriptPubKey.IsPayToCryptoCondition(p) &&
+                        (rt = CReserveTransfer(p.vData[0])).IsValid())
+                    {
+                        inputDescriptors.insert(std::make_pair(std::make_pair(i, chainFilter), std::make_pair(oneTransfer, rt)));
+                    }
+                }
+            }
+            else
+            {
+                if (blocksToLoad.empty() || blocksToLoad.back().second < (i - 1))
+                {
+                    blocksToLoad.push_back(std::make_pair(i,i));
+                }
+                else
+                {
+                    blocksToLoad.back().second = i;
+                }
+            }
+        }
+        // if we found any in the cache, fill in the blocks that were not included
+        // since we know none of the missing blocks will be found in the cache, get them with recursion that will cause a lookup
+        // if we didn't find any, drop through and lookup
+        if (!(blocksToLoad.size() == 1 && blocksToLoad[0].first == start && blocksToLoad[0].second == end))
+        {
+            for (auto &onePair : blocksToLoad)
+            {
+                if (!GetChainTransfersBetween(inputDescriptors, chainFilter, onePair.first, onePair.second, flags))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
+    if (!GetAddressIndex(CReserveTransfer::ReserveTransferKey(),
+                         CScript::P2IDX,
+                         addressIndex,
+                         start,
+                         end))
+    {
+        return false;
+    }
+    else
+    {
+        // This call does not include outputs that were mined in as spent at the
+        // end height requested
+        for (auto it = addressIndex.begin(); it != addressIndex.end(); it++)
+        {
+            CTransaction ntx;
+            uint256 blkHash;
+
+            if (it->first.spending)
+            {
+                continue;
+            }
+
+            if (myGetTransaction(it->first.txhash, ntx, blkHash))
+            {
+                COptCCParams p, m;
+                CReserveTransfer rt;
+                if (ntx.vout[it->first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.evalCode == EVAL_RESERVE_TRANSFER &&
+                    p.vData.size() > 1 && (rt = CReserveTransfer(p.vData[0])).IsValid() &&
+                    (m = COptCCParams(p.vData[1])).IsValid() &&
+                    (nofilter || ((rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID) == chainFilter) &&
+                    (rt.flags & flags) == flags)
+                {
+                    inputDescriptors.insert(std::make_pair(std::make_pair(it->first.blockHeight, (rt.flags & rt.IMPORT_TO_SOURCE) ? rt.FirstCurrency() : rt.destCurrencyID),
+                                                std::make_pair(CInputDescriptor(ntx.vout[it->first.index].scriptPubKey, ntx.vout[it->first.index].nValue, CTxIn(COutPoint(it->first.txhash, it->first.index))),
+                                                               rt)));
+                }
+
+                /*
+                uint256 hashBlk;
+                UniValue univTx(UniValue::VOBJ);
+                TxToUniv(ntx, hashBlk, univTx);
+                printf("tx: %s\n", univTx.write(1,2).c_str());
+                */
+            }
+            else
+            {
+                LogPrintf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
+                printf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
+                return false;
+            }
+        }
+        if (!chainFilter.IsNull() && (flags == CReserveTransfer::VALID))
+        {
+            for (uint32_t i = start; i <= end && i <= chainActive.Height(); i++)
+            {
+                // find and loop through this block's entries to put in vector then store
+                auto itpair = inputDescriptors.equal_range({i, chainFilter});
+                std::vector<CInputDescriptor> cacheVec;
+                for (auto it = itpair.first; it != itpair.second; it++)
+                {
+                    cacheVec.push_back(it->second.first);
+                }
+                chainTransferCache.Put({chainFilter, chainActive[i]->GetBlockHash(), 0}, cacheVec);
             }
         }
         return true;
@@ -2615,9 +2768,10 @@ bool GetUnspentChainTransfers(std::multimap<uint160, ChainTransferData> &inputDe
             }
             else
             {
-                printf("%s: cannot retrieve transaction %s\n", __func__, it->first.txhash.GetHex().c_str());
+                LogPrint("crosschainexports", "%s: cannot retrieve transaction %s from height %u\n", __func__, it->first.txhash.GetHex().c_str(), it->second.blockHeight);
             }
         }
+
         return true;
     }
 }
@@ -8034,7 +8188,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameters.");
     }
 
-    // CAmount feeAmount = (numHeavyOutputs || hasZSource) ? (DEFAULT_HEAVY_INOUT_FEE * (hasZSource ? numHeavyOutputs + 1 : numHeavyOutputs)) : DEFAULT_TRANSACTION_FEE;
     CAmount feeAmount = 0;
     if (params.size() > 3)
     {
@@ -8049,16 +8202,16 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         // contentMultiMaps cost an extra standard fee for each 128 bytes in size
         feeAmount = DEFAULT_TRANSACTION_FEE;
 
-        // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
-        // we make allowance for 1 z-output or t-output, 1 native z-change, one token change, and 1 blacklisted change
-        if ((zOutputs.size() > 1 && tOutputs.size() > 3) || (zOutputs.size() > 2 && tOutputs.size() > 2) || zOutputs.size() > 3)
+        int zSize = zOutputs.size();
+        if (hasZSource || (VERUS_PRIVATECHANGE && !VERUS_DEFAULT_ZADDR.empty()))
         {
-            feeAmount += ((tOutputs.size() > 3 ?
-                                (zOutputs.size() - 1) :
-                                (tOutputs.size() > 2) ?
-                                    zOutputs.size() - 2 :
-                                    zOutputs.size() - 3) *
-                           DEFAULT_TRANSACTION_FEE);
+            zSize++;
+        }
+
+        // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
+        if ((zSize > 1 && tOutputs.size() > 3) || (zSize > 2 && tOutputs.size() > 2) || zSize > 3)
+        {
+            feeAmount += ((tOutputs.size() > 3 ? (zSize - 1) : (tOutputs.size() > 2) ? zSize - 2 : zSize - 3) * DEFAULT_TRANSACTION_FEE);
         }
     }
 

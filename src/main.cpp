@@ -3857,7 +3857,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         prevCurrencyState.UpdateWithEmission(GetBlockSubsidy(nHeight, consensus));
         CCoinbaseCurrencyState currencyState = prevCurrencyState;
 
-        std::map<uint160, int32_t> exportTransferCount;
+        std::map<uint160, std::pair<int32_t, int32_t>> exportTransferCount;
         std::map<uint160, int32_t> currencyExportTransferCount;
         std::map<uint160, int32_t> identityExportTransferCount;
         bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_PBAAS;
@@ -4029,21 +4029,57 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 // make sure we don't export the same identity or currency to the same destination more than once in any block
                                 // we cover the single block case here, and the protocol for each must reject anything relating to prior blocks
                                 CReserveTransfer rt;
-                                CCurrencyDefinition destSystem;
                                 if ((rt = CReserveTransfer(p.vData[0])).IsValid())
                                 {
                                     uint160 destCurrencyID = rt.GetImportCurrency();
                                     CCurrencyDefinition destCurrency = ConnectedChains.GetCachedCurrency(destCurrencyID);
                                     CCurrencyDefinition destSystem = ConnectedChains.GetCachedCurrency(destCurrency.SystemOrGatewayID());
+                                    CCurrencyDefinition secondLegSystem;
 
-                                    if (!destSystem.IsValid())
+                                    if (!destCurrency.IsValid() || !destSystem.IsValid())
                                     {
                                         return state.DoS(10, error("%s: unable to retrieve system destination for export to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-invalid-system");
                                     }
-                                    if (++exportTransferCount[destCurrencyID] > destSystem.MaxTransferExportCount())
+
+                                    // determine second system dest if there is any, and enforce limits to that system as well
+                                    if (rt.destination.HasGatewayLeg() && rt.destination.gatewayID != destSystem.GetID())
+                                    {
+                                        secondLegSystem = ConnectedChains.GetCachedCurrency(rt.destination.gatewayID);
+                                        if (!secondLegSystem.IsValid())
+                                        {
+                                            if (LogAcceptCategory("crosschainexports"))
+                                            {
+                                                UniValue jsonTx(UniValue::VOBJ);
+                                                TxToUniv(tx, uint256(), jsonTx);
+                                                printf("%s: invalid or inaccessible second leg destination system in reserve transfer in output %d on tx: %s\n", __func__, j, jsonTx.write(1,2).c_str());
+                                                LogPrintf("%s: invalid or inaccessible second leg destination system in reserve transfer in output %d on tx: %s\n", __func__, j, jsonTx.write(1,2).c_str());
+                                            }
+                                            return state.DoS(10, error("%s: invalid system for second leg of transfer to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-invalid-system");
+                                        }
+                                    }
+
+                                    if (++exportTransferCount[destCurrencyID].first > destSystem.MaxTransferExportCount() ||
+                                        (exportTransferCount[destCurrencyID].second += oneOut.scriptPubKey.size()) > destSystem.MaxTransferExportSize())
                                     {
                                         return state.DoS(10, error("%s: attempt to submit block with too many transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-transfers");
                                     }
+
+                                    bool checkSecondLeg = secondLegSystem.IsValid() &&
+                                                            secondLegSystem.SystemOrGatewayID() != ASSETCHAINS_CHAINID &&
+                                                            secondLegSystem.SystemOrGatewayID() != destCurrency.SystemOrGatewayID();
+
+                                    uint160 secondLegID;
+                                    if (checkSecondLeg)
+                                    {
+                                        secondLegID = secondLegSystem.SystemOrGatewayID();
+                                        if (secondLegID.IsNull() ||
+                                            ++exportTransferCount[secondLegID].first > secondLegSystem.MaxTransferExportCount() ||
+                                            (exportTransferCount[secondLegID].second += oneOut.scriptPubKey.size()) > secondLegSystem.MaxTransferExportSize())
+                                        {
+                                            return state.DoS(10, error("%s: attempt to submit block with too many transfers exporting to %s", __func__, EncodeDestination(CIdentityID(secondLegID)).c_str()), REJECT_INVALID, "bad-txns-too-many-transfers");
+                                        }
+                                    }
+
                                     if (rt.IsCurrencyExport() && ++currencyExportTransferCount[destCurrencyID] > destSystem.MaxCurrencyDefinitionExportCount())
                                     {
                                         return state.DoS(10, error("%s: attempt to submit block with too many currency definition transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-currency-transfers");
@@ -4053,7 +4089,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                         return state.DoS(10, error("%s: attempt to submit block with too many identity definition transfers exporting to %s", __func__, EncodeDestination(CIdentityID(destCurrencyID)).c_str()), REJECT_INVALID, "bad-txns-too-many-identity-transfers");
                                     }
 
-                                    if (destCurrency.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
+                                    if (destCurrency.SystemOrGatewayID() != ASSETCHAINS_CHAINID || checkSecondLeg)
                                     {
                                         if (rt.IsCurrencyExport())
                                         {
@@ -4063,6 +4099,14 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                                 return state.DoS(10, error("%s: attempt to transfer currency definition more than once to same network", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
                                             }
                                             currencyDestAndExport.insert(checkKey);
+
+                                            if (checkSecondLeg)
+                                            {
+                                                if (++currencyExportTransferCount[secondLegID] > secondLegSystem.MaxCurrencyDefinitionExportCount())
+                                                {
+                                                    return state.DoS(10, error("%s: attempt to submit block with too many currency definition exports to %s", __func__, EncodeDestination(CIdentityID(secondLegID)).c_str()), REJECT_INVALID, "bad-txns-too-many-transfers");
+                                                }
+                                            }
                                         }
                                         else if (rt.IsIdentityExport())
                                         {
@@ -4072,6 +4116,14 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                                 return state.DoS(10, error("%s: attempt to transfer identity definition more than once to same network", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
                                             }
                                             idDestAndExport.insert(checkKey);
+
+                                            if (checkSecondLeg)
+                                            {
+                                                if (++identityExportTransferCount[secondLegID] > secondLegSystem.MaxCurrencyDefinitionExportCount())
+                                                {
+                                                    return state.DoS(10, error("%s: attempt to submit block with too many identity definition exports to %s", __func__, EncodeDestination(CIdentityID(secondLegID)).c_str()), REJECT_INVALID, "bad-txns-too-many-transfers");
+                                                }
+                                            }
                                         }
                                     }
                                 }

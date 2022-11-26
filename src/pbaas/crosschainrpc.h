@@ -463,11 +463,13 @@ public:
         MAX_STARTUP_NODES = 5,
         DEFAULT_START_TARGET = 0x1e01e1e1,
         MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 20,
-        MAX_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK = 20,
-        MAX_TRANSFER_EXPORTS_PER_BLOCK = 200,
+        MAX_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK = 100,
+        MAX_TRANSFER_EXPORTS_PER_BLOCK = 1000,
+        MAX_TRANSFER_EXPORTS_SIZE_PER_BLOCK = 400000,
         MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 1,
         MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK = 0,
         MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK = 50,
+        MAX_ETH_TRANSFER_EXPORTS_SIZE_PER_BLOCK = 100000,
         DEFAULT_BLOCK_NOTARIZATION_TIME = 600,      // default target time for block notarizations
         MIN_BLOCK_NOTARIZATION_BLOCKS = 2,          // minimum target blocks for notarization period
         MAX_NOTARIZATION_CONVERSION_PRICING_INTERVAL = 100,  // there must be a notarization with conversion at least 100 blocks before reserve transfer
@@ -877,6 +879,11 @@ public:
         return proofProtocol == PROOF_ETHNOTARIZATION ? MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK : MAX_TRANSFER_EXPORTS_PER_BLOCK;
     }
 
+    int32_t MaxTransferExportSize() const
+    {
+        return proofProtocol == PROOF_ETHNOTARIZATION ? MAX_ETH_TRANSFER_EXPORTS_SIZE_PER_BLOCK : MAX_TRANSFER_EXPORTS_SIZE_PER_BLOCK;
+    }
+
     int32_t MaxCurrencyDefinitionExportCount() const
     {
         return proofProtocol == PROOF_ETHNOTARIZATION ? MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK : MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK;
@@ -1059,7 +1066,7 @@ public:
     bool IsValid() const
     {
         return (nVersion != PBAAS_VERSION_INVALID) &&
-                // TODO: HARDENING - remove this comment at next reset before PBaaS mainnet (!notaries.size() || minNotariesConfirm > (notaries.size() >> 1)) &&
+                (!notaries.size() || minNotariesConfirm > (notaries.size() >> 1)) &&
                 !(options & ~OPTIONS_FLAG_MASK) &&
                 idReferralLevels <= MAX_ID_REFERRAL_LEVELS &&
                 name.size() > 0 &&

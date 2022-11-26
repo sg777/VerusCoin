@@ -20,7 +20,7 @@
 #include "librustzcash.h"
 #include "pubkey.h"
 #include "amount.h"
-#include <map>
+#include "lrucache.h"
 
 #ifndef SATOSHIDEN
 #define SATOSHIDEN ((uint64_t)100000000L)
@@ -276,7 +276,7 @@ public:
 
     CCurrencyValueMap TotalTransferFee() const;
     CCurrencyValueMap ConversionFee() const;
-    CCurrencyValueMap CalculateFee(uint32_t flags, CAmount transferTotal) const;
+    CCurrencyValueMap CalculateFee() const;
     CCurrencyValueMap TotalCurrencyOut() const;
 
     static CAmount CalculateTransferFee(const CTransferDestination &destination, uint32_t flags=VALID);
@@ -928,6 +928,15 @@ public:
         FLAG_SYSTEMTHREAD = 0x100               // export that is there to ensure continuous export thread only
     };
 
+    /*
+    int32_t &nextOutput,
+    CPBaaSNotarization &exportNotarization,
+    std::vector<CReserveTransfer> &reserveTransfers,
+    CCurrencyDefinition::EProofProtocol hashType
+    */
+    static LRUCache<CUTXORef, std::tuple<int, CPBaaSNotarization, std::vector<CReserveTransfer>, CCurrencyDefinition::EProofProtocol>>
+        exportInfoCache;
+
     uint16_t nVersion;                          // current version
     uint16_t flags;                             // controls serialization and active state
 
@@ -1521,6 +1530,8 @@ public:
 
     CCoinbaseCurrencyState(const CTransaction &tx, int *pOutIdx=NULL);
 
+    bool ValidateConversionLimits() const;
+
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
@@ -1690,10 +1701,10 @@ public:
         IS_RESERVE=4,                           // if set, this transaction affects reserves and/or price if mined
         IS_RESERVETRANSFER=8,                   // is this a reserve/exchange transaction?
         IS_LIMIT=0x10,                          // if reserve exchange, is it a limit order?
-        IS_FILLORKILL=0x20,                     // If set, this can expire
+        IS_FILLORKILL=0x20,                     // If set, this can expire, but the tx goes in as a refund (not supported yet in PBaaS 1.0)
         IS_FILLORKILLFAIL=0x40,                 // If set, this is an expired fill or kill in a valid tx
-        IS_IMPORT=0x80,                         // If set, this is an expired fill or kill in a valid tx
-        IS_EXPORT=0x100,                        // If set, this is an expired fill or kill in a valid tx
+        IS_IMPORT=0x80,                         // non-supplemental export
+        IS_EXPORT=0x100,                        // import
         IS_IDENTITY=0x200,                      // If set, this is an identity definition or update
         IS_IDENTITY_DEFINITION=0x400,           // If set, this is an identity definition
         IS_HIGH_FEE=0x800,                      // If set, this may have "absurdly high fees"
@@ -1803,7 +1814,8 @@ public:
                                          CCoinbaseCurrencyState *pNewCurrencyState=nullptr,
                                          const CTransferDestination &feeRecipient=CTransferDestination(),
                                          const CTransferDestination &blockNotarizer=CTransferDestination(),
-                                         const uint256 &entropy=uint256());
+                                         const uint256 &entropy=uint256(),
+                                         bool finalValidityCheck=false);
 };
 
 struct CCcontract_info;

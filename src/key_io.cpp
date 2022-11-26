@@ -108,6 +108,8 @@ UniValue getvdxfid_internal(const UniValue& params)
     // first, try to interpret the ID as an ID, in case it is
     CTxDestination idDest = DecodeDestination(vdxfName);
 
+    bool isIndexKey = false;
+
     if (idDest.which() == COptCCParams::ADDRTYPE_ID)
     {
         cleanName = CleanName(vdxfName, parentID, true, true);
@@ -115,6 +117,7 @@ UniValue getvdxfid_internal(const UniValue& params)
     }
     else
     {
+        isIndexKey = true;
         parentIDName = "namespace";
         vdxfID = CVDXF::GetDataKey(vdxfName, parentID);
         cleanName = vdxfName;
@@ -129,6 +132,8 @@ UniValue getvdxfid_internal(const UniValue& params)
     UniValue boundData(UniValue::VOBJ);
     if (!vdxfKeyInputUni.isNull())
     {
+        isIndexKey = true;
+
         if (hashUniValue.isNull())
         {
             vdxfID = CCrossChainRPCData::GetConditionID(vdxfID, vdxfKeyInput);
@@ -157,6 +162,7 @@ UniValue getvdxfid_internal(const UniValue& params)
     }
     else if (!hashUniValue.isNull() && !numUniValue.isNull())
     {
+        isIndexKey = true;
         vdxfID = CCrossChainRPCData::GetConditionID(vdxfID, hash256KeyKeyInput, hashInputNum);
         boundData.pushKV("uint256", hash256KeyKeyInput.GetHex());
         boundData.pushKV("indexnum", hashInputNum);
@@ -168,6 +174,10 @@ UniValue getvdxfid_internal(const UniValue& params)
 
     UniValue result(UniValue::VOBJ);
     result.pushKV("vdxfid", EncodeDestination(CIdentityID(vdxfID)));
+    if (isIndexKey)
+    {
+        result.pushKV("indexid", EncodeDestination(CIndexID(vdxfID)));
+    }
     result.pushKV("hash160result", vdxfID.GetHex());
     UniValue nameWithParent(UniValue::VOBJ);
     nameWithParent.pushKV(parentIDName, EncodeDestination(CIdentityID(parentID)));
