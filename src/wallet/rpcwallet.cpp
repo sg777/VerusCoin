@@ -5871,16 +5871,16 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
         // as of PBaaS, standard contentMaps cost an extra standard fee per entry
         // contentMultiMaps cost an extra standard fee for each 128 bytes in size
         nFee = nDefaultFee;
+        int zSize = zaddrRecipients.size();
+        if (!fromTaddr || (VERUS_PRIVATECHANGE && !VERUS_DEFAULT_ZADDR.empty()))
+        {
+            zSize++;
+        }
 
         // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
-        if ((zaddrRecipients.size() > 1 && taddrRecipients.size() > 3) || (zaddrRecipients.size() > 2 && taddrRecipients.size() > 2) || zaddrRecipients.size() > 3)
+        if ((zSize > 1 && taddrRecipients.size() > 3) || (zSize > 2 && taddrRecipients.size() > 2) || zSize > 3)
         {
-            nFee += ((taddrRecipients.size() > 3 ?
-                                (zaddrRecipients.size() - 1) :
-                                (taddrRecipients.size() > 2) ?
-                                    zaddrRecipients.size() - 2 :
-                                    zaddrRecipients.size() - 3) *
-                           DEFAULT_TRANSACTION_FEE);
+            nFee += ((taddrRecipients.size() > 3 ? (zSize - 1) : (taddrRecipients.size() > 2) ? zSize - 2 : zSize - 3) * DEFAULT_TRANSACTION_FEE);
         }
     }
 
