@@ -32,7 +32,7 @@ int32_t MAX_UTXOS_ID_RESCAN = 100;      // this can be set with "-maxutxosidresc
 uint160 VERUS_NODEID;
 bool VERUS_PRIVATECHANGE;
 std::string VERUS_DEFAULT_ZADDR;
-extern CTxDestination VERUS_DEFAULT_ARBADDRESS;
+CTxDestination VERUS_DEFAULT_ARBADDRESS;
 std::vector<uint160> VERUS_ARBITRAGE_CURRENCIES;
 
 uint160 ParseVDXFIDInternal(const std::string &vdxfName)
