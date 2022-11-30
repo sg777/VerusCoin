@@ -2941,8 +2941,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             nBlockSigOps += txSigOps;
         }
 
-        extern CWallet *pwalletMain;
-
         pblock->vtx[0] = coinbaseTx;
         pblocktemplate->vTxFees[0] = -nFees;
         pblocktemplate->vTxSigOps[0] = GetLegacySigOpCount(pblock->vtx[0]);

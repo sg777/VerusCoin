@@ -558,6 +558,8 @@ void CurrencySystemTypeQuery(const uint160 queryID,
     }
 }
 
+
+
 void CurrencyNotarizationTypeQuery(CCurrencyDefinition::EQueryOptions launchStateQuery,
                                    std::map<CUTXORef, int> &currenciesFound,
                                    std::vector<std::pair<std::pair<CUTXORef, std::vector<CNodeData>>, CCurrencyDefinition>> &curDefVec,
@@ -1235,6 +1237,739 @@ std::string ConvertAlternateRepresentations(const std::string &paramStr)
         }
     }
     return paramStr;
+}
+
+bool GetOpRetChainOffer(const CTransaction &postedTx,
+                        CTransaction &offerTx,
+                        CTransaction &inputToOfferTx,
+                        uint32_t height,
+                        bool getUnexpired,
+                        bool getExpired,
+                        uint256 &offerBlockHash)
+{
+    std::vector<CBaseChainObject *> opRetArray;
+    CPartialTransactionProof offerTxProof;
+    bool isPartial = false, incompleteTx = false;
+    COptCCParams p;
+    CSpentIndexKey spentKey = CSpentIndexKey(postedTx.GetHash(), 1);
+    CSpentIndexValue spentValue;
+    CTransaction opRetTx;
+    uint256 opRetBlockHash;
+
+    if (postedTx.vout.size() > 1 &&
+        postedTx.vout[0].scriptPubKey.IsPayToCryptoCondition(p) &&
+        p.IsValid() &&
+        (p.evalCode == EVAL_IDENTITY_COMMITMENT || p.evalCode == EVAL_IDENTITY_PRIMARY) &&
+        postedTx.vout[0].nValue >= DEFAULT_TRANSACTION_FEE &&
+        ((postedTx.vout.back().scriptPubKey.IsOpReturn() &&
+          (opRetArray = RetrieveOpRetArray((opRetTx = postedTx).vout.back().scriptPubKey)).size() == 1) ||
+         (GetSpentIndex(spentKey, spentValue) &&
+          myGetTransaction(spentValue.txid, opRetTx, opRetBlockHash)  &&
+          (opRetArray = RetrieveOpRetArray(opRetTx.vout.back().scriptPubKey)).size() == 1)) &&
+        opRetArray[0]->objectType == CHAINOBJ_TRANSACTION_PROOF &&
+        (offerTxProof = ((CChainObject<CPartialTransactionProof> *)(opRetArray[0]))->object).IsValid() &&
+        !offerTxProof.GetPartialTransaction(offerTx, &isPartial).IsNull() &&
+        !isPartial &&
+        offerTx.vout.size() == 1 &&
+        offerTx.vin.size() == 1 &&
+        offerTx.vShieldedSpend.size() == 0 &&
+        ((spentKey = CSpentIndexKey(offerTx.vin[0].prevout.hash, offerTx.vin[0].prevout.n), !GetSpentIndex(spentKey, spentValue))) &&
+        ((getExpired && offerTx.nExpiryHeight <= height) || (getUnexpired && offerTx.nExpiryHeight > height)) &&
+        myGetTransaction(offerTx.vin[0].prevout.hash, inputToOfferTx, offerBlockHash))
+    {
+        return true;
+    }
+    else if (getExpired &&
+             !(offerTxProof.IsValid() && !isPartial && offerTx.nExpiryHeight > height) &&
+             p.IsValid() &&
+             p.evalCode == EVAL_IDENTITY_COMMITMENT &&
+             postedTx.vout[0].nValue >= DEFAULT_TRANSACTION_FEE &&
+             p.vData.size() > 1 &&
+             COptCCParams(p.vData.back()).vKeys.size() > 1 &&
+             myGetTransaction(postedTx.GetHash(), inputToOfferTx, offerBlockHash) &&
+             !offerBlockHash.IsNull() &&
+             mapBlockIndex.count(offerBlockHash) &&
+             (mapBlockIndex[offerBlockHash]->GetHeight() + DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) < height)
+    {
+        CMutableTransaction mtx = CreateNewContextualCMutableTransaction(Params().GetConsensus(), height);
+        mtx.vin.push_back(CTxIn(postedTx.GetHash(), 0));
+        mtx.vout.push_back(postedTx.vout[0]);
+        mtx.nExpiryHeight = std::min(height - 1, (uint32_t)0);
+        offerTx = mtx;
+        return true;
+    }
+
+    return false;
+}
+
+bool GetOpRetChainOffer(const CTransaction &postedTx,
+                        CTransaction &offerTx,
+                        CTransaction &inputToOfferTx,
+                        uint32_t height)
+{
+    bool getUnexpired = true;
+    bool getExpired = false;
+    uint256 offerBlockHash;
+    return GetOpRetChainOffer(postedTx, offerTx, inputToOfferTx, height, getUnexpired, getExpired, offerBlockHash);
+}
+
+LRUCache<std::tuple<int, uint256, uint160>, std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>>> OfferMapCache(50);
+
+// Get internal, compact form of an offer map (on-chain order book) for a currency or ID
+//
+// This will retrieve all offers for the indicated currency in all currencies or as specified in the filter,
+// and also all offers for the particular currency in the indicated currencies.
+//
+// key is (iscurrency == 1 || 0, currencyoridoffered, forcurrencyorid, price, amount offered),
+// value is pair((0 = ID, 1 = currency, CurrencyValueMap to pay/0 val for ID) (CInputDescriptor, CTransaction)
+std::multimap<std::tuple<int, uint160, uint160, int64_t, int64_t>, std::pair<std::pair<int, CCurrencyValueMap>, std::pair<CInputDescriptor, CTransaction>>>
+GetOfferMap(const uint160 &currencyOrId, bool isCurrency, bool acceptOnlyCurrency, bool acceptOnlyId, const std::set<uint160> &currencyOrIdFilter)
+{
+    std::multimap<std::tuple<int, uint160, uint160, int64_t, int64_t>, std::pair<std::pair<int, CCurrencyValueMap>, std::pair<CInputDescriptor, CTransaction>>>
+            retVal;
+
+    LOCK(cs_main);
+
+    CCurrencyDefinition currencyDef;
+    CIdentity identity;
+
+    uint160 lookupID, lookupForID;
+
+    if (isCurrency)
+    {
+        currencyDef = ConnectedChains.GetCachedCurrency(currencyOrId);
+        if (!currencyDef.IsValid())
+        {
+            LogPrint("marketplace", "%s: invalid currency (%s) specified or cannot be found\n", __func__, EncodeDestination(CIdentityID(currencyOrId)).c_str());
+            return retVal;
+        }
+        lookupForID = COnChainOffer::OnChainOfferForCurrencyKey(currencyOrId);
+        lookupID = COnChainOffer::OnChainCurrencyOfferKey(currencyOrId);
+    }
+    else
+    {
+        if (!(identity = CIdentity::LookupIdentity(currencyOrId)).IsValid())
+        {
+            LogPrint("marketplace", "%s: invalid identity (%s) specified or cannot be found\n", __func__, EncodeDestination(CIdentityID(currencyOrId)).c_str());
+            return retVal;
+        }
+        lookupForID = COnChainOffer::OnChainOfferForIdentityKey(currencyOrId);
+        lookupID = COnChainOffer::OnChainIdentityOfferKey(currencyOrId);
+    }
+
+    uint32_t height = chainActive.Height();
+
+    // bool is "iscurrency" for the offer in a buy and for the request for payment in a sell
+
+    // offers to buy with IDs
+    std::multimap<std::pair<uint160, CAmount>, UniValue> uniBuyWithIDs;
+    std::multimap<std::pair<uint160, CAmount>, UniValue> uniSellToIDs;
+
+    std::multimap<std::pair<uint160, CAmount>, UniValue> uniBuyWithCurrency;
+    std::multimap<std::pair<uint160, CAmount>, UniValue> uniSellToCurrency;
+
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputOffers;
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs = OfferMapCache.Get({(int)isCurrency, chainActive[height]->GetBlockHash(), currencyOrId});
+
+    //printf("%s: looking up keys: %s, %s\n", __func__, EncodeDestination(CKeyID(lookupID)).c_str(), EncodeDestination(CKeyID(lookupForID)).c_str());
+
+    if (!unspentOutputs.size() &&
+        (!GetAddressUnspent(lookupID, CScript::P2PKH, unspentOutputOffers) ||
+         !GetAddressUnspent(lookupForID, CScript::P2PKH, unspentOutputs) ||
+         (!unspentOutputOffers.size() && !unspentOutputs.size())))
+    {
+        return retVal;
+    }
+    else
+    {
+        unspentOutputs.insert(unspentOutputs.end(), unspentOutputOffers.begin(), unspentOutputOffers.end());
+        OfferMapCache.Put({(int)isCurrency, chainActive[height]->GetBlockHash(), currencyOrId}, unspentOutputs);
+
+        for (auto &oneOffer : unspentOutputs)
+        {
+            CTransaction postedTx, offerTx, inputToOfferTx;
+            uint256 blockHash;
+            CPartialTransactionProof offerTxProof;
+            COptCCParams p;
+            if (myGetTransaction(oneOffer.first.txhash, postedTx, blockHash))
+            {
+                if (GetOpRetChainOffer(postedTx, offerTx, inputToOfferTx, height))
+                {
+                    // find out what the transaction is requesting for payment
+                    CCurrencyValueMap offerToPay, wePay;
+                    CIdentity offerToTransfer, weTransfer;
+
+                    bool isBuy = true;
+
+                    std::pair<CTxOut, CTxOut> offerOuts(std::make_pair(inputToOfferTx.vout[offerTx.vin[0].prevout.n], offerTx.vout[0]));
+                    if (offerTx.vShieldedOutput.size() != 0)
+                    {
+                        offerOuts.second.nValue -= offerTx.valueBalance;
+                    }
+
+                    if (offerOuts.second.scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() &&
+                        p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                        p.vData.size())
+                    {
+                        if (!(weTransfer = CIdentity(p.vData[0])).IsValid())
+                        {
+                            continue;
+                        }
+
+                        // if this is not what we are looking for, then it must be a request to trade for what we are looking for
+                        if (isCurrency || weTransfer.GetID() != currencyOrId)
+                        {
+                            // if we are not looking to acquire what we look for, but only offers for it, continue
+                            if ((isCurrency && acceptOnlyId) ||
+                                (!isCurrency && acceptOnlyCurrency) ||
+                                (currencyOrIdFilter.size() && !currencyOrIdFilter.count(currencyOrId)))
+                            {
+                                continue;
+                            }
+
+                            // make sure the offer is offering what we are looking for
+                            int64_t price = 0;
+                            if (isCurrency)
+                            {
+                                // verify it is the currency we are looking for
+                                p = COptCCParams();
+                                if (!(offerOuts.first.scriptPubKey.IsSpendableOutputType(p) &&
+                                     ((currencyOrId == ASSETCHAINS_CHAINID && offerOuts.first.nValue > 0) ||
+                                      ((currencyOrId != ASSETCHAINS_CHAINID &&
+                                       (offerToPay = offerOuts.first.ReserveOutValue()).valueMap.count(currencyOrId) &&
+                                        offerToPay.valueMap[currencyOrId] > 0)))))
+                                {
+                                    continue;
+                                }
+                                if (offerOuts.first.nValue > 0)
+                                {
+                                    offerToPay.valueMap[ASSETCHAINS_CHAINID] = offerOuts.first.nValue;
+                                }
+                                price = offerToPay.valueMap[currencyOrId];
+                            }
+                            else
+                            {
+                                // verify it is an ID we are looking for
+                                if (!(offerOuts.first.scriptPubKey.IsPayToCryptoCondition(p) &&
+                                      p.IsValid() &&
+                                      p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                                      p.vData.size() &&
+                                      (offerToTransfer = CIdentity(p.vData[0])).IsValid() &&
+                                      offerToTransfer.GetID() == currencyOrId))
+                                {
+                                    continue;
+                                }
+                            }
+
+                            retVal.insert(std::make_pair(std::tuple<int, uint160, uint160, int64_t, int64_t>({(int)!offerToTransfer.IsValid(),
+                                                                                                              currencyOrId,
+                                                                                                              weTransfer.GetID(),
+                                                                                                              price,
+                                                                                                              price}),
+                                                         std::make_pair(std::make_pair((int64_t)0, CCurrencyValueMap(std::vector<uint160>({weTransfer.GetID()}), std::vector<int64_t>({0}))),
+                                                                        std::make_pair(CInputDescriptor(offerOuts.second.scriptPubKey,
+                                                                                                        offerOuts.second.nValue,
+                                                                                                        CTxIn(COutPoint(offerTx.GetHash(), 0))),
+                                                                                       offerTx))));
+                        }
+                        else // this is an offer to buy the ID specified in currencyOrId for either currency or another ID, which is in the first output
+                        {
+                            if (!acceptOnlyCurrency &&
+                                offerOuts.first.scriptPubKey.IsPayToCryptoCondition(p) &&
+                                p.IsValid() &&
+                                p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                                p.vData.size() &&
+                                (offerToTransfer = CIdentity(p.vData[0])).IsValid() &&
+                                !(currencyOrIdFilter.size() && !currencyOrIdFilter.count(offerToTransfer.GetID())))
+                            {
+                                retVal.insert(std::make_pair(std::tuple<int, uint160, uint160, int64_t, int64_t>({0,
+                                                                                                                  offerToTransfer.GetID(),
+                                                                                                                  currencyOrId,
+                                                                                                                  0,
+                                                                                                                  0}),
+                                                             std::make_pair(std::make_pair((int64_t)0, CCurrencyValueMap(std::vector<uint160>({currencyOrId}), std::vector<int64_t>({0}))),
+                                                                            std::make_pair(CInputDescriptor(offerOuts.second.scriptPubKey,
+                                                                                                            offerOuts.second.nValue,
+                                                                                                            CTxIn(COutPoint(offerTx.GetHash(), 0))),
+                                                                                           offerTx))));
+                            }
+                            else if (!acceptOnlyId && !offerToTransfer.IsValid())
+                            {
+                                // verify that there is a non-zero offer
+                                if (!(offerOuts.first.scriptPubKey.IsSpendableOutputType(p) &&
+                                      p.IsValid() &&
+                                      (offerOuts.first.nValue > 0 ||
+                                       ((offerToPay = offerOuts.first.ReserveOutValue()) > CCurrencyValueMap()))))
+                                {
+                                    continue;
+                                }
+
+                                bool nativeOffer = offerOuts.first.nValue > 0 && !offerToPay.valueMap.size();
+                                uint160 currencyID = nativeOffer ? ASSETCHAINS_CHAINID : offerToPay.valueMap.begin()->first;
+                                CAmount offerAmount = nativeOffer ? offerOuts.first.nValue : offerToPay.valueMap.begin()->second;
+
+                                retVal.insert(std::make_pair(std::tuple<int, uint160, uint160, int64_t, int64_t>({(int)!offerToTransfer.IsValid(),
+                                                                                                                  currencyID,
+                                                                                                                  weTransfer.GetID(),
+                                                                                                                  offerAmount,
+                                                                                                                  offerAmount}),
+                                                            std::make_pair(std::make_pair((int64_t)0, CCurrencyValueMap(std::vector<uint160>({weTransfer.GetID()}), std::vector<int64_t>({0}))),
+                                                                            std::make_pair(CInputDescriptor(offerOuts.second.scriptPubKey,
+                                                                                                            offerOuts.second.nValue,
+                                                                                                            CTxIn(COutPoint(offerTx.GetHash(), 0))),
+                                                                                        offerTx))));
+                            }
+                        }
+                    }
+                    else if (offerOuts.second.scriptPubKey.IsSpendableOutputType(p))
+                    {
+                        // see if it is a buy with or of the currency we are querying about
+                        wePay = offerOuts.second.ReserveOutValue();
+                        if (offerOuts.second.nValue > 0)
+                        {
+                            wePay.valueMap[ASSETCHAINS_CHAINID] = offerOuts.second.nValue;
+                        }
+
+                        // if it is an offer to buy the currency we're inquiring about, then the offer should be in something else
+                        if (isCurrency && wePay.valueMap.count(currencyOrId) && wePay.valueMap[currencyOrId] > 0)
+                        {
+                            // if so, then it is a buy with whatever the input is
+                            if (offerOuts.first.scriptPubKey.IsPayToCryptoCondition(p) &&
+                                p.IsValid() &&
+                                p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                                !acceptOnlyCurrency &&
+                                p.vData.size() &&
+                                (offerToTransfer = CIdentity(p.vData[0])).IsValid() &&
+                                (!currencyOrIdFilter.size() || currencyOrIdFilter.count(offerToTransfer.GetID())))
+                            {
+                                retVal.insert(std::make_pair(std::tuple<int, uint160, uint160, int64_t, int64_t>({0,
+                                                                                                                  offerToTransfer.GetID(),
+                                                                                                                  currencyOrId,
+                                                                                                                  wePay.valueMap[currencyOrId],
+                                                                                                                  wePay.valueMap[currencyOrId]}),
+                                                             std::make_pair(std::make_pair((int64_t)1, CCurrencyValueMap(std::vector<uint160>({currencyOrId}), std::vector<int64_t>({wePay.valueMap[currencyOrId]}))),
+                                                                            std::make_pair(CInputDescriptor(offerOuts.second.scriptPubKey,
+                                                                                                            offerOuts.second.nValue,
+                                                                                                            CTxIn(COutPoint(offerTx.GetHash(), 0))),
+                                                                                           offerTx))));
+                            }
+                            // exchange with other currency
+                            else if (!acceptOnlyId && p.IsValid() &&
+                                     p.evalCode != EVAL_IDENTITY_PRIMARY &&
+                                     offerOuts.first.scriptPubKey.IsSpendableOutputType(p))
+                            {
+                                // verify that there is a non-zero offer
+                                offerToPay = offerOuts.first.ReserveOutValue();
+                                if (offerOuts.first.nValue > 0)
+                                {
+                                    offerToPay.valueMap[ASSETCHAINS_CHAINID] = offerOuts.first.nValue;
+                                }
+
+                                p = COptCCParams();
+                                offerOuts.first.scriptPubKey.IsPayToCryptoCondition(p);
+                                if (!offerToPay.CanonicalMap().valueMap.size())
+                                {
+                                    continue;
+                                }
+
+                                bool nativeOffer = offerOuts.first.nValue > 0 && offerToPay.CanonicalMap().valueMap.size() == 1;
+                                uint160 currencyID;
+                                CAmount offerAmount = 0;
+                                if (nativeOffer)
+                                {
+                                    currencyID = ASSETCHAINS_CHAINID;
+                                    offerAmount = offerOuts.first.nValue;
+                                }
+                                else if ((offerToPay.valueMap.size() - offerToPay.valueMap.count(ASSETCHAINS_CHAINID)) < 1)
+                                {
+                                    continue;
+                                }
+                                else
+                                {
+                                    CCurrencyValueMap nonNative = offerToPay;
+                                    nonNative.valueMap.erase(ASSETCHAINS_CHAINID);
+                                    currencyID = offerToPay.valueMap.begin()->first;
+                                    offerAmount = offerToPay.valueMap.begin()->second;
+                                }
+
+                                // filter out if we should
+                                if (currencyOrIdFilter.size() && !currencyOrIdFilter.count(currencyID))
+                                {
+                                    continue;
+                                }
+
+                                // calculate price
+                                CAmount wePayAmount = wePay.valueMap.begin()->second;
+                                if (wePay.valueMap.size() > 1)
+                                {
+                                    CCurrencyValueMap nonNative = wePay;
+                                    nonNative.valueMap.erase(ASSETCHAINS_CHAINID);
+                                    wePayAmount = nonNative.valueMap.begin()->second;
+                                }
+
+                                CAmount price = CCurrencyState::NativeToReserveRaw(wePayAmount, offerAmount);
+
+                                wePay = offerOuts.second.ReserveOutValue();
+                                if (offerOuts.second.nValue > 0)
+                                {
+                                    wePay.valueMap[ASSETCHAINS_CHAINID] = offerOuts.second.nValue;
+                                }
+
+                                retVal.insert(std::make_pair(std::tuple<int, uint160, uint160, int64_t, int64_t>({1,
+                                                                                                                  offerToTransfer.GetID(),
+                                                                                                                  currencyOrId,
+                                                                                                                  price,
+                                                                                                                  wePayAmount}),
+                                                             std::make_pair(std::make_pair(1, CCurrencyValueMap(std::vector<uint160>({currencyOrId}), std::vector<int64_t>({wePay.valueMap[currencyOrId]}))),
+                                                                            std::make_pair(CInputDescriptor(offerOuts.second.scriptPubKey,
+                                                                                                            offerOuts.second.nValue,
+                                                                                                            CTxIn(COutPoint(offerTx.GetHash(), 0))),
+                                                                                           offerTx))));
+                            }
+                        }
+                        // offer to sell the specified currency for another
+                        else if (isCurrency &&
+                                 offerOuts.first.scriptPubKey.IsSpendableOutputType(p) &&
+                                 ((currencyOrId == ASSETCHAINS_CHAINID && offerOuts.first.nValue > 0) ||
+                                 ((currencyOrId != ASSETCHAINS_CHAINID &&
+                                 (offerToPay = offerOuts.first.ReserveOutValue()).valueMap.count(currencyOrId) &&
+                                 offerToPay.valueMap[currencyOrId] > 0))))
+                        {
+                            if (offerOuts.first.nValue > 0)
+                            {
+                                offerToPay.valueMap[ASSETCHAINS_CHAINID] = offerOuts.first.nValue;
+                            }
+
+                            // offer to sell currency we are querying for the output's currency
+                            bool nativePay = offerOuts.second.nValue > 0 && wePay.CanonicalMap().valueMap.size() == 1;
+                            uint160 currencyID = ASSETCHAINS_CHAINID;
+                            CAmount payAmount = offerOuts.second.nValue;
+                            if (!nativePay)
+                            {
+                                CCurrencyValueMap intermediateMap = wePay;
+                                intermediateMap.valueMap.erase(ASSETCHAINS_CHAINID);
+                                if (!intermediateMap.valueMap.size())
+                                {
+                                    LogPrint("marketplace", "%s: unrecognized currency payment required\n", __func__);
+                                    continue;
+                                }
+                                currencyID = intermediateMap.valueMap.begin()->first;
+                                payAmount = intermediateMap.valueMap.begin()->second;
+                            }
+
+                            if (currencyOrIdFilter.size() && !currencyOrIdFilter.count(currencyID))
+                            {
+                                continue;
+                            }
+
+                            CAmount price = CCurrencyState::NativeToReserveRaw(payAmount, offerToPay.valueMap[currencyOrId]);
+
+                            retVal.insert(std::make_pair(std::tuple<int, uint160, uint160, int64_t, int64_t>({1,
+                                                                                                              currencyOrId,
+                                                                                                              currencyID,
+                                                                                                              price,
+                                                                                                              offerToPay.valueMap[currencyOrId]}),
+                                                         std::make_pair(std::make_pair(1, CCurrencyValueMap(std::vector<uint160>({currencyID}), std::vector<int64_t>({payAmount}))),
+                                                                        std::make_pair(CInputDescriptor(offerOuts.second.scriptPubKey,
+                                                                                                        offerOuts.second.nValue,
+                                                                                                        CTxIn(COutPoint(offerTx.GetHash(), 0))),
+                                                                                       offerTx))));
+                        }
+                        // offer to sell the specified ID for a currency
+                        else if (!isCurrency &&
+                                 offerOuts.first.scriptPubKey.IsPayToCryptoCondition(p) &&
+                                 p.IsValid() &&
+                                 p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                                 p.vData.size() &&
+                                 (offerToTransfer = CIdentity(p.vData[0])).IsValid() &&
+                                 offerToTransfer.GetID() == currencyOrId)
+                        {
+                            bool nativePay = offerOuts.second.nValue > 0 && wePay.CanonicalMap().valueMap.size() == 1;
+                            uint160 currencyID = nativePay ? ASSETCHAINS_CHAINID : wePay.valueMap.begin()->first;
+                            CAmount payAmount = nativePay ? offerOuts.second.nValue : wePay.valueMap.begin()->second;
+
+                            if (currencyOrIdFilter.size() && !currencyOrIdFilter.count(currencyID))
+                            {
+                                continue;
+                            }
+
+                            retVal.insert(std::make_pair(std::tuple<int, uint160, uint160, int64_t, int64_t>({0,
+                                                                                                              currencyOrId,
+                                                                                                              currencyID,
+                                                                                                              payAmount,
+                                                                                                              payAmount}),
+                                                            std::make_pair(std::make_pair(1, CCurrencyValueMap(std::vector<uint160>({currencyID}), std::vector<int64_t>({payAmount}))),
+                                                                        std::make_pair(CInputDescriptor(offerOuts.second.scriptPubKey,
+                                                                                                        offerOuts.second.nValue,
+                                                                                                        CTxIn(COutPoint(offerTx.GetHash(), 0))),
+                                                                                        offerTx))));
+                        }
+                    }
+                    else
+                    {
+                        LogPrint("marketplace", "%s: marketplace supports exchange of identities and spendable outputs only\n", __func__);
+                    }
+                }
+            }
+            else
+            {
+                LogPrint("marketplace", "%s: cannot retrieve transaction %s, the local index is likely corrupted and either requires reindex, bootstrap, or resync\n", __func__, oneOffer.first.txhash.GetHex().c_str());
+                return retVal;
+            }
+        }
+    }
+    return retVal;
+}
+
+// this takes a number of on-chain offers for the arbitrageCurrencySet, each paying in one of the reserves
+// or the primary currency of the the notarization, which must be fractional.
+bool SelectArbitrageFromOffers(const std::vector<
+    std::multimap<std::tuple<int, uint160, uint160, int64_t, int64_t>, std::pair<std::pair<int, CCurrencyValueMap>, std::pair<CInputDescriptor, CTransaction>>>>
+                                                        &offers,
+                                                        const CPBaaSNotarization &lastNotarization,
+                                                        const CCurrencyDefinition &sourceSystem,
+                                                        const CCurrencyDefinition &destCurrency,
+                                                        uint32_t startHeight,
+                                                        uint32_t nextHeight,
+                                                        std::vector<CReserveTransfer> exportTransfers,
+                                                        uint256 &transferHash,
+                                                        CPBaaSNotarization &newNotarization,
+                                                        std::vector<CTxOut> &newOutputs,
+                                                        CCurrencyValueMap &importedCurrency,
+                                                        CCurrencyValueMap &gatewayDepositsUsed,
+                                                        CCurrencyValueMap &spentCurrencyOut,
+                                                        const CTransferDestination &rewardDest,
+                                                        const CCurrencyValueMap &arbitrageCurrencies,
+                                                        std::vector<std::pair<CInputDescriptor, CReserveTransfer>> &arbitrageInputs)
+{
+    if (pwalletMain)
+    {
+        LOCK(pwalletMain->cs_wallet);
+
+        std::vector<COutput> vCoins;
+
+        // get total amounts of arbitrage currencies that we have available to use
+        pwalletMain->AvailableReserveCoins(vCoins,
+                                           false,
+                                           nullptr,
+                                           true,
+                                           true,
+                                           VERUS_DEFAULT_ARBADDRESS.which() != COptCCParams::ADDRTYPE_INVALID ? &VERUS_DEFAULT_ARBADDRESS : nullptr,
+                                           &arbitrageCurrencies, false);
+
+        CCurrencyValueMap availableCurrencies;
+        for (auto &oneOutput : vCoins)
+        {
+            CCurrencyValueMap oneOutVal = oneOutput.tx->vout[oneOutput.i].ReserveOutValue();
+            if (oneOutput.tx->vout[oneOutput.i].nValue > 0)
+            {
+                oneOutVal.valueMap[ASSETCHAINS_CHAINID] += oneOutput.tx->vout[oneOutput.i].nValue;
+            }
+            availableCurrencies += oneOutVal.IntersectingValues(arbitrageCurrencies);
+        }
+
+        // Now, we have all cross-offers for all of the currencies we arbitrage. Each is represented by offers for
+        // the currency in question in exchange for any of the other currencies in the basket or the basket currency itself.
+        //
+        // To arbitrage, we do the following:
+        //
+        // 1) Answer the question, for which of the offers, given that we would fulfill the on-chain offer and pass
+        //    its output into the liquidity basket to convert to the original source, will we get more surplus of
+        //    the funding currency out then the original amount entered? If that amount is positive, pass it to #2.
+        //
+        // 2) Make an arbitrage reserve transfer to convert into the amount needed to convert into enough to execute
+        //    the offer selected.
+        //
+        // 3) Route the output of the import conversion into the offer, executing it and keeping both its output and
+        //    any surplus.
+        //
+        // We can optimize wrt Verus or any currency.
+        //
+
+        std::vector<CTxOut> testOutputs;
+
+        // get a preview of our liquidity basket, and if there are orders for those currencies in any currency we
+        // arbitrage, and if we can get better execution for the same size by adding a reserve transfer to the liquidity
+        // pool, create a transaction that funds the offer and also provides a reserve transfer into the liquidity pool,
+        // pipe the same value that would be returned from the transaction into the reserve transfer, get the better execution
+        // for same price as we bring the pricing closer to market for everyone, and take the difference in our wallet.
+        bool success = lastNotarization.NextNotarizationInfo(sourceSystem,
+                                                             destCurrency,
+                                                             startHeight,
+                                                             nextHeight,
+                                                             exportTransfers,
+                                                             transferHash,
+                                                             newNotarization,
+                                                             testOutputs,
+                                                             importedCurrency,
+                                                             gatewayDepositsUsed,
+                                                             spentCurrencyOut,
+                                                             rewardDest);
+        if (!success)
+        {
+            return false;
+        }
+
+        CCoinbaseCurrencyState previewState = newNotarization.currencyState;
+
+        auto offerIt = offers.begin();
+        uint160 currencyInID, currencyOutID;
+
+        std::map<std::pair<uint160, uint160>, std::tuple<int64_t, int64_t, std::pair<CInputDescriptor, CReserveTransfer>>> mostProfitablePairs;
+
+        while (offerIt != offers.end())
+        {
+            // start at the highest priced offer with the highest amount (the most in the offered currency) and move down
+            // to see if we find an offer to execute that is profitable
+            // if we do, we continue to move down until we run out or see an unprofitable arb. we will only try another
+            // in this currency pair if:
+            // 1) the candidate is larger than the one we've already selected
+            // 2) we've not yet seen an unprofitable arb
+            //
+            // once we see an unprofitable arb, move to the next currency pair
+            //
+            auto rIt = offerIt->end();
+            if (rIt != offerIt->begin())
+            {
+                rIt--;
+                currencyInID = std::get<1>(rIt->first);
+                currencyOutID = std::get<2>(rIt->first);
+
+                while (true)
+                {
+                    CAmount profit = 0;
+                    auto lastProfitIt = mostProfitablePairs.find(std::make_pair(currencyInID, currencyOutID));
+                    CAmount profitToBeat = (lastProfitIt == mostProfitablePairs.end()) ? 0 : std::get<0>(lastProfitIt->second);
+                    CAmount sizeToBeat = profitToBeat ? std::get<1>(lastProfitIt->second) : 0;
+                    CAmount thisSize = std::get<4>(rIt->first);
+
+                    // basic sanity check to see if profit is possible
+                    CCurrencyValueMap lastConversionPrices = newNotarization.currencyState.TargetLastConversionPrices(currencyOutID);
+                    CAmount noSlipConversion = newNotarization.currencyState.ReserveToNativeRaw(thisSize, lastConversionPrices.valueMap[currencyInID]);
+                    bool isOneStep = currencyInID == newNotarization.currencyID || currencyOutID == newNotarization.currencyID;
+                    int64_t discountFactor = (isOneStep ? (SATOSHIDEN - 25000) : (SATOSHIDEN - 50000));
+                    noSlipConversion = CCurrencyDefinition::CalculateRatioOfValue(noSlipConversion, isOneStep ? (SATOSHIDEN - 25000) : (SATOSHIDEN - 50000));
+
+                    // if the no-slip conversion is bigger than the the input we'd provide,
+                    // we have a possibility of getting a positive output, so try it, otherwise, skip to the next pair
+                    if (rIt->second.first.second.valueMap.count(currencyOutID) && (noSlipConversion -
+                                                                                   rIt->second.first.second.valueMap.find(currencyOutID)->second) > 0)
+                    {
+                        uint32_t transferFlags = CReserveTransfer::VALID + CReserveTransfer::ARBITRAGE_ONLY + CReserveTransfer::CONVERT;
+                        if (std::get<1>(rIt->first) == newNotarization.currencyID)
+                        {
+                            transferFlags |= CReserveTransfer::IMPORT_TO_SOURCE;
+                        }
+
+                        // add the new arb transfer as a what-if, determine how much it costs us to execute it,
+                        // how much comes out the end of the transfers, and how much potential profit we make
+                        CReserveTransfer oneTransfer(transferFlags,
+                                                     CCurrencyValueMap(std::vector<uint160>({std::get<1>(rIt->first)}), std::vector<int64_t>({std::get<4>(rIt->first)})),
+                                                     ASSETCHAINS_CHAINID,
+                                                     ConnectedChains.ThisChain().GetTransactionImportFee(),
+                                                     (transferFlags & CReserveTransfer::IMPORT_TO_SOURCE) ? std::get<2>(rIt->first) : newNotarization.currencyID,
+                                                     DestinationToTransferDestination(VERUS_DEFAULT_ARBADDRESS),
+                                                     ((transferFlags & CReserveTransfer::IMPORT_TO_SOURCE) ||
+                                                      std::get<2>(rIt->first) == newNotarization.currencyID) ? uint160() : std::get<2>(rIt->first));
+
+                        exportTransfers.push_back(oneTransfer);
+                        testOutputs.clear();
+
+                        if (lastNotarization.NextNotarizationInfo(sourceSystem,
+                                                                  destCurrency,
+                                                                  startHeight,
+                                                                  nextHeight,
+                                                                  exportTransfers,
+                                                                  transferHash,
+                                                                  newNotarization,
+                                                                  testOutputs,
+                                                                  importedCurrency,
+                                                                  gatewayDepositsUsed,
+                                                                  spentCurrencyOut,
+                                                                  rewardDest))
+                        {
+                            if (testOutputs.size())
+                            {
+                                CTxDestination ourDest;
+                                if (ExtractDestination(testOutputs.back().scriptPubKey, ourDest) && ourDest == VERUS_DEFAULT_ARBADDRESS)
+                                {
+                                    CCurrencyValueMap outputVal = testOutputs.back().ReserveOutValue();
+                                    if (testOutputs.back().nValue > 0)
+                                    {
+                                        outputVal.valueMap[ASSETCHAINS_CHAINID] = testOutputs.back().nValue;
+                                    }
+                                    auto costIt = rIt->second.first.second.valueMap.find(std::get<2>(rIt->first));
+                                    profit = (costIt == rIt->second.first.second.valueMap.end() ? 0 : outputVal.valueMap[std::get<2>(rIt->first)] - costIt->second);
+                                }
+                                else
+                                {
+                                    profit = 0;
+                                }
+                            }
+                        }
+
+                        // remove test transfer
+                        exportTransfers.pop_back();
+
+                        if (profit > profitToBeat)
+                        {
+                            COptCCParams rtP;
+                            if (rIt->second.second.first.scriptPubKey.IsPayToCryptoCondition(rtP) &&
+                                rtP.evalCode == EVAL_RESERVE_TRANSFER &&
+                                rtP.vData.size())
+                            {
+                                oneTransfer = CReserveTransfer(rtP.vData[0]);
+                            }
+                            if (oneTransfer.IsValid())
+                            {
+                                mostProfitablePairs.insert(std::make_pair(std::make_pair(currencyInID, currencyOutID),
+                                                                          std::tuple<int64_t, int64_t, std::pair<CInputDescriptor, CReserveTransfer>>(
+                                                                            {profit, thisSize, std::make_pair(rIt->second.second.first, oneTransfer)})));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // if we can't beat the current price with zero slippage, we're done with this pair
+                        rIt = offerIt->lower_bound({1, currencyInID, currencyOutID, 0, 0});
+                    }
+
+                    // if out of space behind us, move to next set of offers
+                    if (rIt == offerIt->begin())
+                    {
+                        break;
+                    }
+                    rIt--;
+                }
+
+                // if we have anything in mostProfitablePairs, select the best priced in native currency
+                // we should be able to add multiple conversions that do not have common currencies
+                printf("%s: preview state:\n%s\n", __func__, previewState.ToUniValue().write(1,2).c_str());
+                for (auto oneConversion : mostProfitablePairs)
+                {
+                    printf("one profitable arb transfer converting from %s to %s and back: profit: %ld, size: %ld\nReserveTransfer:\n%s\n",
+                        ConnectedChains.GetFriendlyCurrencyName(oneConversion.first.second).c_str(),
+                        ConnectedChains.GetFriendlyCurrencyName(oneConversion.first.first).c_str(),
+                        std::get<0>(oneConversion.second),
+                        std::get<1>(oneConversion.second),
+                        std::get<2>(oneConversion.second).second.ToUniValue().write(1,2).c_str());
+                }
+            }
+        }
+    }
+    return lastNotarization.NextNotarizationInfo(sourceSystem,
+                                                 destCurrency,
+                                                 startHeight,
+                                                 nextHeight,
+                                                 exportTransfers,
+                                                 transferHash,
+                                                 newNotarization,
+                                                 newOutputs,
+                                                 importedCurrency,
+                                                 gatewayDepositsUsed,
+                                                 spentCurrencyOut,
+                                                 rewardDest);
 }
 
 uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid=false, CCurrencyDefinition *pCurrencyDef=NULL)
@@ -2434,7 +3169,6 @@ bool GetChainTransfers(multimap<uint160, std::pair<CInputDescriptor, CReserveTra
     }
 }
 
-// LRUCache<std::tuple<currencyID, blockhash, unspentbyheight>, std::vector<CInputDescriptor>>
 LRUCache<std::tuple<uint160, uint256, uint32_t>, std::vector<CInputDescriptor>> chainTransferCache(500);
 
 // returns all chain transfer outputs, both spent and unspent between a specific start and end block with an optional chainFilter. if the chainFilter is not
@@ -2768,7 +3502,7 @@ bool GetUnspentChainTransfers(std::multimap<uint160, ChainTransferData> &inputDe
     }
 }
 
-bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &notarizationData, vector<pair<CTransaction, uint256>> *optionalTxOut)
+bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &notarizationData, vector<std::pair<CTransaction, uint256>> *optionalTxOut)
 {
     notarizationData = CChainNotarizationData(std::vector<std::pair<CUTXORef, CPBaaSNotarization>>());
 
@@ -2927,8 +3661,8 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
     {
         // all pending finalizations must be later than the last confirmed transaction and
         // refer to a previous valid / confirmable, not necessarily confirmed, notarization
-        multimap<uint32_t, pair<CUTXORef, CPBaaSNotarization>> sorted;
-        multimap<uint32_t, pair<CTransaction, uint256>> sortedTxs;
+        multimap<uint32_t, std::pair<CUTXORef, CPBaaSNotarization>> sorted;
+        multimap<uint32_t, std::pair<CTransaction, uint256>> sortedTxs;
         std::multimap<CUTXORef, std::pair<CUTXORef, CPBaaSNotarization>> notarizationReferences;
         std::map<CUTXORef, std::pair<CTransaction, uint256>> referencedTxes;
 
@@ -4128,81 +4862,6 @@ CAmount CalculateFractionalPrice(CAmount smallNumerator, CAmount smallDenominato
     }
     return answer;
 }
-
-bool GetOpRetChainOffer(const CTransaction &postedTx,
-                        CTransaction &offerTx,
-                        CTransaction &inputToOfferTx,
-                        uint32_t height,
-                        bool getUnexpired,
-                        bool getExpired,
-                        uint256 &offerBlockHash)
-{
-    std::vector<CBaseChainObject *> opRetArray;
-    CPartialTransactionProof offerTxProof;
-    bool isPartial = false, incompleteTx = false;
-    COptCCParams p;
-    CSpentIndexKey spentKey = CSpentIndexKey(postedTx.GetHash(), 1);
-    CSpentIndexValue spentValue;
-    CTransaction opRetTx;
-    uint256 opRetBlockHash;
-
-    if (postedTx.vout.size() > 1 &&
-        postedTx.vout[0].scriptPubKey.IsPayToCryptoCondition(p) &&
-        p.IsValid() &&
-        (p.evalCode == EVAL_IDENTITY_COMMITMENT || p.evalCode == EVAL_IDENTITY_PRIMARY) &&
-        postedTx.vout[0].nValue >= DEFAULT_TRANSACTION_FEE &&
-        ((postedTx.vout.back().scriptPubKey.IsOpReturn() &&
-          (opRetArray = RetrieveOpRetArray((opRetTx = postedTx).vout.back().scriptPubKey)).size() == 1) ||
-         (GetSpentIndex(spentKey, spentValue) &&
-          myGetTransaction(spentValue.txid, opRetTx, opRetBlockHash)  &&
-          (opRetArray = RetrieveOpRetArray(opRetTx.vout.back().scriptPubKey)).size() == 1)) &&
-        opRetArray[0]->objectType == CHAINOBJ_TRANSACTION_PROOF &&
-        (offerTxProof = ((CChainObject<CPartialTransactionProof> *)(opRetArray[0]))->object).IsValid() &&
-        !offerTxProof.GetPartialTransaction(offerTx, &isPartial).IsNull() &&
-        !isPartial &&
-        offerTx.vout.size() == 1 &&
-        offerTx.vin.size() == 1 &&
-        offerTx.vShieldedSpend.size() == 0 &&
-        ((spentKey = CSpentIndexKey(offerTx.vin[0].prevout.hash, offerTx.vin[0].prevout.n), !GetSpentIndex(spentKey, spentValue))) &&
-        ((getExpired && offerTx.nExpiryHeight <= height) || (getUnexpired && offerTx.nExpiryHeight > height)) &&
-        myGetTransaction(offerTx.vin[0].prevout.hash, inputToOfferTx, offerBlockHash))
-    {
-        return true;
-    }
-    else if (getExpired &&
-             !(offerTxProof.IsValid() && !isPartial && offerTx.nExpiryHeight > height) &&
-             p.IsValid() &&
-             p.evalCode == EVAL_IDENTITY_COMMITMENT &&
-             postedTx.vout[0].nValue >= DEFAULT_TRANSACTION_FEE &&
-             p.vData.size() > 1 &&
-             COptCCParams(p.vData.back()).vKeys.size() > 1 &&
-             myGetTransaction(postedTx.GetHash(), inputToOfferTx, offerBlockHash) &&
-             !offerBlockHash.IsNull() &&
-             mapBlockIndex.count(offerBlockHash) &&
-             (mapBlockIndex[offerBlockHash]->GetHeight() + DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) < height)
-    {
-        CMutableTransaction mtx = CreateNewContextualCMutableTransaction(Params().GetConsensus(), height);
-        mtx.vin.push_back(CTxIn(postedTx.GetHash(), 0));
-        mtx.vout.push_back(postedTx.vout[0]);
-        mtx.nExpiryHeight = std::min(height - 1, (uint32_t)0);
-        offerTx = mtx;
-        return true;
-    }
-
-    return false;
-}
-
-bool GetOpRetChainOffer(const CTransaction &postedTx,
-                        CTransaction &offerTx,
-                        CTransaction &inputToOfferTx,
-                        uint32_t height)
-{
-    bool getUnexpired = true;
-    bool getExpired = false;
-    uint256 offerBlockHash;
-    return GetOpRetChainOffer(postedTx, offerTx, inputToOfferTx, height, getUnexpired, getExpired, offerBlockHash);
-}
-
 struct OfferInfo
 {
 public:
@@ -6004,7 +6663,6 @@ UniValue getoffers(const UniValue& params, bool fHelp)
                     CCurrencyValueMap offerToPay, wePay;
                     CIdentity offerToTransfer, weTransfer;
 
-                    std::pair<bool, CAmount> exchangeForurrencyOrID;
                     bool isBuy = true;
 
                     std::pair<CTxOut, CTxOut> offerOuts(std::make_pair(inputToOfferTx.vout[offerTx.vin[0].prevout.n], offerTx.vout[0]));

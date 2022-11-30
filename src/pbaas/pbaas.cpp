@@ -4926,25 +4926,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         uint256 transferHash;
         std::vector<CReserveTransfer> exportTransfers = oneIT.second;
 
-        // this is a place where we can
-        // provide a callout for arbitrage and potentially get an additional reserve transfer
-        // input for this import. we should also add it to the exportTransfers vector
-        // with the arbitrage flag set
-        std::vector<CInputDescriptor> arbitrageTransfersIn;
-        if (LogAcceptCategory("arbitrageliquidity") &&
-            destCur.IsFractional() &&
-            lastNotarization.IsLaunchComplete() &&
-            !lastNotarization.IsRefunding())
-        {
-
-            // TODO: HARDENING - this is not technically hardening, but this arbitrage ability needs to be tested as part of hardening
-            // look for the largest unspent output that is not yet eligible for an export
-            //
-            // for arbitrage liquidity, we match liquidity we have on hand with on-chain limit orders to pull reserves that can result
-            // in the sum of currency outputs being strictly greater than the sum of inputs
-            //
-        }
-
         std::vector<CTxOut> newOutputs;
         CCurrencyValueMap importedCurrency, gatewayDepositsUsed, spentCurrencyOut;
 
@@ -4971,21 +4952,90 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             lastNotarization.currencyState.SetLaunchCompleteMarker();
         }
 
-        if (!lastNotarization.NextNotarizationInfo(sourceSystemDef,
-                                                   destCur,
-                                                   ccx.sourceHeightStart,
-                                                   nextHeight,
-                                                   exportTransfers,
-                                                   transferHash,
-                                                   newNotarization,
-                                                   newOutputs,
-                                                   importedCurrency,
-                                                   gatewayDepositsUsed,
-                                                   spentCurrencyOut,
-                                                   ccx.exporter))
+        // this is a place where we can
+        // provide a callout for arbitrage and potentially get an additional reserve transfer
+        // input for this import. we should also add it to the exportTransfers vector
+        // with the arbitrage flag set
+        std::vector<std::pair<CInputDescriptor, CReserveTransfer>> arbitrageTransfersIn;
+        if (VERUS_ARBITRAGE_CURRENCIES.size() &&
+            destCur.IsFractional() &&
+            lastNotarization.IsLaunchComplete() &&
+            !lastNotarization.IsRefunding())
         {
-            LogPrintf("%s: invalid export for currency %s on system %s\n", __func__, destCur.name.c_str(), EncodeDestination(CIdentityID(destCur.systemID)).c_str());
-            return false;
+            CCurrencyValueMap arbitrageCurrencies(VERUS_ARBITRAGE_CURRENCIES, std::vector<int64_t>(VERUS_ARBITRAGE_CURRENCIES.size(), 1));
+            CCurrencyValueMap currenciesInBasket(lastNotarization.currencyState.currencies,
+                                                 std::vector<int64_t>(lastNotarization.currencyState.currencies.size(), 1));
+            currenciesInBasket.valueMap.insert(std::make_pair(lastNotarization.currencyID, 1));
+
+            // if we have 1 or more after this, we can arb for guaranteed returns
+            arbitrageCurrencies = arbitrageCurrencies.IntersectingValues(currenciesInBasket);
+            std::set<uint160> arbitrageSet, acceptSet;
+            for (auto &oneCur : arbitrageCurrencies.valueMap)
+            {
+                arbitrageSet.insert(oneCur.first);
+            }
+
+            for (auto &oneCur : currenciesInBasket.valueMap)
+            {
+                acceptSet.insert(oneCur.first);
+            }
+
+            std::vector<
+                std::multimap<std::tuple<int, uint160, uint160, int64_t, int64_t>, std::pair<std::pair<int, CCurrencyValueMap>, std::pair<CInputDescriptor, CTransaction>>>
+                       > arbOffers;
+
+            for (auto &oneCur : arbitrageCurrencies.valueMap)
+            {
+                auto tempArbSet = acceptSet;
+                tempArbSet.erase(oneCur.first);
+                if (oneCur.first != lastNotarization.currencyID)
+                {
+                    auto oneArbOfferVec = GetOfferMap(oneCur.first, true, true, false, tempArbSet);
+                    if (oneArbOfferVec.size())
+                    {
+                        arbOffers.push_back(oneArbOfferVec);
+                    }
+                }
+            }
+
+            if (SelectArbitrageFromOffers(arbOffers,
+                                          lastNotarization,
+                                          sourceSystemDef,
+                                          destCur,
+                                          ccx.sourceHeightStart,
+                                          nextHeight,
+                                          exportTransfers,
+                                          transferHash,
+                                          newNotarization,
+                                          newOutputs,
+                                          importedCurrency,
+                                          gatewayDepositsUsed,
+                                          spentCurrencyOut,
+                                          ccx.exporter,
+                                          arbitrageCurrencies,
+                                          arbitrageTransfersIn))
+            {
+
+            }
+        }
+        else
+        {
+            if (!lastNotarization.NextNotarizationInfo(sourceSystemDef,
+                                                       destCur,
+                                                       ccx.sourceHeightStart,
+                                                       nextHeight,
+                                                       exportTransfers,
+                                                       transferHash,
+                                                       newNotarization,
+                                                       newOutputs,
+                                                       importedCurrency,
+                                                       gatewayDepositsUsed,
+                                                       spentCurrencyOut,
+                                                       ccx.exporter))
+            {
+                LogPrintf("%s: invalid export for currency %s on system %s\n", __func__, destCur.name.c_str(), EncodeDestination(CIdentityID(destCur.systemID)).c_str());
+                return false;
+            }
         }
 
         // after the last clear launch export is imported, we have completed launch
@@ -5185,7 +5235,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             {
                 for (auto &arbitrageTransferIn : arbitrageTransfersIn)
                 {
-                    tb.AddTransparentInput(arbitrageTransferIn.txIn.prevout, arbitrageTransferIn.scriptPubKey, arbitrageTransferIn.nValue);
+                    tb.AddTransparentInput(arbitrageTransferIn.first.txIn.prevout, arbitrageTransferIn.first.scriptPubKey, arbitrageTransferIn.first.nValue);
                 }
             }
 
