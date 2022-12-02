@@ -623,7 +623,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                         if ((oneTransfer.HasNextLeg() && oneTransfer.destination.gatewayID != ASSETCHAINS_CHAINID ?
                                 nextLegFeeEquiv :
                                 feeEquivalent) <
-                                    CCurrencyState::ReserveToNativeRaw(
+                                    CCurrencyState::NativeToReserveRaw(
                                         ConnectedChains.ThisChain().GetCurrencyImportFee(exportingDef.ChainOptions() & exportingDef.OPTION_NFT_TOKEN),
                                         feeConversionRate))
                         {
@@ -2858,7 +2858,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 exportDestination = systemDest;
             }
 
-            adjustedImportFee = CCoinbaseCurrencyState::ReserveToNativeRaw(
+            adjustedImportFee = CCoinbaseCurrencyState::NativeToReserveRaw(
                         systemDest.GetCurrencyImportFee(curToExport.ChainOptions() & curToExport.OPTION_NFT_TOKEN),
                         adjustedImportFee);
             if (feeEquivalentInNative < adjustedImportFee)
@@ -2960,7 +2960,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.destination.fees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
                 }
 
-                adjustedImportFee = CCoinbaseCurrencyState::ReserveToNativeRaw(systemDest.IDImportFee(), adjustedImportFee);
+                adjustedImportFee = CCoinbaseCurrencyState::NativeToReserveRaw(systemDest.IDImportFee(), adjustedImportFee);
 
                 // ensure that we have enough fees for the identity import
                 if (feeEquivalentInNative < adjustedImportFee)
@@ -3009,7 +3009,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 // ensure that we have enough fees for transfer
                 if (systemDestID != ASSETCHAINS_CHAINID && !rt.IsPreConversion())
                 {
-                    adjustedImportFee = CCoinbaseCurrencyState::ReserveToNativeRaw(systemDest.GetTransactionImportFee(), adjustedImportFee);
+                    adjustedImportFee = CCoinbaseCurrencyState::NativeToReserveRaw(systemDest.GetTransactionImportFee(), adjustedImportFee);
                     if (feeEquivalentInNative < adjustedImportFee)
                     {
                         return state.Error("Not enough fee for cross chain currency operation in reserve transfer " + rt.ToUniValue().write(1,2));
