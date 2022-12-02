@@ -3203,7 +3203,11 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             CIdentity preexistingID = CIdentity::LookupIdentity(FirstCurrency());
             if (preexistingID.IsValid() &&
                 (preexistingID.parent != registeredCurrency.parent ||
-                 (preexistingID.systemID != registeredCurrency.systemID &&
+                 ((preexistingID.systemID != registeredCurrency.systemID &&
+                   !((registeredCurrency.nativeCurrencyID.TypeNoFlags() == registeredCurrency.nativeCurrencyID.DEST_ETH ||
+                      registeredCurrency.nativeCurrencyID.TypeNoFlags() == registeredCurrency.nativeCurrencyID.DEST_ETHNFT) &&
+                     (registeredCurrency.proofProtocol == registeredCurrency.PROOF_ETHNOTARIZATION ||
+                      registeredCurrency.proofProtocol == registeredCurrency.PROOF_CHAINID)) &&
                  !((preexistingID.systemID == registeredCurrency.launchSystemID ||
                     (registeredCurrency.launchSystemID.IsNull() && preexistingID.parent.IsNull())) &&
                    preexistingID.GetID() == registeredCurrency.SystemOrGatewayID())) ||
