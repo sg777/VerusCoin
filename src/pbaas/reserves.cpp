@@ -3201,17 +3201,20 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             // or ID present on chain must match, or the import is not fulfilled, reducing any potential attack into worst case,
             // an extremely expensive single ID on specific chain DoS.
             CIdentity preexistingID = CIdentity::LookupIdentity(FirstCurrency());
+            CCurrencyDefinition systemCurrency = ConnectedChains.GetCachedCurrency(registeredCurrency.systemID);
             if (preexistingID.IsValid() &&
                 (preexistingID.parent != registeredCurrency.parent ||
                  ((preexistingID.systemID != registeredCurrency.systemID &&
                    !((registeredCurrency.nativeCurrencyID.TypeNoFlags() == registeredCurrency.nativeCurrencyID.DEST_ETH ||
                       registeredCurrency.nativeCurrencyID.TypeNoFlags() == registeredCurrency.nativeCurrencyID.DEST_ETHNFT) &&
-                     (registeredCurrency.proofProtocol == registeredCurrency.PROOF_ETHNOTARIZATION ||
-                      registeredCurrency.proofProtocol == registeredCurrency.PROOF_CHAINID)) &&
+                     (registeredCurrency.parent == registeredCurrency.systemID &&
+                      systemCurrency.IsValid() &&
+                      systemCurrency.IsGateway() &&
+                      !systemCurrency.IsNameController())) &&
                  !((preexistingID.systemID == registeredCurrency.launchSystemID ||
                     (registeredCurrency.launchSystemID.IsNull() && preexistingID.parent.IsNull())) &&
                    preexistingID.GetID() == registeredCurrency.SystemOrGatewayID())) ||
-                 boost::to_lower_copy(preexistingID.name) != boost::to_lower_copy(registeredCurrency.name)))
+                 boost::to_lower_copy(preexistingID.name) != boost::to_lower_copy(registeredCurrency.name))))
             {
                 printf("WARNING!: Imported currency collides with pre-existing identity of another name.\n"
                         "The only likely reason for this occurance is a hash-collision attack, targeted specifically at\n"
@@ -3269,12 +3272,19 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             }
 
             CCurrencyDefinition preexistingCurrency = ConnectedChains.GetCachedCurrency(importedID.GetID());
+            CCurrencyDefinition systemCurrency = ConnectedChains.GetCachedCurrency(preexistingCurrency.systemID);
 
             if (!idCollision &&
                 preexistingCurrency.IsValid() &&
                 (importedID.parent != preexistingCurrency.parent ||
                  (importedID.systemID != preexistingCurrency.systemID &&
-                 !((importedID.systemID == preexistingCurrency.launchSystemID ||
+                  !((preexistingCurrency.nativeCurrencyID.TypeNoFlags() == preexistingCurrency.nativeCurrencyID.DEST_ETH ||
+                     preexistingCurrency.nativeCurrencyID.TypeNoFlags() == preexistingCurrency.nativeCurrencyID.DEST_ETHNFT) &&
+                    (preexistingCurrency.parent == preexistingCurrency.systemID &&
+                     systemCurrency.IsValid() &&
+                     systemCurrency.IsGateway() &&
+                     !systemCurrency.IsNameController())) &&
+                  !((importedID.systemID == preexistingCurrency.launchSystemID ||
                     (preexistingCurrency.launchSystemID.IsNull() && importedID.parent.IsNull())) &&
                    importedID.GetID() == preexistingCurrency.SystemOrGatewayID())) ||
                  boost::to_lower_copy(importedID.name) != boost::to_lower_copy(preexistingCurrency.name)))
