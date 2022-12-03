@@ -5312,6 +5312,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                 }
             }
             tb.SendChangeTo(changeDestination);
+            tb.SendChangeTo(libzcash::SaplingPaymentAddress(), uint256());
             tb.SetFee(feeAmount);
             TransactionBuilderResult preResult = tb.Build();
             preTx = preResult.GetTxOrThrow();
@@ -5424,6 +5425,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
                                             oneInput.first->vout[oneInput.second].nValue);
                 }
                 tb.SendChangeTo(changeDestination);
+                tb.SendChangeTo(libzcash::SaplingPaymentAddress(), uint256());
                 tb.SetFee(feeAmount);
                 TransactionBuilderResult preResult = tb.Build();
                 preTx = preResult.GetTxOrThrow();
@@ -5757,6 +5759,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             opRetProof << CPartialTransactionProof(CMMRProof(), offerTx);
             tb.AddOpRet(StoreOpRetArray(opRetProof.chainObjects));
             tb.SendChangeTo(changeDestination);
+            tb.SendChangeTo(libzcash::SaplingPaymentAddress(), uint256());
             tb.SetFee(feeAmount);
 
             TransactionBuilderResult result = tb.Build();
@@ -10433,6 +10436,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     }
     tb.SetFee(totalLaunchExportFee);
     tb.SendChangeTo(launchIdentity.GetID());
+    tb.SendChangeTo(libzcash::SaplingPaymentAddress(), uint256());
 
     if (newGatewayConverter.IsValid())
     {
