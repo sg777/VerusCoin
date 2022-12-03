@@ -7972,18 +7972,19 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
 
             if (lastConfirmedUTXO.hash.IsNull() ||
                 lastConfirmedUTXO.n < 0 ||
-                !(lastConfirmedUTXO.GetOutputTransaction(confNotTx, blockHash) &&
-                  confNotTx.vout.size() > lastConfirmedUTXO.n &&
-                  confNotTx.vout[lastConfirmedUTXO.n].scriptPubKey.IsPayToCryptoCondition(lcP) &&
-                  lcP.IsValid() &&
-                  (lcP.evalCode == EVAL_EARNEDNOTARIZATION || lcP.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
-                  lcP.vData.size() &&
-                  ((pbn.IsValid() &&
-                    pbn.SetMirror(false) &&
-                    ::AsVector(pbn) == lcP.vData[0]) ||
-                   (pbn = CPBaaSNotarization(lcP.vData[0])).IsValid())))
+                !(pbn.IsValid() ||
+                  (lastConfirmedUTXO.GetOutputTransaction(confNotTx, blockHash) &&
+                   confNotTx.vout.size() > lastConfirmedUTXO.n &&
+                   confNotTx.vout[lastConfirmedUTXO.n].scriptPubKey.IsPayToCryptoCondition(lcP) &&
+                   lcP.IsValid() &&
+                   (lcP.evalCode == EVAL_EARNEDNOTARIZATION || lcP.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
+                   lcP.vData.size() &&
+                   ((pbn.IsValid() &&
+                     pbn.SetMirror(false) &&
+                     ::AsVector(pbn) == lcP.vData[0]) ||
+                    (pbn = CPBaaSNotarization(lcP.vData[0])).IsValid()))))
             {
-                LogPrint("notarization", "%s: Invalid notarization from external chain %s\n", __func__, uni_get_str(params[0]).c_str());
+                LogPrint("notarization", "%s: Invalid notarization from external chain %s, UTXO: %s\n", __func__, uni_get_str(params[0]).c_str(), lastConfirmedUTXO.ToUniValue().write().c_str());
                 return exports;
             }
         }
