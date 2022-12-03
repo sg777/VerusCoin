@@ -5759,7 +5759,6 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             opRetProof << CPartialTransactionProof(CMMRProof(), offerTx);
             tb.AddOpRet(StoreOpRetArray(opRetProof.chainObjects));
             tb.SendChangeTo(changeDestination);
-            tb.SendChangeTo(libzcash::SaplingPaymentAddress(), uint256());
             tb.SetFee(feeAmount);
 
             TransactionBuilderResult result = tb.Build();
