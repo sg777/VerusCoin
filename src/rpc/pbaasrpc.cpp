@@ -8449,20 +8449,44 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         {
                             CAmount adjustedFees = CCurrencyState::NativeToReserveRaw(
                                         offChainDef.GetCurrencyImportFee(sourceCurrencyDef.ChainOptions() & offChainDef.OPTION_NFT_TOKEN), feeConversionRate);
+                            if (adjustedFees < 0)
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee calculation overflow 1");
+                            }
                             // get source price for export and dest price for import to ensure we have enough fee currency
                             requiredFees =
                                 CCurrencyState::ReserveToNativeRaw(adjustedFees, reversePriceInFeeCur);
+                            if (requiredFees < 0)
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee calculation overflow 2");
+                            }
                             flags |= CReserveTransfer::CURRENCY_EXPORT;
                         }
                         else if (exportId)
                         {
                             CAmount adjustedFees = CCurrencyState::NativeToReserveRaw(offChainDef.IDImportFee(), feeConversionRate);
+                            if (adjustedFees < 0)
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee calculation overflow 3");
+                            }
                             requiredFees = CCurrencyState::ReserveToNativeRaw(adjustedFees, reversePriceInFeeCur);
+                            if (requiredFees < 0)
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee calculation overflow 4");
+                            }
                         }
                         else
                         {
                             CAmount adjustedFees = CCurrencyState::NativeToReserveRaw(offChainDef.GetTransactionImportFee() << 1, feeConversionRate);
+                            if (adjustedFees < 0)
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee calculation overflow 5");
+                            }
                             requiredFees = CCurrencyState::ReserveToNativeRaw(adjustedFees, reversePriceInFeeCur);
+                            if (requiredFees < 0)
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee calculation overflow 6");
+                            }
                         }
 
                         if (sameChainConversion)
@@ -8592,7 +8616,15 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             // get source price for export and dest price for import to ensure we have enough fee currency
                             CAmount adjustedFees = CCurrencyState::NativeToReserveRaw(
                                         offChainDef.GetCurrencyImportFee(sourceCurrencyDef.ChainOptions() & offChainDef.OPTION_NFT_TOKEN), feeConversionRate);
+                            if (adjustedFees < 0)
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee calculation overflow 7");
+                            }
                             requiredFees = CCurrencyState::ReserveToNativeRaw(adjustedFees, reversePriceInFeeCur);
+                            if (requiredFees < 0)
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee calculation overflow 8");
+                            }
                             flags |= CReserveTransfer::CURRENCY_EXPORT;
                         }
                         else if (exportId)
