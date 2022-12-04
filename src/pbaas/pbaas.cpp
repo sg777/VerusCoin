@@ -182,11 +182,20 @@ bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTra
             // TODO HARDENING - protect this output from being spent just to prevent transactions with no legitimate source
             if (LogAcceptCategory("crosschainexporttracking"))
             {
-                UniValue jsonTx(UniValue::VOBJ);
-                uint256 hashBlk;
-                TxToUniv(tx, hashBlk, jsonTx);
-                LogPrintf("%s: spending supplemental export to:\n%s\n", __func__, jsonTx.write(1,2).c_str()); //*/
-                printf("%s: spending supplemental export to:\n%s\n", __func__, jsonTx.write(1,2).c_str()); //*/
+                LOCK(mempool.cs);
+                CCoinsView dummy;
+                CCoinsViewCache view(&dummy);
+                CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
+                view.SetBackend(viewMemPool);
+                CReserveTransactionDescriptor rtxd(tx, view, chainActive.Height() + 1);
+                if (!rtxd.IsImport())
+                {
+                    UniValue jsonTx(UniValue::VOBJ);
+                    uint256 hashBlk;
+                    TxToUniv(tx, hashBlk, jsonTx);
+                    LogPrintf("%s: spending supplemental export to:\n%s\n", __func__, jsonTx.write(1,2).c_str()); //*/
+                    printf("%s: spending supplemental export to:\n%s\n", __func__, jsonTx.write(1,2).c_str()); //*/
+                }
             }
             return true;
         }
