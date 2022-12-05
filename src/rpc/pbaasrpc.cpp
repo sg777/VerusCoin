@@ -8442,9 +8442,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             {
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot get notarization data for destination system of transfer");
                             }
-                            feeConversionRate = cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice.size() ?
+                            // add an extra satoshi for minimum pricing buffer
+                            feeConversionRate = (cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice.size() ?
                                                     cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice[0] :
-                                                    cnd.vtx[cnd.lastConfirmed].second.proofRoots[offChainDef.SystemOrGatewayID()].gasPrice;
+                                                    cnd.vtx[cnd.lastConfirmed].second.proofRoots[offChainDef.SystemOrGatewayID()].gasPrice) + 1;
                         }
 
                         if (exportCurrency)
@@ -8606,9 +8607,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             {
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot get notarization data for destination system of transfer 2");
                             }
-                            feeConversionRate = cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(offChainDef.SystemOrGatewayID()) ?
+                            // add an extra satoshi for minimum pricing buffer
+                            feeConversionRate = (cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(offChainDef.SystemOrGatewayID()) ?
                                                     cnd.vtx[cnd.lastConfirmed].second.proofRoots[offChainDef.SystemOrGatewayID()].gasPrice :
-                                                    cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice[0];
+                                                    cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice[0]) + 1;
                         }
 
                         // determine required fees
