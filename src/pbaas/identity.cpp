@@ -1352,28 +1352,9 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
         }
 
         // CHECK #6 - ensure that the transaction pays the correct mining and referral fees
-        if (isPBaaS)
+        if (rtxd.NativeFees() < (issuingParent.IDReferredRegistrationAmount() - (referrers.size() * issuingParent.IDReferralAmount())))
         {
-            if (issuerID == ASSETCHAINS_CHAINID)
-            {
-                if (rtxd.NativeFees() < (idReferredRegistrationFee - (referrers.size() * idReferralFee)))
-                {
-                    return state.Error("Invalid identity registration - insufficient fee");
-                }
-            }
-            else
-            {
-                // TODO: HARDENING - ensure that we properly check payment for fractional or centralized IDs
-                // here or elsewhere - this should only get here on centralized currencies and fix may be as easy as
-                // allowing it to run in the block above that is currently conditioned on fractional
-            }
-        }
-        else
-        {
-            if (rtxd.NativeFees() < (issuingParent.IDReferredRegistrationAmount() - (referrers.size() * issuingParent.IDReferralAmount())))
-            {
-                return state.Error("Invalid identity registration - insufficient fee");
-            }
+            return state.Error("Invalid identity registration - insufficient fee");
         }
 
         return true;
@@ -1994,9 +1975,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                         return state.Error("Invalid identity on transaction output " + std::to_string(i));
                     }
 
-                    // twice through makes it invalid
-                    // TODO: HARDENING TESTNET - need to confirm that we enforce cross-chain imports only import IDs
-                    // under the control of the importing currency
+                    // twice through used to make it invalid
                     if (!advancedIdentity && validIdentity)
                     {
                         return state.Error("Invalid multiple identity definitions on one transaction");

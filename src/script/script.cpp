@@ -1546,6 +1546,7 @@ bool COptCCParams::IsEvalPKOut() const
     if (version >= VERSION_V3 &&
         vData.size() == 2 &&
         (master = COptCCParams(vData.back())).IsValid() &&
+        master.evalCode == EVAL_NONE &&
         master.m == 1)
     {
         for (auto &oneKey : vKeys)

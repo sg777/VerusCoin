@@ -454,12 +454,9 @@ void CTxMemPool::removeForReorg(const CCoinsViewCache *pcoins, unsigned int nMem
                         break;
                     }
 
-                    // TODO: HARDENING - if we can no longer submit evidence or finalization of a notarization
-                    // due to reorganizing back past the point where a notary can sign, we must consider this transaction
-                    // on hold until it is valid again. on the other hand, if the original notarization it refers to
-                    // is no longer valid, we should purge it.
-                    // probably the easiest way to determine if we can is to do a contextual precheck on this tx at the current
-                    // mem pool height.
+                    // TODO: HARDENING - we need to make it so that once a transaction is proven as valid,
+                    // its proof remains valid, even when the blockchain is unwound backwards to the point
+                    // where that transaction originally exists on chain
                     case EVAL_NOTARY_EVIDENCE:
                     case EVAL_FINALIZE_NOTARIZATION:
                     case EVAL_RESERVE_TRANSFER:

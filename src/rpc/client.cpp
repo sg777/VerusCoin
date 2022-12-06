@@ -489,9 +489,6 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             return;
         }
 
-        // TODO: HARDENING - ensure that it makes sense for a chain to have PROOF_CHAINID still or disallow
-        // to enable it, we will need to ensure that all imports and notarizations are spendable to the chain ID and are
-        // considered valid by definition
         if (proofProtocol == PROOF_CHAINID && IsPBaaSChain())
         {
             LogPrintf("%s: proofprotocol %d not yet implemented\n", __func__, (int)PROOF_CHAINID);
@@ -628,7 +625,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                 // if we are fractional, explicit conversion values are not valid
                 // and are based on non-zero, initial contributions relative to supply
                 if ((conversionArr.isArray() && conversionArr.size() != currencyArr.size()) ||
-                    !initialContributionArr.isArray() || 
+                    !initialContributionArr.isArray() ||
                     initialContributionArr.size() != currencyArr.size() ||
                     weights.size() != currencyArr.size() ||
                     !IsFractional())
@@ -852,7 +849,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
             blockTime = uni_get_int64(find_value(obj, "blocktime"), DEFAULT_BLOCKTIME_TARGET);
             powAveragingWindow = uni_get_int64(find_value(obj, "powaveragingwindow"), DEFAULT_AVERAGING_WINDOW);
-            blockNotarizationModulo = uni_get_int64(find_value(obj, "notarizationperiod"), 
+            blockNotarizationModulo = uni_get_int64(find_value(obj, "notarizationperiod"),
                                                     std::max((int64_t)(DEFAULT_BLOCK_NOTARIZATION_TIME / blockTime), (int64_t)MIN_BLOCK_NOTARIZATION_BLOCKS));
 
             for (auto era : vEras)
@@ -1067,7 +1064,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
         for (auto &onePreAllocation : preAllocation)
         {
             UniValue onePreAlloc(UniValue::VOBJ);
-            onePreAlloc.push_back(Pair(onePreAllocation.first.IsNull() ? "blockoneminer" : EncodeDestination(CIdentityID(onePreAllocation.first)), 
+            onePreAlloc.push_back(Pair(onePreAllocation.first.IsNull() ? "blockoneminer" : EncodeDestination(CIdentityID(onePreAllocation.first)),
                                        ValueFromAmount(onePreAllocation.second)));
             preAllocationArr.push_back(onePreAlloc);
         }
@@ -1381,7 +1378,7 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
     {
         ChainOut = retNames[1];
         explicitChain = true;
-    }    
+    }
 
     nameCopy = retNames[0];
     boost::split(retNames, nameCopy, boost::is_any_of("."));
@@ -1397,7 +1394,7 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
             std::vector<std::string> chainOutNames;
             boost::split(chainOutNames, ChainOut, boost::is_any_of("."));
             std::string lastChainOut = boost::to_lower_copy(chainOutNames.back());
-            
+
             if (lastChainOut != "" && lastChainOut != verusChainName)
             {
                 chainOutNames.push_back(verusChainName);
