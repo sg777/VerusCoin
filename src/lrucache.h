@@ -64,7 +64,7 @@ private:
     CCriticalSection m_cacheLock;
 
 public:
-    LRUCache(int capacity=DEFAULT_CAPACITY, float compactionFactor=DEFAULT_COMPACT_FACTOR, bool ThreadSafe=true) :
+    LRUCache(int capacity=DEFAULT_CAPACITY, float compactionFactor=DEFAULT_COMPACT_FACTOR, bool ThreadSafe=false) :
         m_capacity(capacity), m_compactFactor(compactionFactor), m_threadSafe(ThreadSafe) {}
 
     int count(const TKey &key)

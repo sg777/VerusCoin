@@ -257,7 +257,6 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
     {
         // checking sourceHeightEnd being creater than 1 ensures that we can legitimately
         // expect an export finalization to follow
-        // TODO: HARDENING - confirm that we leave no issue with an adversarially constructed export with sourceHeightEnd of 1
         if (IsClearLaunch() || (!IsPrelaunch() && sourceHeightEnd > 1))
         {
             numOutput++;
@@ -279,11 +278,11 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
             numOutput++;
             COptCCParams p;
             if (!(exportTx.vout.size() > numOutput &&
-                exportTx.vout[numOutput].scriptPubKey.IsPayToCryptoCondition(p) &&
-                p.IsValid() &&
-                (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
-                p.vData.size() &&
-                (exportNotarization = CPBaaSNotarization(p.vData[0])).IsValid()))
+                  exportTx.vout[numOutput].scriptPubKey.IsPayToCryptoCondition(p) &&
+                  p.IsValid() &&
+                  (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
+                  p.vData.size() &&
+                  (exportNotarization = CPBaaSNotarization(p.vData[0])).IsValid()))
             {
                 return state.Error(strprintf("%s: invalid export notarization",__func__));
             }
@@ -731,6 +730,41 @@ CCurrencyValueMap CCoinbaseCurrencyState::TargetConversionPrices(const uint160 &
                 SATOSHIDEN :
                 NativeToReserveRaw(ReserveToNativeRaw(SATOSHIDEN, currencyMap.valueMap[targetCurrencyID]), currencyMap.valueMap[oneCur]);
         }
+    }
+    return retVal;
+}
+
+CCurrencyValueMap CCoinbaseCurrencyState::TargetLastConversionPrices(const uint160 &targetCurrencyID) const
+{
+    CCurrencyValueMap retVal(std::vector<uint160>({targetCurrencyID}), std::vector<int64_t>({SATOSHIDEN}));
+    if (!IsFractional())
+    {
+        return retVal;
+    }
+    bool isPrimaryTarget = targetCurrencyID == GetID();
+    CCurrencyValueMap currencyMap(currencies, conversionPrice);
+
+    if (!isPrimaryTarget && !currencyMap.valueMap.count(targetCurrencyID))
+    {
+        return retVal;
+    }
+
+    if (isPrimaryTarget)
+    {
+        retVal = currencyMap;
+        retVal.valueMap[GetID()] = SATOSHIDEN;
+    }
+    else
+    {
+        CCurrencyValueMap viaCurrencyMap(currencies, viaConversionPrice);
+        for (auto &oneCur : currencies)
+        {
+            // reserve to reserve in reverse
+            retVal.valueMap[oneCur] = oneCur == targetCurrencyID ?
+                SATOSHIDEN :
+                NativeToReserveRaw(ReserveToNativeRaw(SATOSHIDEN, viaCurrencyMap.valueMap[targetCurrencyID]), currencyMap.valueMap[oneCur]);
+        }
+        retVal.valueMap[GetID()] = NativeToReserveRaw(SATOSHIDEN, currencyMap.valueMap[targetCurrencyID]);
     }
     return retVal;
 }
@@ -3167,13 +3201,20 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             // or ID present on chain must match, or the import is not fulfilled, reducing any potential attack into worst case,
             // an extremely expensive single ID on specific chain DoS.
             CIdentity preexistingID = CIdentity::LookupIdentity(FirstCurrency());
+            CCurrencyDefinition systemCurrency = ConnectedChains.GetCachedCurrency(registeredCurrency.systemID);
             if (preexistingID.IsValid() &&
                 (preexistingID.parent != registeredCurrency.parent ||
-                 (preexistingID.systemID != registeredCurrency.systemID &&
+                 ((preexistingID.systemID != registeredCurrency.systemID &&
+                   !((registeredCurrency.nativeCurrencyID.TypeNoFlags() == registeredCurrency.nativeCurrencyID.DEST_ETH ||
+                      registeredCurrency.nativeCurrencyID.TypeNoFlags() == registeredCurrency.nativeCurrencyID.DEST_ETHNFT) &&
+                     (registeredCurrency.parent == registeredCurrency.systemID &&
+                      systemCurrency.IsValid() &&
+                      systemCurrency.IsGateway() &&
+                      !systemCurrency.IsNameController())) &&
                  !((preexistingID.systemID == registeredCurrency.launchSystemID ||
                     (registeredCurrency.launchSystemID.IsNull() && preexistingID.parent.IsNull())) &&
                    preexistingID.GetID() == registeredCurrency.SystemOrGatewayID())) ||
-                 boost::to_lower_copy(preexistingID.name) != boost::to_lower_copy(registeredCurrency.name)))
+                 boost::to_lower_copy(preexistingID.name) != boost::to_lower_copy(registeredCurrency.name))))
             {
                 printf("WARNING!: Imported currency collides with pre-existing identity of another name.\n"
                         "The only likely reason for this occurance is a hash-collision attack, targeted specifically at\n"
@@ -3231,12 +3272,19 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             }
 
             CCurrencyDefinition preexistingCurrency = ConnectedChains.GetCachedCurrency(importedID.GetID());
+            CCurrencyDefinition systemCurrency = ConnectedChains.GetCachedCurrency(preexistingCurrency.systemID);
 
             if (!idCollision &&
                 preexistingCurrency.IsValid() &&
                 (importedID.parent != preexistingCurrency.parent ||
                  (importedID.systemID != preexistingCurrency.systemID &&
-                 !((importedID.systemID == preexistingCurrency.launchSystemID ||
+                  !((preexistingCurrency.nativeCurrencyID.TypeNoFlags() == preexistingCurrency.nativeCurrencyID.DEST_ETH ||
+                     preexistingCurrency.nativeCurrencyID.TypeNoFlags() == preexistingCurrency.nativeCurrencyID.DEST_ETHNFT) &&
+                    (preexistingCurrency.parent == preexistingCurrency.systemID &&
+                     systemCurrency.IsValid() &&
+                     systemCurrency.IsGateway() &&
+                     !systemCurrency.IsNameController())) &&
+                  !((importedID.systemID == preexistingCurrency.launchSystemID ||
                     (preexistingCurrency.launchSystemID.IsNull() && importedID.parent.IsNull())) &&
                    importedID.GetID() == preexistingCurrency.SystemOrGatewayID())) ||
                  boost::to_lower_copy(importedID.name) != boost::to_lower_copy(preexistingCurrency.name)))

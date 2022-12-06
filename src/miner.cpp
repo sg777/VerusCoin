@@ -2343,11 +2343,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
 
                                 case EVAL_RESERVE_TRANSFER:
                                 {
-                                    // TODO: HARDENING - consider delayed fee potential
-                                    // consider the total fee that will actually be realized on import as
-                                    // fee for prioritization
-                                    //
-                                    // if the destination currency is fractional, consider the converted value as the fee
+                                    //if the destination currency is fractional, this considers the total fee that
+                                    // will actually be realized on import as fee for prioritization
 
                                     // make sure we don't export the same identity or currency to the same destination more than once in any block
                                     // we cover the single block case here, and the protocol for each must reject anything relating to prior blocks
@@ -2943,8 +2940,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             ++nBlockTx;
             nBlockSigOps += txSigOps;
         }
-
-        extern CWallet *pwalletMain;
 
         pblock->vtx[0] = coinbaseTx;
         pblocktemplate->vTxFees[0] = -nFees;
