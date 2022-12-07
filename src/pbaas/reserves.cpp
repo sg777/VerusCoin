@@ -3088,7 +3088,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 return false;
             }
 
-            CAmount feeConversionRate = SATOSHIDEN;
+            CAmount feeConversionRate = 0;
 
             if (nextSys.IsGateway() && nextSys.proofProtocol == nextSys.PROOF_ETHNOTARIZATION && curState.conversionPrice.size())
             {
@@ -3109,14 +3109,14 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 }
             }
 
-            int64_t txImportFee = curState.NativeToReserveRaw(nextSys.GetTransactionImportFee(), feeConversionRate);
+            int64_t txImportFee = curState.NativeGasToReserveRaw(nextSys.GetTransactionImportFee(), feeConversionRate);
             if (IsCurrencyExport())
             {
-                txImportFee = curState.NativeToReserveRaw(nextSys.GetCurrencyImportFee(exportCurDef.ChainOptions() & exportCurDef.OPTION_NFT_TOKEN), feeConversionRate);
+                txImportFee = curState.NativeGasToReserveRaw(nextSys.GetCurrencyImportFee(exportCurDef.ChainOptions() & exportCurDef.OPTION_NFT_TOKEN), feeConversionRate);
             }
             else if (IsIdentityExport())
             {
-                txImportFee = curState.NativeToReserveRaw(nextSys.IDImportFee(), feeConversionRate);
+                txImportFee = curState.NativeGasToReserveRaw(nextSys.IDImportFee(), feeConversionRate);
             }
             if (txImportFee <= 0)
             {

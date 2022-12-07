@@ -306,7 +306,7 @@ UniValue CCurrencyDefinition::ToUniValue() const
         for (auto &onePreAllocation : preAllocation)
         {
             UniValue onePreAlloc(UniValue::VOBJ);
-            onePreAlloc.push_back(Pair(onePreAllocation.first.IsNull() ? "blockoneminer" : EncodeDestination(CIdentityID(onePreAllocation.first)), 
+            onePreAlloc.push_back(Pair(onePreAllocation.first.IsNull() ? "blockoneminer" : EncodeDestination(CIdentityID(onePreAllocation.first)),
                                        ValueFromAmount(onePreAllocation.second)));
             preAllocationArr.push_back(onePreAlloc);
         }
@@ -557,8 +557,8 @@ CAmount CCurrencyState::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmoun
     return nativeOut;
 }
 
-CAmount CCurrencyState::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmounts, 
-                                              const std::vector<uint160> &currencies, 
+CAmount CCurrencyState::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmounts,
+                                              const std::vector<uint160> &currencies,
                                               const std::vector<cpp_dec_float_50> &exchangeRates)
 {
     CAmount nativeOut = 0;
@@ -573,8 +573,8 @@ CAmount CCurrencyState::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmoun
     return nativeOut;
 }
 
-CAmount CCurrencyState::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmounts, 
-                                           const std::vector<uint160> &currencies, 
+CAmount CCurrencyState::ReserveToNativeRaw(const CCurrencyValueMap &reserveAmounts,
+                                           const std::vector<uint160> &currencies,
                                            const std::vector<CAmount> &exchangeRates)
 {
     CAmount nativeOut = 0;
@@ -614,6 +614,28 @@ CAmount CCurrencyState::NativeToReserveRaw(CAmount nativeAmount, CAmount exchang
     static arith_uint256 bigSatoshi(SATOSHIDEN);
     arith_uint256 bigAmount(nativeAmount);
     arith_uint256 bigReserves = (bigAmount * exchangeRate) / bigSatoshi;
+    int64_t retVal = bigReserves.GetLow64();
+    if ((bigReserves - retVal) == 0)
+    {
+        return retVal;
+    }
+    else
+    {
+        // return -1 on overflow
+        return -1;
+    }
+}
+
+CAmount CCurrencyState::NativeGasToReserveRaw(CAmount nativeAmount, CAmount exchangeRate)
+{
+    if (!exchangeRate)
+    {
+        return nativeAmount;
+    }
+    exchangeRate = exchangeRate / (SATOSHIDEN / 100);
+    static arith_uint256 bigSatoshiX100(SATOSHIDEN * 100);
+    arith_uint256 bigAmount(nativeAmount);
+    arith_uint256 bigReserves = (bigAmount * exchangeRate) / bigSatoshiX100;
     int64_t retVal = bigReserves.GetLow64();
     if ((bigReserves - retVal) == 0)
     {
@@ -1121,13 +1143,13 @@ CUTXORef::CUTXORef(const UniValue &uni)
 UniValue CObjectFinalization::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
-    ret.push_back(Pair("finalizationtype", (FinalizationType() == FINALIZE_NOTARIZATION) ? 
-                                                "finalizenotarization" : FinalizationType() == FINALIZE_EXPORT ? 
+    ret.push_back(Pair("finalizationtype", (FinalizationType() == FINALIZE_NOTARIZATION) ?
+                                                "finalizenotarization" : FinalizationType() == FINALIZE_EXPORT ?
                                                 "finalizeexport" : "invalid"));
-    ret.push_back(Pair("status", IsConfirmed() ? 
-                                    "confirmed" : 
-                                    IsRejected() ? 
-                                        "rejected" : 
+    ret.push_back(Pair("status", IsConfirmed() ?
+                                    "confirmed" :
+                                    IsRejected() ?
+                                        "rejected" :
                                         "pending"));
     if (evidenceInputs.size())
     {

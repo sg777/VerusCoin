@@ -612,7 +612,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                         // imported currencies do need to conform to type constraints in order
                         // to benefit from reduced import fees. this happens on the precheck for currency definition
 
-                        CAmount feeConversionRate = SATOSHIDEN;
+                        CAmount feeConversionRate = 0;
 
                         CChainNotarizationData cnd;
                         CCurrencyDefinition nextSys = ConnectedChains.GetCachedCurrency(exportingDef.systemID);
@@ -632,7 +632,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                         if ((oneTransfer.HasNextLeg() && oneTransfer.destination.gatewayID != ASSETCHAINS_CHAINID ?
                                 nextLegFeeEquiv :
                                 feeEquivalent) <
-                                    CCurrencyState::NativeToReserveRaw(
+                                    CCurrencyState::NativeGasToReserveRaw(
                                         ConnectedChains.ThisChain().GetCurrencyImportFee(exportingDef.ChainOptions() & exportingDef.OPTION_NFT_TOKEN),
                                         feeConversionRate))
                         {
