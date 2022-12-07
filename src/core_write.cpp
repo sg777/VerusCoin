@@ -633,9 +633,9 @@ CAmount CCurrencyState::NativeGasToReserveRaw(CAmount nativeAmount, CAmount exch
         return nativeAmount;
     }
     exchangeRate = exchangeRate / (SATOSHIDEN / 100);
-    static arith_uint256 bigSatoshiX100(SATOSHIDEN * 100);
+    static arith_uint256 bigSatoshiX1000(SATOSHIDEN * 1000);
     arith_uint256 bigAmount(nativeAmount);
-    arith_uint256 bigReserves = (bigAmount * exchangeRate) / bigSatoshiX100;
+    arith_uint256 bigReserves = (bigAmount * exchangeRate) / bigSatoshiX1000;
     int64_t retVal = bigReserves.GetLow64();
     if ((bigReserves - retVal) == 0)
     {
