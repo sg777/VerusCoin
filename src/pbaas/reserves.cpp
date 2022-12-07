@@ -3109,14 +3109,22 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 }
             }
 
+            int64_t txImportFee = curState.NativeToReserveRaw(nextSys.GetTransactionImportFee(), feeConversionRate);
+            if (IsCurrencyExport())
+            {
+                txImportFee = curState.NativeToReserveRaw(nextSys.GetCurrencyImportFee(exportCurDef.ChainOptions() & exportCurDef.OPTION_NFT_TOKEN), feeConversionRate);
+            }
+            else if (IsIdentityExport())
+            {
+                txImportFee = curState.NativeToReserveRaw(nextSys.IDImportFee(), feeConversionRate);
+            }
+            if (txImportFee <= 0)
+            {
+                txImportFee = INT64_MAX;
+            }
+
             if ((nextSys.GetID() == ASSETCHAINS_CHAINID && nextLegTransfer.nFees < nextSys.GetTransactionTransferFee()) ||
-                (nextSys.GetID() != ASSETCHAINS_CHAINID &&
-                 (nextLegTransfer.nFees < curState.ReserveToNativeRaw(nextSys.GetTransactionImportFee(), feeConversionRate) ||
-                  (IsCurrencyExport() &&
-                   nextLegTransfer.nFees <
-                   curState.ReserveToNativeRaw(nextSys.GetCurrencyImportFee(exportCurDef.ChainOptions() & exportCurDef.OPTION_NFT_TOKEN), feeConversionRate)) ||
-                  (IsIdentityExport() &&
-                   nextLegTransfer.nFees < curState.ReserveToNativeRaw(nextSys.IDImportFee(), feeConversionRate)))))
+                (nextSys.GetID() != ASSETCHAINS_CHAINID && nextLegTransfer.nFees < txImportFee))
             {
                 LogPrintf("%s: Insufficient fee currency for next leg of transfer %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str());
 
