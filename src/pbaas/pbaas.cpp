@@ -6350,7 +6350,7 @@ bool IsMaxed(const std::map<uint160, std::pair<int, int>> &maxTrackerMap)
 {
     for (auto &oneCheck : maxTrackerMap)
     {
-        if (oneCheck.second.second >= oneCheck.second.first)
+        if (oneCheck.second.second >= oneCheck.second.first && (oneCheck.second.second | oneCheck.second.first))
         {
             return true;
         }
