@@ -1355,6 +1355,7 @@ public:
     CAmount NativeToReserve(CAmount nativeAmount, int32_t reserveIndex=0) const;
     static CAmount NativeToReserveRaw(CAmount nativeAmount, const cpp_dec_float_50 &exchangeRate);
     static CAmount NativeToReserveRaw(CAmount nativeAmount, CAmount exchangeRate);
+    static CAmount NativeGasToReserveRaw(CAmount nativeAmount, CAmount exchangeRate);
     CCurrencyValueMap NativeToReserveRaw(const std::vector<CAmount> &, const std::vector<CAmount> &exchangeRates) const;
     CCurrencyValueMap NativeToReserveRaw(const std::vector<CAmount> &, const std::vector<cpp_dec_float_50> &exchangeRates) const;
 

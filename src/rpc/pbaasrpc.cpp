@@ -8431,7 +8431,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             reversePriceInFeeCur = feeConversionPrices.valueMap[feeCurrencyID];
                         }
 
-                        CAmount feeConversionRate = SATOSHIDEN;
+                        CAmount feeConversionRate = 0;
 
                         if (offChainDef.IsGateway() && offChainDef.proofProtocol == offChainDef.PROOF_ETHNOTARIZATION)
                         {
@@ -8445,12 +8445,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             // add an extra satoshi for minimum pricing buffer
                             feeConversionRate = (cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice.size() ?
                                                     cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice[0] :
-                                                    cnd.vtx[cnd.lastConfirmed].second.proofRoots[offChainDef.SystemOrGatewayID()].gasPrice) + 1;
+                                                    cnd.vtx[cnd.lastConfirmed].second.proofRoots[offChainDef.SystemOrGatewayID()].gasPrice);
                         }
 
                         if (exportCurrency)
                         {
-                            CAmount adjustedFees = CCurrencyState::NativeToReserveRaw(
+                            CAmount adjustedFees = CCurrencyState::NativeGasToReserveRaw(
                                         offChainDef.GetCurrencyImportFee(sourceCurrencyDef.ChainOptions() & offChainDef.OPTION_NFT_TOKEN), feeConversionRate);
                             if (adjustedFees < 0)
                             {
@@ -8467,7 +8467,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         }
                         else if (exportId)
                         {
-                            CAmount adjustedFees = CCurrencyState::NativeToReserveRaw(offChainDef.IDImportFee(), feeConversionRate);
+                            CAmount adjustedFees = CCurrencyState::NativeGasToReserveRaw(offChainDef.IDImportFee(), feeConversionRate);
                             if (adjustedFees < 0)
                             {
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee calculation overflow 3");
@@ -8480,7 +8480,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         }
                         else
                         {
-                            CAmount adjustedFees = CCurrencyState::NativeToReserveRaw(offChainDef.GetTransactionImportFee() << 1, feeConversionRate);
+                            CAmount adjustedFees = CCurrencyState::NativeGasToReserveRaw(offChainDef.GetTransactionImportFee() << 1, feeConversionRate);
                             if (adjustedFees < 0)
                             {
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee calculation overflow 5");
@@ -8596,7 +8596,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency for cross-chain transaction 2" + ConnectedChains.GetFriendlyCurrencyName(feeCurrencyID));
                         }
 
-                        CAmount feeConversionRate = SATOSHIDEN;
+                        CAmount feeConversionRate = 0;
 
                         if (offChainDef.IsGateway() && offChainDef.proofProtocol == offChainDef.PROOF_ETHNOTARIZATION)
                         {
@@ -8610,7 +8610,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             // add an extra satoshi for minimum pricing buffer
                             feeConversionRate = (cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(offChainDef.SystemOrGatewayID()) ?
                                                     cnd.vtx[cnd.lastConfirmed].second.proofRoots[offChainDef.SystemOrGatewayID()].gasPrice :
-                                                    cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice[0]) + 1;
+                                                    cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice[0]);
                         }
 
                         // determine required fees
@@ -8618,8 +8618,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         if (exportCurrency)
                         {
                             // get source price for export and dest price for import to ensure we have enough fee currency
-                            CAmount adjustedFees = CCurrencyState::NativeToReserveRaw(
+                            CAmount adjustedFees = CCurrencyState::NativeGasToReserveRaw(
                                         offChainDef.GetCurrencyImportFee(sourceCurrencyDef.ChainOptions() & offChainDef.OPTION_NFT_TOKEN), feeConversionRate);
+
                             if (adjustedFees < 0)
                             {
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee calculation overflow 7");
@@ -8633,12 +8634,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         }
                         else if (exportId)
                         {
-                            CAmount adjustedFees = CCurrencyState::NativeToReserveRaw(offChainDef.IDImportFee(), feeConversionRate);
+                            CAmount adjustedFees = CCurrencyState::NativeGasToReserveRaw(offChainDef.IDImportFee(), feeConversionRate);
                             requiredFees = CCurrencyState::ReserveToNativeRaw(adjustedFees, reversePriceInFeeCur);
                         }
                         else
                         {
-                            CAmount adjustedFees = CCurrencyState::NativeToReserveRaw(offChainDef.GetTransactionImportFee() << 1, feeConversionRate);
+                            CAmount adjustedFees = CCurrencyState::NativeGasToReserveRaw(offChainDef.GetTransactionImportFee() << 1, feeConversionRate);
                             requiredFees = CCurrencyState::ReserveToNativeRaw(adjustedFees, reversePriceInFeeCur);
                         }
 
