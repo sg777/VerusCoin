@@ -2670,7 +2670,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         }
 
         // ensure that we have enough fees for the currency definition import
-        CAmount adjustedImportFee = SATOSHIDEN;
+        CAmount adjustedImportFee = 0;
 
         if (systemDest.proofProtocol == systemDest.PROOF_ETHNOTARIZATION)
         {
@@ -2867,7 +2867,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 exportDestination = systemDest;
             }
 
-            adjustedImportFee = CCoinbaseCurrencyState::NativeToReserveRaw(
+            adjustedImportFee = CCoinbaseCurrencyState::NativeGasToReserveRaw(
                         systemDest.GetCurrencyImportFee(curToExport.ChainOptions() & curToExport.OPTION_NFT_TOKEN),
                         adjustedImportFee);
             if (adjustedImportFee < 0 || feeEquivalentInNative < adjustedImportFee)
@@ -2969,7 +2969,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.destination.fees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
                 }
 
-                adjustedImportFee = CCoinbaseCurrencyState::NativeToReserveRaw(systemDest.IDImportFee(), adjustedImportFee);
+                adjustedImportFee = CCoinbaseCurrencyState::NativeGasToReserveRaw(systemDest.IDImportFee(), adjustedImportFee);
 
                 // ensure that we have enough fees for the identity import
                 if (adjustedImportFee < 0 || feeEquivalentInNative < adjustedImportFee)
@@ -3018,7 +3018,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 // ensure that we have enough fees for transfer
                 if (systemDestID != ASSETCHAINS_CHAINID && !rt.IsPreConversion())
                 {
-                    adjustedImportFee = CCoinbaseCurrencyState::NativeToReserveRaw(systemDest.GetTransactionImportFee(), adjustedImportFee);
+                    adjustedImportFee = CCoinbaseCurrencyState::NativeGasToReserveRaw(systemDest.GetTransactionImportFee(), adjustedImportFee);
                     if (adjustedImportFee < 0 || feeEquivalentInNative < adjustedImportFee)
                     {
                         return state.Error("Not enough fee for cross chain currency operation in reserve transfer " + rt.ToUniValue().write(1,2));
