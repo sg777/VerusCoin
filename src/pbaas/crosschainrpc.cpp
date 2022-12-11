@@ -224,29 +224,30 @@ UniValue RPCCallRoot(const string& strMethod, const UniValue& params, int timeou
     {
         return RPCCall(strMethod, params, PBAAS_USERPASS, PBAAS_PORT, PBAAS_HOST);
     }
-    else if (_IsVerusActive() &&
-             ReadConfigFile("veth", settings, settingsmulti))
+    else if ((_IsVerusActive() &&
+              ReadConfigFile("veth", settings, settingsmulti)) ||
+             (!_IsVerusActive() &&
+              ReadConfigFile(PBAAS_TESTMODE ? "vrsctest" : "VRSC", settings, settingsmulti)))
     {
         // the Ethereum bridge, "VETH", serves as the root currency to VRSC and for Rinkeby to VRSCTEST
-        PBAAS_USERPASS = settingsmulti.find("-rpcuser")->second[0] + ":" + settingsmulti.find("-rpcpassword")->second[0];
-        PBAAS_PORT = atoi(settingsmulti.find("-rpcport")->second[0]);
-        PBAAS_HOST = settingsmulti.find("-rpchost")->second[0];
-        if (!PBAAS_HOST.size())
+        auto userIt = settingsmulti.find("-rpcuser");
+        auto passIt = settingsmulti.find("-rpcpassword");
+        auto portIt = settingsmulti.find("-rpcport");
+        auto hostIt = settingsmulti.find("-rpchost");
+        if (userIt != settingsmulti.end() &&
+            passIt != settingsmulti.end() &&
+            portIt != settingsmulti.end() &&
+            hostIt != settingsmulti.end())
         {
-            PBAAS_HOST = "127.0.0.1";
+            PBAAS_USERPASS = userIt->second[0] + ":" + passIt->second[0];
+            PBAAS_PORT = atoi(portIt->second[0]);
+            PBAAS_HOST = hostIt->second[0];
+            if (!PBAAS_HOST.size())
+            {
+                PBAAS_HOST = "127.0.0.1";
+            }
+            return RPCCall(strMethod, params, credentials, port, host, timeout);
         }
-        return RPCCall(strMethod, params, credentials, port, host, timeout);
-    }
-    else if (ReadConfigFile(PBAAS_TESTMODE ? "vrsctest" : "VRSC", settings, settingsmulti))
-    {
-        PBAAS_USERPASS = settingsmulti.find("-rpcuser")->second[0] + ":" + settingsmulti.find("-rpcpassword")->second[0];
-        PBAAS_PORT = atoi(settingsmulti.find("-rpcport")->second[0]);
-        PBAAS_HOST = settingsmulti.find("-rpchost")->second[0];
-        if (!PBAAS_HOST.size())
-        {
-            PBAAS_HOST = "127.0.0.1";
-        }
-        return RPCCall(strMethod, params, credentials, port, host, timeout);
     }
     return UniValue(UniValue::VNULL);
 }
