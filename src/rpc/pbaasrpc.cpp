@@ -3646,7 +3646,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
 
     if (!notarizationData.vtx.size())
     {
-        LogPrintf("%s: failure to find confirmed notarization starting point for currency %s\n", __func__, chainDef.ToUniValue().write(1,2).c_str());
+        LogPrint("notarization", "%s: failure to find confirmed notarization starting point for currency %s\n", __func__, chainDef.ToUniValue().write(1,2).c_str());
         return false;
     }
 
@@ -10149,7 +10149,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci)), 0);
 
     // get initial currency state at this height
-    newCurrencyState = ConnectedChains.GetCurrencyState(newChain, chainActive.Height());
+    newCurrencyState = ConnectedChains.GetCurrencyState(newChain, height);
 
     newCurrencyState.SetPrelaunch();
 

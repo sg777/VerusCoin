@@ -179,23 +179,54 @@ bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTra
 
         if (thisExport.IsSupplemental())
         {
-            // TODO HARDENING - protect this output from being spent just to prevent transactions with no legitimate source
-            if (LogAcceptCategory("crosschainexporttracking"))
+            CCrossChainImport cciBeingSpent, cciSpending;
+            for (auto &oneOut : txToSpend.vout)
             {
-                LOCK(mempool.cs);
-                CCoinsView dummy;
-                CCoinsViewCache view(&dummy);
-                CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
-                view.SetBackend(viewMemPool);
-                CReserveTransactionDescriptor rtxd(tx, view, chainActive.Height() + 1);
-                if (!rtxd.IsImport())
+                if ((cciBeingSpent = CCrossChainImport(oneOut.scriptPubKey)).IsValid())
                 {
-                    UniValue jsonTx(UniValue::VOBJ);
-                    uint256 hashBlk;
-                    TxToUniv(tx, hashBlk, jsonTx);
-                    LogPrintf("%s: spending supplemental export to:\n%s\n", __func__, jsonTx.write(1,2).c_str()); //*/
-                    printf("%s: spending supplemental export to:\n%s\n", __func__, jsonTx.write(1,2).c_str()); //*/
+                    if (cciBeingSpent.sourceSystemID == thisExport.sourceSystemID)
+                    {
+                        break;
+                    }
+                    cciBeingSpent = CCrossChainImport();
                 }
+            }
+
+            if (cciBeingSpent.IsValid())
+            {
+                for (auto &oneOut : tx.vout)
+                {
+                    if ((cciSpending = CCrossChainImport(oneOut.scriptPubKey)).IsValid())
+                    {
+                        if (cciSpending.importCurrencyID == cciBeingSpent.importCurrencyID)
+                        {
+                            break;
+                        }
+                        cciSpending = CCrossChainImport();
+                    }
+                }
+            }
+
+            if (!cciBeingSpent.IsValid() || !cciSpending.IsValid())
+            {
+                if (LogAcceptCategory("crosschainimports"))
+                {
+                    std::string supplementalCurrency = ConnectedChains.GetFriendlyCurrencyName(thisExport.sourceSystemID);
+                    printf("%s: spending supplemental export with source system %s\n", __func__, supplementalCurrency.c_str());
+                    LogPrintf("%s: spending supplemental export with source system %s\n", __func__, supplementalCurrency.c_str());
+                    if (LogAcceptCategory("verbose"))
+                    {
+                        UniValue jsonTx(UniValue::VOBJ);
+                        uint256 hashBlk;
+                        TxToUniv(txToSpend, hashBlk, jsonTx);
+                        LogPrintf("from:\n%s\n", jsonTx.write(1,2).c_str());
+                        printf("from:\n%s\n", jsonTx.write(1,2).c_str());
+                        TxToUniv(tx, hashBlk, jsonTx);
+                        LogPrintf("to:\n%s\n", jsonTx.write(1,2).c_str());
+                        printf("to:\n%s\n", jsonTx.write(1,2).c_str());
+                    }
+                }
+                return eval->Error("Invalid spend of supplemental export to invalid or non-import");
             }
             return true;
         }
@@ -369,7 +400,10 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             if (notarization.IsSameChain())
             {
                 // a notarization for a later height is not valid
-                if (notarization.notarizationHeight > (height - 1) && !(notarization.notarizationHeight == 1 && height == 1))
+                if (!isPreSync &&
+                    notarization.notarizationHeight > (height - 1) &&
+                    !(notarization.notarizationHeight == 1 &&
+                    height == 1))
                 {
                     return state.Error("Notarization for import past height, likely due to reorg: " + notarization.ToUniValue().write(1,2));
                 }
@@ -5289,9 +5323,16 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             {
                 for (int i = evidenceOutNumStart; i <= evidenceOutNumEnd; i++)
                 {
-                    tb.AddTransparentInput(COutPoint(lastImportTxID, i), lastImportTx.vout[i].scriptPubKey, lastImportTx.vout[i].nValue);
+                    const CCoins *pCoins = view.AccessCoins(lastImportTxID);
+                    // be robust to it being spent or not, but do
+                    // clean up the UTXO by spending, if that is an option
+                    if (pCoins && pCoins->IsAvailable(i))
+                    {
+                        tb.AddTransparentInput(COutPoint(lastImportTxID, i), lastImportTx.vout[i].scriptPubKey, lastImportTx.vout[i].nValue);
+                    }
                 }
             }
+
             if (!useProofs)
             {
                 // if same chain and export has a finalization, spend it on import
