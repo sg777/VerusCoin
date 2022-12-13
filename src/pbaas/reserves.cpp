@@ -577,7 +577,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
         }
     }
 
-    // if we may have an arbitrage reserve transfer, look for it
+    // if we may have additional arbitrage reserve transfers, look for it
     if (hashReserveTransfers != ccx.hashReserveTransfers)
     {
         if (importNotarization.IsValid() &&
@@ -587,7 +587,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             importNotarization.currencyState.IsFractional() &&
             ccx.IsValid())
         {
-            // if we don't have an arbitrage reserve transfer, this is an error that the hashes don't match
+            // if we don't have arbitrage reserve transfers, this is an error that the hashes don't match
             // if we do, they cannot match, so get it
             std::vector<CReserveTransfer> arbitrageTransfers = GetArbitrageTransfers(importTx, state);
             if (!arbitrageTransfers.size())

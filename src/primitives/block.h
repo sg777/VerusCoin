@@ -1157,8 +1157,10 @@ public:
 
     enum ETypes {
         TYPE_INVALID = 0,
+        TYPE_FIRST_VALID = 1,
         TYPE_DATA = 1,                      // holding a transaction proof of export with finalization referencing finalization of root notarization
         TYPE_MULTIPART_DATA = 2,            // this is used to combine multiple outputs that can be used to reconstruct one evidence set
+        TYPE_LAST_VALID = 2,
     };
 
     uint32_t version;
@@ -1255,9 +1257,10 @@ public:
 
     bool IsValid() const
     {
-        // TODO: HARDENING - put in some reasonable range checks due to union
         return version >= VERSION_FIRST &&
-               version <= VERSION_LAST;
+               version <= VERSION_LAST &&
+               type >= TYPE_FIRST_VALID &&
+               type <= TYPE_LAST_VALID;
     }
 };
 

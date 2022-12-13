@@ -6395,23 +6395,6 @@ bool ContextualCheckBlock(
             }
         }
 
-        // this is the only place where a duplicate name definition of the same name is checked in a block
-        // all other cases are covered via mempool and pre-registered check, doing this would require a malicious
-        // client, so immediate ban score
-        //
-        // TODO: HARDENING for PBaaS - we should be able to remove this section, as it should be properly handled just above
-        CNameReservation nameRes(tx);
-        if (nameRes.IsValid())
-        {
-            if (newIDs.count(boost::algorithm::to_lower_copy(nameRes.name)))
-            {
-                LogPrintf("%s: PLEASE REPORT: caught attempt to submit block with duplicate identity when it should not be possible\n", __func__);
-                printf("%s: PLEASE REPORT: caught attempt to submit block with duplicate identity when it should not be possible\n", __func__);
-                assert(false);
-            }
-            newIDs.insert(boost::algorithm::to_lower_copy(nameRes.name));
-        }
-
         // if this is a stake transaction with a stake opreturn, reject it if not staking a block. don't check coinbase or actual stake tx
         CStakeParams p;
         if (sapling && i > 0 && i < (block.vtx.size() - 1) && ValidateStakeTransaction(tx, p, false))

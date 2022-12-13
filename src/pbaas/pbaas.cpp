@@ -316,32 +316,60 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
         if (cci.IsDefinitionImport())
         {
-            // TODO: HARDENING - validate this belongs on a definition and is correct
+            // validate this belongs on a definition and is correct
+            // as a definition import, it is either the block 1 import for a currency defined on
+            // another chain, or a currency defined on this chain, and this will be the definition transaction
+            // in either case, we should find a currency definition that matches
+            auto currencyDefs = CCurrencyDefinition::GetCurrencyDefinitions(tx);
+            CCurrencyDefinition importCurrency;
+            for (auto &oneCurrency : currencyDefs)
+            {
+                if (oneCurrency.GetID() == cci.importCurrencyID)
+                {
+                    importCurrency = oneCurrency;
+                }
+            }
+
+            if (!importCurrency.IsValid())
+            {
+                return state.Error("Definition import on transaction without currency definition: " + cci.ToUniValue().write(1,2));
+            }
+
+            // if launch is complete, it should be one of:
+            // 1) a block 1 notarization
+            // 2) a gateway that had no delay before startblock
+            // 3) self-currency definition
+            // 4) mapped currency definition (different systemID than launchSystemID, ETH proof protocol, DEST_ETH or DEST_ETHNFT nativeCurrencyID)
+            if (notarization.IsValid() && notarization.IsLaunchComplete())
+            {
+                if (height != 1 &&
+                    !(importCurrency.IsGateway() && importCurrency.startBlock <= height) &&
+                    !(IsVerusActive() && importCurrency.GetID() == ASSETCHAINS_CHAINID) &&
+                    !(importCurrency.launchSystemID == ASSETCHAINS_CHAINID &&
+                      importCurrency.proofProtocol == importCurrency.PROOF_ETHNOTARIZATION &&
+                      (importCurrency.nativeCurrencyID.TypeNoFlags() == CTransferDestination::DEST_ETH ||
+                       importCurrency.nativeCurrencyID.TypeNoFlags() == CTransferDestination::DEST_ETHNFT)))
+                {
+                    return state.Error("Definition import and simultaneous active launch must be for block 1 definitions or gateway currency: " + cci.ToUniValue().write(1,2));
+                }
+            }
             if (!cci.hashReserveTransfers.IsNull())
             {
                 return state.Error("Definition import cannot contain transfers: " + cci.ToUniValue().write(1,2));
             }
             return true;
         }
-        else if (cci.IsInitialLaunchImport() && height == 1)
-        {
-            // TODO: HARDENING - validate this is correct as the initial launch import
-            return true;
-        }
 
-        if (ccx.destSystemID != ASSETCHAINS_CHAINID && notarization.IsValid() && !notarization.IsRefunding())
+        if (ccx.IsValid() && ccx.destSystemID != ASSETCHAINS_CHAINID && notarization.IsValid() && !notarization.IsRefunding())
         {
             return state.Error("Invalid import: " + cci.ToUniValue().write(1,2));
         }
-        // TODO: HARDENING - if notarization is invalid, we may need to reject
-        // also need to ensure that if our current height invalidates an import from the specified height that we
-        // reject this in all cases
         else if (notarization.IsValid())
         {
             if (notarization.IsSameChain())
             {
                 // a notarization for a later height is not valid
-                if (notarization.notarizationHeight > (height - 1))
+                if (notarization.notarizationHeight > (height - 1) && !(notarization.notarizationHeight == 1 && height == 1))
                 {
                     return state.Error("Notarization for import past height, likely due to reorg: " + notarization.ToUniValue().write(1,2));
                 }
@@ -364,22 +392,28 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             }
 
             // if we have the chain behind us, verify that the prior import imports the prior export
-            // TODO: HARDENING - this needs full coverage of all cases, including pre-conversion
             if (!isPreSync && !cci.IsDefinitionImport())
             {
                 CTransaction priorImportTx;
-                CCrossChainImport priorImport = cci.GetPriorImport(tx, state, &priorImportTx);
-                if (!priorImport.IsValid())
+                CCrossChainImport priorImport;
+                if (height != 1)
                 {
-                    // TODO: HARDENING for now, we skip checks if we fail to get prior import, but
-                    // we need to look deeper to ensure that there really is not one or that we use it
-                    return state.Error("Cannot retrieve prior import: " + cci.ToUniValue().write(1,2));
+                    priorImport = cci.GetPriorImport(tx, state, &priorImportTx);
+                    if (!priorImport.IsValid())
+                    {
+                        // we need to look deeper to ensure that there really is not one or that we use it
+                        return state.Error("Cannot retrieve prior import: " + cci.ToUniValue().write(1,2));
+                    }
                 }
-                else if (priorImport.exportTxId.IsNull())
+                if (!priorImport.IsValid() || priorImport.exportTxId.IsNull())
                 {
-                    if (!ccx.IsChainDefinition() && ccx.sourceSystemID == ASSETCHAINS_CHAINID)
+                    if (ccx.IsValid() && !ccx.IsChainDefinition() && ccx.sourceSystemID == ASSETCHAINS_CHAINID)
                     {
                         return state.Error("Out of order export for import 1: " + cci.ToUniValue().write(1,2));
+                    }
+                    else if (!ccx.IsValid() && height != 1)
+                    {
+                        return state.Error("Out of order export for import 2: " + cci.ToUniValue().write(1,2));
                     }
                 }
                 else
@@ -476,16 +510,16 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                 CReserveTransactionDescriptor rtxd;
                 if (!rtxd.AddReserveTransferImportOutputs(systemSource,
-                                                            ConnectedChains.ThisChain(),
-                                                            importingToDef,
-                                                            importState,
-                                                            reserveTransfers,
-                                                            height,
-                                                            vOutputs,
-                                                            importedCurrency,
-                                                            gatewayDepositsIn,
-                                                            spentCurrencyOut,
-                                                            &dummyState))
+                                                          ConnectedChains.ThisChain(),
+                                                          importingToDef,
+                                                          importState,
+                                                          reserveTransfers,
+                                                          height,
+                                                          vOutputs,
+                                                          importedCurrency,
+                                                          gatewayDepositsIn,
+                                                          spentCurrencyOut,
+                                                          &dummyState))
                 {
                     printf("Errors processing\n");
                 }
@@ -577,16 +611,14 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                     if (oneTransfer.IsConversion())
                     {
-                        uint160 sourceCurID = oneTransfer.FirstCurrency();
                         CAmount conversionFee = oneTransfer.IsReserveToReserve() ?
-                                    CReserveTransactionDescriptor::CalculateConversionFee(oneTransfer.FirstValue()) << 1 :
-                                    CReserveTransactionDescriptor::CalculateConversionFee(oneTransfer.FirstValue());
-                        feeEquivalent +=
-                            CCurrencyState::ReserveToNativeRaw(conversionFee, conversionMap.valueMap[oneTransfer.FirstCurrency()]);
+                                    CReserveTransactionDescriptor::CalculateConversionFeeNoMin(oneTransfer.FirstValue()) << 1 :
+                                    CReserveTransactionDescriptor::CalculateConversionFeeNoMin(oneTransfer.FirstValue());
 
                         if (!oneTransfer.IsPreConversion())
                         {
-                            // TODO: HARDENING - confirm that we need to do nothing else to ensure we can convert
+                            feeEquivalent +=
+                                CCurrencyState::ReserveToNativeRaw(conversionFee, conversionMap.valueMap[oneTransfer.FirstCurrency()]);
                         }
                     }
 
@@ -666,7 +698,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
     {
         return state.Error("Invalid cross chain import");
     }
-
     return false;
 }
 
@@ -2501,10 +2532,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
     uint32_t chainHeight = chainActive.Height();
     bool haveFullChain = height <= chainHeight + 1;
 
-    // TODO: HARDENING - go through all outputs of this transaction and do all reserve transfers at once, the
-    // first time for the first reserve transfer output, if this is not the first, we will have checked them all, so
-    // we are done
-
     // TODO: HARDENING - ensure that destinations and nested destinations are valid for the target system
 
     if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -3008,7 +3035,11 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     {
                         return state.Error("Invalid transfer destination");
                     }
-                    // TODO: HARDENING - either disable raw support or add support for raw gateway
+                    dest = GetCompatibleAuxDestination(rt.destination, (CCurrencyDefinition::EProofProtocol)systemDest.proofProtocol);
+                    if (dest.which() != COptCCParams::ADDRTYPE_ID && dest.which() != COptCCParams::ADDRTYPE_PKH && dest.which() != COptCCParams::ADDRTYPE_SH)
+                    {
+                        return state.Error("Transfer destination requires fallback destination compatible with Verus or Ethereum address formats");
+                    }
                 }
                 else if (GetDestinationID(dest).IsNull())
                 {
