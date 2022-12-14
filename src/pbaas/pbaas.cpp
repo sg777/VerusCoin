@@ -5160,7 +5160,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                                                   transferHash,
                                                   oneIT.first.first.txIn.prevout.hash,
                                                   oneIT.first.first.txIn.prevout.n,
-                                                  CCrossChainImport::FLAG_POSTLAUNCH + (lastCCI.IsDefinitionImport() ? CCrossChainImport::FLAG_INITIALLAUNCHIMPORT : 0));
+                                                  CCrossChainImport::FLAG_POSTLAUNCH +
+                                                    ((lastCCI.IsDefinitionImport() && !(sourceSystemDef.IsPBaaSChain() && sourceSystemID != ASSETCHAINS_CHAINID)) ?
+                                                        CCrossChainImport::FLAG_INITIALLAUNCHIMPORT :
+                                                        0));
         cci.SetSameChain(!useProofs);
 
         TransactionBuilder tb = TransactionBuilder(Params().GetConsensus(), nHeight + 1);
