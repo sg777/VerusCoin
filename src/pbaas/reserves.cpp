@@ -376,9 +376,11 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
         }
     }
 
-    bool isPBaaSDefinitionOrLaunch = (!IsVerusActive() && pBaseImport->IsInitialLaunchImport()) ||
-                                     (pBaseImport->IsDefinitionImport() &&
-                                      pBaseImport->sourceSystemID != ASSETCHAINS_CHAINID);
+    CCurrencyDefinition importFromDef = ConnectedChains.GetCachedCurrency(pBaseImport->sourceSystemID);
+
+    bool isPBaaSDefinitionOrLaunch = (pBaseImport->IsInitialLaunchImport() &&
+                                      pBaseImport->sourceSystemID == ConnectedChains.ThisChain().launchSystemID) ||
+                                     (pBaseImport->IsDefinitionImport() && pBaseImport->sourceSystemID != ASSETCHAINS_CHAINID);
 
     importNotarizationOut = numImportOut + 1;
 
@@ -445,19 +447,85 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             importNotarizationOut++;
         }
 
+        // we need to look at the same transaction for the definition of the currency for this import, it should be just before us
+        // and launched from this chain's launch currency
+        CCurrencyDefinition importCurDef;
+        if (isPBaaSDefinitionOrLaunch)
+        {
+            int loop = numImportOut - 1;
+            for (; loop >= 0; loop--)
+            {
+                if ((importCurDef = CCurrencyDefinition(importTx.vout[loop].scriptPubKey)).IsValid())
+                {
+                    if (importCurDef.GetID() == pBaseImport->importCurrencyID)
+                    {
+                        break;
+                    }
+                    importCurDef = CCurrencyDefinition();
+                }
+            }
+            // gateway's have no start block and their definition has another import after the initial for our sys thread
+            if (importCurDef.IsValid() && importCurDef.IsGateway())
+            {
+                importNotarizationOut++;
+            }
+            else
+            {
+                UniValue jsonTx(UniValue::VOBJ);
+                TxToUniv(importTx, uint256(), jsonTx);
+                printf("%s: invalid importTx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+            }
+        }
+
         if (!GetNotarizationFromOutput(importTx, importNotarizationOut, state, importNotarization))
         {
             // if error, state will be set
             return false;
         }
 
-        // TODO: HARDENING - review to ensure that if this is skipped an error is thrown when appropriate
-        // for example, if we are coming in from ETH to the Verus / ETH converter
-        bool passedCheck = isPBaaSDefinitionOrLaunch;
-        if (!passedCheck)
+        bool passedCheck = isPBaaSDefinitionOrLaunch && !pBaseImport->IsInitialLaunchImport() && importCurDef.IsValid();
+
+        // ensure that the definition case is checked
+        if (passedCheck)
         {
-            passedCheck = pBaseImport->importCurrencyID == ASSETCHAINS_CHAINID ||
-                          (!pBaseImport->importCurrencyID.IsNull() && pBaseImport->importCurrencyID == ConnectedChains.ThisChain().GatewayConverterID());
+            if (!importCurDef.IsValid() ||
+                !pBaseImport->exportTxId.IsNull() ||
+                (pBaseImport->sourceSystemID != importCurDef.launchSystemID && pBaseImport->sourceSystemID != importCurDef.systemID) ||
+                !pBaseImport->hashReserveTransfers.IsNull())
+            {
+                return state.Error(strprintf("%s: invalid definition import", __func__));
+            }
+        }
+        else
+        {
+            if (pBaseImport->IsInitialLaunchImport() && !(importFromDef.IsValid() && ConnectedChains.ThisChain().launchSystemID != importFromDef.GetID()))
+            {
+                if (LogAcceptCategory("crosschainimports"))
+                {
+                    if (LogAcceptCategory("verbose"))
+                    {
+                        LogPrintf("%s: initial launch import for %s\n", __func__, EncodeDestination(CIdentityID((pBaseImport->importCurrencyID))).c_str());
+                        LogPrintf("ConnectedChains.ThisChain(): %s\n", ConnectedChains.ThisChain().ToUniValue().write(1,2).c_str());
+                        LogPrintf("importCurDef: %s\n", importCurDef.ToUniValue().write(1,2).c_str());
+                    }
+                }
+
+                if (pBaseImport->importCurrencyID.IsNull())
+                {
+                    return state.Error(strprintf("%s: invalid launch import", __func__));
+                }
+                // initial launch import occurs when launching a gateway or
+                // on currencies launched in block 1 of a PBaaS chain co-launching with the chain
+                passedCheck = importCurDef.IsValid() &&
+                              importCurDef.launchSystemID == ConnectedChains.ThisChain().launchSystemID &&
+                              ((importCurDef.IsGateway() && importCurDef.SystemOrGatewayID() == importCurDef.GetID()) ||
+                               importCurDef.systemID == ASSETCHAINS_CHAINID);
+            }
+            else
+            {
+                passedCheck = pBaseImport->importCurrencyID == ASSETCHAINS_CHAINID ||
+                            (!pBaseImport->importCurrencyID.IsNull() && pBaseImport->importCurrencyID == ConnectedChains.ThisChain().GatewayConverterID());
+            }
             if (!passedCheck && !pBaseImport->importCurrencyID.IsNull())
             {
                 for (auto &oneCur : ConnectedChains.notarySystems)
@@ -479,45 +547,12 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
 
                 if (!evidence.IsValid())
                 {
-                    // TODO: remove the line assigning evidence just below, as it is only for debugging
-                    evidence = CNotaryEvidence(importTx, evidenceOutStart, afterEvidence);
-
                     return state.Error(strprintf("%s: cannot retrieve export evidence for import", __func__));
                 }
 
                 std::set<int> validEvidenceTypes;
                 validEvidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
                 CNotaryEvidence transactionProof(sysCCITemp.sourceSystemID, evidence.output, evidence.state, evidence.GetSelectEvidence(validEvidenceTypes), CNotaryEvidence::TYPE_IMPORT_PROOF);
-
-                /*
-                // reconstruct evidence if necessary
-                if (evidence.IsPartialTxProof() &&
-                    evidence.evidence.size())
-
-                // reconstruct multipart evidence if necessary
-                if (evidence.IsMultipartProof())
-                {
-                    COptCCParams eP;
-                    CNotaryEvidence supplementalEvidence;
-                    while (importTx.vout.size() > (evidenceOutStart + 1) &&
-                        importTx.vout[evidenceOutStart + 1].scriptPubKey.IsPayToCryptoCondition(eP) &&
-                        eP.IsValid() &&
-                        eP.evalCode == EVAL_NOTARY_EVIDENCE &&
-                        eP.vData.size() &&
-                        (supplementalEvidence = CNotaryEvidence(eP.vData[0])).IsValid() &&
-                        supplementalEvidence.IsPartialTxProof() &&
-                        supplementalEvidence.evidence.size() == 1)
-                    {
-                        evidenceOutStart++;
-                        evidence.evidence.push_back(supplementalEvidence.evidence[0]);
-                    }
-                    if (!eP.IsValid())
-                    {
-                        return state.Error(strprintf("%s: cannot reconstruct export evidence for import", __func__));
-                    }
-                    evidence.evidence = std::vector<CPartialTransactionProof>({CPartialTransactionProof(evidence.evidence)});
-                }
-                */
 
                 CTransaction exportTx;
                 p = COptCCParams();
@@ -561,9 +596,12 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                 int primaryOutNumOut;
                 if (!ccx.GetExportInfo(importTx, evidenceOutStart, primaryOutNumOut, nextOutput, xNotarization, reserveTransfers, hashType))
                 {
-                    //UniValue jsonTx(UniValue::VOBJ);
-                    //TxToUniv(importTx, uint256(), jsonTx);
-                    //printf("%s: importTx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+                    if (LogAcceptCategory("crosschainimports"))
+                    {
+                        UniValue jsonTx(UniValue::VOBJ);
+                        TxToUniv(importTx, uint256(), jsonTx);
+                        printf("%s: invalid export evidence for importTx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+                    }
                     return state.Error(strprintf("%s: invalid export evidence for import 1",__func__));
                 }
 

@@ -395,6 +395,8 @@ bool SetPeerNodes(const UniValue &nodes)
 bool SetThisChain(const UniValue &chainDefinition, CCurrencyDefinition *retDef)
 {
     ConnectedChains.ThisChain() = CCurrencyDefinition(chainDefinition);
+    //printf("%s: setting current chain to: %s\nfrom univalue: %s\n", __func__, ConnectedChains.ThisChain().ToUniValue().write(1,2).c_str(), chainDefinition.write(1,2).c_str());
+
     if (!ConnectedChains.ThisChain().IsValid())
     {
         return false;
