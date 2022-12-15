@@ -469,7 +469,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             {
                 importNotarizationOut++;
             }
-            else
+            else if (!importCurDef.IsValid())
             {
                 UniValue jsonTx(UniValue::VOBJ);
                 TxToUniv(importTx, uint256(), jsonTx);
