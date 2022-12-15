@@ -545,7 +545,9 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                                     if (!priorCcx.IsValid() ||
                                         priorImport.exportTxId != priorExportTx.GetHash() ||
-                                        priorImport.exportTxOutNum != exportTxOut)
+                                        priorImport.exportTxOutNum != exportTxOut ||
+                                        (((priorCcx.sourceHeightEnd + 1) != ccx.sourceHeightStart) &&
+                                         ((priorCcx.sourceHeightEnd + 1) != (ccx.sourceHeightEnd + 1))))
                                     {
                                         return state.Error("Out of order export for import: " + cci.ToUniValue().write(1,2));
                                     }
