@@ -648,7 +648,10 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                                           cci.IsInitialLaunchImport()) &&
                                         !(sourceSystem.IsValid() &&
                                           sourceSystem.proofProtocol == sourceSystem.PROOF_ETHNOTARIZATION &&
-                                          cci.sourceSystemHeight > priorImport.sourceSystemHeight))
+                                          cci.sourceSystemHeight > priorImport.sourceSystemHeight &&
+                                          exportTx.vin.size() &&
+                                          exportTx.vin[0].prevout.hash == priorImport.exportTxId &&
+                                          exportTx.vin[0].prevout.n == priorImport.exportTxOutNum))
                                     {
                                         return state.Error(strprintf("%s: out of order cross-chain import", __func__));
                                     }
@@ -2783,7 +2786,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
         CCoinbaseCurrencyState importState;
 
-        if (!(importCurrencyDef.IsValid() && (importState = ConnectedChains.GetCurrencyState(importCurrencyID, height, false)).IsValid()))
+        if (!(importCurrencyDef.IsValid() && (importState = ConnectedChains.GetCurrencyState(importCurrencyID, height, true)).IsValid()))
         {
             // only pre-conversion gets this benefit
             if (rt.IsPreConversion())
