@@ -67,7 +67,7 @@ build:linux:
 
 
 build:linux:arm64:
-  tags: [ "verusd" ]
+  tags: [ "verusd", "cross-compile"]
   image: asherd/verus-builders:cross-arm
   variables:
     DOCKER_DRIVER: overlay2
@@ -107,7 +107,7 @@ build:linux:arm64:
 ####START####                                           WINDOWS                                            ####START####
 ########################################################################################################################
 build:windows:
-  tags: [ "verusd" ]
+  tags: [ "verusd", "cross-compile" ]
   image: asherd/verus-builders:verus-windows
   variables:
     DOCKER_DRIVER: overlay2
