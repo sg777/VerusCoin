@@ -179,23 +179,54 @@ bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTra
 
         if (thisExport.IsSupplemental())
         {
-            // TODO HARDENING - protect this output from being spent just to prevent transactions with no legitimate source
-            if (LogAcceptCategory("crosschainexporttracking"))
+            CCrossChainImport cciBeingSpent, cciSpending;
+            for (auto &oneOut : txToSpend.vout)
             {
-                LOCK(mempool.cs);
-                CCoinsView dummy;
-                CCoinsViewCache view(&dummy);
-                CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
-                view.SetBackend(viewMemPool);
-                CReserveTransactionDescriptor rtxd(tx, view, chainActive.Height() + 1);
-                if (!rtxd.IsImport())
+                if ((cciBeingSpent = CCrossChainImport(oneOut.scriptPubKey)).IsValid())
                 {
-                    UniValue jsonTx(UniValue::VOBJ);
-                    uint256 hashBlk;
-                    TxToUniv(tx, hashBlk, jsonTx);
-                    LogPrintf("%s: spending supplemental export to:\n%s\n", __func__, jsonTx.write(1,2).c_str()); //*/
-                    printf("%s: spending supplemental export to:\n%s\n", __func__, jsonTx.write(1,2).c_str()); //*/
+                    if (cciBeingSpent.sourceSystemID == thisExport.sourceSystemID)
+                    {
+                        break;
+                    }
+                    cciBeingSpent = CCrossChainImport();
                 }
+            }
+
+            if (cciBeingSpent.IsValid())
+            {
+                for (auto &oneOut : tx.vout)
+                {
+                    if ((cciSpending = CCrossChainImport(oneOut.scriptPubKey)).IsValid())
+                    {
+                        if (cciSpending.importCurrencyID == cciBeingSpent.importCurrencyID)
+                        {
+                            break;
+                        }
+                        cciSpending = CCrossChainImport();
+                    }
+                }
+            }
+
+            if (!cciBeingSpent.IsValid() || !cciSpending.IsValid())
+            {
+                if (LogAcceptCategory("crosschainimports"))
+                {
+                    std::string supplementalCurrency = ConnectedChains.GetFriendlyCurrencyName(thisExport.sourceSystemID);
+                    printf("%s: spending supplemental export with source system %s\n", __func__, supplementalCurrency.c_str());
+                    LogPrintf("%s: spending supplemental export with source system %s\n", __func__, supplementalCurrency.c_str());
+                    if (LogAcceptCategory("verbose"))
+                    {
+                        UniValue jsonTx(UniValue::VOBJ);
+                        uint256 hashBlk;
+                        TxToUniv(txToSpend, hashBlk, jsonTx);
+                        LogPrintf("from:\n%s\n", jsonTx.write(1,2).c_str());
+                        printf("from:\n%s\n", jsonTx.write(1,2).c_str());
+                        TxToUniv(tx, hashBlk, jsonTx);
+                        LogPrintf("to:\n%s\n", jsonTx.write(1,2).c_str());
+                        printf("to:\n%s\n", jsonTx.write(1,2).c_str());
+                    }
+                }
+                return eval->Error("Invalid spend of supplemental export to invalid or non-import");
             }
             return true;
         }
@@ -213,7 +244,6 @@ bool ValidateCrossChainExport(struct CCcontract_info *cp, Eval* eval, const CTra
                 (matchedExport = CCrossChainExport(p.vData[0])).IsValid() &&
                 matchedExport.destCurrencyID == thisExport.destCurrencyID)
             {
-                // TODO: HARDENING - confirm that this spending check plus precheck covers all that is required
                 return true;
             }
         }
@@ -258,7 +288,6 @@ bool ValidateCrossChainImport(struct CCcontract_info *cp, Eval* eval, const CTra
                 (matchedImport = CCrossChainImport(p.vData[0])).IsValid() &&
                 matchedImport.importCurrencyID == thisImport.importCurrencyID)
             {
-                // TODO: HARDENING - confirm that this spending check plus precheck covers all that is required
                 return true;
             }
         }
@@ -316,32 +345,63 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
         if (cci.IsDefinitionImport())
         {
-            // TODO: HARDENING - validate this belongs on a definition and is correct
+            // validate this belongs on a definition and is correct
+            // as a definition import, it is either the block 1 import for a currency defined on
+            // another chain, or a currency defined on this chain, and this will be the definition transaction
+            // in either case, we should find a currency definition that matches
+            auto currencyDefs = CCurrencyDefinition::GetCurrencyDefinitions(tx);
+            CCurrencyDefinition importCurrency;
+            for (auto &oneCurrency : currencyDefs)
+            {
+                if (oneCurrency.GetID() == cci.importCurrencyID)
+                {
+                    importCurrency = oneCurrency;
+                }
+            }
+
+            if (!importCurrency.IsValid())
+            {
+                return state.Error("Definition import on transaction without currency definition: " + cci.ToUniValue().write(1,2));
+            }
+
+            // if launch is complete, it should be one of:
+            // 1) a block 1 notarization
+            // 2) a gateway that had no delay before startblock
+            // 3) self-currency definition
+            // 4) mapped currency definition (different systemID than launchSystemID, ETH proof protocol, DEST_ETH or DEST_ETHNFT nativeCurrencyID)
+            if (notarization.IsValid() && notarization.IsLaunchComplete())
+            {
+                if (height != 1 &&
+                    !(importCurrency.IsGateway() && importCurrency.startBlock <= height) &&
+                    !(IsVerusActive() && importCurrency.GetID() == ASSETCHAINS_CHAINID) &&
+                    !(importCurrency.launchSystemID == ASSETCHAINS_CHAINID &&
+                      importCurrency.proofProtocol == importCurrency.PROOF_ETHNOTARIZATION &&
+                      (importCurrency.nativeCurrencyID.TypeNoFlags() == CTransferDestination::DEST_ETH ||
+                       importCurrency.nativeCurrencyID.TypeNoFlags() == CTransferDestination::DEST_ETHNFT)))
+                {
+                    return state.Error("Definition import and simultaneous active launch must be for block 1 definitions or gateway currency: " + cci.ToUniValue().write(1,2));
+                }
+            }
             if (!cci.hashReserveTransfers.IsNull())
             {
                 return state.Error("Definition import cannot contain transfers: " + cci.ToUniValue().write(1,2));
             }
             return true;
         }
-        else if (cci.IsInitialLaunchImport() && height == 1)
-        {
-            // TODO: HARDENING - validate this is correct as the initial launch import
-            return true;
-        }
 
-        if (ccx.destSystemID != ASSETCHAINS_CHAINID && notarization.IsValid() && !notarization.IsRefunding())
+        if (ccx.IsValid() && ccx.destSystemID != ASSETCHAINS_CHAINID && notarization.IsValid() && !notarization.IsRefunding())
         {
             return state.Error("Invalid import: " + cci.ToUniValue().write(1,2));
         }
-        // TODO: HARDENING - if notarization is invalid, we may need to reject
-        // also need to ensure that if our current height invalidates an import from the specified height that we
-        // reject this in all cases
         else if (notarization.IsValid())
         {
             if (notarization.IsSameChain())
             {
                 // a notarization for a later height is not valid
-                if (notarization.notarizationHeight > (height - 1))
+                if (!isPreSync &&
+                    notarization.notarizationHeight > (height - 1) &&
+                    !(notarization.notarizationHeight == 1 &&
+                    height == 1))
                 {
                     return state.Error("Notarization for import past height, likely due to reorg: " + notarization.ToUniValue().write(1,2));
                 }
@@ -364,49 +424,61 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             }
 
             // if we have the chain behind us, verify that the prior import imports the prior export
-            // TODO: HARDENING - this needs full coverage of all cases, including pre-conversion
             if (!isPreSync && !cci.IsDefinitionImport())
             {
                 CTransaction priorImportTx;
-                CCrossChainImport priorImport = cci.GetPriorImport(tx, state, &priorImportTx);
-                if (!priorImport.IsValid())
+                CCrossChainImport priorImport;
+                if (height != 1)
                 {
-                    // TODO: HARDENING for now, we skip checks if we fail to get prior import, but
-                    // we need to look deeper to ensure that there really is not one or that we use it
-                    return state.Error("Cannot retrieve prior import: " + cci.ToUniValue().write(1,2));
+                    priorImport = cci.GetPriorImport(tx, state, &priorImportTx);
+                    if (!priorImport.IsValid())
+                    {
+                        CCurrencyDefinition sourceSystem = ConnectedChains.GetCachedCurrency(cci.sourceSystemID);
+                        if (!sourceSystem.IsValid() ||
+                            sourceSystem.proofProtocol != sourceSystem.PROOF_ETHNOTARIZATION ||
+                            !cci.IsInitialLaunchImport())
+                        {
+                            // we need to look deeper to ensure that there really is not one or that we use it
+                            return state.Error("Cannot retrieve prior import: " + cci.ToUniValue().write(1,2));
+                        }
+                    }
                 }
-                else if (priorImport.exportTxId.IsNull())
+                if (!priorImport.IsValid() || priorImport.exportTxId.IsNull())
                 {
-                    if (!ccx.IsChainDefinition() && ccx.sourceSystemID == ASSETCHAINS_CHAINID)
+                    if (ccx.IsValid() && !ccx.IsChainDefinition() && ccx.sourceSystemID == ASSETCHAINS_CHAINID)
                     {
                         return state.Error("Out of order export for import 1: " + cci.ToUniValue().write(1,2));
+                    }
+                    else if (!ccx.IsValid() && height != 1)
+                    {
+                        return state.Error("Out of order export for import 2: " + cci.ToUniValue().write(1,2));
                     }
                 }
                 else
                 {
                     if (priorImport.sourceSystemID == cci.sourceSystemID)
                     {
+                        CTransaction exportTx;
+                        LOCK(mempool.cs);
                         if (ccx.sourceSystemID == ASSETCHAINS_CHAINID)
                         {
                             // same chain, we can get the export transaction
-                            CTransaction exportTx;
                             uint256 blockHash;
                             if (!myGetTransaction(cci.exportTxId, exportTx, blockHash))
                             {
                                 return state.Error("Can't get export for import: " + cci.ToUniValue().write(1,2));
                             }
+
                             if (ccx.IsSystemThreadExport() || ccx.IsSupplemental())
                             {
                                 return state.Error("Invalid prior import tx(" + priorImportTx.GetHash().GetHex() + "): " + cci.ToUniValue().write(1,2));
                             }
 
-                            if (ccx.firstInput > 0 && ccx.sourceSystemID == ASSETCHAINS_CHAINID)
+                            if (ccx.firstInput > 0)
                             {
-                                // the prior input is 1 less than first transfer input
-                                // TODO: HARDENING - need to deal with the refunding case of order
                                 if (!notarization.IsRefunding() &&
                                     (priorImport.exportTxId != exportTx.vin[ccx.firstInput - 1].prevout.hash ||
-                                    priorImport.exportTxOutNum != exportTx.vin[ccx.firstInput - 1].prevout.n))
+                                     priorImport.exportTxOutNum != exportTx.vin[ccx.firstInput - 1].prevout.n))
                                 {
                                     LogPrint("crosschainimports", "%s: Out of order export tx(%s) from %s to %s for import %s, priorimport(%s)\n",
                                              __func__,
@@ -416,6 +488,95 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                                              cci.ToUniValue().write(1,2).c_str(),
                                              priorImport.ToUniValue().write(1,2).c_str());
                                     return state.Error("Out of order export for import 2: " + cci.ToUniValue().write(1,2));
+                                }
+                                else if (notarization.IsRefunding())
+                                {
+                                    int priorCCXIndex = 0;
+                                    CCrossChainExport priorCcx;
+                                    CTransaction priorExportTx;
+                                    uint256 hashBlock;
+                                    if (ccx.firstInput > 1)
+                                    {
+                                        if (!myGetTransaction(exportTx.vin[ccx.firstInput - 1].prevout.hash, priorExportTx, hashBlock) ||
+                                            exportTx.vin[ccx.firstInput - 1].prevout.n >= priorExportTx.vout.size())
+                                        {
+                                            return state.Error("Can't get prior export for import: " + cci.ToUniValue().write(1,2));
+                                        }
+                                        priorCcx = CCrossChainExport(priorExportTx.vout[exportTx.vin[ccx.firstInput - 1].prevout.n].scriptPubKey);
+                                        priorCCXIndex = ccx.firstInput - 1;
+                                        if (!priorCcx.IsValid() || priorCcx.destCurrencyID != ccx.destCurrencyID)
+                                        {
+                                            if (ccx.firstInput < 2)
+                                            {
+                                                return state.Error("Invalid first input for export: " + priorCcx.ToUniValue().write(1,2) + "\nfrom tx: " + priorExportTx.GetHash().GetHex() + "\n");
+                                            }
+                                            priorCCXIndex--;
+                                        }
+                                    }
+                                    if (priorExportTx.GetHash() != exportTx.vin[priorCCXIndex].prevout.hash &&
+                                        (!myGetTransaction(exportTx.vin[priorCCXIndex].prevout.hash, priorExportTx, hashBlock) ||
+                                         exportTx.vin[priorCCXIndex].prevout.n >= priorExportTx.vout.size()))
+                                    {
+                                        return state.Error("Invalid input for export from tx: " + priorExportTx.GetHash().GetHex());
+                                    }
+
+                                    // if our prior export is a system thread, go back until we find one that is not, which
+                                    // should be our prior
+                                    CTransaction checkExportTx = priorExportTx;
+                                    int exportTxOut = exportTx.vin[priorCCXIndex].prevout.n;
+
+                                    priorCcx = CCrossChainExport(priorExportTx.vout[exportTxOut].scriptPubKey);
+                                    if (!priorCcx.IsValid())
+                                    {
+                                        return state.Error("Invalid prior export for import: " + cci.ToUniValue().write(1,2));
+                                    }
+
+                                    while (priorCcx.IsValid() && (priorCcx.IsSystemThreadExport() && !priorCcx.IsChainDefinition()))
+                                    {
+                                        int vinIndex = priorCcx.firstInput > 0 ? priorCcx.firstInput - 1 : 0;
+                                        CTransaction lastExportTx = checkExportTx;
+                                        exportTxOut = lastExportTx.vin[vinIndex].prevout.n;
+                                        if (!myGetTransaction(lastExportTx.vin[vinIndex].prevout.hash, checkExportTx, hashBlock) ||
+                                            exportTxOut >= checkExportTx.vout.size())
+                                        {
+                                            return state.Error("Invalid input for prior export from tx: " + checkExportTx.GetHash().GetHex());
+                                        }
+                                        priorCcx = CCrossChainExport(checkExportTx.vout[exportTxOut].scriptPubKey);
+                                        priorCCXIndex = vinIndex;
+                                        if (priorCcx.IsValid() && (!priorCcx.IsSystemThreadExport() || priorCcx.IsChainDefinition()))
+                                        {
+                                            priorExportTx = checkExportTx;
+                                        }
+                                    }
+
+                                    if (!priorCcx.IsValid() ||
+                                        priorImport.exportTxId != priorExportTx.GetHash() ||
+                                        priorImport.exportTxOutNum != exportTxOut ||
+                                        (((priorCcx.sourceHeightEnd + 1) != ccx.sourceHeightStart) &&
+                                         ((priorCcx.sourceHeightEnd + 1) != (ccx.sourceHeightEnd + 1))))
+                                    {
+                                        return state.Error("Out of order export for import: " + cci.ToUniValue().write(1,2));
+                                    }
+
+                                    if (LogAcceptCategory("crosschainimports"))
+                                    {
+                                        if (LogAcceptCategory("verbose"))
+                                        {
+                                            printf("%s: cci:\n%s\npriorCci:%s\n", __func__, cci.ToUniValue().write(1,2).c_str(), priorImport.ToUniValue().write(1,2).c_str());
+                                        }
+                                        printf("%s: Refunding -- priorImport.exportTxId: %s, priorImport.exportTxOutNum: %d\n",
+                                                __func__,
+                                                priorImport.exportTxId.GetHex().c_str(),
+                                                priorImport.exportTxOutNum);
+                                        printf("exportTx.vin[priorCCXIndex].prevout.hash: %s, exportTx.vin[priorCCXIndex].prevout.n: %d\n",
+                                                priorExportTx.GetHash().GetHex().c_str(), exportTxOut);
+                                        LogPrintf("%s: Refunding -- priorImport.exportTxId: %s, priorImport.exportTxOutNum: %d\n",
+                                                    __func__,
+                                                    priorImport.exportTxId.GetHex().c_str(),
+                                                    priorImport.exportTxOutNum);
+                                        LogPrintf("exportTx.vin[priorCCXIndex].prevout.hash: %s, exportTx.vin[priorCCXIndex].prevout.n: %d\n",
+                                                  priorExportTx.GetHash().GetHex().c_str(), exportTxOut);
+                                    }
                                 }
                             }
                             else
@@ -438,7 +599,81 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                         }
                         else
                         {
-                            // TODO: HARDENING must have evidence to reconstruct a partial transaction proof with prior tx id
+                            // next output should be export in evidence output followed by supplemental reserve transfers for the export
+                            int afterEvidence;
+                            CNotaryEvidence evidence(tx, evidenceOutStart, evidenceOutEnd, CNotaryEvidence::TYPE_IMPORT_PROOF);
+
+                            if (!evidence.IsValid())
+                            {
+                                return state.Error(strprintf("%s: cannot retrieve export evidence for import", __func__));
+                            }
+
+                            std::set<int> validEvidenceTypes;
+                            validEvidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
+                            CNotaryEvidence transactionProof(cci.sourceSystemID, evidence.output, evidence.state, evidence.GetSelectEvidence(validEvidenceTypes), CNotaryEvidence::TYPE_IMPORT_PROOF);
+
+                            CTransaction exportTx;
+                            p = COptCCParams();
+                            if (!(transactionProof.evidence.chainObjects.size() &&
+                                !((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.GetPartialTransaction(exportTx).IsNull() &&
+                                ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.TransactionHash() == cci.exportTxId &&
+                                exportTx.vout.size() > cci.exportTxOutNum &&
+                                exportTx.vout[cci.exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+                                p.IsValid() &&
+                                p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
+                                p.vData.size() &&
+                                (ccx = CCrossChainExport(p.vData[0])).IsValid()))
+                            {
+                                return state.Error(strprintf("%s: invalid export evidence for import", __func__));
+                            }
+
+                            // if this is not first, get prior import from the same source system to this currency,
+                            // and verify that it's last height covered is just before this one
+                            CCurrencyDefinition importingCurrency = ConnectedChains.GetCachedCurrency(ccx.destCurrencyID);
+
+                            CValidationState validState;
+                            int32_t priorOutputNum = 0;
+                            uint256 priorTxBlockHash;
+                            CTransaction priorTxFromSys;
+                            priorImport = cci.GetPriorImportFromSystem(tx, validState, &priorTxFromSys, &priorOutputNum, &priorTxBlockHash);
+                            if (priorImport.IsValid())
+                            {
+                                if (!(priorImport.sourceSystemHeight == 1 && priorImport.IsInitialLaunchImport()) &&
+                                    (priorImport.sourceSystemHeight + 1) != ccx.sourceHeightStart)
+                                {
+                                    CCurrencyDefinition sourceSystem = ConnectedChains.GetCachedCurrency(ccx.sourceSystemID);
+                                    if (!(IsVerusActive() &&
+                                          sourceSystem.GetID() == ASSETCHAINS_CHAINID &&
+                                          cci.importCurrencyID == ASSETCHAINS_CHAINID &&
+                                          cci.IsInitialLaunchImport()) &&
+                                        !(sourceSystem.IsValid() &&
+                                          sourceSystem.proofProtocol == sourceSystem.PROOF_ETHNOTARIZATION &&
+                                          cci.sourceSystemHeight > priorImport.sourceSystemHeight))
+                                    {
+                                        return state.Error(strprintf("%s: out of order cross-chain import", __func__));
+                                    }
+                                }
+                            }
+
+                            if (LogAcceptCategory("crosschainimports"))
+                            {
+                                if (LogAcceptCategory("verbose"))
+                                {
+                                    printf("%s: cci:\n%s\npriorImport:%s\n", __func__, cci.ToUniValue().write(1,2).c_str(), priorImport.ToUniValue().write(1,2).c_str());
+                                }
+                                printf("%s: Crosschain from system: %s to currency: %s -- priorImport.exportTxId: %s, priorImport.exportTxOutNum: %d\n",
+                                        __func__,
+                                        ConnectedChains.GetFriendlyCurrencyName(cci.sourceSystemID).c_str(),
+                                        ConnectedChains.GetFriendlyCurrencyName(cci.importCurrencyID).c_str(),
+                                        priorImport.exportTxId.GetHex().c_str(),
+                                        priorImport.exportTxOutNum);
+                                LogPrintf("%s: Crosschain from system: %s to currency: %s -- priorImport.exportTxId: %s, priorImport.exportTxOutNum: %d\n",
+                                        __func__,
+                                        ConnectedChains.GetFriendlyCurrencyName(cci.sourceSystemID).c_str(),
+                                        ConnectedChains.GetFriendlyCurrencyName(cci.importCurrencyID).c_str(),
+                                        priorImport.exportTxId.GetHex().c_str(),
+                                        priorImport.exportTxOutNum);
+                            }
                         }
                     }
                 }
@@ -476,16 +711,16 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                 CReserveTransactionDescriptor rtxd;
                 if (!rtxd.AddReserveTransferImportOutputs(systemSource,
-                                                            ConnectedChains.ThisChain(),
-                                                            importingToDef,
-                                                            importState,
-                                                            reserveTransfers,
-                                                            height,
-                                                            vOutputs,
-                                                            importedCurrency,
-                                                            gatewayDepositsIn,
-                                                            spentCurrencyOut,
-                                                            &dummyState))
+                                                          ConnectedChains.ThisChain(),
+                                                          importingToDef,
+                                                          importState,
+                                                          reserveTransfers,
+                                                          height,
+                                                          vOutputs,
+                                                          importedCurrency,
+                                                          gatewayDepositsIn,
+                                                          spentCurrencyOut,
+                                                          &dummyState))
                 {
                     printf("Errors processing\n");
                 }
@@ -577,16 +812,14 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                     if (oneTransfer.IsConversion())
                     {
-                        uint160 sourceCurID = oneTransfer.FirstCurrency();
                         CAmount conversionFee = oneTransfer.IsReserveToReserve() ?
-                                    CReserveTransactionDescriptor::CalculateConversionFee(oneTransfer.FirstValue()) << 1 :
-                                    CReserveTransactionDescriptor::CalculateConversionFee(oneTransfer.FirstValue());
-                        feeEquivalent +=
-                            CCurrencyState::ReserveToNativeRaw(conversionFee, conversionMap.valueMap[oneTransfer.FirstCurrency()]);
+                                    CReserveTransactionDescriptor::CalculateConversionFeeNoMin(oneTransfer.FirstValue()) << 1 :
+                                    CReserveTransactionDescriptor::CalculateConversionFeeNoMin(oneTransfer.FirstValue());
 
                         if (!oneTransfer.IsPreConversion())
                         {
-                            // TODO: HARDENING - confirm that we need to do nothing else to ensure we can convert
+                            feeEquivalent +=
+                                CCurrencyState::ReserveToNativeRaw(conversionFee, conversionMap.valueMap[oneTransfer.FirstCurrency()]);
                         }
                     }
 
@@ -666,7 +899,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
     {
         return state.Error("Invalid cross chain import");
     }
-
     return false;
 }
 
@@ -682,6 +914,10 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
     // TODO: HARDENING - ensure that we have confirmed all totals and fees are correct, especially cross-chain fees
     // then convert all warnings to errors
     // ensure that this transaction has the appropriate finalization outputs, as required
+
+    // TODO: HARDENING - create parameter to add a currency to the wallet black/broken list if a bridge is clearly blocked by an error
+    // when rolling up an export, or blocked at import to prevent continuously trying to process transactions on a failed bridge
+    // do not roll up or import currencies with broken bridges
 
     // check that all reserve transfers are matched to this export, and no others are mined in to the block that should be included
     COptCCParams p;
@@ -882,9 +1118,6 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             std::pair<uint256, int> transferOutput = make_pair(std::get<1>(oneTransfer).txIn.prevout.hash, std::get<1>(oneTransfer).txIn.prevout.n);
             if (!utxos.count(transferOutput))
             {
-                // TODO: HARDENING - the case where this could be valid is if the output was already spent in a block prior
-                // the one this transaction is in. since we don't have a reliable way to determine if the output will be spent in this
-                // block, if the block referred to is just prior to this one, we must use it for the export, not arbitrage for an import
                 return state.Error("Export excludes valid reserve transfer from source block");
             }
             totalCurrencyExported += std::get<2>(oneTransfer).TotalCurrencyOut();
@@ -2501,10 +2734,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
     uint32_t chainHeight = chainActive.Height();
     bool haveFullChain = height <= chainHeight + 1;
 
-    // TODO: HARDENING - go through all outputs of this transaction and do all reserve transfers at once, the
-    // first time for the first reserve transfer output, if this is not the first, we will have checked them all, so
-    // we are done
-
     // TODO: HARDENING - ensure that destinations and nested destinations are valid for the target system
 
     if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -3008,7 +3237,11 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     {
                         return state.Error("Invalid transfer destination");
                     }
-                    // TODO: HARDENING - either disable raw support or add support for raw gateway
+                    dest = GetCompatibleAuxDestination(rt.destination, (CCurrencyDefinition::EProofProtocol)systemDest.proofProtocol);
+                    if (dest.which() != COptCCParams::ADDRTYPE_ID && dest.which() != COptCCParams::ADDRTYPE_PKH && dest.which() != COptCCParams::ADDRTYPE_SH)
+                    {
+                        return state.Error("Transfer destination requires fallback destination compatible with Verus or Ethereum address formats");
+                    }
                 }
                 else if (GetDestinationID(dest).IsNull())
                 {
@@ -5095,7 +5328,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                                                   transferHash,
                                                   oneIT.first.first.txIn.prevout.hash,
                                                   oneIT.first.first.txIn.prevout.n,
-                                                  CCrossChainImport::FLAG_POSTLAUNCH + (lastCCI.IsDefinitionImport() ? CCrossChainImport::FLAG_INITIALLAUNCHIMPORT : 0));
+                                                  CCrossChainImport::FLAG_POSTLAUNCH +
+                                                    ((lastCCI.IsDefinitionImport() && !(sourceSystemDef.IsPBaaSChain() && sourceSystemID != ASSETCHAINS_CHAINID)) ?
+                                                        CCrossChainImport::FLAG_INITIALLAUNCHIMPORT :
+                                                        0));
         cci.SetSameChain(!useProofs);
 
         TransactionBuilder tb = TransactionBuilder(Params().GetConsensus(), nHeight + 1);
@@ -5258,9 +5494,16 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             {
                 for (int i = evidenceOutNumStart; i <= evidenceOutNumEnd; i++)
                 {
-                    tb.AddTransparentInput(COutPoint(lastImportTxID, i), lastImportTx.vout[i].scriptPubKey, lastImportTx.vout[i].nValue);
+                    const CCoins *pCoins = view.AccessCoins(lastImportTxID);
+                    // be robust to it being spent or not, but do
+                    // clean up the UTXO by spending, if that is an option
+                    if (pCoins && pCoins->IsAvailable(i))
+                    {
+                        tb.AddTransparentInput(COutPoint(lastImportTxID, i), lastImportTx.vout[i].scriptPubKey, lastImportTx.vout[i].nValue);
+                    }
                 }
             }
+
             if (!useProofs)
             {
                 // if same chain and export has a finalization, spend it on import

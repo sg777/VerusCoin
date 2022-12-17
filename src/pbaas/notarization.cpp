@@ -2930,6 +2930,11 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         return state.Error("ineligible");
     }
 
+    // last check for eligibility -- if we pick 20 random blocks in the last stretch of blocks, based on a PRN taken from the
+    // entropy of the last confirmed, witnessed height + current height number, are there at least 6 POS blocks among those 20?
+    // If not, the notarization is invalid, if so, record all PoS block headers from the 20, then choose one at random to prove
+    // fully.
+
     notarization = priorNotarization;
     notarization.SetBlockOneNotarization(false);
     notarization.SetDefinitionNotarization(false);
@@ -5243,7 +5248,37 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             if (currentNotarization.IsPreLaunch())
             {
                 // export or launch notarization
-                // TODO: HARDENING - check that the notarization is valid or confirm that this is done in export
+                if (p.evalCode == EVAL_EARNEDNOTARIZATION)
+                {
+                    return state.Error("Earned notarizations cannot be for pre-launch currencies");
+                }
+
+                // ensure that this is part of an export transaction
+                bool exportOutNum = -1;
+                CCrossChainExport exportToCheck;
+                for (int loop = 0; loop < tx.vout.size(); loop++)
+                {
+                    if ((exportToCheck = CCrossChainExport(tx.vout[loop].scriptPubKey)).IsValid() &&
+                        !exportToCheck.IsSupplemental() &&
+                        !exportToCheck.IsSystemThreadExport() &&
+                        exportToCheck.destCurrencyID == currentNotarization.currencyID)
+                    {
+                        exportOutNum = loop;
+                        break;
+                    }
+                    else
+                    {
+                        exportToCheck = CCrossChainExport();
+                    }
+                }
+
+                // export or launch notarization
+                if (exportOutNum < 0 || !exportToCheck.IsValid() || !exportToCheck.IsPrelaunch())
+                {
+                    return state.Error("Prelaunch notarization with no export on transaction");
+                }
+                // precheck on cross chain export will create a new export from transfers and the last export
+                // and ensure that it matches
             }
             else
             {
