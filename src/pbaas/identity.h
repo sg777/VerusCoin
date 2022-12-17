@@ -87,8 +87,8 @@ public:
         std::vector<unsigned char> vch;
         vch.assign(hash.begin(), hash.begin() + 20);
         uint160 checkVal(vch);
-        // TODO: HARDENING - prepare for mainnet support of currencies after Verus Vault activates
-        if (!_IsVerusMainnetActive() && checkVal == CCommitmentHash::AdvancedCommitmentHashKey())
+
+        if (checkVal == CCommitmentHash::AdvancedCommitmentHashKey())
         {
             READWRITE(*(CTokenOutput *)this);
         }

@@ -3376,7 +3376,7 @@ void static VerusStaker(CWallet *pwallet)
             }
 
             CBlock *pblock = &pblocktemplate->block;
-            LogPrintf("Staking with %u transactions in block (%u bytes)\n", pblock->vtx.size(),::GetSerializeSize(*pblock,SER_NETWORK,PROTOCOL_VERSION));
+            LogPrint("staking", "Staking with %u transactions in block (%u bytes)\n", pblock->vtx.size(),::GetSerializeSize(*pblock,SER_NETWORK,PROTOCOL_VERSION));
             //
             // Search
             //
