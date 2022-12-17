@@ -1482,7 +1482,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
         int32_t reserveIndex = issuingCurrency.GetCurrenciesMap().find(feePricingCurrency)->second;
         std::vector<std::pair<CTransaction, uint256>> txOut;
 
-        pricingState = ConnectedChains.GetCurrencyState(issuerID, tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA, false);
+        pricingState = ConnectedChains.GetCurrencyState(issuerID, (tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) - 1, false);
 
         if (feePricingCurrency != issuerID)
         {

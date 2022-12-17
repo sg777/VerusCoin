@@ -968,8 +968,8 @@ CCrossChainImport CCrossChainImport::GetPriorImport(const CTransaction &tx,
     return cci;
 }
 
-// returns the prior import from the same system as a given import. this enables export order checking to ensure
-// that all exports from any system are imported in order.
+// returns the prior import to the same currency from the same system as a given import.
+// this enables export order checking to ensure that all exports from any system are imported in order.
 CCrossChainImport CCrossChainImport::GetPriorImportFromSystem(const CTransaction &tx,
                                                               CValidationState &state,
                                                               CTransaction *ppriorTx,
@@ -978,38 +978,93 @@ CCrossChainImport CCrossChainImport::GetPriorImportFromSystem(const CTransaction
 {
     // get the prior import
     CCrossChainImport cci;
-    for (auto &oneIn : tx.vin)
-    {
-        CTransaction _priorTx;
-        int32_t _priorOutNum;
-        uint256 _priorTxBlockHash;
-        CTransaction &priorTx = ppriorTx ? *ppriorTx : _priorTx;
-        int32_t &priorOutNum = ppriorOutNum ? *ppriorOutNum : _priorOutNum;
-        uint256 &priorTxBlockHash = ppriorTxBlockHash ? *ppriorTxBlockHash : _priorTxBlockHash;
 
-        COptCCParams p;
-        if (!IsDefinitionImport() &&
-            !(IsInitialLaunchImport() && cci.sourceSystemID != ASSETCHAINS_CHAINID) &&
-            (myGetTransaction(oneIn.prevout.hash, _priorTx, priorTxBlockHash)))
+    // need to know when we can stop relying on last input and resort to index
+    uint32_t nHeight = chainActive.Height();
+
+    CCurrencyDefinition importCurrencyDef = ConnectedChains.GetCachedCurrency(importCurrencyID);
+    if (!importCurrencyDef.IsValid() ||
+        IsDefinitionImport() ||
+        tx.IsCoinBase() ||
+        IsSourceSystemImport() ||
+        (IsInitialLaunchImport() && cci.sourceSystemID != ASSETCHAINS_CHAINID))
+    {
+        return cci;
+    }
+
+    CTransaction _priorTx;
+    const CTransaction *pCurTx = &tx;
+    int32_t _priorOutNum;
+    uint256 _priorTxBlockHash;
+    CTransaction &priorTx = ppriorTx ? *ppriorTx : _priorTx;
+    int32_t &priorOutNum = ppriorOutNum ? *ppriorOutNum : _priorOutNum;
+    uint256 &priorTxBlockHash = ppriorTxBlockHash ? *ppriorTxBlockHash : _priorTxBlockHash;
+
+    // if this import is from a system outside of this one, walk back through imports from that system to see
+    // if they have the same destination currency, until we are looking below the current height.
+    // after we are looking below the current height, query the index for an import from that system to this currency.
+    do
+    {
+        bool sourceSystemChain = sourceSystemID != ASSETCHAINS_CHAINID;
+        CCrossChainImport primaryCCI;
+
+        for (auto &oneIn : tx.vin)
         {
-            if (_priorTx.vout.size() > oneIn.prevout.n &&
-                _priorTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-                p.IsValid() &&
-                p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
-                p.vData.size() &&
-                (cci = CCrossChainImport(p.vData[0])).IsValid() &&
-                cci.importCurrencyID == importCurrencyID)
+            primaryCCI = CCrossChainImport();
+            cci = CCrossChainImport();
+
+            COptCCParams p;
+            if (myGetTransaction(oneIn.prevout.hash, _priorTx, priorTxBlockHash))
             {
-                priorTx = _priorTx;
-                priorOutNum = oneIn.prevout.n;
-                break;
-            }
-            else
-            {
-                cci = CCrossChainImport();
+                if (_priorTx.vout.size() > oneIn.prevout.n &&
+                    _priorTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                    p.vData.size() &&
+                    (cci = CCrossChainImport(p.vData[0])).IsValid())
+                {
+                    // if last one didn't match, but source system does, follow it
+                    if (cci.IsSourceSystemImport() &&
+                        oneIn.prevout.n > 0 &&
+                        _priorTx.vout[oneIn.prevout.n - 1].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() &&
+                        p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                        p.vData.size() &&
+                        (primaryCCI = CCrossChainImport(p.vData[0])).IsValid() &&
+                        primaryCCI.sourceSystemID == sourceSystemID && primaryCCI.importCurrencyID == importCurrencyID)
+                    {
+                        priorTx = _priorTx;
+                        priorOutNum = oneIn.prevout.n;
+                        return primaryCCI;
+                    }
+                    else if (!cci.IsSourceSystemImport() &&
+                              cci.sourceSystemID == sourceSystemID &&
+                              cci.importCurrencyID == importCurrencyID)
+                    {
+                        priorTx = _priorTx;
+                        priorOutNum = oneIn.prevout.n;
+                        return cci;
+                    }
+                    else if (cci.IsSourceSystemImport() ||
+                             cci.IsSameChain())
+                    {
+                        // didn't match, so go one back
+                        break;
+                    }
+                }
             }
         }
-    }
+        if (cci.IsValid() &&
+            !cci.IsInitialLaunchImport() &&
+            !cci.IsDefinitionImport())
+        {
+            pCurTx = &_priorTx;
+        }
+        else
+        {
+            cci = CCrossChainImport();
+        }
+    } while(cci.IsValid());
     return cci;
 }
 
@@ -3070,7 +3125,6 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                     destination.gatewayID == ASSETCHAINS_CHAINID ||
                     !CCurrencyDefinition::IsValidDefinitionImport(sourceSystem, destSystem, fullID.parent.IsNull() ? VERUS_CHAINID : fullID.parent, height))
                 {
-                    // TODO: HARDENING - ensure this cannot be exploited by a cross-chain transfer
                     printf("%s: Invalid export identity or identity not found for %s\n", __func__, EncodeDestination(dest).c_str());
                     LogPrintf("%s: Invalid export identity or identity not found for %s\n", __func__, EncodeDestination(dest).c_str());
                     return false;
@@ -3307,7 +3361,6 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             // check for collisions and if not present, make an ID output
             bool idCollision = false, currencyCollision = false;
 
-            // TODO: HARDENING - confirm/audit that we can only mint IDs from systems that are able to mint them
             CIdentity preexistingID = CIdentity::LookupIdentity(importedID.GetID());
             if (preexistingID.IsValid() &&
                 (boost::to_lower_copy(importedID.name) != boost::to_lower_copy(preexistingID.name) ||
@@ -3635,8 +3688,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                  (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()) ||
                  (exportObjects[i].IsConversion() && !exportObjects[i].IsPreConversion() && !importCurrencyState.IsLaunchCompleteMarker()))
         {
-            // TODO: HARDENING - ensure that we reject every invalid combination of flags as an explicit part of the
-            // protocol, so that a bridge with such a failure would block until it was fixed.
             curTransfer = exportObjects[i].GetRefundTransfer(!(systemSourceID != systemDestID && exportObjects[i].IsCrossSystem()));
         }
         else
@@ -4925,8 +4976,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             LogPrintf("%s: Invalid burn amount %s\n", __func__, burnedReserves.ToUniValue().write(1,2).c_str());
             return false;
         }
-
-        // TODO: HARDENING - if we remove the supply entirely, we need to output any remaining reserves
 
         if (burnedChangePrice > 0)
         {
