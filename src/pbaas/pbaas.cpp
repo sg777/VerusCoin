@@ -638,7 +638,8 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                             priorImport = cci.GetPriorImportFromSystem(tx, validState, &priorTxFromSys, &priorOutputNum, &priorTxBlockHash);
                             if (priorImport.IsValid())
                             {
-                                if ((priorImport.sourceSystemHeight + 1) != ccx.sourceHeightStart)
+                                if (!(priorImport.sourceSystemHeight == 1 && priorImport.IsInitialLaunchImport()) &&
+                                    (priorImport.sourceSystemHeight + 1) != ccx.sourceHeightStart)
                                 {
                                     CCurrencyDefinition sourceSystem = ConnectedChains.GetCachedCurrency(ccx.sourceSystemID);
                                     if (!(IsVerusActive() &&
