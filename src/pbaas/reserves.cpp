@@ -571,7 +571,11 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
 
                 if (importFromDef.proofProtocol == importFromDef.PROOF_ETHNOTARIZATION)
                 {
-                    // confirm the proof contract is valid
+                    CMMRProof &EthProof = ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.txProof;
+                    if (!EthProof.CheckNativeAddress(uint160(CTransferDestination(importFromDef.nativeCurrencyID.auxDests[0][0]).destination)))
+                    {
+                        return state.Error(strprintf("%s: invalid ETH storage address", __func__));
+                    }
                 }
 
                 uint160 externalSystemID = ccx.sourceSystemID == ASSETCHAINS_CHAINID ?
