@@ -855,7 +855,8 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
         if (issuingCurrency.IsFractional())
         {
             feePricingCurrency = issuingCurrency.FeePricingCurrency();
-            if (!(pricingState = ConnectedChains.GetCurrencyState(issuerID, (tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) - 1, false)).IsValid() ||
+            if ((tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) > height ||
+                !(pricingState = ConnectedChains.GetCurrencyState(issuerID, (tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) - 1, false)).IsValid() ||
                 !pricingState.IsLaunchConfirmed())
             {
                 return state.Error("Invalid currency state for gateway converter to register identity");
@@ -1481,6 +1482,11 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
         // always use default expiry
         int32_t reserveIndex = issuingCurrency.GetCurrenciesMap().find(feePricingCurrency)->second;
         std::vector<std::pair<CTransaction, uint256>> txOut;
+
+        if ((tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) > height)
+        {
+            return state.Error("Identity transaction must have at least " + std::to_string(DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) + " blocks for transaction expiry");
+        }
 
         pricingState = ConnectedChains.GetCurrencyState(issuerID, (tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) - 1, false);
 

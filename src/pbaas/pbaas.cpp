@@ -4097,7 +4097,9 @@ CCoinbaseCurrencyState CConnectedChains::AddPendingConversions(CCurrencyDefiniti
 CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &curDef, int32_t height, int32_t curDefHeight, bool loadPendingTransfers)
 {
     uint160 chainID = curDef.GetID();
-    CCoinbaseCurrencyState currencyState = currencyStateCache.Get({chainID, height, loadPendingTransfers});
+    uint256 blockHash = chainActive[std::min(chainActive.Height(), height)]->GetBlockHash();
+
+    CCoinbaseCurrencyState currencyState = currencyStateCache.Get({chainID, blockHash, loadPendingTransfers});
     if (currencyState.IsValid())
     {
         return currencyState;
@@ -4251,7 +4253,7 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
     }
     if (currencyState.IsValid())
     {
-        currencyStateCache.Put({chainID, height, loadPendingTransfers}, currencyState);
+        currencyStateCache.Put({chainID, blockHash, loadPendingTransfers}, currencyState);
     }
     return currencyState;
 }
