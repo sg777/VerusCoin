@@ -569,6 +569,11 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                     return state.Error(strprintf("%s: invalid export evidence for import", __func__));
                 }
 
+                if (importFromDef.proofProtocol == importFromDef.PROOF_ETHNOTARIZATION)
+                {
+                    // confirm the proof contract is valid
+                }
+
                 uint160 externalSystemID = ccx.sourceSystemID == ASSETCHAINS_CHAINID ?
                                         ((ccx.destSystemID == ASSETCHAINS_CHAINID) ? uint160() : ccx.destSystemID) :
                                         ccx.sourceSystemID;
