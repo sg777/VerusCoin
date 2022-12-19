@@ -869,6 +869,7 @@ public:
         return proofSequence.size() == 1 && proofSequence[0]->branchType == CMerkleBranchBase::BRANCH_MULTIPART;
     }
     uint256 CheckProof(uint256 checkHash) const;
+    uint160 GetNativeAddress() const;
     UniValue ToUniValue() const;
 };
 

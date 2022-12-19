@@ -571,7 +571,23 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
 
                 if (importFromDef.proofProtocol == importFromDef.PROOF_ETHNOTARIZATION)
                 {
-                    // confirm the proof contract is valid
+                    if (transactionProof.evidence.chainObjects.size() &&
+                    ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.IsChainProof() &&
+                    importFromDef.nativeCurrencyID.GetAuxDest(0).destination.size())
+                    {
+                        CMMRProof &EthProof = ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.txProof;
+                        if (uint160(importFromDef.nativeCurrencyID.GetAuxDest(0).destination) != EthProof.GetNativeAddress())
+                        {
+                            LogPrintf("%s: Invalid ETH storage address, Found: %s in AuxDest, got %s fropm proof", __func__, 
+                            CTransferDestination::EncodeEthDestination(uint160(importFromDef.nativeCurrencyID.GetAuxDest(0).destination)), 
+                            CTransferDestination::EncodeEthDestination(EthProof.GetNativeAddress()));
+                            return state.Error(strprintf("%s: invalid ETH storage address", __func__));
+                        }
+                    }
+                    else
+                    {
+                        return state.Error(strprintf("%s: ETH chainproof empty or Auxdest not found", __func__));
+                    }
                 }
 
                 uint160 externalSystemID = ccx.sourceSystemID == ASSETCHAINS_CHAINID ?
