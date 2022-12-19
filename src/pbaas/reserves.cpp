@@ -571,10 +571,22 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
 
                 if (importFromDef.proofProtocol == importFromDef.PROOF_ETHNOTARIZATION)
                 {
-                    CMMRProof &EthProof = ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.txProof;
-                    if (!EthProof.CheckNativeAddress(uint160(CTransferDestination(importFromDef.nativeCurrencyID.auxDests[0][0]).destination)))
+                    if (transactionProof.evidence.chainObjects.size() &&
+                    ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.IsChainProof() &&
+                    importFromDef.nativeCurrencyID.GetAuxDest(0).destination.size())
                     {
-                        return state.Error(strprintf("%s: invalid ETH storage address", __func__));
+                        CMMRProof &EthProof = ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.txProof;
+                        if (uint160(importFromDef.nativeCurrencyID.GetAuxDest(0).destination) != EthProof.GetNativeAddress())
+                        {
+                            LogPrintf("%s: Invalid ETH storage address, Found: %s in AuxDest, got %s fropm proof", __func__, 
+                            CTransferDestination::EncodeEthDestination(uint160(importFromDef.nativeCurrencyID.GetAuxDest(0).destination)), 
+                            CTransferDestination::EncodeEthDestination(EthProof.GetNativeAddress()));
+                            return state.Error(strprintf("%s: invalid ETH storage address", __func__));
+                        }
+                    }
+                    else
+                    {
+                        return state.Error(strprintf("%s: ETH chainproof empty or Auxdest not found", __func__));
                     }
                 }
 

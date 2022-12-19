@@ -147,25 +147,25 @@ const CMMRProof &CMMRProof::operator<<(const CMultiPartProof &append)
     return *this;
 }
 
-bool CMMRProof::CheckNativeAddress(uint160 address) const
+uint160 CMMRProof::GetNativeAddress() const
 {
-    bool retval = false;
+    uint160 retAddress;
     for (auto &pProof : proofSequence)
     {
         switch(pProof->branchType)
         {
             case CMerkleBranchBase::BRANCH_ETH:
             {
-                retval = ((CETHPATRICIABranch *)pProof)->CheckContractAddress(address);
+                retAddress = ((CETHPATRICIABranch *)pProof)->address;
                 break;
             }
             default:
             {
-                return false;
+                return uint160();
             }
         }
     }
-    return retval;
+    return retAddress;
 }
 
 uint256 CMMRProof::CheckProof(uint256 hash) const

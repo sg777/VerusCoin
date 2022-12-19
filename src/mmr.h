@@ -585,11 +585,6 @@ public:
         return verifyStorageProof(hash);
     }
 
-    bool CheckContractAddress(uint160 addressToCheck)
-    {
-        return address == addressToCheck;
-    }
-
     std::vector<unsigned char> GetBalanceAsBEVector() const
     {
         arith_uint256 bigValue;
@@ -874,7 +869,7 @@ public:
         return proofSequence.size() == 1 && proofSequence[0]->branchType == CMerkleBranchBase::BRANCH_MULTIPART;
     }
     uint256 CheckProof(uint256 checkHash) const;
-    bool CheckNativeAddress(uint160 address) const;
+    uint160 GetNativeAddress() const;
     UniValue ToUniValue() const;
 };
 
