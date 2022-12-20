@@ -2756,8 +2756,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             return state.Error("Arbitrage transfers must be simple and from/to same chain, even when arbitraging cross-chain imports " + rt.ToUniValue().write(1,2));
         }
 
-        // TODO: HARDENING - all cases of potential protocol issues with having a too large output need to be covered
-        CDataStream ss(SER_DISK, PROTOCOL_VERSION);
         if (p.AsVector().size() > CScript::MAX_SCRIPT_ELEMENT_SIZE)
         {
             return state.Error("Reserve transfer exceeds maximum size " + rt.ToUniValue().write(1,2));
@@ -5090,6 +5088,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             // verify that the current export from the source system spends the prior export from the source system
 
             // TODO: HARDENING - ensure that we enforce in order export and in order import of exports, should be covered, but ensure it is
+            // all that remains is to ensure that state transitions are not out of order
 
             if (useProofs &&
                 !(ccx.IsChainDefinition() ||

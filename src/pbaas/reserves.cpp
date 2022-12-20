@@ -572,14 +572,29 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                 if (importFromDef.proofProtocol == importFromDef.PROOF_ETHNOTARIZATION)
                 {
                     if (transactionProof.evidence.chainObjects.size() &&
-                    ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.IsChainProof() &&
-                    importFromDef.nativeCurrencyID.GetAuxDest(0).destination.size())
+                        ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.IsChainProof())
                     {
                         CMMRProof &EthProof = ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.txProof;
+                        if (importFromDef.nativeCurrencyID.AuxDestCount() == 0)
+                        {
+                            if (IsVerusActive() &&
+                                !IsVerusMainnetActive())
+                            {
+                                // TODO: VNEXT retroactively hardcoded first testnet contract address, remove and ensure currency
+                                // definition is correct for vETH gateway on next testnet
+                                importFromDef.nativeCurrencyID.SetAuxDest(
+                                    CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(CTransferDestination::DecodeEthDestination("0x3fa3a60240ef59460f5b34e2ec5a06ab892a2d00"))),
+                                    0);
+                            }
+                            else
+                            {
+                                return state.Error(strprintf("%s: missing contract address in currency definition", __func__));
+                            }
+                        }
                         if (uint160(importFromDef.nativeCurrencyID.GetAuxDest(0).destination) != EthProof.GetNativeAddress())
                         {
-                            LogPrintf("%s: Invalid ETH storage address, Found: %s in AuxDest, got %s fropm proof", __func__, 
-                            CTransferDestination::EncodeEthDestination(uint160(importFromDef.nativeCurrencyID.GetAuxDest(0).destination)), 
+                            LogPrintf("%s: Invalid ETH storage address, Found: %s in AuxDest, got %s from proof", __func__,
+                            CTransferDestination::EncodeEthDestination(uint160(importFromDef.nativeCurrencyID.GetAuxDest(0).destination)),
                             CTransferDestination::EncodeEthDestination(EthProof.GetNativeAddress()));
                             return state.Error(strprintf("%s: invalid ETH storage address", __func__));
                         }

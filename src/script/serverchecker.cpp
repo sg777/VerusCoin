@@ -87,7 +87,7 @@ public:
 // uses blockchain lookup
 std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> ServerTransactionSignatureChecker::ExtractIDMap(const CScript &scriptPubKeyIn, uint32_t spendHeight, bool isStake)
 {
-    // create an ID map here, which late binds to the IDs on the blockchain as of the spend height, 
+    // create an ID map here, which late binds to the IDs on the blockchain as of the spend height,
     // and substitute the correct addresses when checking signatures
     COptCCParams p;
     std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> idAddresses;
@@ -135,15 +135,13 @@ std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> Serve
                         }
                         if (id.IsValidUnrevoked() && (isStake || sourceIsSelf || !id.IsLocked(spendHeight)))
                         {
-                            // TODO: POST HARDENING - in next upgrade, consider adding limits on what can be modified in an ID
-
                             std::vector<std::vector<unsigned char>> idAddrBytes;
                             for (auto &oneAddr : id.primaryAddresses)
                             {
                                 idAddrBytes.push_back(GetDestinationBytes(oneAddr));
                             }
                             idAddresses[destId] = make_pair(id.minSigs, idAddrBytes);
-                        } 
+                        }
                         else if (!id.IsValid())
                         {
                             uint32_t idHeightDef;
