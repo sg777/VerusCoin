@@ -13464,8 +13464,8 @@ UniValue submitmergedblock(const UniValue& params, bool fHelp)
             "\"rejected\" - block was rejected as invalid\n"
             "For more information on submitblock parameters and results, see: https://github.com/bitcoin/bips/blob/master/bip-0022.mediawiki#block-submission\n"
             "\nExamples:\n"
-            + HelpExampleCli("submitblock", "\"mydata\"")
-            + HelpExampleRpc("submitblock", "\"mydata\"")
+            + HelpExampleCli("submitmergedblock", "\"mydata\"")
+            + HelpExampleRpc("submitmergedblock", "\"mydata\"")
         );
 
     CheckPBaaSAPIsValid();
