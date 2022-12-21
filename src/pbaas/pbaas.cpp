@@ -3480,6 +3480,16 @@ bool CConnectedChains::AddMergedBlock(CPBaaSMergeMinedChainData &blkData)
         mergeMinedTargets.insert(make_pair(target, &(mergeMinedChains[cID])));
         dirty = true;
     }
+
+    // Notify external listeners about a change via broadcasting new, possibly duplicate tip
+    {
+        CBlockIndex *pIndexNewTip = chainActive.LastTip();
+        if (pIndexNewTip)
+        {
+            GetMainSignals().UpdatedBlockTip(pIndexNewTip);
+            uiInterface.NotifyBlockTip(pIndexNewTip->GetBlockHash());
+        }
+    }
     return true;
 }
 
