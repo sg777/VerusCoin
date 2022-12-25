@@ -4508,6 +4508,18 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
     // our latest confirmed is what we may submit.
     // if it is already on that chain, we have nothing to do
+    if (cnd.forks[cnd.bestChain].size() <= 1)
+    {
+        LogPrint("notarization", "No confirming notarization for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+    }
+    uint32_t firstProofHeight = cnd.vtx[cnd.forks[cnd.bestChain][1]].second.notarizationHeight;
+    auto pfirstProofIdxIt = mapBlockIndex.find(notarizationTxes[cnd.lastConfirmed].second);
+    if (pfirstProofIdxIt == mapBlockIndex.end())
+    {
+        LogPrintf("%s: ERROR: block for notarization invalid\n", __func__);
+        return retVal;
+    }
+
     CPBaaSNotarization firstProofNotarization = cnd.vtx[cnd.lastConfirmed].second;
     auto searchVec = ::AsVector(firstProofNotarization);
 
@@ -4538,19 +4550,21 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     }
 
     uint32_t nHeight;
+    CPartialTransactionProof txProofEvidence;
+
+    // check to see if any of the pending notarizations match either our last confirmed
+    // or the one before it
+    int confirmingIdx = 0;
+
+    bool isFirstLaunchingNotarization = crosschainCND.vtx[confirmingIdx].second.IsDefinitionNotarization() ||
+                                        crosschainCND.vtx[confirmingIdx].second.IsPreLaunch() ||
+                                        crosschainCND.vtx[confirmingIdx].second.IsBlockOneNotarization();
+
 
     {
         LOCK2(cs_main, mempool.cs);
 
         nHeight = chainActive.Height();
-
-        // check to see if any of the pending notarizations match either our last confirmed
-        // or the one before it
-        int confirmingIdx = 0;
-
-        bool isFirstLaunchingNotarization = crosschainCND.vtx[confirmingIdx].second.IsDefinitionNotarization() ||
-                                            crosschainCND.vtx[confirmingIdx].second.IsPreLaunch() ||
-                                            crosschainCND.vtx[confirmingIdx].second.IsBlockOneNotarization();
 
         CAddressIndexDbEntry earnedNotarizationIndexEntry;
 
@@ -4647,96 +4661,11 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
         if (isFirstLaunchingNotarization)
         {
-            // TODO: HARDENING
-            /* // get and prove our block 1 notarization on the coinbase, if this is the definition notarization
-            if (firstProofNotarization.IsBlockOneNotarization())
-            {
-                CBlock block;
-                if (!ReadBlockFromDisk(block, chainActive[1], Params().GetConsensus(), false))
-                {
-                    LogPrintf("%s: ERROR: could not read block one from disk\n", __func__);
-                    return retVal;
-                }
-
-                auto blockOneMMR = block.GetBlockMMRTree()
-
-                CPartialTransactionProof blockOneCoinbaseProof = CPartialTransactionProof()
-
-
-                // get map and MMR for stake source transaction
-                CTransactionMap txMap(stakeSource);
-                TransactionMMView txView(txMap.transactionMMR);
-                uint256 txRoot = txView.GetRoot();
-
-                std::vector<CTransactionComponentProof> txProofVec;
-                txProofVec.push_back(CTransactionComponentProof(txView, txMap, stakeSource, CTransactionHeader::TX_HEADER, 0));
-                txProofVec.push_back(CTransactionComponentProof(txView, txMap, stakeSource, CTransactionHeader::TX_OUTPUT, pwinner->i));
-
-                // now, both the header and stake output are dependent on the transaction MMR root being provable up
-                // through the block MMR, and since we don't cache the new MMR proof for transactions yet, we need the block to create the proof.
-                // when we switch to the new MMR in place of a merkle tree, we can keep that in the wallet as well
-
-                BlockMMRange blockMMR(block.GetBlockMMRTree());
-                BlockMMView blockView(blockMMR);
-
-                int txIndexPos;
-                for (txIndexPos = 0; txIndexPos < blockMMR.size(); txIndexPos++)
-                {
-                    uint256 txRootHashFromMMR = blockMMR[txIndexPos].hash;
-                    if (txRootHashFromMMR == txRoot)
-                    {
-                        //printf("tx with root %s found in block\n", txRootHashFromMMR.GetHex().c_str());
-                        break;
-                    }
-                }
-
-                if (txIndexPos == blockMMR.size())
-                {
-                    LogPrintf("%s: ERROR: could not find source transaction root in block %u\n", __func__, srcIndex);
-                    return false;
-                }
-
-                // prove the tx up to the MMR root, which also contains the block hash
-                CMMRProof txRootProof;
-                if (!blockView.GetProof(txRootProof, txIndexPos))
-                {
-                    LogPrintf("%s: ERROR: could not create proof of source transaction in block %u\n", __func__, srcIndex);
-                    return false;
-                }
-
-                mmrView.resize(proveBlockHeight + 1);
-                chainActive.GetMerkleProof(mmrView, txRootProof, srcIndex);
-
-                headerStream << CPartialTransactionProof(txRootProof, txProofVec);
-
-                CMMRProof blockHeaderProof1;
-                if (!chainActive.GetBlockProof(mmrView, blockHeaderProof1, proveBlockHeight))
-                {
-                    LogPrintf("%s: ERROR: could not create block proof for block %u\n", __func__, srcIndex);
-                    return false;
-                }
-                headerStream << CBlockHeaderProof(blockHeaderProof1, chainActive[proveBlockHeight]->GetBlockHeader());
-
-
-
-
-
-
-
-
-
-
-
-            } *///
-
-
-            //
-            //
             CPBaaSNotarization launchNotarization;
             ConnectedChains.GetLaunchNotarization(externalSystem.chainDefinition,
-                                                    notarizationTxInfo,
-                                                    launchNotarization,
-                                                    firstProofNotarization);
+                                                  notarizationTxInfo,
+                                                  launchNotarization,
+                                                  firstProofNotarization);
 
             if (::AsVector(firstProofNotarization) != ::AsVector(cnd.vtx[cnd.lastConfirmed].second))
             {
@@ -4745,6 +4674,30 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 return retVal;
             }
         }
+
+        // we prove our new notarization to submit with the unsibmitted one in front of it
+        CBlock block;
+        if (!ReadBlockFromDisk(block, pfirstProofIdxIt->second, Params().GetConsensus(), false))
+        {
+            LogPrintf("%s: ERROR: could not read block one from disk\n", __func__);
+            return retVal;
+        }
+        std::vector<int> outputNums(block.vtx[0].vout.size());
+
+        // get and prove our whole block 1 coinbase, if this is the block 1 notarization
+        if (firstProofNotarization.IsBlockOneNotarization() &&
+            firstProofNotarization.currencyID == ConnectedChains.ThisChain().launchSystemID)
+        {
+            for (int outNum = 0; outNum < outputNums.size(); outNum++)
+            {
+                outputNums[outNum] = outNum;
+            }
+        }
+        else
+        {
+            outputNums.push_back(cnd.vtx[cnd.lastConfirmed].first.n);
+        }
+        txProofEvidence = CPartialTransactionProof(block.vtx[0], std::vector<int>({0}), outputNums, pfirstProofIdxIt->second, firstProofHeight);
 
         // TODO: HARDENING - ensure that notarizationTxInfo gets passed to the other side
         if (!isFirstLaunchingNotarization && !(notarizationTxInfo.second.IsValid() && notarizationTxInfo.second.components.size()))
@@ -4787,9 +4740,6 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         {
             allEvidence.MergeEvidence(oneEvidenceObj, notarySet, true);
         }
-
-        // now, allEvidence has all signatures that were used to confirm on this chain
-        // now add the supporting evidence
     }
 
     // allEvidence has all signatures that were used to confirm on this chain
@@ -4798,20 +4748,10 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     {
         // make sure we have a more recent notarization, after the one we are posting, that is consistent with the other chain/system
         LOCK(cs_main);
-        CProofRoot firstProofRoot = CProofRoot::GetProofRoot(nHeight);
 
-
-
-        /*
-        CHAINOBJ_TRANSACTION_PROOF          - valid proof after us
-        CHAINOBJ_TRANSACTION_PROOF          - pre header proof
-
-        CHAINOBJ_TRANSACTION_PROOF          - valid proof of this confirmed notarization output
-        CHAINOBJ_TRANSACTION_PROOF          - pre header proof of this header
-
-        CHAINOBJ_TRANSACTION_PROOF          - valid proof of the last confirmed transaction
-        CHAINOBJ_TRANSACTION_PROOF          - pre header proof of this header
-        */
+        // now, allEvidence has all signatures that were used to confirm on this chain
+        // add the supporting evidence
+        allEvidence.evidence << txProofEvidence;
     }
 
     CPBaaSNotarization lastConfirmedNotarization = cnd.vtx[cnd.lastConfirmed].second;

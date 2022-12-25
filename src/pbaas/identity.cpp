@@ -144,7 +144,7 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
     return false;
 }
 
-CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, uint32_t *pHeightOut, CTxIn *pIdTxIn)
+CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, uint32_t *pHeightOut, CTxIn *pIdTxIn, bool checkMempool)
 {
     LOCK(mempool.cs);
 
@@ -168,11 +168,22 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
     }
     CTxIn &idTxIn = *pIdTxIn;
 
-    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs, unspentNewIDX;
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs, unspentNewIDX;
+    std::vector<std::pair<CInputDescriptor, uint32_t>> unspentInputs;
 
     uint160 keyID(CCrossChainRPCData::GetConditionID(nameID, EVAL_IDENTITY_PRIMARY));
 
-    if (GetAddressUnspent(keyID, CScript::P2IDX, unspentNewIDX) && GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
+    if ((!height || height > chainActive.Height()) && checkMempool)
+    {
+        ConnectedChains.GetUnspentByIndex(keyID, unspentInputs);
+        if (unspentInputs.size())
+        {
+            unspentOutputs.push_back(std::make_pair(CAddressUnspentKey(CScript::P2IDX, keyID, unspentInputs[0].first.txIn.prevout.hash, unspentInputs[0].first.txIn.prevout.n),
+                                                    CAddressUnspentValue(unspentInputs[0].first.nValue, unspentInputs[0].first.scriptPubKey, unspentInputs[0].second)));
+        }
+    }
+
+    if (unspentOutputs.size() || GetAddressUnspent(keyID, CScript::P2IDX, unspentNewIDX) && GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
     {
         // combine searches into 1 vector
         unspentOutputs.insert(unspentOutputs.begin(), unspentNewIDX.begin(), unspentNewIDX.end());

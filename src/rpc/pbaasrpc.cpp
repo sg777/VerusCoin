@@ -11870,7 +11870,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         tokenizedIDControl = uni_get_bool(params[2], false);
     }
 
-    if (!(oldID = CIdentity::LookupIdentity(newIDID, 0, &idHeight, &idTxIn)).IsValid())
+    if (!(oldID = CIdentity::LookupIdentity(newIDID, 0, &idHeight, &idTxIn, true)).IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + nameStr + " (" +EncodeDestination(CIdentityID(newIDID)) + "), not found ");
     }
@@ -12560,7 +12560,7 @@ UniValue getidentity(const UniValue& params, bool fHelp)
 
             "\nArguments\n"
             "    \"name@ || iid\"                       (string, required) name followed by \"@\" or i-address of an identity\n"
-            "    \"height\"                             (number, optional) default=current height, return identity as of this height\n"
+            "    \"height\"                             (number, optional) default=current height, return identity as of this height, if -1 include mempool\n"
             "    \"txproof\"                            (bool, optional) default=false, if true, returns proof of ID\n"
             "    \"txproofheight\"                      (number, optional) default=\"height\", height from which to generate a proof\n"
 
@@ -12583,6 +12583,7 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     LOCK(cs_main);
 
     uint32_t lteHeight = chainActive.Height();
+    bool useMempool = false;
     if (params.size() > 1)
     {
         uint32_t tmpHeight = uni_get_int64(params[1]);
@@ -12590,12 +12591,22 @@ UniValue getidentity(const UniValue& params, bool fHelp)
         {
             lteHeight = tmpHeight;
         }
+        else if (tmpHeight == -1)
+        {
+            lteHeight = chainActive.Height() + 1;
+            useMempool = true;
+        }
     }
+
     bool txProof = params.size() > 2 ? uni_get_bool(params[2]) : false;
     uint32_t txProofHeight = params.size() > 3 ? uni_get_int64(params[1]) : 0;
     if (txProofHeight < lteHeight)
     {
         txProofHeight = lteHeight;
+    }
+    if (useMempool)
+    {
+        txProof = false;
     }
 
     CTxIn idTxIn;
@@ -12618,7 +12629,7 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     }
 
     uint160 identityID = GetDestinationID(idID);
-    identity = CIdentity::LookupIdentity(CIdentityID(identityID), lteHeight, &height, &idTxIn);
+    identity = CIdentity::LookupIdentity(CIdentityID(identityID), lteHeight, &height, &idTxIn, useMempool);
 
     if (!identity.IsValid() && identityID == VERUS_CHAINID)
     {
