@@ -176,11 +176,29 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
     if ((!height || height > chainActive.Height()) && checkMempool)
     {
         ConnectedChains.GetUnspentByIndex(keyID, unspentInputs);
-        if (unspentInputs.size())
+        // if we got it from the mempool, don't check view
+        if (unspentInputs.size() && !unspentInputs[0].second)
         {
-            unspentOutputs.push_back(std::make_pair(CAddressUnspentKey(CScript::P2IDX, keyID, unspentInputs[0].first.txIn.prevout.hash, unspentInputs[0].first.txIn.prevout.n),
-                                                    CAddressUnspentValue(unspentInputs[0].first.nValue, unspentInputs[0].first.scriptPubKey, unspentInputs[0].second)));
+            COptCCParams p;
+            if (unspentInputs[0].first.scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                (ret = CIdentity(unspentInputs[0].first.scriptPubKey)).IsValid())
+            {
+                if (ret.GetID() == nameID)
+                {
+                    idTxIn = CTxIn(unspentInputs[0].first.txIn.prevout.hash, unspentInputs[0].first.txIn.prevout.n);
+                    *pHeightOut = -1;
+                }
+                else
+                {
+                    // got an identity masquerading as another, clear it
+                    ret = CIdentity();
+                }
+                return ret;
+            }
         }
+        unspentInputs.clear();
     }
 
     if (unspentOutputs.size() || GetAddressUnspent(keyID, CScript::P2IDX, unspentNewIDX) && GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
