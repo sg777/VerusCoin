@@ -13455,59 +13455,28 @@ UniValue submitmergedblock(const UniValue& params, bool fHelp)
         throw runtime_error(
             "submitmergedblock \"hexdata\" ( \"jsonparametersobject\" )\n"
             "\nAttempts to submit one more more new blocks to one or more networks.\n"
-            "Each merged block submission may be valid for Verus and/or up to 8 merge mined chains.\n"
-            "The submitted block consists of a valid block for this chain, along with embedded headers of up to 8 other chains.\n"
+            "Each merged block submission may be valid for Verus and/or PBaaS merge mined chains.\n"
+            "The submitted block consists of a valid block for this chain, along with embedded headers of other PBaaS merge mined chains.\n"
             "If the hash for this header meets targets of other chains that have been added with 'addmergedblock', this API will\n"
-            "submit those blocks to the specified URL endpoints with an RPC 'submitblock' request."
+            "submit those blocks to the specified URL endpoints with an RPC 'submitmergedblock' request."
             "\nAttempts to submit one more more new blocks to one or more networks.\n"
-            "The 'jsonparametersobject' parameter is currently ignored.\n"
-            "See https://en.bitcoin.it/wiki/BIP_0022 for full specification.\n"
 
             "\nArguments\n"
             "1. \"hexdata\"    (string, required) the hex-encoded block data to submit\n"
-            "2. \"jsonparametersobject\"     (string, optional) object of optional parameters\n"
-            "    {\n"
-            "      \"workid\" : \"id\"    (string, optional) if the server provided a workid, it MUST be included with submissions\n"
-            "    }\n"
-            "\nResult:\n"
-            "\"duplicate\" - node already has valid copy of block\n"
-            "\"duplicate-invalid\" - node already has block, but it is invalid\n"
-            "\"duplicate-inconclusive\" - node already has block but has not validated it\n"
-            "\"inconclusive\" - node has not validated the block, it may not be on the node's current best chain\n"
-            "\"rejected\" - block was rejected as invalid\n"
-            "For more information on submitblock parameters and results, see: https://github.com/bitcoin/bips/blob/master/bip-0022.mediawiki#block-submission\n"
+            "\nResults:\n"
+            "\"    { rejected: \"reject reason\" }\n"
+            "\n  Submission to our chain and PBaaS chains\n"
+            "\"    { blockhash: \"hex\", accepted: true, pbaas_submissions: { \"Quantum\":\"chainID_hex\", ... } }\n"
+            "\n  Submission to only PBaaS chains\n"
+            "\"    { blockhash: \"hex\", accepted: \"pbaas\", pbaas_submissions: { \"Quantum\":\"chainID_hex\", ... } }\n"
             "\nExamples:\n"
             + HelpExampleCli("submitmergedblock", "\"mydata\"")
             + HelpExampleRpc("submitmergedblock", "\"mydata\"")
         );
 
-/* TODO, update result in help text ...
-RESULT:
-
- {
-     rejected: "inconclusive"
- }
-
-** OR **
-
- {
-     blockhash: "hex",
-
-     accepted: true, 
-        ** OR **
-     accepted: pbaas,
-
-     pbaas_submissions: {
-        "Quantum": "chainID_hex",
-        ...
-     }
- }
-*/
-
     CheckPBaaSAPIsValid();
 
     CBlock block;
-    //LogPrintStr("Hex block submission: " + params[0].get_str());
     if (!DecodeHexBlk(block, params[0].get_str()))
         throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "Block decode failed");
 
@@ -13559,9 +13528,10 @@ RESULT:
     if (rejected.isNull()) {
         // queue for submission to pbaas chains being merge mined
         ConnectedChains.QueueNewBlockHeader(block);
-
+        
+        // add block hash to response
         result.push_back(Pair("blockhash", block.GetBlockHeader().GetHash().GetHex()));
-
+        
         // check target, we may have only submitted to pbaas chains
         arith_uint256 target(0); target.SetCompact(block.nBits);
         arith_uint256 block_hash = UintToArith256(block.GetBlockHeader().GetHash());
@@ -13644,6 +13614,7 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
             "  \"sizelimit\" : n,                  (numeric) limit of block size\n"
             "  \"curtime\" : ttt,                  (numeric) current timestamp in seconds since epoch (Jan 1 1970 GMT)\n"
             "  \"bits\" : \"xxx\",                 (string) compressed target of next block\n"
+            "  \"merged_bits\" : \"xxx\",          (string) compressed target of next merged block\n"
             "  \"height\" : n                      (numeric) The height of the next block\n"
             "}\n"
 
@@ -13736,7 +13707,7 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
     }
 
     //if (IsInitialBlockDownload())
-    //   throw JSONRPCError(RPC_CLIENT_IN_INITIAL_DOWNLOAD, "Zcash is downloading blocks...");
+    //   throw JSONRPCError(RPC_CLIENT_IN_INITIAL_DOWNLOAD, "Verus is downloading blocks...");
 
     static unsigned int nTransactionsUpdatedLast;
 
@@ -13839,17 +13810,6 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
 #endif
         }
 
-        /* keep Zcash script-based approach for reference
-        boost::shared_ptr<CReserveScript> coinbaseScript;
-        GetMainSignals().ScriptForMining(coinbaseScript);
-
-        // Throw an error if no script was provided
-        if (!coinbaseScript->reserveScript.size())
-            throw JSONRPCError(RPC_INTERNAL_ERROR, "No coinbase script available (mining requires a wallet or -mineraddress)");
-
-        pblocktemplate = CreateNewBlock(Params(), coinbaseScript->reserveScript);
-        */
-
         if (!pblocktemplate)
             throw JSONRPCError(RPC_OUT_OF_MEMORY, "Out of memory or no available utxo for staking");
 
@@ -13906,11 +13866,6 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
         entry.push_back(Pair("sigops", pblocktemplate->vTxSigOps[index_in_template]));
 
         if (tx.IsCoinBase()) {
-            // Show founders' reward if it is required
-            //if (pblock->vtx[0].vout.size() > 1) {
-                // Correct this if GetBlockTemplate changes the order
-            //    entry.push_back(Pair("foundersreward", (int64_t)tx.vout[1].nValue));
-            //}
             CAmount nReward = GetBlockSubsidy(chainActive.LastTip()->GetHeight()+1, Params().GetConsensus());
             entry.push_back(Pair("coinbasevalue", nReward));
             entry.push_back(Pair("required", true));
