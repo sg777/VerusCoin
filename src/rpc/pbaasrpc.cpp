@@ -70,6 +70,8 @@ arith_uint256 komodo_PoWtarget(int32_t *percPoSp,arith_uint256 target,int32_t he
 
 std::set<uint160> ClosedPBaaSChains({});
 
+UniValue getminingdistribution(const UniValue& params, bool fHelp);
+
 // NOTE: Assumes a conclusive result; if result is inconclusive, it must be handled by caller
 static UniValue BIP22ValidationResult(const CValidationState& state)
 {
@@ -13453,27 +13455,20 @@ UniValue submitmergedblock(const UniValue& params, bool fHelp)
         throw runtime_error(
             "submitmergedblock \"hexdata\" ( \"jsonparametersobject\" )\n"
             "\nAttempts to submit one more more new blocks to one or more networks.\n"
-            "Each merged block submission may be valid for Verus and/or up to 8 merge mined chains.\n"
-            "The submitted block consists of a valid block for this chain, along with embedded headers of up to 8 other chains.\n"
+            "Each merged block submission may be valid for Verus and/or PBaaS merge mined chains.\n"
+            "The submitted block consists of a valid block for this chain, along with embedded headers of other PBaaS merge mined chains.\n"
             "If the hash for this header meets targets of other chains that have been added with 'addmergedblock', this API will\n"
-            "submit those blocks to the specified URL endpoints with an RPC 'submitblock' request."
+            "submit those blocks to the specified URL endpoints with an RPC 'submitmergedblock' request."
             "\nAttempts to submit one more more new blocks to one or more networks.\n"
-            "The 'jsonparametersobject' parameter is currently ignored.\n"
-            "See https://en.bitcoin.it/wiki/BIP_0022 for full specification.\n"
 
             "\nArguments\n"
             "1. \"hexdata\"    (string, required) the hex-encoded block data to submit\n"
-            "2. \"jsonparametersobject\"     (string, optional) object of optional parameters\n"
-            "    {\n"
-            "      \"workid\" : \"id\"    (string, optional) if the server provided a workid, it MUST be included with submissions\n"
-            "    }\n"
-            "\nResult:\n"
-            "\"duplicate\" - node already has valid copy of block\n"
-            "\"duplicate-invalid\" - node already has block, but it is invalid\n"
-            "\"duplicate-inconclusive\" - node already has block but has not validated it\n"
-            "\"inconclusive\" - node has not validated the block, it may not be on the node's current best chain\n"
-            "\"rejected\" - block was rejected as invalid\n"
-            "For more information on submitblock parameters and results, see: https://github.com/bitcoin/bips/blob/master/bip-0022.mediawiki#block-submission\n"
+            "\nResults:\n"
+            "\"    { rejected: \"reject reason\" }\n"
+            "\n  Submission to our chain and PBaaS chains\n"
+            "\"    { blockhash: \"hex\", accepted: true, pbaas_submissions: { \"Quantum\":\"chainID_hex\", ... } }\n"
+            "\n  Submission to only PBaaS chains\n"
+            "\"    { blockhash: \"hex\", accepted: \"pbaas\", pbaas_submissions: { \"Quantum\":\"chainID_hex\", ... } }\n"
             "\nExamples:\n"
             + HelpExampleCli("submitmergedblock", "\"mydata\"")
             + HelpExampleRpc("submitmergedblock", "\"mydata\"")
@@ -13482,7 +13477,6 @@ UniValue submitmergedblock(const UniValue& params, bool fHelp)
     CheckPBaaSAPIsValid();
 
     CBlock block;
-    //LogPrintStr("Hex block submission: " + params[0].get_str());
     if (!DecodeHexBlk(block, params[0].get_str()))
         throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "Block decode failed");
 
@@ -13508,29 +13502,68 @@ UniValue submitmergedblock(const UniValue& params, bool fHelp)
     CValidationState state;
     submitblock_StateCatcher sc(block.GetHash());
     RegisterValidationInterface(&sc);
-    //printf("submitblock, height=%d, coinbase sequence: %d, scriptSig: %s\n", chainActive.LastTip()->GetHeight()+1, block.vtx[0].vin[0].nSequence, block.vtx[0].vin[0].scriptSig.ToString().c_str());
+    //printf("submitmergedblock, height=%d, coinbase sequence: %d, scriptSig: %s\n", chainActive.LastTip()->GetHeight()+1, block.vtx[0].vin[0].nSequence, block.vtx[0].vin[0].scriptSig.ToString().c_str());
     bool fAccepted = ProcessNewBlock(1, chainActive.LastTip()->GetHeight()+1, state, Params(), NULL, &block, true, NULL);
     UnregisterValidationInterface(&sc);
+    UniValue result(UniValue::VOBJ);
     if (fBlockPresent)
     {
-        if (fAccepted && !sc.found)
-            return "duplicate-inconclusive";
-        return "duplicate";
+        if (fAccepted && !sc.found) {        
+            result.push_back(Pair("rejected", "duplicate-inconclusive"));
+            return result;
+        }
+        result.push_back(Pair("rejected", "duplicate"));
+        return result;
     }
     if (fAccepted)
     {
-        if (!sc.found)
-            return "inconclusive";
+        if (!sc.found) {
+            result.push_back(Pair("rejected", "inconclusive"));
+            return result;
+        }
         state = sc.state;
     }
-    return BIP22ValidationResult(state);
+
+    UniValue rejected = BIP22ValidationResult(state);
+    if (rejected.isNull()) {
+        // queue for submission to pbaas chains being merge mined
+        ConnectedChains.QueueNewBlockHeader(block);
+        
+        // add block hash to response
+        result.push_back(Pair("blockhash", block.GetBlockHeader().GetHash().GetHex()));
+        
+        // check target, we may have only submitted to pbaas chains
+        arith_uint256 target(0); target.SetCompact(block.nBits);
+        arith_uint256 block_hash = UintToArith256(block.GetBlockHeader().GetHash());
+        if (block_hash > target) {
+            // only submitted to pbaas merge mined chains
+            result.push_back(Pair("accepted", "pbaas"));
+        } else {
+            // accepted on primary chain and pbaas chains
+            result.push_back(Pair("accepted", true));
+        }
+
+        // generate submissions list of pbaas chains being merge mined
+        UniValue chains(UniValue::VOBJ);
+        std::vector<CCurrencyDefinition> mergeMinedChains =  ConnectedChains.GetMergeMinedChains();
+        for (auto &chain : mergeMinedChains)
+        {
+            chains.push_back(Pair(chain.name, chain.GetID().GetHex()));
+        }
+        result.push_back(Pair("pbaas_submissions", chains));
+
+    } else {
+        result.push_back(Pair("rejected", rejected));
+    }
+    
+    return result;
 }
 
 UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() > 1)
         throw runtime_error(
-            "getblocktemplate ( \"jsonrequestobject\" )\n"
+            "getmergedblocktemplate ( \"jsonrequestobject\" )\n"
             "\nIf the request parameters include a 'mode' key, that is used to explicitly select between the default 'template' request or a 'proposal'.\n"
             "It returns data needed to construct a block to work on.\n"
             "See https://en.bitcoin.it/wiki/BIP_0022 for full specification.\n"
@@ -13581,12 +13614,13 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
             "  \"sizelimit\" : n,                  (numeric) limit of block size\n"
             "  \"curtime\" : ttt,                  (numeric) current timestamp in seconds since epoch (Jan 1 1970 GMT)\n"
             "  \"bits\" : \"xxx\",                 (string) compressed target of next block\n"
+            "  \"merged_bits\" : \"xxx\",          (string) compressed target of next merged block\n"
             "  \"height\" : n                      (numeric) The height of the next block\n"
             "}\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("getblocktemplate", "")
-            + HelpExampleRpc("getblocktemplate", "")
+            + HelpExampleCli("getmergedblocktemplate", "")
+            + HelpExampleRpc("getmergedblocktemplate", "")
          );
 
     CheckPBaaSAPIsValid();
@@ -13606,12 +13640,15 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
 
     std::string strMode = "template";
     UniValue lpval = NullUniValue;
+
     // TODO: Re-enable coinbasevalue once a specification has been written
     bool coinbasetxn = true;
+
     if (params.size() > 0)
     {
         const UniValue& oparam = params[0].get_obj();
         const UniValue& modeval = find_value(oparam, "mode");
+
         if (modeval.isStr())
             strMode = modeval.get_str();
         else if (modeval.isNull())
@@ -13670,7 +13707,7 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
     }
 
     //if (IsInitialBlockDownload())
-     //   throw JSONRPCError(RPC_CLIENT_IN_INITIAL_DOWNLOAD, "Zcash is downloading blocks...");
+    //   throw JSONRPCError(RPC_CLIENT_IN_INITIAL_DOWNLOAD, "Verus is downloading blocks...");
 
     static unsigned int nTransactionsUpdatedLast;
 
@@ -13741,16 +13778,45 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
             delete pblocktemplate;
             pblocktemplate = NULL;
         }
+
+        UniValue recipientWeights;
+        if (params.size() > 0 &&
+            ((recipientWeights = find_value(params[0], "miningdistribution")).isObject() ||
+             (recipientWeights = getminingdistribution(UniValue(UniValue::VARR), false)).isObject()) &&
+            recipientWeights.getKeys().size())
+        {
+            std::vector<CTxOut> minerOutputs;
+            auto rewardAddresses = recipientWeights.getKeys();
+            for (int i = 0; i < rewardAddresses.size(); i++)
+            {
+                CTxDestination oneDest = DecodeDestination(rewardAddresses[i]);
+                CAmount relVal = 0;
+                if (oneDest.which() == COptCCParams::ADDRTYPE_INVALID ||
+                    !(relVal = AmountFromValue(find_value(recipientWeights, rewardAddresses[i]))))
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMS, "Invalid destination or zero weight specified in miningdistribution array");
+                }
+                minerOutputs.push_back(CTxOut(relVal, GetScriptForDestination(oneDest)));
+            }
+            pblocktemplate = CreateNewBlock(Params(), minerOutputs, false);
+        }
+        else
+        {
 #ifdef ENABLE_WALLET
-        CReserveKey reservekey(pwalletMain);
-        pblocktemplate = CreateNewBlockWithKey(reservekey,chainActive.LastTip()->GetHeight()+1);
+            CReserveKey reservekey(pwalletMain);
+            pblocktemplate = CreateNewBlockWithKey(reservekey, chainActive.LastTip()->GetHeight()+1);
 #else
-        pblocktemplate = CreateNewBlockWithKey();
+            pblocktemplate = CreateNewBlockWithKey();
 #endif
+        }
+
         if (!pblocktemplate)
             throw JSONRPCError(RPC_OUT_OF_MEMORY, "Out of memory or no available utxo for staking");
 
-        // Need to update only after we know CreateNewBlockWithKey succeeded
+        // Mark script as important because it was used at least for one coinbase output
+        //coinbaseScript->KeepScript();
+
+        // Need to update only after we know CreateNewBlock succeeded
         pindexPrev = pindexPrevNew;
     }
     CBlock* pblock = &pblocktemplate->block; // pointer for convenience
@@ -13758,6 +13824,15 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
     // Update nTime
     UpdateTime(pblock, Params().GetConsensus(), pindexPrev);
     pblock->nNonce = uint256();
+
+    pblock->AddUpdatePBaaSHeader();
+
+    uint8_t dummy;
+    // clear extra data to allow adding more PBaaS headers
+    pblock->SetExtraData(&dummy, 0);
+
+    // combine blocks and set compact difficulty if necessary
+    uint32_t savebits = ConnectedChains.CombineBlocks(*pblock);
 
     UniValue aCaps(UniValue::VARR); aCaps.push_back("proposal");
 
@@ -13791,11 +13866,6 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
         entry.push_back(Pair("sigops", pblocktemplate->vTxSigOps[index_in_template]));
 
         if (tx.IsCoinBase()) {
-            // Show founders' reward if it is required
-            //if (pblock->vtx[0].vout.size() > 1) {
-                // Correct this if GetBlockTemplate changes the order
-            //    entry.push_back(Pair("foundersreward", (int64_t)tx.vout[1].nValue));
-            //}
             CAmount nReward = GetBlockSubsidy(chainActive.LastTip()->GetHeight()+1, Params().GetConsensus());
             entry.push_back(Pair("coinbasevalue", nReward));
             entry.push_back(Pair("required", true));
@@ -13822,6 +13892,11 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
     result.push_back(Pair("version", pblock->nVersion));
     result.push_back(Pair("previousblockhash", pblock->hashPrevBlock.GetHex()));
     result.push_back(Pair("finalsaplingroothash", pblock->hashFinalSaplingRoot.GetHex()));
+
+    if (CConstVerusSolutionVector::Version(pblock->nSolution) >= CActivationHeight::ACTIVATE_VERUSHASH2_1)
+    {
+        result.push_back(Pair("solution", HexBytes(pblock->nSolution.data(), pblock->nSolution.size())));
+    }
     result.push_back(Pair("transactions", transactions));
     if (coinbasetxn) {
         assert(txCoinbase.isObject());
@@ -13847,6 +13922,7 @@ UniValue getmergedblocktemplate(const UniValue& params, bool fHelp)
     result.push_back(Pair("sizelimit", (int64_t)MAX_BLOCK_SIZE));
     result.push_back(Pair("curtime", pblock->GetBlockTime()));
     result.push_back(Pair("bits", strprintf("%08x", pblock->nBits)));
+    result.push_back(Pair("merged_bits", strprintf("%08x", savebits)));
     result.push_back(Pair("height", (int64_t)(pindexPrev->GetHeight()+1)));
 
     //fprintf(stderr,"return complete template\n");
@@ -13898,7 +13974,8 @@ static const CRPCCommand commands[] =
     { "multichain",   "refundfailedlaunch",           &refundfailedlaunch,     true  },
     { "multichain",   "refundfailedlaunch",           &refundfailedlaunch,     true  },
     { "multichain",   "getmergedblocktemplate",       &getmergedblocktemplate, true  },
-    { "multichain",   "addmergedblock",               &addmergedblock,         true  }
+    { "multichain",   "addmergedblock",               &addmergedblock,         true  },
+    { "multichain",   "submitmergedblock",            &submitmergedblock,      true  }
 };
 
 void RegisterPBaaSRPCCommands(CRPCTable &tableRPC)
