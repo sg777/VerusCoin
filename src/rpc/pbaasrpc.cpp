@@ -7534,7 +7534,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     std::vector<SendManyRecipient> tOutputs;
     std::vector<SendManyRecipient> zOutputs;
 
-    static std::set<std::string> paramSet({"currency", "amount", "convertto", "exportto", "feecurrency", "via", "address", "exportid", "exportcurrency", "refundto", "memo", "preconvert",  "burn", "burnweight", "mintnew"});
+    bool hasOpRet = false;
+
+    static std::set<std::string> paramSet({"currency", "amount", "convertto", "exportto", "feecurrency", "via", "address", "exportid", "exportcurrency", "refundto", "memo", "preconvert",  "burn", "burnweight", "mintnew", "opret"});
 
     try
     {
@@ -7549,6 +7551,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 }
             }
 
+            auto opRetHex = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "opret")));
             auto currencyStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "currency")));
             CAmount sourceAmount = AmountFromValue(find_value(uniOutputs[i], "amount"));
             auto convertToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "convertto")));
@@ -7565,19 +7568,38 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             bool burnWeight = uni_get_bool(find_value(uniOutputs[i], "burnweight"));
             bool mintNew = uni_get_bool(find_value(uniOutputs[i], "mintnew"));
 
-            if (currencyStr.size() ||
-                convertToStr.size() ||
-                exportToStr.size() ||
-                feeCurrencyStr.size() ||
-                viaStr.size() ||
-                refundToStr.size() ||
-                preConvert ||
-                mintNew ||
-                exportId ||
-                exportCurrency ||
-                burnCurrency)
+            bool hasPBaaSParams = currencyStr.size() ||
+                                  convertToStr.size() ||
+                                  exportToStr.size() ||
+                                  feeCurrencyStr.size() ||
+                                  viaStr.size() ||
+                                  refundToStr.size() ||
+                                  preConvert ||
+                                  mintNew ||
+                                  exportId ||
+                                  exportCurrency ||
+                                  burnCurrency;
+
+            if (hasPBaaSParams)
             {
                 CheckPBaaSAPIsValid();
+            }
+
+            if (opRetHex.size())
+            {
+                if (hasOpRet ||
+                    hasPBaaSParams ||
+                    destStr.size() ||
+                    sourceAmount ||
+                    !IsHex(opRetHex))
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "If opret is specified on output, there must only be one, and it must include only hex data and no other parameters for that output");
+                }
+                hasOpRet = true;
+                CScript opRetScript;
+                opRetScript << ParseHex(opRetHex);
+                tb.AddOpRet(opRetScript);
+                continue;
             }
 
             CCurrencyDefinition sourceCurrencyDef;
@@ -13508,7 +13530,7 @@ UniValue submitmergedblock(const UniValue& params, bool fHelp)
     UniValue result(UniValue::VOBJ);
     if (fBlockPresent)
     {
-        if (fAccepted && !sc.found) {        
+        if (fAccepted && !sc.found) {
             result.push_back(Pair("rejected", "duplicate-inconclusive"));
             return result;
         }
@@ -13528,10 +13550,10 @@ UniValue submitmergedblock(const UniValue& params, bool fHelp)
     if (rejected.isNull()) {
         // queue for submission to pbaas chains being merge mined
         ConnectedChains.QueueNewBlockHeader(block);
-        
+
         // add block hash to response
         result.push_back(Pair("blockhash", block.GetBlockHeader().GetHash().GetHex()));
-        
+
         // check target, we may have only submitted to pbaas chains
         arith_uint256 target(0); target.SetCompact(block.nBits);
         arith_uint256 block_hash = UintToArith256(block.GetBlockHeader().GetHash());
@@ -13555,7 +13577,7 @@ UniValue submitmergedblock(const UniValue& params, bool fHelp)
     } else {
         result.push_back(Pair("rejected", rejected));
     }
-    
+
     return result;
 }
 
