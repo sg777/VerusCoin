@@ -4699,7 +4699,6 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         }
         txProofEvidence = CPartialTransactionProof(block.vtx[0], std::vector<int>({0}), outputNums, pfirstProofIdxIt->second, firstProofHeight);
 
-        // TODO: HARDENING - ensure that notarizationTxInfo gets passed to the other side
         if (!isFirstLaunchingNotarization && !(notarizationTxInfo.second.IsValid() && notarizationTxInfo.second.components.size()))
         {
             LogPrintf("Cannot construct notarization proof for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
@@ -4739,6 +4738,10 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         for (auto &oneEvidenceObj : evidenceVec[cnd.lastConfirmed])
         {
             allEvidence.MergeEvidence(oneEvidenceObj, notarySet, true);
+        }
+        if (!isFirstLaunchingNotarization)
+        {
+            allEvidence.evidence << notarizationTxInfo.second;
         }
     }
 
@@ -4986,7 +4989,6 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
     // TODO: HARDENING - check that all is in place here, especially proof checking of accepted notarizations down below and conditions for
     // earned notarizations
 
-    // ensure that we never accept an invalid proofroot for this chain in a notarization
     COptCCParams p;
     CPBaaSNotarization currentNotarization;
     if (!(tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -5001,6 +5003,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
         return state.Error("Invalid notarization output");
     }
 
+    // ensure that we never accept an invalid proofroot for this chain in a notarization
     if (currentNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
     {
         CProofRoot notarizationRoot = currentNotarization.proofRoots[ASSETCHAINS_CHAINID];
@@ -5045,22 +5048,27 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
         CCurrencyDefinition curDef = ConnectedChains.GetCachedCurrency(currentNotarization.currencyID);
         if (!curDef.IsValid())
         {
-            COptCCParams defP;
-            for (auto &oneOut : tx.vout)
+            // the notarization must indicate that it is block one or definition if the currency definition is on
+            // the same transaction
+            if (currentNotarization.IsDefinitionNotarization() || currentNotarization.IsBlockOneNotarization())
             {
-                if ((oneOut.scriptPubKey.IsPayToCryptoCondition(defP) &&
-                     defP.IsValid() &&
-                     defP.evalCode == EVAL_CURRENCY_DEFINITION &&
-                     defP.vData.size() &&
-                     (curDef = CCurrencyDefinition(defP.vData[0])).IsValid() &&
-                     curDef.IsValid() &&
-                     curDef.GetID() == currentNotarization.currencyID))
+                COptCCParams defP;
+                for (auto &oneOut : tx.vout)
                 {
-                    break;
-                }
-                else
-                {
-                    curDef.nVersion = curDef.VERSION_INVALID;
+                    if (oneOut.scriptPubKey.IsPayToCryptoCondition(defP) &&
+                        defP.IsValid() &&
+                        defP.evalCode == EVAL_CURRENCY_DEFINITION &&
+                        defP.vData.size() &&
+                        (curDef = CCurrencyDefinition(defP.vData[0])).IsValid() &&
+                        curDef.IsValid() &&
+                        curDef.GetID() == currentNotarization.currencyID)
+                    {
+                        break;
+                    }
+                    else
+                    {
+                        curDef.nVersion = curDef.VERSION_INVALID;
+                    }
                 }
             }
             if (!curDef.IsValid())
@@ -5121,6 +5129,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                 if (currentNotarization.IsDefinitionNotarization())
                 {
                     // let it go and if valid, it will be confirmed
+                    // TODO: HARDENING - add something meaningful or delete this section
                 }
             }
             else
@@ -5224,7 +5233,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             {
                 if (!currentNotarization.IsRefunding() &&
                     (curDef.IsPBaaSChain() || (curDef.IsGateway() && !currentNotarization.IsDefinitionNotarization())) &&
-                    curDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
+                     curDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
                 {
                     // we should only approve accepted notarizations that have the following qualifications
                     // for the following protocols:
@@ -5259,6 +5268,38 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                         CNotaryEvidence::EStates::STATE_CONFIRMED)
                     {
                         return state.Error("Cannot confirm notary signatures for notarization");
+                    }
+
+                    // each PBaaS chain notarization will also include a proof of the notarization
+                    // transaction in the case of block 1 of a PBaaS chain launch, it will include a proof of the
+                    // entire block 1 coinbase transaction, which can be reconstructed and proven here
+                    // and accepted only if all currency definition rules were properly followed
+                    if (curDef.IsPBaaSChain())
+                    {
+                        for (auto &oneEvidenceObj : evidence.evidence.chainObjects)
+                        {
+                            if (oneEvidenceObj->objectType == CHAINOBJ_TRANSACTION_PROOF)
+                            {
+                                // TODO: HARDENING - ensure that we have the transaction proof of the last
+                                // transaction using the currently confirmed notarization
+                                // and also the transaction proof of the currently confirmed notarization,
+                                // using the next notarization after in the best fork
+                                if (LogAcceptCategory("notarization"))
+                                {
+                                    CTransaction outTx;
+                                    uint256 txMMRRoot = ((CChainObject<CPartialTransactionProof> *)oneEvidenceObj)->object.GetPartialTransaction(outTx);
+                                    uint256 txHash = ((CChainObject<CPartialTransactionProof> *)oneEvidenceObj)->object.TransactionHash();
+                                    UniValue jsonTx(UniValue::VOBJ);
+                                    uint256 blockHash;
+                                    TxToUniv(outTx, blockHash, jsonTx);
+                                    printf("%s: proof for transaction %s\nwith txid: %s\nproof: %s\n",
+                                            __func__,
+                                            jsonTx.write(1,2).c_str(),
+                                            txHash.GetHex().c_str(),
+                                            ((CChainObject<CPartialTransactionProof> *)oneEvidenceObj)->object.ToUniValue().write(1,2).c_str());
+                                }
+                            }
+                        }
                     }
                 }
             }
