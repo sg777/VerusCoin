@@ -4754,6 +4754,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
         // now, allEvidence has all signatures that were used to confirm on this chain
         // add the supporting evidence
+        allEvidence.evidence << CProofRoot::GetProofRoot(firstProofHeight);
         allEvidence.evidence << txProofEvidence;
     }
 
@@ -5276,9 +5277,26 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                     // and accepted only if all currency definition rules were properly followed
                     if (curDef.IsPBaaSChain())
                     {
-                        for (auto &oneEvidenceObj : evidence.evidence.chainObjects)
+                        std::set<int> evidenceTypes;
+                        evidenceTypes.insert(CHAINOBJ_PROOF_ROOT);
+                        evidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
+                        //evidenceTypes.insert(CHAINOBJ_HEADER);
+                        //evidenceTypes.insert(CHAINOBJ_HEADER_REF);
+                        CCrossChainProof autoProof(evidence.GetSelectEvidence(evidenceTypes));
+                        CProofRoot futureProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+                        for (auto &oneEvidenceObj : autoProof.chainObjects)
                         {
-                            if (oneEvidenceObj->objectType == CHAINOBJ_TRANSACTION_PROOF)
+                            if (oneEvidenceObj->objectType == CHAINOBJ_PROOF_ROOT)
+                            {
+                                futureProofRoot = ((CChainObject<CProofRoot> *)oneEvidenceObj)->object;
+                                if (LogAcceptCategory("notarization"))
+                                {
+                                    printf("%s: proof root: %s\n: %s\n",
+                                            __func__,
+                                            ((CChainObject<CProofRoot> *)oneEvidenceObj)->object.ToUniValue().write(1,2).c_str());
+                                }
+                            }
+                            else if (oneEvidenceObj->objectType == CHAINOBJ_TRANSACTION_PROOF)
                             {
                                 // TODO: HARDENING - ensure that we have the transaction proof of the last
                                 // transaction using the currently confirmed notarization
