@@ -5280,8 +5280,8 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                         std::set<int> evidenceTypes;
                         evidenceTypes.insert(CHAINOBJ_PROOF_ROOT);
                         evidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
-                        //evidenceTypes.insert(CHAINOBJ_HEADER);
-                        //evidenceTypes.insert(CHAINOBJ_HEADER_REF);
+                        evidenceTypes.insert(CHAINOBJ_HEADER);
+                        evidenceTypes.insert(CHAINOBJ_HEADER_REF);
                         CCrossChainProof autoProof(evidence.GetSelectEvidence(evidenceTypes));
                         CProofRoot futureProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
                         for (auto &oneEvidenceObj : autoProof.chainObjects)
@@ -5291,7 +5291,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                                 futureProofRoot = ((CChainObject<CProofRoot> *)oneEvidenceObj)->object;
                                 if (LogAcceptCategory("notarization"))
                                 {
-                                    printf("%s: proof root: %s\n: %s\n",
+                                    printf("%s: proof root: %s\n",
                                             __func__,
                                             ((CChainObject<CProofRoot> *)oneEvidenceObj)->object.ToUniValue().write(1,2).c_str());
                                 }
