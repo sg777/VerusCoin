@@ -335,7 +335,7 @@ void CBlockHeader::SetVerusV2Hash()
     CBlockHeader::hashFunction = &CBlockHeader::GetVerusV2Hash;
 }
 
-// returns false if unable to fast calculate the VerusPOSHash from the header. 
+// returns false if unable to fast calculate the VerusPOSHash from the header.
 // if it returns false, value is set to 0, but it can still be calculated from the full block
 // in that case. the only difference between this and the POS hash for the contest is that it is not divided by the value out
 // this is used as a source of entropy
@@ -587,7 +587,7 @@ CPartialTransactionProof CBlock::GetPartialTransactionProof(const CTransaction &
 
         CTransactionMap txMap(tx);
         TransactionMMView txMMV(txMap.transactionMMR);
-        
+
         for (auto &partIdx : partIndexes)
         {
             components.push_back(CTransactionComponentProof(txMMV, txMap, tx, partIdx.first, partIdx.second));
@@ -601,7 +601,7 @@ CPartialTransactionProof CBlock::GetPartialTransactionProof(const CTransaction &
         CMMRProof exportProof = CMMRProof() << CMerkleBranch<CHashWriter>(txIndex, GetMerkleBranch(txIndex));
         return CPartialTransactionProof(exportProof, tx);
     }
-}            
+}
 
 
 std::vector<uint256> GetMerkleBranch(int nIndex, int nLeaves, const std::vector<uint256> &vMerkleTree)
@@ -726,3 +726,64 @@ CNotaryEvidence::CNotaryEvidence(const std::vector<CNotaryEvidence> &evidenceVec
     }
     ::FromVector(fullVec, *this);
 }
+
+CHashCommitments::CHashCommitments(const std::vector<__uint128_t> &smallCommitmentsLowBool, uint32_t nVersion) :
+    hashCommitments((smallCommitmentsLowBool.size() >> 1) + smallCommitmentsLowBool.size() & 1)
+{
+    std::vector<__uint128_t> smallCommitments = smallCommitmentsLowBool;
+    if (smallCommitments.size())
+    {
+        if (smallCommitments.size() > 256)
+        {
+            version = VERSION_INVALID;
+        }
+        else
+        {
+            int lastSmallIndex = (smallCommitments.size() - 1);
+            int currentIndex = lastSmallIndex >> 1;
+            int currentOffset = currentIndex & 1;
+            arith_uint256 typeBitsVal(0);
+            for (; smallCommitments.size(); smallCommitments.pop_back())
+            {
+                typeBitsVal << 1;
+                typeBitsVal |= (smallCommitmentsLowBool.back() & 1);
+                arith_uint256 from128 = (arith_uint256(int64_t(smallCommitments.back() >> 64)) << 64) + arith_uint256(int64_t(smallCommitments.back()));
+                hashCommitments[currentIndex] = ArithToUint256(UintToArith256(hashCommitments[currentIndex]) | (currentOffset ? from128 << 128 : from128));
+                if (currentOffset ^= 1)
+                {
+                    currentIndex--;
+                }
+            }
+            commitmentTypes = ArithToUint256(typeBitsVal);
+        }
+    }
+}
+
+uint256 CHashCommitments::GetSmallCommitments(std::vector<__uint128_t> &smallCommitments) const
+{
+    // if have something, process it
+    if (hashCommitments.size())
+    {
+        // if the first high 128 bit word != zero, we have two in the last slot, otherwise 1
+        int currentBigOffset = ((UintToArith256(hashCommitments.back()) >> 128) != 0) ? 1 : 0;
+        smallCommitments = std::vector<__uint128_t>((hashCommitments.size() << 1) - (1 - currentBigOffset));
+        int smallIndex = smallCommitments.size() - 1;
+        int bigIndex = hashCommitments.size() - 1;
+
+        for (; smallIndex >= 0; smallIndex--)
+        {
+            arith_uint256 from256 = UintToArith256(hashCommitments[bigIndex]);
+            if (currentBigOffset)
+            {
+                from256 = from256 >> 128;
+            }
+            smallCommitments[smallIndex] = ((__uint128_t)(from256 >> 64).GetLow64()) + (__uint128_t)(from256.GetLow64());
+            if (currentBigOffset ^= 1)
+            {
+                bigIndex--;
+            }
+        }
+    }
+    return commitmentTypes;
+}
+

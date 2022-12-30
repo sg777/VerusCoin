@@ -870,18 +870,21 @@ class CHashCommitments
 {
 public:
     enum {
-        VERSION_INVALID = 0,
         VERSION_CURRENT = 0,
         VERSION_FIRST = 0,
         VERSION_LAST = 0,
+        VERSION_INVALID = INT32_MAX
     };
     uint32_t version;
     std::vector<uint256> hashCommitments;       // prior block commitments, which are node hashes that include merkle root, block hash, and compact power
     uint256 commitmentTypes;                    // context dependent flags for commitments
 
     CHashCommitments(uint32_t nVersion=VERSION_INVALID) :  version(nVersion) {}
-    CHashCommitments(const std::vector<uint256> &priors, const uint256 &pastTypes, uint32_t nVersion=VERSION_INVALID) :
+    CHashCommitments(const std::vector<uint256> &priors, const uint256 &pastTypes, uint32_t nVersion=VERSION_CURRENT) :
         hashCommitments(priors), commitmentTypes(pastTypes), version(nVersion) {}
+
+    // takes <= 256, 128 byte values with a low bool indicator, packs them in with the indicator in bits for commitment types
+    CHashCommitments(const std::vector<__uint128_t> &smallCommitmentsLowBool, uint32_t nVersion=VERSION_CURRENT);
 
     CHashCommitments(const UniValue &uniObj)
     {
@@ -920,6 +923,8 @@ public:
         retVal.pushKV("hex", HexBytes(&(thisVec[0]), thisVec.size()));
         return retVal;
     }
+
+    uint256 GetSmallCommitments(std::vector<__uint128_t> &smallCommitments) const;
 
     bool IsValid() const
     {

@@ -2192,6 +2192,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         std::set<int> evidenceTypes;
         evidenceTypes.insert(CHAINOBJ_PROOF_ROOT);
         evidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
+        evidenceTypes.insert(CHAINOBJ_COMMITMENTDATA);
         evidenceTypes.insert(CHAINOBJ_HEADER);
         evidenceTypes.insert(CHAINOBJ_HEADER_REF);
         CCrossChainProof autoProof(notaryEvidence.GetSelectEvidence(evidenceTypes));
@@ -4560,6 +4561,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                                         crosschainCND.vtx[confirmingIdx].second.IsPreLaunch() ||
                                         crosschainCND.vtx[confirmingIdx].second.IsBlockOneNotarization();
 
+    CPBaaSNotarization lastConfirmedNotarization = cnd.vtx[cnd.lastConfirmed].second;
 
     {
         LOCK2(cs_main, mempool.cs);
@@ -4739,9 +4741,40 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         {
             allEvidence.MergeEvidence(oneEvidenceObj, notarySet, true);
         }
-        if (!isFirstLaunchingNotarization)
+        if (!isFirstLaunchingNotarization && notarizationTxInfo.second.IsValid() && notarizationTxInfo.second.GetBlockHeight() > 0)
         {
             allEvidence.evidence << notarizationTxInfo.second;
+
+            std::vector<__uint128_t> blockCommitmentsSmall;
+
+            // commit to prior blocks nTime, nBits, stakeBits, & work or stake power component for up to 100 blocks prior or back,
+            // to the last notarization, whichever comes first, enabling later random verification of subset
+            arith_uint256 posPowBits(0);
+            int loopCount = std::max(crosschainCND.vtx[confirmingIdx].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight,
+                                     lastConfirmedNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight -
+                                        std::max(ConnectedChains.ThisChain().powAveragingWindow,
+                                                 (uint32_t)((Params().consensus.nPOSAveragingWindow << 1) + (Params().consensus.nPOSAveragingWindow >> 1))));
+            loopCount = lastConfirmedNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight - loopCount;
+            if (loopCount > 256)
+            {
+                loopCount = 256;
+            }
+
+            for (uint32_t blockNum = lastConfirmedNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
+                 blockNum > (lastConfirmedNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight - loopCount);
+                 blockNum--)
+            {
+                bool isPosBlock = chainActive[blockNum]->IsVerusPOSBlock();
+                __uint128_t bigCommitmentNum((int64_t)chainActive[blockNum]->nTime);
+                bigCommitmentNum = (bigCommitmentNum << 32) + (int64_t)chainActive[blockNum]->nBits;
+                bigCommitmentNum = (bigCommitmentNum << 32) + (int64_t)chainActive[blockNum]->GetVerusPOSTarget();
+                bigCommitmentNum = (bigCommitmentNum << 32) + (int64_t)isPosBlock;
+                blockCommitmentsSmall.push_back(bigCommitmentNum);
+            }
+            if (blockCommitmentsSmall.size())
+            {
+                allEvidence.evidence << CHashCommitments(blockCommitmentsSmall);
+            }
         }
     }
 
@@ -4756,9 +4789,11 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         // add the supporting evidence
         allEvidence.evidence << CProofRoot::GetProofRoot(firstProofHeight);
         allEvidence.evidence << txProofEvidence;
-    }
 
-    CPBaaSNotarization lastConfirmedNotarization = cnd.vtx[cnd.lastConfirmed].second;
+        // TODO: HARDENING - select random blocks from the last commitments to prove, based on entropy
+        // we cannot control
+
+    }
 
     bool submit = GetBoolArg("-alwayssubmitnotarizations", false) || !crosschainCND.IsConfirmed();
 
@@ -5280,6 +5315,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                         std::set<int> evidenceTypes;
                         evidenceTypes.insert(CHAINOBJ_PROOF_ROOT);
                         evidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
+                        evidenceTypes.insert(CHAINOBJ_COMMITMENTDATA);
                         evidenceTypes.insert(CHAINOBJ_HEADER);
                         evidenceTypes.insert(CHAINOBJ_HEADER_REF);
                         CCrossChainProof autoProof(evidence.GetSelectEvidence(evidenceTypes));
@@ -5294,6 +5330,16 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                                     printf("%s: proof root: %s\n",
                                             __func__,
                                             ((CChainObject<CProofRoot> *)oneEvidenceObj)->object.ToUniValue().write(1,2).c_str());
+                                }
+                            }
+                            if (oneEvidenceObj->objectType == CHAINOBJ_COMMITMENTDATA)
+                            {
+                                CHashCommitments priorCommitments = ((CChainObject<CHashCommitments> *)oneEvidenceObj)->object;
+                                if (LogAcceptCategory("notarization"))
+                                {
+                                    printf("%s: commitments: %s\n",
+                                            __func__,
+                                            ((CChainObject<CHashCommitments> *)oneEvidenceObj)->object.ToUniValue().write(1,2).c_str());
                                 }
                             }
                             else if (oneEvidenceObj->objectType == CHAINOBJ_TRANSACTION_PROOF)
