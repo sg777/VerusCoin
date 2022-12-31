@@ -693,20 +693,20 @@ class CBlockHeaderAndProof
 {
 public:
     enum {
-        VERSION_INVALID = 0,
         VERSION_CURRENT = 0,
         VERSION_FIRST = 0,
         VERSION_LAST = 0,
+        VERSION_INVALID = UINT32_MAX,
     };
     uint32_t version;
     CMMRProof headerProof;                                  // proof of the block power node
     CBlockHeader blockHeader;                               // full block header
 
     CBlockHeaderAndProof(uint32_t nVersion=VERSION_INVALID) : version(nVersion) {}
-    CBlockHeaderAndProof(const CMMRProof &powerNodeProof, const CBlockHeader &bh, const CPBaaSPreHeader &bph, uint32_t nVersion=VERSION_INVALID) :
+    CBlockHeaderAndProof(const CMMRProof &powerNodeProof, const CBlockHeader &bh, uint32_t nVersion=VERSION_CURRENT) :
         headerProof(powerNodeProof), blockHeader(bh), version(nVersion) {}
 
-    CBlockHeaderAndProof(const UniValue &uniObj)
+    CBlockHeaderAndProof(const UniValue &uniObj) : version(VERSION_CURRENT)
     {
         try
         {

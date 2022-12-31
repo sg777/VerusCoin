@@ -3858,7 +3858,24 @@ UniValue getnotarizationdata(const UniValue& params, bool fHelp)
 
     if (GetNotarizationData(chainID, nData))
     {
-        return nData.ToUniValue();
+        UniValue nDataUni = nData.ToUniValue();
+        CChainNotarizationData notaryCND;
+        if (ConnectedChains.FirstNotaryChain().IsValid())
+        {
+            if (GetNotarizationData(ConnectedChains.FirstNotaryChain().GetID(), notaryCND) &&
+                notaryCND.IsConfirmed() &&
+                notaryCND.vtx[notaryCND.lastConfirmed].second.proofRoots.count(ASSETCHAINS_CHAINID))
+            {
+                nDataUni.pushKV("lastsystemroot", notaryCND.vtx[notaryCND.lastConfirmed].second.proofRoots[ASSETCHAINS_CHAINID].ToUniValue());
+            }
+            else
+            {
+                uint32_t nHeight = chainActive.Height();
+                nDataUni.pushKV("lastsystemroot", CProofRoot::GetProofRoot((nHeight - COINBASE_MATURITY) > 0 ? (nHeight - COINBASE_MATURITY) : 1).ToUniValue());
+            }
+        }
+
+        return nDataUni;
     }
     else
     {
