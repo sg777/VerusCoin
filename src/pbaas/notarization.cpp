@@ -4819,31 +4819,34 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 commitmentTypes = ((CChainObject<CHashCommitments> *)autoProof.chainObjects[0])->object.GetSmallCommitments(smallCommitments);
             }
 
-            allEvidence.evidence << recentDestRoot;
-
-            // get a pseudo-random number from the returned proof root height + the confirming notarization.
-            // from it, select one or more block headers to prove in the range of provided commitments.
-            // if the proof does not match the commitment numbers, it is considered catastrophic.
-            // the bridge will be stopped pending software update and reactivation.
-            // this blocks function in the error case, but since such a discrepancy may
-            // be the result of a blockchain mining/staking/+witness colluding attack (ie. a rogue chain),
-            // it provides yet another proof check to prevent risk of funds loss, making failure
-            // and exposure the most likely attack outcome, even with collaboration of technologists,
-            // miners, stakers, and witnesses
-            int indexToProve = (UintToArith256(recentDestRoot.stateRoot).GetLow64() % smallCommitments.size());
-            uint32_t blockToProve = crosschainCND.vtx[confirmingIdx].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight - indexToProve;
-
-            auto curMMV = chainActive.GetMMV();
-            curMMV.resize(curProofRoot.rootHeight);
-            CMMRProof headerProof;
-            if (!chainActive.GetBlockProof(curMMV, headerProof, blockToProve))
+            if (smallCommitments.size())
             {
-                LogPrint("notarization", "Cannot prove evidence for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-                return retVal;
-            }
-            CBlockHeaderAndProof blockHeaderProof(headerProof, chainActive[blockToProve]->GetBlockHeader());
+                allEvidence.evidence << recentDestRoot;
 
-            allEvidence.evidence << blockHeaderProof;
+                // get a pseudo-random number from the returned proof root height + the confirming notarization.
+                // from it, select one or more block headers to prove in the range of provided commitments.
+                // if the proof does not match the commitment numbers, it is considered catastrophic.
+                // the bridge will be stopped pending software update and reactivation.
+                // this blocks function in the error case, but since such a discrepancy may
+                // be the result of a blockchain mining/staking/+witness colluding attack (ie. a rogue chain),
+                // it provides yet another proof check to prevent risk of funds loss, making failure
+                // and exposure the most likely attack outcome, even with collaboration of technologists,
+                // miners, stakers, and witnesses
+                int indexToProve = (UintToArith256(recentDestRoot.stateRoot).GetLow64() % smallCommitments.size());
+                uint32_t blockToProve = crosschainCND.vtx[confirmingIdx].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight - indexToProve;
+
+                auto curMMV = chainActive.GetMMV();
+                curMMV.resize(curProofRoot.rootHeight);
+                CMMRProof headerProof;
+                if (!chainActive.GetBlockProof(curMMV, headerProof, blockToProve))
+                {
+                    LogPrint("notarization", "Cannot prove evidence for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                    return retVal;
+                }
+                CBlockHeaderAndProof blockHeaderProof(headerProof, chainActive[blockToProve]->GetBlockHeader());
+
+                allEvidence.evidence << blockHeaderProof;
+            }
         }
     }
 
@@ -5365,12 +5368,20 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                     if (curDef.IsPBaaSChain())
                     {
                         std::set<int> evidenceTypes;
+                        // one for the entropy from the other chain,
+                        // one for the proof of the newly witnessed, confirmed notarization
                         evidenceTypes.insert(CHAINOBJ_PROOF_ROOT);
+                        // proof of the last confirmed notarization on this chain by the newly confirmed notarization
+                        // proof of the current notarization by the proof root of the next expected notarization
                         evidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
+                        // commitment of last block time, bits, pos diff, and pos/pow
                         evidenceTypes.insert(CHAINOBJ_COMMITMENTDATA);
+                        // random header proof of one or more of last notarization's commitment, proven by the last notarization
                         evidenceTypes.insert(CHAINOBJ_HEADER);
+                        // currently unused
                         evidenceTypes.insert(CHAINOBJ_HEADER_REF);
                         CCrossChainProof autoProof(evidence.GetSelectEvidence(evidenceTypes));
+
                         CProofRoot futureProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
                         for (auto &oneEvidenceObj : autoProof.chainObjects)
                         {
