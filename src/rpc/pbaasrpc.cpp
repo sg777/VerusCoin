@@ -3874,6 +3874,11 @@ UniValue getnotarizationdata(const UniValue& params, bool fHelp)
                 nDataUni.pushKV("lastsystemroot", CProofRoot::GetProofRoot((nHeight - COINBASE_MATURITY) > 0 ? (nHeight - COINBASE_MATURITY) : 1).ToUniValue());
             }
         }
+        else
+        {
+            uint32_t nHeight = chainActive.Height();
+            nDataUni.pushKV("lastsystemroot", CProofRoot::GetProofRoot((nHeight - COINBASE_MATURITY) > 0 ? (nHeight - COINBASE_MATURITY) : 1).ToUniValue());
+        }
 
         return nDataUni;
     }
