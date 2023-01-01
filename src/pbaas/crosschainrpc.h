@@ -474,7 +474,11 @@ public:
         MIN_BLOCK_NOTARIZATION_BLOCKS = 2,          // minimum target blocks for notarization period
         MAX_NOTARIZATION_CONVERSION_PRICING_INTERVAL = 100,  // there must be a notarization with conversion at least 100 blocks before reserve transfer
         DEFAULT_BLOCKTIME_TARGET = 60,              // default block time target for difficulty adjustment, in seconds
+        MIN_BLOCKTIME_TARGET = 10,                  // min 10 seconds in first version of PBaaS
+        MAX_BLOCKTIME_TARGET = 120,                 // max 2 minutes in first version of PBaaS
         DEFAULT_AVERAGING_WINDOW = 45,              // default target spacing (blocks) for difficulty adjustment
+        MIN_AVERAGING_WINDOW = 20,                  // min averaging window
+        MAX_AVERAGING_WINDOW = 200,                 // max averaging window
         BLOCK_NOTARIZATION_MODULO = (DEFAULT_BLOCK_NOTARIZATION_TIME / DEFAULT_BLOCKTIME_TARGET) // default min notarization spacing (10 minutes)
     };
 
