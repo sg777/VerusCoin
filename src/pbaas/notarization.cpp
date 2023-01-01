@@ -845,7 +845,7 @@ CProofRoot CProofRoot::GetProofRoot(uint32_t blockHeight)
 {
     if (blockHeight > chainActive.Height())
     {
-        return CProofRoot();
+        return CProofRoot(1, VERSION_INVALID);
     }
     auto mmv = chainActive.GetMMV();
     mmv.resize(blockHeight + 1);
@@ -1238,7 +1238,12 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                     if (destCurrency.IsPBaaSChain() &&
                         destCurrency.launchSystemID == ASSETCHAINS_CHAINID)
                     {
-                        newNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(destCurrency.startBlock);
+                        CProofRoot curProofRoot = CProofRoot::GetProofRoot(destCurrency.startBlock - 1);
+                        if (!curProofRoot.IsValid())
+                        {
+                            return false;
+                        }
+                        newNotarization.proofRoots[ASSETCHAINS_CHAINID] = curProofRoot;
                     }
                 }
             }
