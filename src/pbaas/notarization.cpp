@@ -4725,28 +4725,15 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             }
         }
 
-        // we prove our new notarization to submit with the unsibmitted one in front of it
+        // we prove our new notarization to submit with the unsubmitted one in front of it
         CBlock block;
+
         if (!ReadBlockFromDisk(block, pfirstProofIdxIt->second, Params().GetConsensus(), false))
         {
             LogPrintf("%s: ERROR: could not read block one from disk\n", __func__);
             return retVal;
         }
-        std::vector<int> outputNums(block.vtx[0].vout.size());
-
-        // if this is the first cross-notarization, get and prove all block 1 coinbase outputs
-        if (crosschainCND.vtx[confirmingIdx].second.IsPreLaunch() &&
-            firstProofNotarization.currencyID == ConnectedChains.ThisChain().launchSystemID)
-        {
-            for (int outNum = 0; outNum < outputNums.size(); outNum++)
-            {
-                outputNums[outNum] = outNum;
-            }
-        }
-        else
-        {
-            outputNums.push_back(cnd.vtx[cnd.lastConfirmed].first.n);
-        }
+        std::vector<int> outputNums({(int)cnd.vtx[cnd.lastConfirmed].first.n});
         txProofEvidence = CPartialTransactionProof(block.vtx[0], std::vector<int>({0}), outputNums, pfirstProofIdxIt->second, firstProofHeight);
 
         if (!isFirstLaunchingNotarization && !(notarizationTxInfo.second.IsValid() && notarizationTxInfo.second.components.size()))

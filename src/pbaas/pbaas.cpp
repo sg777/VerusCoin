@@ -6022,8 +6022,7 @@ bool CConnectedChains::GetSystemExports(const uint160 &systemID,
     return false;
 }
 
-// get the exports to a specific system from this chain, starting from a specific height up to a specific height
-// export proofs are all returned as null
+// get the launch notarization for a specific chain
 bool CConnectedChains::GetLaunchNotarization(const CCurrencyDefinition &curDef,
                                              std::pair<CInputDescriptor, CPartialTransactionProof> &notarizationRef,
                                              CPBaaSNotarization &launchNotarization,
@@ -6054,12 +6053,27 @@ bool CConnectedChains::GetLaunchNotarization(const CCurrencyDefinition &curDef,
                     if (blockIt != mapBlockIndex.end() &&
                         chainActive.Contains(blockIt->second))
                     {
+                        std::vector<int> inputNums, outputNums;
+                        if (launchNotarization.IsBlockOneNotarization() && launchNotarization.currencyID == ConnectedChains.ThisChain().launchSystemID)
+                        {
+                            // get entire coinbase proof
+                            inputNums.push_back(0);
+                            outputNums.resize(notarizationTx.vout.size());
+                            for (int outNum = 0; outNum < outputNums.size(); outNum++)
+                            {
+                                outputNums[outNum] = outNum;
+                            }
+                        }
+                        else
+                        {
+                            outputNums.push_back((int)idx.first.index);
+                        }
                         notarizationRef.first = CInputDescriptor(notarizationTx.vout[idx.first.index].scriptPubKey,
                                                                  notarizationTx.vout[idx.first.index].nValue,
                                                                  CTxIn(idx.first.txhash, idx.first.index));
                         notarizationRef.second = CPartialTransactionProof(notarizationTx,
-                                                                          std::vector<int>(),
-                                                                          std::vector<int>({(int)idx.first.index}),
+                                                                          inputNums,
+                                                                          outputNums,
                                                                           blockIt->second,
                                                                           blockIt->second->GetHeight());
                         notaryNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(blockIt->second->GetHeight());
