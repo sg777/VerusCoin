@@ -4734,8 +4734,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         }
         std::vector<int> outputNums(block.vtx[0].vout.size());
 
-        // get and prove our whole block 1 coinbase, if this is the block 1 notarization
-        if (firstProofNotarization.IsBlockOneNotarization() &&
+        // if this is the first cross-notarization, get and prove all block 1 coinbase outputs
+        if (crosschainCND.vtx[confirmingIdx].second.IsPreLaunch() &&
             firstProofNotarization.currencyID == ConnectedChains.ThisChain().launchSystemID)
         {
             for (int outNum = 0; outNum < outputNums.size(); outNum++)
