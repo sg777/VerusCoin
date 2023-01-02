@@ -4556,11 +4556,12 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
     // our latest confirmed is what we may submit.
     // if it is already on that chain, we have nothing to do
-    if (cnd.forks[cnd.bestChain].size() <= 1)
+    if (cnd.forks[cnd.bestChain].size() <= 1 ||
+        !cnd.vtx[cnd.forks[cnd.bestChain][1]].second.proofRoots.count(ASSETCHAINS_CHAINID))
     {
-        LogPrint("notarization", "No confirming notarization for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+        LogPrint("notarization", "No confirming notarization with root for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
     }
-    uint32_t firstProofHeight = cnd.vtx[cnd.forks[cnd.bestChain][1]].second.notarizationHeight;
+    uint32_t firstProofHeight = cnd.vtx[cnd.forks[cnd.bestChain][1]].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
     auto pfirstProofIdxIt = mapBlockIndex.find(notarizationTxes[cnd.lastConfirmed].second);
     if (pfirstProofIdxIt == mapBlockIndex.end())
     {
