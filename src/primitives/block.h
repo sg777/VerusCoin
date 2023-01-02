@@ -1591,15 +1591,15 @@ public:
         return *this;
     }
 
-    const CCrossChainProof &operator<<(const CBlockHeaderAndProof &headerRefProof)
+    const CCrossChainProof &operator<<(const CBlockHeaderAndProof &headerAndProof)
     {
-        chainObjects.push_back(static_cast<CBaseChainObject *>(new CChainObject<CBlockHeaderAndProof>(CHAINOBJ_HEADER_REF, headerRefProof)));
+        chainObjects.push_back(static_cast<CBaseChainObject *>(new CChainObject<CBlockHeaderAndProof>(CHAINOBJ_HEADER, headerAndProof)));
         return *this;
     }
 
-    const CCrossChainProof &operator<<(const CBlockHeaderProof &headerProof)
+    const CCrossChainProof &operator<<(const CBlockHeaderProof &headerRefProof)
     {
-        chainObjects.push_back(static_cast<CBaseChainObject *>(new CChainObject<CBlockHeaderProof>(CHAINOBJ_HEADER, headerProof)));
+        chainObjects.push_back(static_cast<CBaseChainObject *>(new CChainObject<CBlockHeaderProof>(CHAINOBJ_HEADER_REF, headerRefProof)));
         return *this;
     }
 
@@ -1645,15 +1645,15 @@ public:
         return *this;
     }
 
-    const CCrossChainProof &insert(int position, const CBlockHeaderAndProof &headerRefProof)
+    const CCrossChainProof &insert(int position, const CBlockHeaderAndProof &headerAndProof)
     {
-        chainObjects.insert(chainObjects.begin() + position, static_cast<CBaseChainObject *>(new CChainObject<CBlockHeaderAndProof>(CHAINOBJ_HEADER_REF, headerRefProof)));
+        chainObjects.insert(chainObjects.begin() + position, static_cast<CBaseChainObject *>(new CChainObject<CBlockHeaderAndProof>(CHAINOBJ_HEADER, headerAndProof)));
         return *this;
     }
 
     const CCrossChainProof &insert(int position, const CBlockHeaderProof &headerProof)
     {
-        chainObjects.insert(chainObjects.begin() + position, static_cast<CBaseChainObject *>(new CChainObject<CBlockHeaderProof>(CHAINOBJ_HEADER, headerProof)));
+        chainObjects.insert(chainObjects.begin() + position, static_cast<CBaseChainObject *>(new CChainObject<CBlockHeaderProof>(CHAINOBJ_HEADER_REF, headerProof)));
         return *this;
     }
 

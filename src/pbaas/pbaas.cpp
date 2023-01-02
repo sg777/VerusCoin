@@ -1887,7 +1887,7 @@ bool ValidateOpretProof(CScript &opRet, COpRetProof &orProof)
 
 int8_t ObjTypeCode(const CBlockHeaderProof &obj)
 {
-    return CHAINOBJ_HEADER;
+    return CHAINOBJ_HEADER_REF;
 }
 
 int8_t ObjTypeCode(const CProofRoot &obj)
@@ -1902,7 +1902,7 @@ int8_t ObjTypeCode(const CPartialTransactionProof &obj)
 
 int8_t ObjTypeCode(const CBlockHeaderAndProof &obj)
 {
-    return CHAINOBJ_HEADER_REF;
+    return CHAINOBJ_HEADER;
 }
 
 int8_t ObjTypeCode(const CHashCommitments &obj)

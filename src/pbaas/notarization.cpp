@@ -4821,6 +4821,12 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         // if we are only confirming an already confirmed notarization on the other chain, no reason to prove prior commitments
         if (confirmingIdx && !firstProofNotarization.IsBlockOneNotarization() && recentDestRoot.IsValid())
         {
+            // TODO: HARDENING - if there is no confirmed post-launch notarization on the external chain,
+            // see if we need to include the coinbase in our evidence. it only needs to go across once.
+            if (crosschainCND.vtx[0].second.IsPreLaunch())
+            {
+
+            }
             if (!crosschainCND.vtx[0].second.IsPreLaunch())
             {
                 CObjectFinalization finalizationObj;
