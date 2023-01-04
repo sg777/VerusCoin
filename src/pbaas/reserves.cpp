@@ -2912,10 +2912,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 break;
 
                 case EVAL_EARNEDNOTARIZATION:
-                {
-                    // this is only used on the chain earning notarizations
-                    flags |= IS_CHAIN_NOTARIZATION;
-                }
                 case EVAL_ACCEPTEDNOTARIZATION:
                 {
                     CPBaaSNotarization onePBN;
@@ -2926,8 +2922,17 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         flags |= IS_REJECT;
                         return;
                     }
+
                     // verify
-                    // if this is the notaries that can finalize this chain, store notarization
+                    // if this is an earned notarization, it is mined or staked in
+                    // if it is an accepted notarization, then prioritize it only if it is from a currency launched by this chain
+                    // to preserve all accounting boundary protocols
+                    CCurrencyDefinition notaryCurrency;
+                    if (p.evalCode == EVAL_EARNEDNOTARIZATION ||
+                        (notaryCurrency = ConnectedChains.GetCachedCurrency(onePBN.currencyID)).launchSystemID == ASSETCHAINS_CHAINID)
+                    {
+                        flags |= IS_CHAIN_NOTARIZATION;
+                    }
                 }
                 break;
 

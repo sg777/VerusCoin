@@ -4470,11 +4470,11 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         }
     }
 
-    // to submit a confirmed notarization to the alternate chain, we need another earned notarization
-    // that we agree with to be mined into the chain, look from the end of the vtx to find one we agree with
-    // the index returned is the one we agree with, and the one that we will use to prove
+    // to submit a confirmed notarization to the alternate chain, we need it to be a signed, confirmed notarization,
+    // and another earned notarization that we agree with to be mined into the chain, look from the end of the vtx
+    // to find one we agree with the index returned is the one we agree with, and the one that we will use to prove
     int startingNotarizationIdx = cnd.BestConfirmedNotarization(2);
-    if (startingNotarizationIdx == -1)
+    if (startingNotarizationIdx == -1 || cnd.vtx[cnd.lastConfirmed].second.IsBlockOneNotarization())
     {
         LogPrint("notarization", "Not enough confirmations to submit finalized notarizations for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
         return retVal;
@@ -4561,7 +4561,13 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     {
         LogPrint("notarization", "No confirming notarization with root for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
     }
+
+    // if the last the alternate chain has knowledge of is prelaunch,
+    // we will prove the block 1 coinbase with the new confirmed notarization
+    // and the confirmed notarization with the next
+
     uint32_t firstProofHeight = cnd.vtx[cnd.forks[cnd.bestChain][1]].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
+    CPBaaSNotarization firstProofNotarization = cnd.vtx[cnd.forks[cnd.bestChain][1]].second;
     auto pfirstProofIdxIt = mapBlockIndex.find(notarizationTxes[cnd.lastConfirmed].second);
     if (pfirstProofIdxIt == mapBlockIndex.end())
     {
@@ -4569,8 +4575,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         return retVal;
     }
 
-    CPBaaSNotarization firstProofNotarization = cnd.vtx[cnd.lastConfirmed].second;
-    auto searchVec = ::AsVector(firstProofNotarization);
+    CPBaaSNotarization newConfirmedNotarization = cnd.vtx[cnd.lastConfirmed].second;
+    auto searchVec = ::AsVector(newConfirmedNotarization);
 
     for (auto oneNotarization : crosschainCND.vtx)
     {
@@ -4607,10 +4613,10 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     int confirmingIdx = 0;
 
     bool isFirstLaunchingNotarization = crosschainCND.vtx[confirmingIdx].second.IsDefinitionNotarization() ||
-                                        crosschainCND.vtx[confirmingIdx].second.IsPreLaunch() ||
-                                        crosschainCND.vtx[confirmingIdx].second.IsBlockOneNotarization();
+                                        crosschainCND.vtx[confirmingIdx].second.IsPreLaunch();
 
     CPBaaSNotarization lastConfirmedNotarization = cnd.vtx[cnd.lastConfirmed].second;
+    bool isBlock1Proof = false;
 
     {
         LOCK2(cs_main, mempool.cs);
@@ -4715,13 +4721,24 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             ConnectedChains.GetLaunchNotarization(externalSystem.chainDefinition,
                                                   notarizationTxInfo,
                                                   launchNotarization,
-                                                  firstProofNotarization);
+                                                  newConfirmedNotarization);
 
-            if (::AsVector(firstProofNotarization) != ::AsVector(cnd.vtx[cnd.lastConfirmed].second))
+            if (!((((PBAAS_TESTMODE && !IsVerusActive() && chainActive[std::min((uint32_t)chainActive.Height(), nHeight)]->nTime < PBAAS_TESTFORK_TIME) ||
+                    (launchNotarization.IsValid())) &&
+                   ConnectedChains.ThisChain().launchSystemID == externalSystem.chainDefinition.GetID()) ||
+                   ::AsVector(newConfirmedNotarization) == ::AsVector(cnd.vtx[cnd.lastConfirmed].second)))
             {
                 LogPrintf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
                 printf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
                 return retVal;
+            }
+            else if (crosschainCND.vtx[confirmingIdx].second.IsPreLaunch() &&
+                     launchNotarization.IsValid() &&
+                     launchNotarization.IsBlockOneNotarization() &&
+                     launchNotarization.currencyID == externalSystem.chainDefinition.GetID() &&
+                     ConnectedChains.ThisChain().launchSystemID == externalSystem.chainDefinition.GetID())
+            {
+                isBlock1Proof = true;
             }
         }
 
@@ -4744,7 +4761,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         }
 
         if (!cnd.CorrelatedFinalizationSpends(notarizationTxes, spendsToClose, extraSpends, &evidenceVec) ||
-            (!evidenceVec[cnd.lastConfirmed].size()))
+             (!evidenceVec[cnd.lastConfirmed].size()))
         {
             LogPrint("notarization", "Cannot correlate adequate proof evidence for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
             return retVal;
@@ -4772,11 +4789,14 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
         // get all evidence for the confirmed notarization and combine it
         // all we care about in PBaaS v1 is the signatures, which we will add to cross-chain proofs
-        for (auto &oneEvidenceObj : evidenceVec[cnd.lastConfirmed])
+        if (evidenceVec.size() > cnd.lastConfirmed)
         {
-            allEvidence.MergeEvidence(oneEvidenceObj, notarySet, true);
+            for (auto &oneEvidenceObj : evidenceVec[cnd.lastConfirmed])
+            {
+                allEvidence.MergeEvidence(oneEvidenceObj, notarySet, true);
+            }
         }
-        if (!isFirstLaunchingNotarization && notarizationTxInfo.second.IsValid() && notarizationTxInfo.second.GetBlockHeight() > 0)
+        if (notarizationTxInfo.second.IsValid() && notarizationTxInfo.second.GetBlockHeight() > 0)
         {
             allEvidence.evidence << notarizationTxInfo.second;
 
@@ -4806,14 +4826,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
         // select random block from the last commitments to prove, based on entropy from the recent block, provided by the destination system
         // if we are only confirming an already confirmed notarization on the other chain, no reason to prove prior commitments
-        if (confirmingIdx && !firstProofNotarization.IsBlockOneNotarization() && recentDestRoot.IsValid())
+        if (!isBlock1Proof && confirmingIdx && recentDestRoot.IsValid())
         {
-            // TODO: HARDENING - if there is no confirmed post-launch notarization on the external chain,
-            // see if we need to include the coinbase in our evidence. it only needs to go across once.
-            if (crosschainCND.vtx[0].second.IsPreLaunch())
-            {
-
-            }
             if (!crosschainCND.vtx[0].second.IsPreLaunch())
             {
                 CObjectFinalization finalizationObj;
@@ -5462,6 +5476,11 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                                     uint256 blockHash;
                                     TxToUniv(outTx, blockHash, jsonTx);
                                     printf("%s: proof for transaction %s\nwith txid: %s\nproof: %s\n",
+                                            __func__,
+                                            jsonTx.write(1,2).c_str(),
+                                            txHash.GetHex().c_str(),
+                                            ((CChainObject<CPartialTransactionProof> *)oneEvidenceObj)->object.ToUniValue().write(1,2).c_str());
+                                    LogPrint("verbose", "%s: proof for transaction %s\nwith txid: %s\nproof: %s\n",
                                             __func__,
                                             jsonTx.write(1,2).c_str(),
                                             txHash.GetHex().c_str(),

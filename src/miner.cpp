@@ -1051,6 +1051,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             // this currency is not launching now
             newNotarization.SetLaunchConfirmed();
             newNotarization.SetLaunchComplete();
+            newNotarization.SetBlockOneNotarization();
             outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &newNotarization))));
 
             CReserveTransactionDescriptor rtxd;
