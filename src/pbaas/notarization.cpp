@@ -4829,34 +4829,41 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         // if we are only confirming an already confirmed notarization on the other chain, no reason to prove prior commitments
         if (!isBlock1Proof && confirmingIdx && recentDestRoot.IsValid())
         {
-            if (!crosschainCND.vtx[0].second.IsPreLaunch())
+            if (!crosschainCND.vtx[confirmingIdx].second.IsPreLaunch())
             {
                 CObjectFinalization finalizationObj;
                 CAddressIndexDbEntry tmpIndexEntry;
-                if (crosschainCND.vtx[0].second.FindEarnedNotarization(finalizationObj, &tmpIndexEntry) &&
-                    finalizationObj.IsConfirmed())
+
+                if (crosschainCND.vtx[0].second.IsPreLaunch() ||
+                    (crosschainCND.vtx[0].second.FindEarnedNotarization(finalizationObj, &tmpIndexEntry) &&
+                     finalizationObj.IsConfirmed()))
                 {
                     CTransaction priorConfirmedNTx;
                     uint256 blkHash;
                     COptCCParams nP;
                     CPBaaSNotarization priorConfirmedNotarization;
-                    if (!myGetTransaction(tmpIndexEntry.first.txhash, priorConfirmedNTx, blkHash) ||
-                        tmpIndexEntry.first.index >= priorConfirmedNTx.vout.size() ||
-                        !(priorConfirmedNTx.vout[tmpIndexEntry.first.index].scriptPubKey.IsPayToCryptoCondition(nP) &&
-                          nP.IsValid() &&
-                          nP.evalCode == EVAL_EARNEDNOTARIZATION &&
-                          nP.vData.size() &&
-                          (priorConfirmedNotarization = CPBaaSNotarization(nP.vData[0])).IsValid() &&
-                          priorConfirmedNotarization.SetMirror(false)))
+                    uint32_t startingHeight = 1;
+                    if (!crosschainCND.vtx[0].second.IsPreLaunch())
                     {
-                        LogPrint("notarization", "Cannot confirm prior confirmed notarization for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-                        return retVal;
+                       if (!myGetTransaction(tmpIndexEntry.first.txhash, priorConfirmedNTx, blkHash) ||
+                             tmpIndexEntry.first.index >= priorConfirmedNTx.vout.size() ||
+                             !(priorConfirmedNTx.vout[tmpIndexEntry.first.index].scriptPubKey.IsPayToCryptoCondition(nP) &&
+                               nP.IsValid() &&
+                               nP.evalCode == EVAL_EARNEDNOTARIZATION &&
+                               nP.vData.size() &&
+                               (priorConfirmedNotarization = CPBaaSNotarization(nP.vData[0])).IsValid() &&
+                               priorConfirmedNotarization.SetMirror(false)))
+                        {
+                            LogPrint("notarization", "Cannot confirm prior confirmed notarization for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                            return retVal;
+                        }
+                        startingHeight = priorConfirmedNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
                     }
 
                     // last commitments will be in the evidence on the other chain
                     // for us, it's more efficient to get the last notarization and recreate them, since they are not stored on this chain
                     std::vector<__uint128_t> smallCommitments =
-                        GetBlockCommitments(priorConfirmedNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight,
+                        GetBlockCommitments(startingHeight,
                                             crosschainCND.vtx[confirmingIdx].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight);
 
                     if (smallCommitments.size())
@@ -4873,7 +4880,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                         // and exposure the most likely attack outcome, even with collaboration of technologists,
                         // miners, stakers, and witnesses
                         int indexToProve = (UintToArith256(recentDestRoot.stateRoot).GetLow64() % smallCommitments.size());
-                        uint32_t blockToProve = crosschainCND.vtx[confirmingIdx].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight - indexToProve;
+                        uint32_t blockToProve =
+                            (crosschainCND.vtx[confirmingIdx].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight - smallCommitments.size()) + indexToProve;
 
                         auto curMMV = chainActive.GetMMV();
                         curMMV.resize(curProofRoot.rootHeight);
