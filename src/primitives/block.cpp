@@ -728,7 +728,7 @@ CNotaryEvidence::CNotaryEvidence(const std::vector<CNotaryEvidence> &evidenceVec
 }
 
 CHashCommitments::CHashCommitments(const std::vector<__uint128_t> &smallCommitmentsLowBool, uint32_t nVersion) :
-    hashCommitments((smallCommitmentsLowBool.size() >> 1) + smallCommitmentsLowBool.size() & 1)
+    hashCommitments((smallCommitmentsLowBool.size() >> 1) + (smallCommitmentsLowBool.size() & 1))
 {
     std::vector<__uint128_t> smallCommitments = smallCommitmentsLowBool;
     if (smallCommitments.size())
@@ -741,13 +741,13 @@ CHashCommitments::CHashCommitments(const std::vector<__uint128_t> &smallCommitme
         {
             int lastSmallIndex = (smallCommitments.size() - 1);
             int currentIndex = lastSmallIndex >> 1;
-            int currentOffset = currentIndex & 1;
+            int currentOffset = lastSmallIndex & 1;
             arith_uint256 typeBitsVal(0);
-            for (; smallCommitments.size(); smallCommitments.pop_back())
+            for (; currentIndex >= 0 && smallCommitments.size(); smallCommitments.pop_back())
             {
-                typeBitsVal << 1;
+                typeBitsVal = typeBitsVal << 1;
                 typeBitsVal |= (smallCommitmentsLowBool.back() & 1);
-                arith_uint256 from128 = (arith_uint256(int64_t(smallCommitments.back() >> 64)) << 64) + arith_uint256(int64_t(smallCommitments.back()));
+                arith_uint256 from128 = (arith_uint256(int64_t((uint64_t)(smallCommitments.back() >> 64))) << 64) + arith_uint256(int64_t((uint64_t)smallCommitments.back()));
                 hashCommitments[currentIndex] = ArithToUint256(UintToArith256(hashCommitments[currentIndex]) | (currentOffset ? from128 << 128 : from128));
                 if (currentOffset ^= 1)
                 {

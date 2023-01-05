@@ -4396,25 +4396,26 @@ std::vector<__uint128_t> GetBlockCommitments(uint32_t lastNotarizationHeight, ui
         // commit to prior blocks nTime, nBits, stakeBits, & work or stake power component for up to 100 blocks prior or back,
         // to the last notarization, whichever comes first, enabling later random verification of subset
 
-        int loopCount = std::max(lastNotarizationHeight,
-                                    currentNotarizationHeight -
-                                    std::max(ConnectedChains.ThisChain().powAveragingWindow,
-                                                (uint32_t)((Params().consensus.nPOSAveragingWindow << 1) + (Params().consensus.nPOSAveragingWindow >> 1))));
+        int32_t loopCount = std::max((int32_t)lastNotarizationHeight,
+                                    (int32_t)currentNotarizationHeight -
+                                     (int32_t)std::max(ConnectedChains.ThisChain().powAveragingWindow,
+                                                 (uint32_t)((Params().consensus.nPOSAveragingWindow << 1) + (Params().consensus.nPOSAveragingWindow >> 1))));
         loopCount = currentNotarizationHeight - loopCount;
         if (loopCount > 256)
         {
             loopCount = 256;
         }
-        int32_t loopLimit = std::min((int32_t)0, (int32_t)(currentNotarizationHeight - loopCount));
+        int32_t loopLimit = std::max((int32_t)0, (int32_t)(currentNotarizationHeight - loopCount));
+        blockCommitmentsSmall.resize(currentNotarizationHeight - loopLimit);
 
         for (uint32_t blockNum = currentNotarizationHeight; blockNum > loopLimit; blockNum--)
         {
             bool isPosBlock = chainActive[blockNum]->IsVerusPOSBlock();
-            __uint128_t bigCommitmentNum((int64_t)chainActive[blockNum]->nTime);
-            bigCommitmentNum = (bigCommitmentNum << 32) | (int64_t)chainActive[blockNum]->nBits;
-            bigCommitmentNum = (bigCommitmentNum << 32) | (int64_t)chainActive[blockNum]->GetVerusPOSTarget();
-            bigCommitmentNum = (bigCommitmentNum << 32) | (int64_t)isPosBlock;
-            blockCommitmentsSmall.push_back(bigCommitmentNum);
+            __uint128_t bigCommitmentNum((uint32_t)chainActive[blockNum]->nTime);
+            bigCommitmentNum = (bigCommitmentNum << 32) | (uint32_t)chainActive[blockNum]->nBits;
+            bigCommitmentNum = (bigCommitmentNum << 32) | (uint32_t)chainActive[blockNum]->GetVerusPOSTarget();
+            bigCommitmentNum = (bigCommitmentNum << 32) | (uint32_t)isPosBlock;
+            blockCommitmentsSmall[(blockNum - loopLimit) - 1] = bigCommitmentNum;
         }
     }
     return blockCommitmentsSmall;
