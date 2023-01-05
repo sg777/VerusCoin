@@ -6047,7 +6047,7 @@ bool CConnectedChains::GetLaunchNotarization(const CCurrencyDefinition &curDef,
                 if ((launchNotarization = CPBaaSNotarization(notarizationTx.vout[idx.first.index].scriptPubKey)).IsValid() &&
                      GetNotarizationData(ASSETCHAINS_CHAINID, cnd) &&
                      cnd.IsConfirmed() &&
-                     (notaryNotarization = cnd.vtx[cnd.lastConfirmed].second).IsValid())
+                     (notaryNotarization.IsValid() || (notaryNotarization = cnd.vtx[cnd.lastConfirmed].second).IsValid()))
                 {
                     auto blockIt = mapBlockIndex.find(blkHash);
                     if (blockIt != mapBlockIndex.end() &&
@@ -6071,12 +6071,22 @@ bool CConnectedChains::GetLaunchNotarization(const CCurrencyDefinition &curDef,
                         notarizationRef.first = CInputDescriptor(notarizationTx.vout[idx.first.index].scriptPubKey,
                                                                  notarizationTx.vout[idx.first.index].nValue,
                                                                  CTxIn(idx.first.txhash, idx.first.index));
+
+                        uint32_t proofHeight;
+                        if (notaryNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
+                        {
+                            proofHeight = notaryNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
+                        }
+                        {
+                            proofHeight = blockIt->second->GetHeight();
+                            notaryNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(proofHeight);
+                        }
+
                         notarizationRef.second = CPartialTransactionProof(notarizationTx,
                                                                           inputNums,
                                                                           outputNums,
                                                                           blockIt->second,
-                                                                          blockIt->second->GetHeight());
-                        notaryNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(blockIt->second->GetHeight());
+                                                                          proofHeight);
                         retVal = true;
                     }
                 }

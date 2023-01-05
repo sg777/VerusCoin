@@ -4707,7 +4707,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                                                     std::vector<int>(),
                                                     std::vector<int>({(int)earnedNotarizationIndexEntry.first.index}),
                                                     pIndex,
-                                                    crosschainCND.vtx[confirmingIdx].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight);
+                                                    newConfirmedNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight);
                 notarizationTxInfo = std::make_pair(CInputDescriptor(confirmedNTx.vout[earnedNotarizationIndexEntry.first.index].scriptPubKey,
                                                                      confirmedNTx.vout[earnedNotarizationIndexEntry.first.index].nValue,
                                                                      CTxIn(earnedNotarizationIndexEntry.first.txhash, earnedNotarizationIndexEntry.first.index)),
@@ -5574,6 +5574,12 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                                         LogPrint("notarization", "This notarization proof expected\n");
                                         proofState = EXPECT_ENTROPY_PROOF_ROOT;
                                     }
+                                    else
+                                    {
+                                        LogPrint("notarization", "Unexpected transaction proof\n");
+                                        proofState = EXPECT_NOTHING;
+                                    }
+
                                     CTransaction outTx;
                                     uint256 txMMRRoot = ((CChainObject<CPartialTransactionProof> *)oneEvidenceObj)->object.GetPartialTransaction(outTx);
                                     uint256 txHash = ((CChainObject<CPartialTransactionProof> *)oneEvidenceObj)->object.TransactionHash();
