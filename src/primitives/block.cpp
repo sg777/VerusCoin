@@ -728,6 +728,7 @@ CNotaryEvidence::CNotaryEvidence(const std::vector<CNotaryEvidence> &evidenceVec
 }
 
 CHashCommitments::CHashCommitments(const std::vector<__uint128_t> &smallCommitmentsLowBool, uint32_t nVersion) :
+    version(nVersion),
     hashCommitments((smallCommitmentsLowBool.size() >> 1) + (smallCommitmentsLowBool.size() & 1))
 {
     std::vector<__uint128_t> smallCommitments = smallCommitmentsLowBool;

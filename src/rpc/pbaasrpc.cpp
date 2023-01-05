@@ -4247,7 +4247,11 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             !evidence.GetNotarySignatures().size() ||
             evidence.systemID != pbn.currencyID)
         {
-            printf("%s: invalid evidence %s\n", __func__, evidence.ToUniValue().write(1,2).c_str());
+            if (LogAcceptCategory("notarization"))
+            {
+                printf("%s: invalid evidence %s\nfrom param: %s\n", __func__, evidence.ToUniValue().write(1,2).c_str(), params[1].write(1,2).c_str());
+                LogPrintf("%s: invalid evidence %s\nfrom param: %s\n", __func__, evidence.ToUniValue().write(1,2).c_str(), params[1].write(1,2).c_str());
+            }
             throw JSONRPCError(RPC_INVALID_PARAMETER, "insufficient notarization evidence");
         }
 
