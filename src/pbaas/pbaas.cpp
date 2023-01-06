@@ -5125,7 +5125,15 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             else if (useProofs)
             {
                 // make sure we have the latest, confirmed proof roots to prove this import
-                lastNotarization.proposer = proofNotarization.proposer;
+                if (proofNotarization.proposer.AuxDestCount())
+                {
+                    lastNotarization.proposer = proofNotarization.proposer.GetAuxDest(0);
+                }
+                else
+                {
+                    lastNotarization.proposer = DestinationToTransferDestination(TransferDestinationToDestination(proofNotarization.proposer));
+                }
+
                 lastNotarization.proofRoots[sourceSystemID] = proofNotarization.proofRoots[sourceSystemID];
                 if (lastNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
                 {

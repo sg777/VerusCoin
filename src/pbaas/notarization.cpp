@@ -28,6 +28,7 @@ extern string PBAAS_HOST;
 extern string PBAAS_USERPASS;
 extern int32_t PBAAS_PORT;
 extern int32_t VERUS_MIN_STAKEAGE;
+extern std::string NOTARY_PUBKEY;
 
 CNotaryEvidence::CNotaryEvidence(const UniValue &uni)
 {
@@ -2091,6 +2092,24 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
     return true;
 }
 
+// returns a vector of unsigned 32 bit values as:
+// 0 - nTime
+// 1 - nBits
+// 2 - nPoSBits
+// 3 - IsPos bool
+std::vector<uint32_t> UnpackBlockCommitment(__uint128_t oneBlockCommitment)
+{
+    std::vector<uint32_t> retVal;
+    retVal.push_back(oneBlockCommitment & UINT32_MAX);
+    oneBlockCommitment >>= 32;
+    retVal.insert(retVal.begin(), oneBlockCommitment & UINT32_MAX);
+    oneBlockCommitment >>= 32;
+    retVal.insert(retVal.begin(), oneBlockCommitment & UINT32_MAX);
+    oneBlockCommitment >>= 32;
+    retVal.insert(retVal.begin(), oneBlockCommitment & UINT32_MAX);
+    return retVal;
+}
+
 bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &externalSystem,
                                                     const CPBaaSNotarization &earnedNotarization,
                                                     const CNotaryEvidence &notaryEvidence,
@@ -2137,6 +2156,24 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     }
 
     LOCK(cs_main);
+
+    // now, we'll want to put our own proposer as the beneficiary of this notarization, if possible
+    if (!VERUS_NOTARYID.IsNull())
+    {
+        newNotarization.proposer.SetAuxDest(DestinationToTransferDestination(VERUS_NOTARYID), 0);
+    }
+    else if (!GetArg("-mineraddress", "").empty())
+    {
+        newNotarization.proposer.SetAuxDest(DestinationToTransferDestination(DecodeDestination(GetArg("-mineraddress", ""))), 0);
+    }
+    else if (!NOTARY_PUBKEY.empty())
+    {
+        newNotarization.proposer.SetAuxDest(DestinationToTransferDestination(CPubKey(ParseHex(NOTARY_PUBKEY))), 0);
+    }
+    else if (!VERUS_DEFAULTID.IsNull())
+    {
+        newNotarization.proposer.SetAuxDest(DestinationToTransferDestination(VERUS_DEFAULTID), 0);
+    }
 
     uint32_t height = chainActive.Height();
     CProofRoot ourRoot = newNotarization.proofRoots[ASSETCHAINS_CHAINID];
@@ -2591,13 +2628,16 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
                 EXPECT_ALTERNATE_PROOF_ROOT = 1,            // future root to prove this notarization
                 EXPECT_ALTERNATE_HEADER = 2,                // future root to prove this notarization
                 EXPECT_ALTERNATE_COMMITMENTS = 3,           // commitments of prior blocks from this notarization
-                EXPECT_ALTERNATE_HEADER_PROOFS = 4,         // future root to prove this notarization
+                EXPECT_ENTROPY_PROOF_ROOT = 4,              // local proof root for entropy
+                EXPECT_ALTERNATE_HEADER_PROOFS = 5,         // future root to prove this notarization
             };
             EProofState proofState = EXPECT_ALTERNATE_PROOF_ROOT;
             int numHeaderProofs = 0;
             int expectNumHeaderProofs = 2;
 
-            CProofRoot counterEvidenceRoot;
+            CProofRoot counterEvidenceRoot, entropyRoot;
+            std::vector<__uint128_t> smallCommitments;
+            uint256 blockTypes;
             for (auto &proofComponent : oneItem.evidence.chainObjects)
             {
                 switch (proofState)
@@ -2631,9 +2671,20 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
                     }
                     case EXPECT_ALTERNATE_HEADER:
                     {
-                        if (proofComponent->objectType == CHAINOBJ_HEADER || proofComponent->objectType == CHAINOBJ_HEADER_REF)
+                        if (proofComponent->objectType == CHAINOBJ_HEADER)
                         {
-                            proofState = EXPECT_ALTERNATE_COMMITMENTS;
+                            CBlockHeader &blockHeader = ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.blockHeader;
+
+                            if (((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.BlockNum() == counterEvidenceRoot.rootHeight &&
+                                ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.ValidateBlockHash(blockHeader.GetHash(), counterEvidenceRoot.rootHeight) ==
+                                    counterEvidenceRoot.stateRoot)
+                            {
+                                proofState = EXPECT_ALTERNATE_COMMITMENTS;
+                            }
+                            else
+                            {
+                                proofState = EXPECT_NOTHING;
+                            }
                         }
                         else
                         {
@@ -2645,7 +2696,38 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
                     {
                         if (proofComponent->objectType == CHAINOBJ_COMMITMENTDATA)
                         {
-                            proofState = EXPECT_ALTERNATE_HEADER_PROOFS;
+                            blockTypes = ((CChainObject<CHashCommitments> *)proofComponent)->object.GetSmallCommitments(smallCommitments);
+                            if (smallCommitments.size())
+                            {
+                                proofState = EXPECT_ENTROPY_PROOF_ROOT;
+                            }
+                            else
+                            {
+                                proofState = EXPECT_NOTHING;
+                            }
+                        }
+                        else
+                        {
+                            proofState = EXPECT_NOTHING;
+                        }
+                        break;
+                    }
+                    case EXPECT_ENTROPY_PROOF_ROOT:
+                    {
+                        if (proofComponent->objectType == CHAINOBJ_PROOF_ROOT)
+                        {
+                            entropyRoot = ((CChainObject<CProofRoot> *)proofComponent)->object;
+                            if (entropyRoot.systemID == ASSETCHAINS_CHAINID &&
+                                newNotarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                                entropyRoot.rootHeight > newNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight &&
+                                entropyRoot == CProofRoot::GetProofRoot(entropyRoot.rootHeight))
+                            {
+                                proofState = EXPECT_ALTERNATE_HEADER_PROOFS;
+                            }
+                            else
+                            {
+                                proofState = EXPECT_NOTHING;
+                            }
                         }
                         else
                         {
@@ -2655,14 +2737,29 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
                     }
                     case EXPECT_ALTERNATE_HEADER_PROOFS:
                     {
-                        if ((proofComponent->objectType == CHAINOBJ_HEADER || proofComponent->objectType == CHAINOBJ_HEADER_REF) &&
+                        if ((proofComponent->objectType == CHAINOBJ_HEADER) &&
                             numHeaderProofs++ < expectNumHeaderProofs)
                         {
-                            proofState = EXPECT_ALTERNATE_HEADER_PROOFS;
+                            int indexToProve = (UintToArith256(entropyRoot.stateRoot).GetLow64() % smallCommitments.size());
+                            entropyRoot.stateRoot = ::GetHash(entropyRoot.stateRoot);
+                            uint32_t blockToProve = (counterEvidenceRoot.rootHeight - smallCommitments.size()) + indexToProve;
+
+                            std::vector<uint32_t> oneBlockCommitment = UnpackBlockCommitment(smallCommitments[indexToProve]);
+                            CBlockHeader &blockHeader = ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.blockHeader;
+
+                            if (((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.BlockNum() == blockToProve &&
+                                blockHeader.nTime == oneBlockCommitment[0] &&
+                                blockHeader.IsVerusPOSBlock() == oneBlockCommitment[3] &&
+                                (oneBlockCommitment[3] ? blockHeader.GetVerusPOSTarget() == oneBlockCommitment[2] : blockHeader.nBits == oneBlockCommitment[1]) &&
+                                ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.ValidateBlockHash(blockHeader.GetHash(), blockToProve) ==
+                                    counterEvidenceRoot.stateRoot)
+                            {
+                                proofState = EXPECT_ALTERNATE_HEADER_PROOFS;
+                            }
+                            validCounterEvidence = numHeaderProofs == expectNumHeaderProofs;
                         }
                         else
                         {
-                            validCounterEvidence = numHeaderProofs == expectNumHeaderProofs;
                             proofState = EXPECT_NOTHING;
                         }
                         break;
@@ -2673,7 +2770,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
                         break;
                     }
                 }
-                if (proofState == EXPECT_NOTHING)
+                if (proofState == EXPECT_NOTHING || validCounterEvidence)
                 {
                     break;
                 }
@@ -5006,7 +5103,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                             (crosschainCND.vtx[confirmingIdx].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight - smallCommitments.size()) + indexToProve;
 
                         auto curMMV = chainActive.GetMMV();
-                        curMMV.resize(curProofRoot.rootHeight);
+                        curMMV.resize(crosschainCND.vtx[confirmingIdx].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight);
                         CMMRProof headerProof;
                         if (!chainActive.GetBlockProof(curMMV, headerProof, blockToProve))
                         {
@@ -5274,6 +5371,37 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
           p.IsEvalPKOut()))
     {
         return state.Error("Invalid notarization output");
+    }
+
+    // check aux destinations if this is an earned notarization, it cannot have auxdests
+    // if it is an accepted notarization, it can have 1 auxdest
+    if ((p.evalCode == EVAL_EARNEDNOTARIZATION && currentNotarization.proposer.AuxDestCount()) ||
+        (p.evalCode == EVAL_ACCEPTEDNOTARIZATION && currentNotarization.proposer.AuxDestCount() > 1))
+    {
+        return state.Error("Too many auxilliary destinations in notarization proposer");
+    }
+    else if (p.evalCode == EVAL_ACCEPTEDNOTARIZATION && currentNotarization.proposer.AuxDestCount() > 0)
+    {
+        CTransferDestination auxDest = currentNotarization.proposer.GetAuxDest(0);
+        // ensure that all proposer destinations and aux destinations are relevant for the purpose
+        bool fail = false;
+        switch (auxDest.TypeNoFlags())
+        {
+            case auxDest.DEST_PK:
+            case auxDest.DEST_PKH:
+            case auxDest.DEST_ID:
+            {
+                break;
+            }
+            default:
+            {
+                fail = true;
+            }
+        }
+        if (fail)
+        {
+            return state.Error("Accepted notarization beneficiary must be public key, publick key hash, or ID destination");
+        }
     }
 
     // ensure that we never accept an invalid proofroot for this chain in a notarization
