@@ -4681,6 +4681,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                     finalizationObj.IsConfirmed())
                 {
                     earnedNotarizationIndexEntry = tmpIndexEntry;
+                    isFirstLaunchingNotarization = false;
                     confirmingIdx = i;
                     break;
                 }
