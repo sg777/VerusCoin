@@ -2562,12 +2562,126 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     // now, figure out which elements we spend, whether confirming or invalidating
     std::set<int> confirmedOutputNums;
     std::set<int> invalidatedOutputNums;
+    bool setPriorConfirmed = true;
 
     if (forkIdx > -1)
     {
-        if (!cnd.CorrelatedFinalizationSpends(txes, spendsToClose, extraSpends))
+        std::vector<std::vector<CNotaryEvidence>> evidenceVec;
+        if (!cnd.CorrelatedFinalizationSpends(txes, spendsToClose, extraSpends, &evidenceVec))
         {
             return state.Error(errorPrefix + "error correlating spends");
+        }
+
+        bool validCounterEvidence = false;
+
+        // Check the evidence for the prior notarization that we indend to confirm,
+        // if there is valid counter-evidence, do not confirm. Instead, reject and replace it with the new pending.
+        for (auto &oneItem : evidenceVec[priorNotarizationIdx])
+        {
+            // valid counter evidence includes:
+            // commitment to more powerful chain since the last confirmed notarization:
+            //    1) must include:
+            //       a) proof root of alternate to the notarization proof root that is more powerful
+            //       b) proof of header of the alternate root height
+            //       b) block commitments behind header proof that lead to more powerful chain
+            //       c) proof of prior random headers based on current system root as of evidence tx submission
+
+            enum EProofState {
+                EXPECT_NOTHING = 0,
+                EXPECT_ALTERNATE_PROOF_ROOT = 1,            // future root to prove this notarization
+                EXPECT_ALTERNATE_HEADER = 2,                // future root to prove this notarization
+                EXPECT_ALTERNATE_COMMITMENTS = 3,           // commitments of prior blocks from this notarization
+                EXPECT_ALTERNATE_HEADER_PROOFS = 4,         // future root to prove this notarization
+            };
+            EProofState proofState = EXPECT_ALTERNATE_PROOF_ROOT;
+            int numHeaderProofs = 0;
+            int expectNumHeaderProofs = 2;
+
+            CProofRoot counterEvidenceRoot;
+            for (auto &proofComponent : oneItem.evidence.chainObjects)
+            {
+                switch (proofState)
+                {
+                    case EXPECT_ALTERNATE_PROOF_ROOT:
+                    {
+                        if (proofComponent->objectType == CHAINOBJ_PROOF_ROOT)
+                        {
+                            counterEvidenceRoot = ((CChainObject<CProofRoot> *)proofComponent)->object;
+                            if (counterEvidenceRoot.systemID != ASSETCHAINS_CHAINID &&
+                                newNotarization.proofRoots.count(counterEvidenceRoot.systemID) &&
+                                counterEvidenceRoot.rootHeight == newNotarization.proofRoots[counterEvidenceRoot.systemID].rootHeight &&
+                                (CChainPower::ExpandCompactPower(counterEvidenceRoot.compactPower, counterEvidenceRoot.rootHeight) >
+                                 CChainPower::ExpandCompactPower(newNotarization.proofRoots[counterEvidenceRoot.systemID].compactPower,
+                                                                    counterEvidenceRoot.rootHeight)) &&
+                                (counterEvidenceRoot.stateRoot != newNotarization.proofRoots[counterEvidenceRoot.systemID].stateRoot ||
+                                 counterEvidenceRoot.blockHash != newNotarization.proofRoots[counterEvidenceRoot.systemID].blockHash))
+                            {
+                                proofState = EXPECT_ALTERNATE_HEADER;
+                            }
+                            else
+                            {
+                                proofState = EXPECT_NOTHING;
+                            }
+                        }
+                        else
+                        {
+                            proofState = EXPECT_NOTHING;
+                        }
+                        break;
+                    }
+                    case EXPECT_ALTERNATE_HEADER:
+                    {
+                        if (proofComponent->objectType == CHAINOBJ_HEADER || proofComponent->objectType == CHAINOBJ_HEADER_REF)
+                        {
+                            proofState = EXPECT_ALTERNATE_COMMITMENTS;
+                        }
+                        else
+                        {
+                            proofState = EXPECT_NOTHING;
+                        }
+                        break;
+                    }
+                    case EXPECT_ALTERNATE_COMMITMENTS:
+                    {
+                        if (proofComponent->objectType == CHAINOBJ_COMMITMENTDATA)
+                        {
+                            proofState = EXPECT_ALTERNATE_HEADER_PROOFS;
+                        }
+                        else
+                        {
+                            proofState = EXPECT_NOTHING;
+                        }
+                        break;
+                    }
+                    case EXPECT_ALTERNATE_HEADER_PROOFS:
+                    {
+                        if ((proofComponent->objectType == CHAINOBJ_HEADER || proofComponent->objectType == CHAINOBJ_HEADER_REF) &&
+                            numHeaderProofs++ < expectNumHeaderProofs)
+                        {
+                            proofState = EXPECT_ALTERNATE_HEADER_PROOFS;
+                        }
+                        else
+                        {
+                            validCounterEvidence = numHeaderProofs == expectNumHeaderProofs;
+                            proofState = EXPECT_NOTHING;
+                        }
+                        break;
+                    }
+                    default:
+                    {
+                        proofState = EXPECT_NOTHING;
+                        break;
+                    }
+                }
+                if (proofState == EXPECT_NOTHING)
+                {
+                    break;
+                }
+            }
+            if (validCounterEvidence)
+            {
+                break;
+            }
         }
 
         if (!cnd.CalculateConfirmation(priorNotarizationIdx, confirmedOutputNums, invalidatedOutputNums))
@@ -2701,7 +2815,14 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
                                     cnd.vtx[priorNotarizationIdx].first.n,
                                     height);
     }
-    of.SetConfirmed();
+    if (setPriorConfirmed)
+    {
+        of.SetConfirmed();
+    }
+    else
+    {
+        of.SetRejected();
+    }
     txBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &of)), 0);
 
     /* UniValue univTx(UniValue::VOBJ);
@@ -5398,6 +5519,9 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                     // NOTARIZATION_NOTARY_CHAINID - requires no evidence beyond chain signature
 
                     // first get evidence and verify signatures
+
+                    // TODO: HARDENING - also check blockchain for additional evidence to ensure it is all incorporated
+
                     int afterEvidence;
                     CNotaryEvidence evidence(tx, outNum + 1, afterEvidence);
                     if (!evidence.IsValid())
