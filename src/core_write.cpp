@@ -806,6 +806,7 @@ bool CPBaaSNotarization::SetMirror(bool setTrue)
     else
     {
         flags &= ~FLAG_ACCEPTED_MIRROR;
+        proposer.ClearAuxDests();
     }
     return true;
 }
