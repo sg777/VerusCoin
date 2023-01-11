@@ -1,49 +1,49 @@
 /********************************************************************
  * (C) 2019 Michael Toutonghi
- * 
+ *
  * Distributed under the MIT software license, see the accompanying
  * file COPYING or http://www.opensource.org/licenses/mit-license.php.
- * 
+ *
  * This defines the public blockchains as a service (PBaaS) notarization protocol, VerusLink.
- * VerusLink is a new distributed consensus protocol that enables multiple public blockchains 
- * to operate as a decentralized ecosystem of chains, which can interact and easily engage in cross 
+ * VerusLink is a new distributed consensus protocol that enables multiple public blockchains
+ * to operate as a decentralized ecosystem of chains, which can interact and easily engage in cross
  * chain transactions.
- * 
+ *
  * In all notarization services, there is notarizing chain and a chain paying notarization rewards. They are not the same.
- * The notarizing chain earns the right to submit notarizations onto the paying chain, which uses provable Verus chain power 
+ * The notarizing chain earns the right to submit notarizations onto the paying chain, which uses provable Verus chain power
  * of each chain combined with a confirmation process to validate the correct version of one chain to another and vice versa.
- * Generally, the paying chain will be Verus, and the notarizing chain will be the PBaaS chain started with a root of Verus 
+ * Generally, the paying chain will be Verus, and the notarizing chain will be the PBaaS chain started with a root of Verus
  * notarization.
- * 
+ *
  * On each chain, notarizations spend the output of the prior transaction that spent the notarization output, which has some spending
- * rules that create a thread of one attempted notarization per block, each of them properly representing the current chain, whether 
+ * rules that create a thread of one attempted notarization per block, each of them properly representing the current chain, whether
  * the prior transaction represents a valid representation of the other chain or not. In order to move the notarization forward,
- * it must also be accepted onto the paying chain, then referenced to move confirmed notarization forward again on the current chain. 
+ * it must also be accepted onto the paying chain, then referenced to move confirmed notarization forward again on the current chain.
  * All notarization threads are started with a chain definition on the paying chain, or at block 1 on the PBaaS chain.
- * 
+ *
  * Every notarization besides the chain definition is initiated on the PBaaS chain as an effort to create a notarization that is accepted
- * and confirmed on the paying chain by first being accepted by a Verus miner before a more valuable 
+ * and confirmed on the paying chain by first being accepted by a Verus miner before a more valuable
  * notarization is completed and available for acceptance, then being confirmed by multiple cross notarizations.
- * 
+ *
  * A notarization submission is earned when a block is won by staking or mining on the PBaaS chain. The miner puts a notarization
  * of the paying chain into the block mined, spending the notarization thread. In order for the miner to have a transaction output to spend from,
  * all PBaaS chains have a block 1 output of a small, transferable amount of Verus, which is only used as a notarization thread.
- * 
- * After "n" blocks, currently 8, from the block won, the earned notarization may be submitted, proving the last notarization and 
- * including an MMR root that is 8 blocks after the asserted winning block, which must also be proven along with at least one staked block. 
- * Once accepted and confirmed, the notarization transaction itself may be used to spend from the pool of notarization rewards, 
+ *
+ * After "n" blocks, currently 8, from the block won, the earned notarization may be submitted, proving the last notarization and
+ * including an MMR root that is 8 blocks after the asserted winning block, which must also be proven along with at least one staked block.
+ * Once accepted and confirmed, the notarization transaction itself may be used to spend from the pool of notarization rewards,
  * with an output that pays 50% to the notary and 50% to the block miner/staker recipient on the paying chain.
  *
  * A notarizaton must be either the first in the chain or refer to a prior notarization with which it agrees. If it skips existing
  * notarizations, referring to a prior notarization as valid, that is the same as asserting that the skipped notarizations are invalid.
  * In that case, the notarization and 2 after it must prove one additional block since the notarization skipped.
- * 
- * The intent is to make it extremely improbable cryptographically to achieve full confirmation of any notarization unless an alternate 
- * fork actually represents a valid chain with a majority of combined work and stake, even if more than the majority of notarizers are 
+ *
+ * The intent is to make it extremely improbable cryptographically to achieve full confirmation of any notarization unless an alternate
+ * fork actually represents a valid chain with a majority of combined work and stake, even if more than the majority of notarizers are
  * attempting to notarize an invalid chain.
- * 
- * to accept an earned notarization as valid on the Verus blockchain, it must prove a transaction on the alternate chain, which is 
- * either the original chain definition transaction, which CAN and MUST be proven ONLY in block 1, or the latest notarization transaction 
+ *
+ * to accept an earned notarization as valid on the Verus blockchain, it must prove a transaction on the alternate chain, which is
+ * either the original chain definition transaction, which CAN and MUST be proven ONLY in block 1, or the latest notarization transaction
  * on the alternate chain that represents an accurate MMR for the accepting chain.
  * In addition, any accepted notarization must fullfill the following requirements:
  * 1) Must prove either a PoS block from the alternate chain or a merge mined
@@ -51,10 +51,10 @@
  * 2) must prove a chain definition tx and be block 1 or contain a notarization tx, which asserts a previous, valid MMR for this
  *    chain and properly proves objects using that MMR, as well as has the proper notarization thread inputs and outputs.
  * 3) must spend the notarization thread to the specified chainID in a fee free transaction with notarization thread input and output
- * 
+ *
  * to agree with a previous notarization, we must:
  * 1) agree that at the indicated block height, the MMR root is the root claimed, and is a correct representation of the best chain.
- * 
+ *
  */
 
 #ifndef PBAAS_NOTARIZATION_H
@@ -90,10 +90,10 @@ public:
     uint160 currencyID;                 // here when needed for indexing purposes
     CUTXORef output;                    // output/object to finalize
     std::vector<int32_t> evidenceInputs; // indexes into vin that are evidence to support the current state
-    std::vector<int32_t> evidenceOutputs; // tx output indexes that are evidence to support the current state    
+    std::vector<int32_t> evidenceOutputs; // tx output indexes that are evidence to support the current state
 
     CObjectFinalization(uint8_t Version=VERSION_INVALID) : version(Version), finalizationType(FINALIZE_INVALID), minFinalizationHeight(0) {}
-    CObjectFinalization(uint8_t fType, const uint160 &curID, const uint256 &TxId, uint32_t outNum, uint32_t minFinalHeight=0, uint8_t Version=VERSION_CURRENT) : 
+    CObjectFinalization(uint8_t fType, const uint160 &curID, const uint256 &TxId, uint32_t outNum, uint32_t minFinalHeight=0, uint8_t Version=VERSION_CURRENT) :
         version(Version), finalizationType(fType), minFinalizationHeight(minFinalHeight), currencyID(curID), output(TxId, outNum) {}
     CObjectFinalization(const std::vector<unsigned char> &vch)
     {
@@ -116,9 +116,9 @@ public:
 
     bool IsValid() const
     {
-        return version >= VERSION_FIRST && 
+        return version >= VERSION_FIRST &&
                 version <= VERSION_LAST &&
-                finalizationType != FINALIZE_INVALID && 
+                finalizationType != FINALIZE_INVALID &&
                 !currencyID.IsNull() &&
                 output.IsValid();
     }
@@ -198,6 +198,9 @@ public:
 
     static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentConfirmedFinalizations(const uint160 &currencyID);
     static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentPendingFinalizations(const uint160 &currencyID);
+    static std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>>
+        GetFinalizations(const uint160 &currencyID, const uint160 &finalizationTypeKey, uint32_t startHeight=0, uint32_t endHeight=0);
+
     static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentEvidence(const uint160 &currencyID,
                                                                                  const uint256 &notarizationTxId,
                                                                                  int32_t notarizationOutNum);
@@ -316,12 +319,12 @@ public:
     CChainNotarizationData(const std::vector<std::pair<CUTXORef, CPBaaSNotarization>> &txes,
                            int32_t lastConf=-1,
                            const std::vector<std::vector<int32_t>> &Forks=std::vector<std::vector<int32_t>>(),
-                           int32_t Best=-1, 
-                           uint32_t ver=CURRENT_VERSION) : 
+                           int32_t Best=-1,
+                           uint32_t ver=CURRENT_VERSION) :
                            version(ver),
-                           vtx(txes), 
-                           lastConfirmed(lastConf), 
-                           bestChain(Best), 
+                           vtx(txes),
+                           lastConfirmed(lastConf),
+                           bestChain(Best),
                            forks(Forks) {}
 
     CChainNotarizationData(std::vector<unsigned char> vch)
@@ -368,7 +371,8 @@ public:
     // without conflicts in agreement. calls out, so should not be called holding locks. returns -1 if none found.
     int BestConfirmedNotarization(int minConfirms);
 
-    UniValue ToUniValue() const;
+    UniValue ToUniValue(const std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> &counterEvidence=
+                            std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>>()) const;
 };
 
 std::vector<CNodeData> GetGoodNodes(int maxNum=CCurrencyDefinition::MAX_STARTUP_NODES);
@@ -382,6 +386,11 @@ bool PreCheckNotaryEvidence(const CTransaction &tx, int32_t outNum, CValidationS
 bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsFinalizeNotarizationInput(const CScript &scriptSig);
 bool IsNotaryEvidenceInput(const CScript &scriptSig);
+CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot, const CNotaryEvidence &e, CProofRoot &entropyRoot);
+CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
+                                               const CPBaaSNotarization &expectedNotarization,
+                                               const CProofRoot &challengeProofRoot=CProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID),
+                                               const CProofRoot &entropyProofRoot=CProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID));
 extern string PBAAS_HOST, PBAAS_USERPASS, ASSETCHAINS_RPCHOST, ASSETCHAINS_RPCCREDENTIALS;;
 extern int32_t PBAAS_PORT;
 

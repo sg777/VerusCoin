@@ -229,6 +229,7 @@ public:
         DEFAULT_NOTARIZATION_FEE = 10000,               // price of a notarization fee in native or launch system currency
         MAX_NODES = 2,                                  // only provide 2 nodes per notarization
         MIN_NOTARIZATION_OUTPUT = 0,                    // minimum amount for notarization output
+        EXPECT_MIN_HEADER_PROOFS = 3,                   // if header proofs are needed, we need this many at least
     };
     //static const int FINAL_CONFIRMATIONS = 10;
     //static const int MIN_BLOCKS_BETWEEN_NOTARIZATIONS = 8;

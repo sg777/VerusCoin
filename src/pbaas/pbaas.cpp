@@ -917,8 +917,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
     // TODO: HARDENING - ensure that we have confirmed all totals and fees are correct, especially cross-chain fees
     // then convert all warnings to errors
     // ensure that this transaction has the appropriate finalization outputs, as required
-
-    // TODO: HARDENING - create parameter to add a currency to the wallet black/broken list if a bridge is clearly blocked by an error
+    // - create parameter to add a currency to the wallet black/broken list if a bridge is clearly blocked by an error
     // when rolling up an export, or blocked at import to prevent continuously trying to process transactions on a failed bridge
     // do not roll up or import currencies with broken bridges
 

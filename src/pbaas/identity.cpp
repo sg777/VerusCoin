@@ -1405,7 +1405,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     }
 }
 
-bool GetNotarizationData(const uint160 &chainID, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut = NULL);
+bool GetNotarizationData(const uint160 &chainID, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut=nullptr, std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>> *pCounterEvidence=nullptr);
 
 bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {

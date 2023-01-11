@@ -3505,9 +3505,15 @@ bool GetUnspentChainTransfers(std::multimap<uint160, ChainTransferData> &inputDe
     }
 }
 
-bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &notarizationData, vector<std::pair<CTransaction, uint256>> *optionalTxOut)
+bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &notarizationData, vector<std::pair<CTransaction, uint256>> *optionalTxOut, std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> *pCounterEvidence)
 {
     notarizationData = CChainNotarizationData(std::vector<std::pair<CUTXORef, CPBaaSNotarization>>());
+
+    vector<std::pair<CTransaction, uint256>> _extraTxOut;
+    if (pCounterEvidence && !optionalTxOut)
+    {
+        optionalTxOut = &_extraTxOut;
+    }
 
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentFinalizations;
     CCurrencyDefinition chainDef = ConnectedChains.GetCachedCurrency(currencyID);
@@ -3817,6 +3823,66 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         }
     }
 
+    // if we have unconfirmed notarizations and have been asked for
+    // counter evidence, get any that may be available
+    if (pCounterEvidence &&
+        notarizationData.vtx.size() > 1)
+    {
+        std::map<CUTXORef, int> vtxMap;
+        auto proofRootIt = notarizationData.vtx[0].second.proofRoots.find(ASSETCHAINS_CHAINID);
+        uint32_t startHeight = 0;
+        if (proofRootIt != notarizationData.vtx[0].second.proofRoots.end())
+        {
+            // get block
+            auto it = mapBlockIndex.find((*optionalTxOut)[0].second);
+            startHeight = it == mapBlockIndex.end() ? 0 : it->second->GetHeight();
+        }
+
+        for (int i = 1; i < notarizationData.vtx.size(); i++)
+        {
+            vtxMap.insert(std::make_pair(notarizationData.vtx[i].first, i));
+        }
+
+        pCounterEvidence->resize(notarizationData.vtx.size());
+
+        // look for pending counter-evidence
+        std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>>
+            finalizations =
+                CObjectFinalization::GetFinalizations(currencyID, CObjectFinalization::ObjectFinalizationPendingKey(), startHeight, height - 1);
+
+        for (int i = 1; i < finalizations.size(); i++)
+        {
+            CUTXORef finalizationOutput = std::get<3>(finalizations[i]).output;
+            finalizationOutput.hash = std::get<2>(finalizations[i]).GetHash();
+
+            auto idxIt = vtxMap.find(finalizationOutput);
+            if (idxIt == vtxMap.end())
+            {
+                continue;
+            }
+
+            CValidationState state;
+            std::vector<CNotaryEvidence> ofEvidence = std::get<3>(finalizations[i]).GetFinalizationEvidence(std::get<2>(finalizations[i]), state);
+            if (state.IsError())
+            {
+                return false;
+            }
+            for (auto &oneEItem : ofEvidence)
+            {
+                // if we find a rejection, check it
+                if (oneEItem.IsRejected())
+                {
+                    CProofRoot entropyRoot;
+                    CProofRoot alternateRoot =
+                        IsValidAlternateChainEvidence(notarizationData.vtx[vtxMap[finalizationOutput]].second.proofRoots[currencyID], oneEItem, entropyRoot);
+                    if (alternateRoot.IsValid())
+                    {
+                        (*pCounterEvidence)[i].push_back(std::make_tuple(oneEItem, alternateRoot, entropyRoot));
+                    }
+                }
+            }
+        }
+    }
     return notarizationData.vtx.size() != 0;
 }
 
@@ -3856,7 +3922,8 @@ UniValue getnotarizationdata(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currencyid");
     }
 
-    if (GetNotarizationData(chainID, nData))
+    std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> counterEvidence;
+    if (GetNotarizationData(chainID, nData, nullptr, &counterEvidence))
     {
         UniValue nDataUni = nData.ToUniValue();
         CChainNotarizationData notaryCND;
