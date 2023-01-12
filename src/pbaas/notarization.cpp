@@ -2434,7 +2434,8 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                             lastNotaP.IsValid() &&
                             (lastNotaP.evalCode == EVAL_ACCEPTEDNOTARIZATION || lastNotaP.evalCode == EVAL_EARNEDNOTARIZATION) &&
                             lastNotaP.vData.size() &&
-                            (lastNotarization = lastNotaP.vData[0]).IsValid() &&
+                            (lastNotarization = CPBaaSNotarization(lastNotaP.vData[0])).IsValid() &&
+                            lastNotarization.SetMirror(expectedNotarization.IsMirror()) &&
                             lastNotarization.currencyID == expectedNotarization.currencyID &&
                             (lastNotarization.IsPreLaunch() ||
                              (lastNotarization.proofRoots.count(lastNotarization.currencyID) &&
@@ -6625,13 +6626,18 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     std::vector<CNotaryEvidence> ofEvidence = std::get<3>(oneFinalization).GetFinalizationEvidence(std::get<2>(oneFinalization), state);
                     for (auto &oneEItem : ofEvidence)
                     {
+                        CProofRoot firstEntropyRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
                         // if we find a rejection, check it
                         if (oneEItem.IsRejected())
                         {
                             CProofRoot entropyRoot;
                             CProofRoot alternateRoot = IsValidAlternateChainEvidence(normalizedNotarization.proofRoots[notaryCurrencyDef.GetID()], oneEItem, entropyRoot);
+                            if (!firstEntropyRoot.IsValid())
+                            {
+                                firstEntropyRoot = entropyRoot;
+                            }
                             if (alternateRoot.IsValid() &&
-                                !IsValidPrimaryChainEvidence(evidenceMap[notaryCurrencyDef.SystemOrGatewayID()], normalizedNotarization, alternateRoot, entropyRoot).IsValid())
+                                !IsValidPrimaryChainEvidence(evidenceMap[notaryCurrencyDef.SystemOrGatewayID()], normalizedNotarization, alternateRoot, firstEntropyRoot).IsValid())
                             {
                                 return state.Error("Cannot validate notarization with valid counter-evidence");
                             }
@@ -6643,8 +6649,8 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     (notaryCurrencyDef.IsPBaaSChain() || notaryCurrencyDef.IsGateway()) &&
                     !normalizedNotarization.IsPreLaunch() &&
                     (notaryCurrencyDef.launchSystemID != ASSETCHAINS_CHAINID ||
-                    !evidenceMap.count(notarization.currencyID) ||
-                    evidenceMap[notarization.currencyID].CheckSignatureConfirmation(objHash,
+                    !evidenceMap.count(normalizedNotarization.currencyID) ||
+                    evidenceMap[normalizedNotarization.currencyID].CheckSignatureConfirmation(objHash,
                                                                                     notarySet,
                                                                                     pNotaryCurrency->minNotariesConfirm,
                                                                                     height) != CNotaryEvidence::STATE_CONFIRMED))
