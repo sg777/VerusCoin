@@ -3927,26 +3927,16 @@ UniValue getnotarizationdata(const UniValue& params, bool fHelp)
     {
         UniValue nDataUni = nData.ToUniValue();
         CChainNotarizationData notaryCND;
-        if (ConnectedChains.FirstNotaryChain().IsValid())
-        {
-            if (GetNotarizationData(ConnectedChains.FirstNotaryChain().GetID(), notaryCND) &&
-                notaryCND.IsConfirmed() &&
-                notaryCND.vtx[notaryCND.lastConfirmed].second.proofRoots.count(ASSETCHAINS_CHAINID))
-            {
-                nDataUni.pushKV("lastsystemroot", notaryCND.vtx[notaryCND.lastConfirmed].second.proofRoots[ASSETCHAINS_CHAINID].ToUniValue());
-            }
-            else
-            {
-                uint32_t nHeight = chainActive.Height();
-                nDataUni.pushKV("lastsystemroot", CProofRoot::GetProofRoot((nHeight - COINBASE_MATURITY) > 0 ? (nHeight - COINBASE_MATURITY) : 1).ToUniValue());
-            }
-        }
-        else
-        {
-            uint32_t nHeight = chainActive.Height();
-            nDataUni.pushKV("lastsystemroot", CProofRoot::GetProofRoot((nHeight - COINBASE_MATURITY) > 0 ? (nHeight - COINBASE_MATURITY) : 1).ToUniValue());
-        }
 
+        // this is a value used for entropy and cannot be depended on as a truly stable tip.
+        //
+        // it will only be accepted on a chain that matches it, so if it becomes stale, all evidence
+        // and proof using it must be regenerated for the new values for the transactions to be valid.
+        // it is checked on the first challenge to establish a root for all responses or subsequent challenges
+        // and ensure that it is within 5 blocks of the DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA
+        // from the expiry of that transaction, meaning the transaction was made and sent.
+        uint32_t nHeight = chainActive.Height();
+        nDataUni.pushKV("semistableroot", CProofRoot::GetProofRoot((nHeight - 5) > 0 ? (nHeight - 5) : 1).ToUniValue());
         return nDataUni;
     }
     else
@@ -4218,6 +4208,7 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
     {
         retVal.pushKV("laststableproofroot", CProofRoot::GetProofRoot((nHeight - COINBASE_MATURITY) > 0 ? (nHeight - COINBASE_MATURITY) : 1).ToUniValue());
     }
+    retVal.pushKV("semistableroot", CProofRoot::GetProofRoot((nHeight - 5) > 0 ? (nHeight - 5) : 1).ToUniValue());
 
     std::set<uint160> currenciesSet({ASSETCHAINS_CHAINID});
     CCurrencyDefinition targetCur;

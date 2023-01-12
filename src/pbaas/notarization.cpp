@@ -3464,7 +3464,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         return state.Error("invalid crosschain notarization data");
     }
 
-    CProofRoot defaultEntropyRoot(find_value(result, "lastsystemroot"));
+    CProofRoot defaultEntropyRoot(find_value(result, "semistableroot"));
 
     // if we find pending notarizations that we disagree with, create counter-evidence and post it
     UniValue counterEvidenceUni = find_value(result, "counterevidence");
@@ -3475,10 +3475,13 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         {
             continue;
         }
+
         // if the proof root of a notarization on the alternate chain is not correct and there is also no
         // challenge that is correct, post a challenge
         CProofRoot ourCorrectRoot = CProofRoot::GetProofRoot(proofRootIT->second.rootHeight);
+
         CProofRoot entropyRoot = defaultEntropyRoot;
+
         if (proofRootIT->second != ourCorrectRoot)
         {
             bool makeCounterEvidence = true;
@@ -5074,7 +5077,6 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         result = NullUniValue;
     }
 
-    CProofRoot recentDestRoot;
     CChainNotarizationData crosschainCND;
     UniValue counterEvidenceUni;
 
@@ -5086,15 +5088,6 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         {
             LogPrintf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
             printf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-            return retVal;
-        }
-
-        recentDestRoot = CProofRoot(find_value(result, "lastsystemroot"));
-        if (!recentDestRoot.IsValid() &&
-            externalSystem.chainDefinition.proofProtocol == CCurrencyDefinition::PROOF_PBAASMMR)
-        {
-            LogPrintf("Unable to get recent root from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-            printf("Unable to get recent root from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
             return retVal;
         }
 
