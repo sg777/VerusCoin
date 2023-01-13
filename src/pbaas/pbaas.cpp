@@ -2755,7 +2755,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             return state.Error("Arbitrage transfers must be simple and from/to same chain, even when arbitraging cross-chain imports " + rt.ToUniValue().write(1,2));
         }
 
-        if (p.AsVector().size() > CScript::MAX_SCRIPT_ELEMENT_SIZE)
+        if (p.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
         {
             return state.Error("Reserve transfer exceeds maximum size " + rt.ToUniValue().write(1,2));
         }
@@ -5422,10 +5422,19 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
             int serSize = GetSerializeSize(ds, evidence);
 
-            // the value should be considered for reduction
-            if (serSize > CScript::MAX_SCRIPT_ELEMENT_SIZE)
+            COptCCParams chkP;
+            if (!MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence)).IsPayToCryptoCondition(chkP))
             {
-                auto evidenceVec = evidence.BreakApart(CScript::MAX_SCRIPT_ELEMENT_SIZE - 128);
+                LogPrintf("%s: failed to package import evidence from system %s\n", __func__, EncodeDestination(CIdentityID(destCurID)).c_str());
+                return false;
+            }
+
+            // the value should be considered for reduction
+            if (chkP.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
+            {
+                CNotaryEvidence emptyEvidence;
+                int baseOverhead = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &emptyEvidence)).size() + 128;
+                auto evidenceVec = evidence.BreakApart(CScript::MAX_SCRIPT_ELEMENT_SIZE - baseOverhead);
                 if (!evidenceVec.size())
                 {
                     LogPrintf("%s: failed to package evidence from system %s\n", __func__, EncodeDestination(CIdentityID(ccx.sourceSystemID)).c_str());

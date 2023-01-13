@@ -1248,7 +1248,7 @@ public:
     const CEvidenceData &mergeData(const CEvidenceData &mergeWith);
 
     // used to span multiple outputs if a cross-chain proof becomes too big for just one
-    std::vector<CEvidenceData> BreakApart(int maxChunkSize=CScript::MAX_SCRIPT_ELEMENT_SIZE) const;
+    std::vector<CEvidenceData> BreakApart(int maxChunkSize=(CScript::MAX_SCRIPT_ELEMENT_SIZE-256)) const;
     static CEvidenceData Reassemble(const std::vector<CEvidenceData> &evidenceVec);
 
     UniValue ToUniValue() const
@@ -2151,7 +2151,7 @@ public:
     CNotaryEvidence(const CTransaction &tx, int outputNum, int &afterEvidence, uint8_t EvidenceType=TYPE_NOTARY_EVIDENCE);
 
     // used to span multiple outputs if a cross-chain proof becomes too big for just one
-    std::vector<CNotaryEvidence> BreakApart(int maxChunkSize=CScript::MAX_SCRIPT_ELEMENT_SIZE) const;
+    std::vector<CNotaryEvidence> BreakApart(int maxChunkSize=(CScript::MAX_SCRIPT_ELEMENT_SIZE-256)) const;
 
     ADD_SERIALIZE_METHODS;
 

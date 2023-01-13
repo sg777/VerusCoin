@@ -1417,7 +1417,7 @@ public:
         return IsValid() && txProof.proofSequence.size() == 1 && txProof.proofSequence[0]->branchType == CMerkleBranchBase::BRANCH_MULTIPART;
     }
 
-    std::vector<CPartialTransactionProof> BreakApart(int maxChunkSize=CScript::MAX_SCRIPT_ELEMENT_SIZE) const
+    std::vector<CPartialTransactionProof> BreakApart(int maxChunkSize=(CScript::MAX_SCRIPT_ELEMENT_SIZE-256)) const
     {
         CDataStream ds(SER_DISK, PROTOCOL_VERSION);
         // we put our entire self into a multipart proof and return multiple parts that must be reconstructed

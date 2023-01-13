@@ -4345,6 +4345,12 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
     }
     else
     {
+        if (LogAcceptCategory("notarization"))
+        {
+            UniValue jsonTx(UniValue::VOBJ);
+            TxToUniv(tb.mtx, uint256(), jsonTx);
+            LogPrintf("Failure to build and sign notarization transaction: %s\n", jsonTx.write(1,2).c_str());
+        }
         throw JSONRPCError(RPC_INVALID_PARAMETER, buildResult.GetError());
     }
 

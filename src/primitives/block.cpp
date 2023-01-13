@@ -671,9 +671,6 @@ std::vector<CNotaryEvidence> CNotaryEvidence::BreakApart(int maxChunkSize) const
 
     CNotaryEvidence scratchEvidence;
 
-    int baseOverhead = ::AsVector(scratchEvidence).size() + 4;
-    assert(maxChunkSize > baseOverhead);
-
     // we put our entire self into a multipart proof and return multiple parts that must be reconstructed
     std::vector<unsigned char> serialized = ::AsVector(*this);
     size_t fullLength = serialized.size();
@@ -682,7 +679,7 @@ std::vector<CNotaryEvidence> CNotaryEvidence::BreakApart(int maxChunkSize) const
 
     while (serialized.size())
     {
-        int curLength = std::min(maxChunkSize - baseOverhead, (int)serialized.size());
+        int curLength = std::min(maxChunkSize, (int)serialized.size());
         CEvidenceData oneDataChunk(std::vector<unsigned char>(&(serialized[0]), &(serialized[0]) + curLength), indexNum++, fullLength, startOffset, CEvidenceData::TYPE_MULTIPART_DATA);
         serialized.erase(serialized.begin(), serialized.begin() + curLength);
         startOffset += curLength;

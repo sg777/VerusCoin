@@ -1183,7 +1183,7 @@ bool ContextualCheckTransaction(
 
     uint32_t verusVersion = CVerusSolutionVector::GetVersionByHeight(nHeight);
     bool isVerusVault = verusVersion >= CActivationHeight::ACTIVATE_VERUSVAULT;
-    // bool isPBaaS = verusVersion >= CActivationHeight::ACTIVATE_PBAAS;
+    bool isPBaaS = verusVersion >= CActivationHeight::ACTIVATE_PBAAS;
 
     // If Sprout rules apply, reject transactions which are intended for Overwinter and beyond
     if (isSprout && tx.fOverwintered) {
@@ -1412,9 +1412,14 @@ bool ContextualCheckTransaction(
             {
                 CCcontract_info CC;
                 CCcontract_info *cp;
-                if (!((p.evalCode <= EVAL_LAST) && (cp = CCinit(&CC, p.evalCode))))
+                if (!((p.evalCode <= EVAL_LAST) &&
+                    (cp = CCinit(&CC, p.evalCode))))
                 {
                     return state.DoS(100, error("ContextualCheckTransaction(): Invalid smart transaction eval code"), REJECT_INVALID, "bad-txns-evalcode-invalid");
+                }
+                if (isPBaaS && p.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
+                {
+                    return state.DoS(100, error("ContextualCheckTransaction(): smart transaction params exceed maximum size"), REJECT_INVALID, "bad-txns-script-element-too-large");
                 }
                 if (!CC.contextualprecheck(tx, i, state, nHeight))
                 {
