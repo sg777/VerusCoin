@@ -842,6 +842,13 @@ bool operator!=(const CProofRoot &op1, const CProofRoot &op2)
     return !(op1 == op2);
 }
 
+bool operator<(const CProofRoot &op1, const CProofRoot &op2)
+{
+    return op1.systemID == op2.systemID ?
+                (op1.rootHeight < op2.rootHeight ? true : (op1.rootHeight > op2.rootHeight ? false : ::AsVector(op1) < ::AsVector(op2))) :
+                (op1.systemID < op2.systemID);
+}
+
 CProofRoot CProofRoot::GetProofRoot(uint32_t blockHeight)
 {
     if (blockHeight > chainActive.Height())
@@ -3411,6 +3418,8 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 if (entropyRoot.IsValid())
                 {
                     CNotaryEvidence challengeEvidence;
+                    challengeEvidence.output = crosschainCND.vtx[i].first;
+                    challengeEvidence.state = CNotaryEvidence::STATE_REJECTED;
 
                     // create evidence in this order
                     uint32_t altHeight = crosschainCND.vtx[i].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
@@ -3981,16 +3990,28 @@ CObjectFinalization::GetFinalizations(const uint160 &currencyID,
                                       uint32_t startHeight,
                                       uint32_t endHeight)
 {
+    // if we don't have an endHeight, we also check the mempool
+    bool checkMempool = false;
+    if (!endHeight)
+    {
+        checkMempool = true;
+    }
+
     std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>> retVal;
     std::vector<CAddressIndexDbEntry> finalizationIndex;
+    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> mempoolFinalizations;
 
     uint160 indexKey = CCrossChainRPCData::GetConditionID(
         CCrossChainRPCData::GetConditionID(currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey()),
         finalizationTypeKey);
 
-    if (GetAddressIndex(indexKey, CScript::P2IDX, finalizationIndex, startHeight, endHeight) && finalizationIndex.size())
+    LOCK(mempool.cs);
+
+    if (GetAddressIndex(indexKey, CScript::P2IDX, finalizationIndex, startHeight, endHeight) &&
+        finalizationIndex.size() &&
+        (!checkMempool || mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexKey, CScript::P2IDX}}), mempoolFinalizations)) &&
+        (finalizationIndex.size() || mempoolFinalizations.size()))
     {
-        LOCK(mempool.cs);
         std::vector<int> toRemove;
         std::map<COutPoint, int> outputMap;
         for (int i = 0; i < finalizationIndex.size(); i++)
@@ -4017,6 +4038,21 @@ CObjectFinalization::GetFinalizations(const uint160 &currencyID,
                                                  COutPoint(finalizationIndex[i].first.txhash,
                                                  finalizationIndex[i].first.index),
                                                  finalizationTx, of));
+            }
+        }
+        for (int i = 0; i < mempoolFinalizations.size(); i++)
+        {
+            if (mempoolFinalizations[i].first.spending)
+            {
+                continue;
+            }
+            CTransaction oneTx;
+            if (mempool.lookup(mempoolFinalizations[i].first.txhash, oneTx))
+            {
+                retVal.push_back(std::make_tuple((uint32_t)0,
+                                                  COutPoint(mempoolFinalizations[i].first.txhash, mempoolFinalizations[i].first.index),
+                                                  oneTx,
+                                                  CObjectFinalization(oneTx.vout[mempoolFinalizations[i].first.index].scriptPubKey)));
             }
         }
     }

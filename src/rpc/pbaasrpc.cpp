@@ -3848,7 +3848,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         // look for pending counter-evidence
         std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>>
             finalizations =
-                CObjectFinalization::GetFinalizations(currencyID, CObjectFinalization::ObjectFinalizationPendingKey(), startHeight, height - 1);
+                CObjectFinalization::GetFinalizations(currencyID, CObjectFinalization::ObjectFinalizationPendingKey(), startHeight, 0);
 
         for (int i = 1; i < finalizations.size(); i++)
         {
@@ -4247,6 +4247,199 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
     retVal.pushKV("latestcurrencystates", currencyStatesUni);
 
     return retVal;
+}
+
+UniValue challengenotarizations(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() != 1)
+    {
+        throw runtime_error(
+            "challengenotarizations '[{\"notarizationref\":{\"txid\":\"hexvalue\",\"voutnum\":n},\n"
+            "                           \"challengeroot\":{},\n"
+            "                           \"evidence\":{}},\n"
+            "                          {...}, ...]'\n"
+            "\nSubmits one or more cryptographic challenges to existing, unconfirmed notarizations, proving the existence\n"
+            "of an alternate chain. Whether the alternate chain has more power than the chain with a pending notarization\n"
+            "is not important, only that it has moved forward with both proof of work and proof of stake from the prior\n"
+            "notarization.\n"
+            "\nRequires that the local wallet have funds for fees.\n"
+
+            "\nArguments\n"
+            "\"challenges\"                 (array, required) one or more challenges to unconfirmed accepted notarizations on this system\n"
+
+            "\nResult:\n"
+            "[{\"txid\":\"hex\"}, {\"error\":\"errorstring\"}, ...]   (array) results of submitted challenge transactions\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("challengenotarizations", "'[{\"notarizationref\":{\"txid\":\"hexvalue\",\"voutnum\":n},\"challengeroot\":{},\"evidence\":{}}]'")
+            + HelpExampleRpc("challengenotarizations", "[{\"notarizationref\":{\"txid\":\"hexvalue\",\"voutnum\":n},\"challengeroot\":{},\"evidence\":{}}]")
+        );
+    }
+
+    CheckPBaaSAPIsValid();
+
+    std::vector<UniValue> retVal;
+
+    if (params[0].isArray() && params[0].size())
+    {
+        retVal.resize(params[0].size());
+
+        std::map<uint160, std::map<CUTXORef, std::tuple<int, CProofRoot, CNotaryEvidence>>> challengeMap;
+
+        LOCK2(cs_main, mempool.cs);
+        uint32_t nHeight = chainActive.Height();
+
+        for (int i = 0; i < params[0].size(); i++)
+        {
+            CUTXORef notarizationRef = CUTXORef(find_value(params[0][i], "notarizationref"));
+            CProofRoot challengeRoot = CProofRoot(find_value(params[0][i], "challengeroot"));
+            CNotaryEvidence evidence = CNotaryEvidence(find_value(params[0][i], "evidence"));
+            if (notarizationRef.IsValid() &&
+                challengeRoot.IsValid() &&
+                evidence.IsValid())
+            {
+                challengeMap[challengeRoot.systemID].insert(std::make_pair(notarizationRef, std::make_tuple(i, challengeRoot, evidence)));
+            }
+            else
+            {
+                UniValue errMsg(UniValue::VOBJ);
+                errMsg.pushKV("error", "Invalid challenge entry in array of challenges parameter");
+                retVal[i] = errMsg;
+            }
+        }
+
+        for (auto &oneSystemChallenges : challengeMap)
+        {
+            if (!oneSystemChallenges.second.size())
+            {
+                continue;
+            }
+            CChainNotarizationData currentCND;
+            std::map<CUTXORef, int> currentNotarizationMap;
+            std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> counterEvidence;
+            std::set<std::pair<CUTXORef, CProofRoot>> preexistingChallenges;
+
+            if (!GetNotarizationData(oneSystemChallenges.first, currentCND, nullptr, &counterEvidence) ||
+                !currentCND.vtx.size())
+            {
+                UniValue errMsg(UniValue::VOBJ);
+                errMsg.pushKV("error", "Cannot load notarization data for system (" + EncodeDestination(CIdentityID(oneSystemChallenges.first)) + ").");
+                for (auto &oneEntry : oneSystemChallenges.second)
+                {
+                    retVal[std::get<0>(oneEntry.second)] = errMsg;
+                }
+            }
+            for (int j = 0; j < currentCND.vtx.size(); j++)
+            {
+                currentNotarizationMap.insert(std::make_pair(currentCND.vtx[j].first, j));
+            }
+            for (auto &oneCounterSet : counterEvidence)
+            {
+                for (auto &oneCounterEvidence : oneCounterSet)
+                {
+                    preexistingChallenges.insert(std::make_pair(std::get<0>(oneCounterEvidence).output, std::get<1>(oneCounterEvidence)));
+                }
+            }
+            CCcontract_info CC;
+            CCcontract_info *cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
+            std::vector<CTxDestination> dests({DecodeDestination(cp->unspendableCCaddr)});
+            for (auto &oneChallenge : oneSystemChallenges.second)
+            {
+                // if we have a valid counter-evidence challenge of this notarization with the same proof root,
+                // nothing to do
+                if (preexistingChallenges.count(std::make_pair(oneChallenge.first, std::get<1>(oneChallenge.second))))
+                {
+                    UniValue errMsg(UniValue::VOBJ);
+                    errMsg.pushKV("error", "Duplicate");
+                    retVal[std::get<0>(oneChallenge.second)] = errMsg;
+                    continue;
+                }
+                // we now have a confirmed, new counter evidence challenge and all we need to make a challenge tx
+                CObjectFinalization of(CObjectFinalization::FINALIZE_NOTARIZATION,
+                                       oneSystemChallenges.first,
+                                       std::get<2>(oneChallenge.second).output.hash,
+                                       std::get<2>(oneChallenge.second).output.n);
+
+                TransactionBuilder tb(Params().GetConsensus(), nHeight, pwalletMain);
+
+                CScript evidenceScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &std::get<2>(oneChallenge.second)));
+                COptCCParams chkP;
+
+                // the value should be considered for reduction
+                if (evidenceScript.IsPayToCryptoCondition(chkP) &&
+                    chkP.IsValid() &&
+                    chkP.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
+                {
+                    CNotaryEvidence emptyEvidence;
+                    int baseOverhead = (evidenceScript.size() - ::AsVector(std::get<2>(oneChallenge.second)).size()) + 128;
+                    auto evidenceVec = std::get<2>(oneChallenge.second).BreakApart(CScript::MAX_SCRIPT_ELEMENT_SIZE - baseOverhead);
+                    if (!evidenceVec.size())
+                    {
+                        UniValue errMsg(UniValue::VOBJ);
+                        errMsg.pushKV("error", "Unable to break apart evidence");
+                        retVal[std::get<0>(oneChallenge.second)] = errMsg;
+                        continue;
+                    }
+                    for (auto &oneProof : evidenceVec)
+                    {
+                        of.evidenceOutputs.push_back(tb.mtx.vout.size());
+                        tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &oneProof)), 0);
+                    }
+                }
+                else if (!chkP.IsValid())
+                {
+                    UniValue errMsg(UniValue::VOBJ);
+                    errMsg.pushKV("error", "Invalid evidence");
+                    retVal[std::get<0>(oneChallenge.second)] = errMsg;
+                    continue;
+                }
+                else
+                {
+                    of.evidenceOutputs.push_back(tb.mtx.vout.size());
+                    tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &std::get<2>(oneChallenge.second))), 0);
+                }
+
+                CCcontract_info *cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
+                dests = std::vector<CTxDestination>({DecodeDestination(cp->unspendableCCaddr)});
+
+                tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &of)), 0);
+                tb.SetFee(DEFAULT_TRANSACTION_FEE);
+
+                TransactionBuilderResult preResult = tb.Build();
+                CTransaction challengeTx = preResult.GetTxOrThrow();
+
+                LOCK2(smartTransactionCS, mempool.cs);
+
+                bool relayTx;
+                CValidationState state;
+                {
+                    LOCK2(smartTransactionCS, mempool.cs);
+                    relayTx = myAddtomempool(challengeTx, &state);
+                }
+
+                // add to mem pool and relay
+                if (!relayTx)
+                {
+                    UniValue errMsg(UniValue::VOBJ);
+                    errMsg.pushKV("error", "Unable to prepare challenge tx: " + state.GetRejectReason());
+                    retVal[std::get<0>(oneChallenge.second)] = errMsg;
+                }
+                else
+                {
+                    RelayTransaction(challengeTx);
+                    UniValue resultMsg(UniValue::VOBJ);
+                    resultMsg.pushKV("txid", challengeTx.GetHash().GetHex());
+                    retVal[std::get<0>(oneChallenge.second)] = resultMsg;
+                }
+            }
+        }
+    }
+    UniValue retValUni(UniValue::VARR);
+    for (auto &oneResult : retVal)
+    {
+        retValUni.push_back(oneResult);
+    }
+    return retValUni;
 }
 
 UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
@@ -14074,6 +14267,7 @@ static const CRPCCommand commands[] =
     { "multichain",   "getlaunchinfo",                &getlaunchinfo,          true  },
     { "multichain",   "getbestproofroot",             &getbestproofroot,       true  },
     { "multichain",   "submitacceptednotarization",   &submitacceptednotarization, true },
+    { "multichain",   "challengenotarizations",       &challengenotarizations, true },
     { "multichain",   "submitimports",                &submitimports,          true },
     { "multichain",   "getinitialcurrencystate",      &getinitialcurrencystate, true  },
     { "multichain",   "getcurrencystate",             &getcurrencystate,       true  },

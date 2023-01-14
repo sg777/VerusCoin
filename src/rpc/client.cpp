@@ -1692,6 +1692,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "crosschainproof", 1},
     { "getbestproofroot", 0},
     { "submitacceptednotarization", 0},
+    { "challengenotarizations", 0},
     { "submitimports", 0},
     { "height_MoM", 1},
     { "calc_MoM", 2},

@@ -1530,6 +1530,7 @@ public:
 
     friend bool operator==(const CProofRoot &op1, const CProofRoot &op2);
     friend bool operator!=(const CProofRoot &op1, const CProofRoot &op2);
+    friend bool operator<(const CProofRoot &op1, const CProofRoot &op2);
 
     UniValue ToUniValue() const;
 };
