@@ -3758,11 +3758,12 @@ bool CConnectedChains::CheckVerusPBaaSAvailable(UniValue &chainInfoUni, UniValue
         boost::split(versionNums2, VERUS_VERSION, boost::is_any_of("."));
 
         // major and minor versions must match for current merge mining/notarization
-        if (versionNums1.size() >= 2 &&
-            versionNums2.size() >= 2 &&
-            versionNums1[0] == versionNums2[0] &&
-            versionNums1[1] == versionNums2[1] &&
-            uni_get_str(find_value(chainInfoUni, "chainid")) == EncodeDestination(CIdentityID(ConnectedChains.FirstNotaryChain().GetID())))
+        if (ConnectedChains.FirstNotaryChain().chainDefinition.IsGateway() ||
+            (versionNums1.size() >= 2 &&
+             versionNums2.size() >= 2 &&
+             versionNums1[0] == versionNums2[0] &&
+             versionNums1[1] == versionNums2[1] &&
+             uni_get_str(find_value(chainInfoUni, "chainid")) == EncodeDestination(CIdentityID(ConnectedChains.FirstNotaryChain().GetID()))))
         {
             LOCK(cs_mergemining);
             CCurrencyDefinition chainDef(chainDefUni);
