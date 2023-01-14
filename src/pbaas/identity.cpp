@@ -1907,7 +1907,6 @@ bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidat
                                 numIndexKeys++;
                                 uint160 destID = GetDestinationID(oneKey);
 
-                                // TODO: HARDENING - check any currency against itself as we do native
                                 if (destID == nativeCurrencyOffer)
                                 {
                                     hasNativeOffer = true;

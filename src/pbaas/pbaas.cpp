@@ -3752,21 +3752,22 @@ bool CConnectedChains::CheckVerusPBaaSAvailable(UniValue &chainInfoUni, UniValue
 {
     if (chainInfoUni.isObject() && chainDefUni.isObject())
     {
-        // TODO: HARDENING - ensure we confirm the correct PBaaS version
-        // and ensure that the chainDef is correct as well
-
         UniValue uniVer = find_value(chainInfoUni, "VRSCversion");
-        if (uniVer.isStr())
+        std::vector<std::string> versionNums1, versionNums2;
+        boost::split(versionNums1, uni_get_str(uniVer), boost::is_any_of("."));
+        boost::split(versionNums2, VERUS_VERSION, boost::is_any_of("."));
+
+        // major and minor versions must match for current merge mining/notarization
+        if (versionNums1.size() >= 2 &&
+            versionNums2.size() >= 2 &&
+            versionNums1[0] == versionNums2[0] &&
+            versionNums1[1] == versionNums2[1] &&
+            uni_get_str(find_value(chainInfoUni, "chainid")) == EncodeDestination(CIdentityID(ConnectedChains.FirstNotaryChain().GetID())))
         {
             LOCK(cs_mergemining);
             CCurrencyDefinition chainDef(chainDefUni);
             if (chainDef.IsValid())
             {
-                /*printf("%s: \n%s\nfirstnotary: %s\ngetid: %s\n", __func__,
-                    chainDef.ToUniValue().write(1,2).c_str(),
-                    EncodeDestination(CIdentityID(notarySystems.begin()->first)).c_str(),
-                    EncodeDestination(CIdentityID(chainDef.GetID())).c_str());
-                */
                 if (notarySystems.count(chainDef.GetID()))
                 {
                     notarySystems[chainDef.GetID()].height = uni_get_int64(find_value(chainInfoUni, "blocks"));

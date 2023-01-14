@@ -110,9 +110,15 @@ UniValue getinfo(const UniValue& params, bool fHelp)
     //fprintf(stderr,"after notarized_height %u\n",(uint32_t)time(NULL));
 
     UniValue obj(UniValue::VOBJ);
+    obj.push_back(Pair("VRSCversion", VERUS_VERSION));
     obj.push_back(Pair("version", CLIENT_VERSION));
     obj.push_back(Pair("protocolversion", PROTOCOL_VERSION));
-    obj.push_back(Pair("VRSCversion", VERUS_VERSION));
+    obj.push_back(Pair("chainid", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
+    if (ConnectedChains.FirstNotaryChain().IsValid())
+    {
+        obj.push_back(Pair("notarychainid", EncodeDestination(CIdentityID(ConnectedChains.FirstNotaryChain().GetID()))));
+    }
+    obj.push_back(Pair("name", ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID)));
     obj.push_back(Pair("notarized", notarized_height));
     obj.push_back(Pair("prevMoMheight", prevMoMheight));
     obj.push_back(Pair("notarizedhash", notarized_hash.ToString()));
@@ -183,7 +189,6 @@ UniValue getinfo(const UniValue& params, bool fHelp)
     }
     if ( ASSETCHAINS_CC != 0 )
         obj.push_back(Pair("CCid",        (int)ASSETCHAINS_CC));
-    obj.push_back(Pair("name",        ASSETCHAINS_SYMBOL[0] == 0 ? "KMD" : ASSETCHAINS_SYMBOL));
     if ( ASSETCHAINS_SYMBOL[0] != 0 )
     {
         //obj.push_back(Pair("name",        ASSETCHAINS_SYMBOL));
