@@ -2917,11 +2917,11 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
                 issuingCurrency = ConnectedChains.ThisChain();
             }
             bool success = ValidateSpendingIdentityReservation(spendingTx, outputNum, eval->state, height, issuingCurrency);
-            if (!success)
+            if (!success && LogAcceptCategory("identity"))
             {
                 UniValue jsonTx;
                 TxToUniv(spendingTx, uint256(), jsonTx);
-                printf("%s: failed to validate identity reservation:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+                LogPrintf("%s: failed to validate identity reservation:\n%s\n", __func__, jsonTx.write(1,2).c_str());
             }
             return success;
         }
@@ -2929,6 +2929,7 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
     else
     {
         printf("%s: error getting transaction %s to spend\n", __func__, spendingTx.vin[nIn].prevout.hash.GetHex().c_str());
+        LogPrintf("%s: error getting transaction %s to spend\n", __func__, spendingTx.vin[nIn].prevout.hash.GetHex().c_str());
         return false;
     }
 
