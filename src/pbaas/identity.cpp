@@ -243,6 +243,7 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
         if (height != 0 && (*pHeightOut > height || (height == 1 && *pHeightOut == height)))
         {
             *pHeightOut = 0;
+            ret = CIdentity();
 
             // if we must check up to a specific height that is less than the latest height, do so
             std::vector<CAddressIndexDbEntry> addressIndex, addressIndex2;
@@ -268,7 +269,7 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
                     COptCCParams p;
                     LOCK(mempool.cs);
                     if (!addressIndex[i].first.spending &&
-                        addressIndex[i].first.txindex > txIndex &&    // always select the latest in a block, if there can be more than one
+                        (addressIndex[i].first.blockHeight == 1 || addressIndex[i].first.txindex > txIndex) &&    // always select the latest in a block, if there can be more than one
                         myGetTransaction(addressIndex[i].first.txhash, idTx, blkHash) &&
                         idTx.vout[addressIndex[i].first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
                         p.IsValid() &&

@@ -109,10 +109,9 @@ std::vector<CNotarySignature> CNotaryEvidence::GetConfirmedAndRejectedSignatureM
     {
         combinedSignatures.insert(std::make_pair(oneHeightEntry.first, CNotarySignature(systemID, output, true, oneHeightEntry.second)));
     }
-    // place all signature blocks at the beginning of the evidence in order of height by inserting them at 0 in reverse order
-    for (auto it = combinedSignatures.rbegin(); it != combinedSignatures.rend(); it++)
+    for (auto &oneNotarySig : combinedSignatures)
     {
-        retVal.push_back(it->second);
+        retVal.push_back(oneNotarySig.second);
     }
     return retVal;
 }
@@ -495,13 +494,12 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
     // write the object to the hash writer without a vector length prefix
     uint256 outputUTXOHash;
     {
-        auto notarySigs = GetNotarySignatures();
         CCurrencyDefinition::EHashTypes hashType = CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR;
-        for (auto &oneSig : notarySigs)
+        for (auto &oneSig : notarySignatures)
         {
-            if (notarySigs.size() && notarySigs[0].signatures.size())
+            if (oneSig.signatures.size())
             {
-                hashType = (CCurrencyDefinition::EHashTypes)notarySigs[0].signatures.begin()->second.hashType;
+                hashType = (CCurrencyDefinition::EHashTypes)oneSig.signatures.begin()->second.hashType;
                 break;
             }
         }
@@ -547,9 +545,21 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
                     return EStates::STATE_INVALID;
                 }
 
-                CIdentity sigIdentity = CIdentity::LookupIdentity(oneIDSig.first, oneSigBlock.systemID == ASSETCHAINS_CHAINID ?
-                                                                                    oneIDSig.second.blockHeight :
-                                                                                    checkHeight);
+                CIdentity sigIdentity;
+                // TODO: POST HARDENING - height from alternate chain was used
+                // initially on testnet, remove this if there is ever a testnet reset
+                // be sure to initialize sigIdentity when removing
+                if (IsVerusActive() && !IsVerusMainnetActive() && chainActive.Height() < 2800)
+                {
+                    sigIdentity = CIdentity::LookupIdentity(oneIDSig.first, oneIDSig.second.blockHeight);
+                }
+                else
+                {
+                    sigIdentity = CIdentity::LookupIdentity(oneIDSig.first, oneSigBlock.systemID == ASSETCHAINS_CHAINID ?
+                                                                                        oneIDSig.second.blockHeight :
+                                                                                        checkHeight);
+                }
+
                 if (!sigIdentity.IsValid())
                 {
                     LogPrint("notarization", "%s: invalid notary identity: %s\n", __func__, EncodeDestination(oneIDSig.first).c_str());
@@ -581,9 +591,9 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
                 if (result == oneIDSig.second.SIGNATURE_INVALID)
                 {
                     LogPrint("notarization", "%s: invalid notary signature: %s\n", __func__, EncodeDestination(oneIDSig.first).c_str());
-                    return EStates::STATE_INVALID;
                 }
-                else if (result != oneIDSig.second.SIGNATURE_COMPLETE)
+
+                if (result != oneIDSig.second.SIGNATURE_COMPLETE)
                 {
                     // could store and return partial signatures here
                     continue;
@@ -630,12 +640,13 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
                     rejectedByHeight[oneIDSig.second.blockHeight][oneIDSig.first].signatures.erase(oneDup);
                 }
 
-                if (result == oneIDSig.second.SIGNATURE_INVALID)
+                /* if (result == oneIDSig.second.SIGNATURE_INVALID)
                 {
                     LogPrint("notarization", "%s: invalid notary signature for rejection: %s\n", __func__, EncodeDestination(oneIDSig.first).c_str());
                     return EStates::STATE_INVALID;
                 }
-                else if (result != oneIDSig.second.SIGNATURE_COMPLETE)
+                else */
+                if (result != oneIDSig.second.SIGNATURE_COMPLETE)
                 {
                     // could store and return partial signatures here
                     continue;
@@ -656,6 +667,18 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
             retVal = EStates::STATE_CONFIRMED;
             break;
         }
+    }
+
+    // TODO: POST HARDENING - remove this if there is ever a testnet reset
+    if (IsVerusActive() &&
+        !IsVerusMainnetActive() &&
+        checkHeight &&
+        checkHeight < 5800 &&
+        this->IsConfirmed() &&
+        notarySetConfirms.size() &&
+        retVal != EStates::STATE_CONFIRMED)
+    {
+        retVal = EStates::STATE_CONFIRMED;
     }
 
     if (pDecisionHeight)
@@ -6149,7 +6172,16 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                     if (evidence.CheckSignatureConfirmation(hw.GetHash(), curDef.GetNotarySet(), curDef.minNotariesConfirm, height) !=
                         CNotaryEvidence::EStates::STATE_CONFIRMED)
                     {
+                        if (LogAcceptCategory("notarization"))
+                        {
+                            LogPrintf("Cannot confirm notary signatures for evidence: %s\n", evidence.ToUniValue().write(1,2).c_str());
+                        }
                         return state.Error("Cannot confirm notary signatures for notarization");
+                    }
+
+                    if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
+                    {
+                        LogPrintf("checkpoint for evidence: %s\n", evidence.ToUniValue().write(1,2).c_str());
                     }
 
                     // each PBaaS chain notarization will also include a proof of the notarization
@@ -6750,6 +6782,10 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                                                                                     pNotaryCurrency->minNotariesConfirm,
                                                                                     height) != CNotaryEvidence::STATE_CONFIRMED))
                 {
+                    if (LogAcceptCategory("notarization"))
+                    {
+                        LogPrintf("insufficient evidence from notary system checking: %s\n", evidenceMap[normalizedNotarization.currencyID].ToUniValue().write(1,2).c_str());
+                    }
                     return state.Error("insufficient evidence from notary system to accept finalization");
                 }
             }
