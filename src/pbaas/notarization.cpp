@@ -549,7 +549,7 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
                 // TODO: POST HARDENING - height from alternate chain was used
                 // initially on testnet, remove this if there is ever a testnet reset
                 // be sure to initialize sigIdentity when removing
-                if (IsVerusActive() && !IsVerusMainnetActive() && chainActive.Height() < 2800)
+                if (IsVerusActive() && !IsVerusMainnetActive() && checkHeight > 2500 && checkHeight < 2800)
                 {
                     sigIdentity = CIdentity::LookupIdentity(oneIDSig.first, oneIDSig.second.blockHeight);
                 }
