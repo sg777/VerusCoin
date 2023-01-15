@@ -2609,9 +2609,34 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
         }
     }
 
-    return (!validBasicEvidence || (challengeProofRoot.IsValid() && !validChallengeEvidence)) ?
-            CPBaaSNotarization() :
-            provenNotarization;
+    // some incorrect evidence is on testnet, so let it pass if we are on VRSCTEST and before the
+    // test fork time
+    CPBaaSNotarization retVal((!validBasicEvidence || (challengeProofRoot.IsValid() && !validChallengeEvidence)) ?
+                              CPBaaSNotarization() :
+                              provenNotarization);
+    if (IsVerusActive() && !IsVerusMainnetActive() && !retVal.IsValid())
+    {
+        if (LogAcceptCategory("notarization"))
+        {
+            printf("Failed normal check with evidence: %s\nchallengeroot:%s\n", evidence.ToUniValue().write(1,2).c_str(), challengeProofRoot.ToUniValue().write(1,2).c_str());
+            LogPrintf("Failed normal check with evidence: %s\nchallengeroot:%s\n", evidence.ToUniValue().write(1,2).c_str(), challengeProofRoot.ToUniValue().write(1,2).c_str());
+        }
+        auto notaRootIT = provenNotarization.proofRoots.find(ASSETCHAINS_CHAINID);
+        if (notaRootIT == provenNotarization.proofRoots.end())
+        {
+            return provenNotarization;
+        }
+        auto notaIndexIT = mapBlockIndex.find(notaRootIT->second.blockHash);
+        if (notaIndexIT->second->nTime < PBAAS_TESTFORK_TIME)
+        {
+            return provenNotarization;
+        }
+        else
+        {
+            return CPBaaSNotarization();
+        }
+    }
+    return retVal;
 }
 
 bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &externalSystem,
@@ -4300,6 +4325,18 @@ int CChainNotarizationData::BestConfirmedNotarization(int minConfirms)
     return bestFork[notaryIdx];
 }
 
+bool IsScriptTooLargeToSpend(const CScript &script)
+{
+    COptCCParams p;
+    if ((script.IsPayToCryptoCondition(p) &&
+         p.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE) ||
+        script.IsOpReturn())
+    {
+        return true;
+    }
+    return false;
+}
+
 // this is called by notaries to locate any notarizations of a specific system that they can notarize, to determine if we
 // agree with the notarization in question, and to confirm or reject the notarization
 bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
@@ -4849,7 +4886,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                             if (!inputSet.count(oneEvidenceSpend.txIn.prevout))
                             {
                                 inputSet.insert(oneEvidenceSpend.txIn.prevout);
-                                txBuilder.AddTransparentInput(oneEvidenceSpend.txIn.prevout, oneEvidenceSpend.scriptPubKey, oneEvidenceSpend.nValue);
+                                if (!IsScriptTooLargeToSpend(oneEvidenceSpend.scriptPubKey))
+                                {
+                                    txBuilder.AddTransparentInput(oneEvidenceSpend.txIn.prevout, oneEvidenceSpend.scriptPubKey, oneEvidenceSpend.nValue);
+                                }
                             }
                             else if (LogAcceptCategory("notarization"))
                             {
@@ -4867,7 +4907,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                         if (!inputSet.count(oneSpend.txIn.prevout))
                         {
                             inputSet.insert(oneSpend.txIn.prevout);
-                            txBuilder.AddTransparentInput(oneSpend.txIn.prevout, oneSpend.scriptPubKey, oneSpend.nValue);
+                            if (!IsScriptTooLargeToSpend(oneSpend.scriptPubKey))
+                            {
+                                txBuilder.AddTransparentInput(oneSpend.txIn.prevout, oneSpend.scriptPubKey, oneSpend.nValue);
+                            }
                         }
                         else if (LogAcceptCategory("notarization"))
                         {
@@ -4926,7 +4969,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                                 {
                                     inputSet.insert(oneInput.txIn.prevout);
                                     evidenceInputs.push_back(oneConfirmedBuilder.mtx.vin.size());
-                                    oneConfirmedBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
+                                    if (!IsScriptTooLargeToSpend(oneInput.scriptPubKey))
+                                    {
+                                        oneConfirmedBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
+                                    }
                                 }
                                 else if (LogAcceptCategory("notarization"))
                                 {
@@ -4969,7 +5015,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                             if (!inputSet.count(oneInput.txIn.prevout))
                             {
                                 inputSet.insert(oneInput.txIn.prevout);
-                                oneInvalidatedBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
+                                if (!IsScriptTooLargeToSpend(oneInput.scriptPubKey))
+                                {
+                                    oneInvalidatedBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
+                                }
                             }
                             else if (LogAcceptCategory("notarization"))
                             {

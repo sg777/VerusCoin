@@ -1417,7 +1417,11 @@ bool ContextualCheckTransaction(
                 {
                     return state.DoS(100, error("ContextualCheckTransaction(): Invalid smart transaction eval code"), REJECT_INVALID, "bad-txns-evalcode-invalid");
                 }
-                if (isPBaaS && p.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
+                if (isPBaaS &&
+                    (!IsVerusActive() ||
+                     IsVerusMainnetActive() ||
+                     chainActive[std::min((uint32_t)chainActive.Height(), (uint32_t)nHeight)]->nTime > PBAAS_TESTFORK_TIME) &&
+                    p.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
                 {
                     return state.DoS(100, error("ContextualCheckTransaction(): smart transaction params exceed maximum size"), REJECT_INVALID, "bad-txns-script-element-too-large");
                 }
