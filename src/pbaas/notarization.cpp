@@ -5834,6 +5834,15 @@ bool ValidateAcceptedNotarization(struct CCcontract_info *cp, Eval* eval, const 
         {
             break;
         }
+        if (p.IsValid() &&
+            p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+            p.vData.size() &&
+            (of = CObjectFinalization(p.vData[0])).IsValid() &&
+            ConnectedChains.NotarySystems().count(pbn.currencyID) &&
+            ConnectedChains.NotarySystems().find(pbn.currencyID)->second.notaryChain.chainDefinition.IsGateway())
+        {
+            break;
+        }
     }
 
     if (i < tx.vout.size())
