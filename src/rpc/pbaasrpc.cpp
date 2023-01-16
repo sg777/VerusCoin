@@ -3874,7 +3874,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                 {
                     CProofRoot entropyRoot;
                     CProofRoot alternateRoot =
-                        IsValidAlternateChainEvidence(notarizationData.vtx[vtxMap[finalizationOutput]].second.proofRoots[currencyID], oneEItem, entropyRoot);
+                        IsValidAlternateChainEvidence(notarizationData.vtx[vtxMap[finalizationOutput]].second.proofRoots[currencyID], oneEItem, entropyRoot, std::get<0>(finalizations[i]));
                     if (alternateRoot.IsValid())
                     {
                         (*pCounterEvidence)[i].push_back(std::make_tuple(oneEItem, alternateRoot, entropyRoot));

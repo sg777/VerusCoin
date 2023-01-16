@@ -1849,6 +1849,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
 
     return eval->Error(std::string(__func__) + ": invalid reserve deposit spend");
 }
+
 bool IsReserveDepositInput(const CScript &scriptSig)
 {
     return true;
@@ -1858,6 +1859,7 @@ bool ValidateCurrencyState(struct CCcontract_info *cp, Eval* eval, const CTransa
 {
     return true;
 }
+
 bool IsCurrencyStateInput(const CScript &scriptSig)
 {
     return true;
