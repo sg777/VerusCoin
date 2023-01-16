@@ -2335,6 +2335,7 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot, con
 
 CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                                                const CPBaaSNotarization &expectedNotarization,
+                                               uint32_t height,
                                                const CProofRoot &challengeProofRoot,
                                                const CProofRoot &entropyProofRoot)
 {
@@ -2408,6 +2409,8 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
     }
 
     CPBaaSNotarization lastNotarization;
+    CPBaaSNotarization lastLocalNotarization;
+    CAddressIndexDbEntry lastNotarizationAddressEntry;
 
     int numHeaderProofs = 0;
 
@@ -2460,6 +2463,9 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                     }
 
                     // find the last notarization on the transaction. if we need more proof to address a challenge, we will need to retain this
+                    // either the notarization is the block 1 coinbase proof, or it is a proof of a transaction on the other chain that corresponds
+                    // to a confirmed or pending transaction on this chain.
+
                     for (auto &oneOut : outTx.vout)
                     {
                         COptCCParams lastNotaP;
@@ -2471,25 +2477,68 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                             lastNotaP.vData.size() &&
                             (lastNotarization = CPBaaSNotarization(lastNotaP.vData[0])).IsValid() &&
                             lastNotarization.SetMirror(expectedNotarization.IsMirror()) &&
-                            lastNotarization.currencyID == expectedNotarization.currencyID &&
-                            (lastNotarization.IsPreLaunch() ||
-                             (lastNotarization.proofRoots.count(lastNotarization.currencyID) &&
-                              lastNotarization.proofRoots.count(ASSETCHAINS_CHAINID))))
+                            lastNotarization.currencyID == expectedNotarization.currencyID)
                         {
                             uint32_t checkHeight = provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
-                            if (checkHeight >= chainActive.Height() &&
-                                (lastNotarization.IsPreLaunch() ||
-                                 (provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight -
-                                     lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight) <
-                                         (chainActive[provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight]->nBits >=
-                                            PBAAS_TESTFORK_TIME ?
-                                                1 :
-                                                ConnectedChains.ThisChain().blockNotarizationModulo)))
+                            if (checkHeight <= chainActive.Height() &&
+                                (checkHeight - lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight) >=
+                                         (chainActive[checkHeight]->nBits <= PBAAS_TESTFORK_TIME ?
+                                            1 :
+                                            ConnectedChains.ThisChain().blockNotarizationModulo))
                             {
                                 break;
                             }
                         }
                         lastNotarization = CPBaaSNotarization();
+                    }
+                    if (lastNotarization.IsValid())
+                    {
+                        // if any of this is not true, the notarization evidence is not valid
+                        uint32_t checkHeight = provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
+                        if (lastNotarization.proofRoots.count(lastNotarization.currencyID) &&
+                            lastNotarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                            checkHeight <= chainActive.Height() &&
+                            (provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight -
+                                    lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight) <
+                                        (chainActive[provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight]->nBits >=
+                                        PBAAS_TESTFORK_TIME ?
+                                            1 :
+                                            ConnectedChains.ThisChain().blockNotarizationModulo))
+                        {
+                            // evidence from the last notarization, unless it is prelaunch, includes
+                            // proof of a prior notarization that is also on this chain (after PBAAS_TESTFORK_TIME)
+                            // it also either includes commitments to pull from when proving headers, or a hash of
+                            // full prior commitments.
+                            // if the proven notarization is block 1, confirm that it is the full coinbase proof.
+                            // if it is not block one, and we find no match in confirmed or pending
+                            // notarizations, we must fail
+                            if (lastNotarization.IsBlockOneNotarization())
+                            {
+                                // the prior confirmed notarization on our chain must be prelaunch when this was made,
+                                // and we should be able to find it with a search between the first height of the block 1
+                                // proof root for our chain and the current height being considered
+                                if (!(lastLocalNotarization.GetLastNotarization(provenNotarization.currencyID,
+                                                                                lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight,
+                                                                                height) &&
+                                      lastLocalNotarization.IsPreLaunch()))
+                                {
+                                    lastNotarization = CPBaaSNotarization();
+                                }
+                            }
+                            else if (chainActive[lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight]->nBits >= PBAAS_TESTFORK_TIME)
+                            {
+                                CObjectFinalization lastOf;
+                                lastLocalNotarization = lastNotarization;
+                                if (!lastLocalNotarization.FindEarnedNotarization(lastOf, &lastNotarizationAddressEntry))
+                                {
+                                    lastLocalNotarization = lastNotarization = CPBaaSNotarization();
+                                }
+                            }
+                        }
+                        else
+                        {
+                            lastNotarization = CPBaaSNotarization();
+                        }
                     }
                     proofState = lastNotarization.IsValid() ? EXPECT_FUTURE_PROOF_ROOT : EXPECT_NOTHING;
                 }
@@ -2829,7 +2878,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     int forkIdx = -1, forkPos = -1;
     int priorNotarizationIdx = -1;
 
-    CPBaaSNotarization thirdNotarization;
+    CPBaaSNotarization notarizationToConfirm;
 
     // auto notarization protocol requires
     // full quorum of notaries to sign in order to
@@ -2908,10 +2957,10 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         {
             return state.Error(errorPrefix + "witnesses cannot agree");
         }
-        thirdNotarization = cnd.vtx[cnd.forks[0].back()].second;
+        notarizationToConfirm = cnd.vtx[cnd.forks[0].back()].second;
 
-        // thirdNotarization must match the last confirmed or one pending. if it matches one pending, that one will be confirmed
-        auto serializedVec = ::AsVector(thirdNotarization);
+        // notarizationToConfirm must match the last confirmed or one pending. if it matches one pending, that one will be confirmed
+        auto serializedVec = ::AsVector(notarizationToConfirm);
         if (serializedVec != ::AsVector(cnd.vtx[cnd.lastConfirmed].second))
         {
             // if the third notarization does not equal the last confirmed notarization, it
@@ -2965,13 +3014,13 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
             return state.Error(errorPrefix + "cannot resolve conflict without sufficient evidence");
         }
         priorNotarizationIdx = cnd.forks[0].back();
-        thirdNotarization = cnd.vtx[priorNotarizationIdx].second;
-        thirdNotarization = cnd.vtx[cnd.forks[0].size() > 1 ? cnd.forks[0][1] : cnd.lastConfirmed].second;
+        notarizationToConfirm = cnd.vtx[priorNotarizationIdx].second;
+        notarizationToConfirm = cnd.vtx[cnd.forks[0].size() > 1 ? cnd.forks[0][1] : cnd.lastConfirmed].second;
     }
 
     // all core proof roots that are in a prior, agreed notarization, must be present in the new one,
     // and we must have moved far enough forward from any there that we agree with, or early out
-    for (auto &oneProofRoot : thirdNotarization.proofRoots)
+    for (auto &oneProofRoot : notarizationToConfirm.proofRoots)
     {
         if (oneProofRoot.first == ASSETCHAINS_CHAINID)
         {
@@ -3154,7 +3203,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         // we should always be getting proofs of block headers to verify prior commitments
         // ensure that we can refute any valid counter root claim
         // if we can't refute a counter-claim, we are done
-        if (!IsValidPrimaryChainEvidence(notaryEvidence, newNotarization, validCounterRoot, validEntropyRoot).IsValid())
+        if (!IsValidPrimaryChainEvidence(notaryEvidence, newNotarization, height, validCounterRoot, validEntropyRoot).IsValid())
         {
             return state.Error(errorPrefix + "insufficient proof to verify challenged notarization");
         }
@@ -6403,9 +6452,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                             LogPrintf("%s: last notarization: %s\n", __func__, priorNotarization.ToUniValue().write(1,2).c_str());
                         }
 
-                        CProofRoot challengeProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
-
-                        CPBaaSNotarization verifiedNotarization = IsValidPrimaryChainEvidence(evidence, normalizedNotarization, challengeProofRoot);
+                        CPBaaSNotarization verifiedNotarization = IsValidPrimaryChainEvidence(evidence, normalizedNotarization, height - 1);
                         if (!verifiedNotarization.IsValid())
                         {
                             return state.Error("Unable to verify accepted notarization");
@@ -6949,7 +6996,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                                 firstEntropyRoot = entropyRoot;
                             }
                             if (alternateRoot.IsValid() &&
-                                !IsValidPrimaryChainEvidence(evidenceMap[notaryCurrencyDef.SystemOrGatewayID()], normalizedNotarization, alternateRoot, firstEntropyRoot).IsValid())
+                                !IsValidPrimaryChainEvidence(evidenceMap[notaryCurrencyDef.SystemOrGatewayID()], normalizedNotarization, height - 1, alternateRoot, firstEntropyRoot).IsValid())
                             {
                                 return state.Error("Cannot validate notarization with valid counter-evidence");
                             }

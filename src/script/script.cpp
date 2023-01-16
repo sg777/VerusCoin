@@ -1126,16 +1126,14 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             {
                 // always index a notarization, without regard to its status
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::NotaryNotarizationKey())));
-                if (evalCode == EVAL_EARNEDNOTARIZATION)
+                if (evalCode == EVAL_EARNEDNOTARIZATION ||
+                    (notarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                     notarization.currencyID != ASSETCHAINS_CHAINID &&
+                     notarization.proofRoots.count(notarization.currencyID)))
                 {
                     CPBaaSNotarization checkNotarization = notarization;
-                    if (checkNotarization.IsMirror())
+                    if (checkNotarization.SetMirror(false))
                     {
-                        checkNotarization.SetMirror(false);
-                    }
-                    if (!checkNotarization.IsMirror())
-                    {
-                        // TODO: POST HARDENING consider whether this can use the native hash writer with an alternate hash
                         CNativeHashWriter hw;
                         hw << checkNotarization;
                         uint256 objHash = hw.GetHash();

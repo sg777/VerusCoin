@@ -389,6 +389,7 @@ bool IsNotaryEvidenceInput(const CScript &scriptSig);
 CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot, const CNotaryEvidence &e, CProofRoot &entropyRoot, uint32_t height);
 CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                                                const CPBaaSNotarization &expectedNotarization,
+                                               uint32_t height,
                                                const CProofRoot &challengeProofRoot=CProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID),
                                                const CProofRoot &entropyProofRoot=CProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID));
 extern string PBAAS_HOST, PBAAS_USERPASS, ASSETCHAINS_RPCHOST, ASSETCHAINS_RPCCREDENTIALS;;
