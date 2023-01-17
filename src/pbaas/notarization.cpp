@@ -2411,10 +2411,13 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
     CPBaaSNotarization lastNotarization;
     CPBaaSNotarization lastLocalNotarization;
     CAddressIndexDbEntry lastNotarizationAddressEntry;
+    uint256 commitmentHash;
+    uint256 priorCommitmentHash;
+    std::vector<__uint128_t> priorNotarizationCommitments;
+    CTransaction priorNotaryTx;
+    CNotaryEvidence priorEvidence;
 
     int numHeaderProofs = 0;
-
-    uint256 commitmentHash;
     std::vector<__uint128_t> smallCommitments;
     uint256 blockTypes;
 
@@ -2434,9 +2437,6 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
             {
                 if (proofComponent->objectType == CHAINOBJ_TRANSACTION_PROOF)
                 {
-                    // TODO: HARDENING - ensure that we have the transaction proof of the last
-                    // transaction using the currently confirmed notarization
-
                     CTransaction outTx;
                     uint256 txMMRRoot = ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetPartialTransaction(outTx);
                     uint256 txHash = ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.TransactionHash();
@@ -2633,7 +2633,9 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
             }
             case EXPECT_COMMITMENT_PROOF_HASH:
             {
+                proofState = EXPECT_NOTHING;
                 // this should be a hash of what the commitment for this tx would be if challenged
+                // we also support the older protocol where it was full commitments, not just hash
                 if (proofComponent->objectType == CHAINOBJ_COMMITMENTDATA &&
                     ((CChainObject<CHashCommitments> *)proofComponent)->object.hashCommitments.size() == 1 &&
                     !(commitmentHash = ((CChainObject<CHashCommitments> *)proofComponent)->object.hashCommitments[0]).IsNull())
@@ -2643,41 +2645,85 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                     {
                         proofState = EXPECT_COMMITMENT_PROOF;
                     }
-                    else
-                    {
-                        proofState = EXPECT_NOTHING;
-                    }
                     break;
                 }
-                else if (!(proofComponent->objectType == CHAINOBJ_COMMITMENTDATA &&
-                          ((CChainObject<CHashCommitments> *)proofComponent)->object.hashCommitments.size() > 1))
-                {
-                    proofState = EXPECT_NOTHING;
-                    break;
-                }
-                // EXPLICIT FALL THROUGH
-                // if we have commitment data larger than 2 blocks long, assume it is more than a commitment hash
-                // and drop through with null in commitmentHash
-            }
-            case EXPECT_COMMITMENT_PROOF:
-            {
-                // TODO: HARDENING - this is not currently correct - it needs to get the commitments
-                // from the last transaction to use for header, not this one as it currently does.
-                // to keep the commitmentproofhash solution for constant-size unchallenged proofs,
-                // we need to commit to a minimum size that lets us calculate difficulty from the last
-                // notarization we agree with, even if it means going back further than that notarization.
-                //
-
-                if (proofComponent->objectType == CHAINOBJ_COMMITMENTDATA)
+                else if (proofComponent->objectType == CHAINOBJ_COMMITMENTDATA &&
+                         ((CChainObject<CHashCommitments> *)proofComponent)->object.hashCommitments.size() > 1)
                 {
                     blockTypes = ((CChainObject<CHashCommitments> *)proofComponent)->object.GetSmallCommitments(smallCommitments);
 
-                    validBasicEvidence = true;
-                    if (smallCommitments.size() &&
-                        entropyProofRoot.IsValid() &&
-                        commitmentHash.IsNull() ||
-                        commitmentHash == ::GetHash(((CChainObject<CHashCommitments> *)proofComponent)->object.hashCommitments))
+                    if (smallCommitments.size())
                     {
+                        validBasicEvidence = true;
+                        if (challengeProofRoot.IsValid())
+                        {
+                            proofState = EXPECT_HEADER_PROOFS;
+                        }
+                    }
+                }
+                break;
+            }
+            case EXPECT_COMMITMENT_PROOF:
+            {
+                if (proofComponent->objectType == CHAINOBJ_COMMITMENTDATA)
+                {
+                    // this will only be hit and present if there is a challenge after the updated test
+                    // protocol goes into effect. these commitments must match the commitment hash or be a superset of
+                    // the commitments from the last notarization
+                    uint256 blockHash;
+                    if (lastLocalNotarization.IsValid() &&
+                        !lastLocalNotarization.IsPreLaunch() &&
+                        myGetTransaction(lastNotarizationAddressEntry.first.txhash, priorNotaryTx, blockHash) &&
+                        priorNotaryTx.vout.size() > lastNotarizationAddressEntry.first.index)
+                    {
+                        // get evidence from prior notarization and get the commitments or commitment hash to verify
+                        int afterEvidenceOut = 0;
+                        priorEvidence = CNotaryEvidence(priorNotaryTx, lastNotarizationAddressEntry.first.index + 1, afterEvidenceOut, CNotaryEvidence::TYPE_NOTARY_EVIDENCE);
+                    }
+
+                    // we need to process prior evidence to get the first commitment hash or commitment set
+                    // if commitment hash, we need to confirm that the current full commitments match
+                    // if commitment set, convert to commitment hash
+                    if (priorEvidence.IsValid())
+                    {
+                        std::set<int> commitmentTypeQuery;
+                        commitmentTypeQuery.insert(CHAINOBJ_COMMITMENTDATA);
+                        CCrossChainProof priorCommitmentProof(priorEvidence.GetSelectEvidence(commitmentTypeQuery));
+
+                        if (priorCommitmentProof.chainObjects.size() &&
+                            priorCommitmentProof.chainObjects[0]->objectType == CHAINOBJ_COMMITMENTDATA)
+                        {
+                            if (((CChainObject<CHashCommitments> *)priorCommitmentProof.chainObjects[0])->object.hashCommitments.size() == 1)
+                            {
+                                priorCommitmentHash = ((CChainObject<CHashCommitments> *)proofComponent)->object.hashCommitments[0];
+                            }
+                            else if (((CChainObject<CHashCommitments> *)priorCommitmentProof.chainObjects[0])->object.hashCommitments.size() > 1)
+                            {
+                                uint256 typeData = ((CChainObject<CHashCommitments> *)priorCommitmentProof.chainObjects[0])->object.GetSmallCommitments(priorNotarizationCommitments);
+                                priorCommitmentHash = ::GetHash(((CChainObject<CHashCommitments> *)priorCommitmentProof.chainObjects[0])->object);
+                            }
+                            else
+                            {
+                                priorCommitmentHash.SetNull();
+                            }
+                        }
+                    }
+
+                    std::vector<__uint128_t> checkCommitments;
+                    blockTypes = ((CChainObject<CHashCommitments> *)proofComponent)->object.GetSmallCommitments(checkCommitments);
+
+                    validBasicEvidence = true;
+                    if (checkCommitments.size() &&
+                        challengeProofRoot.IsValid() &&
+                        entropyProofRoot.IsValid() &&
+                        ((priorNotarizationCommitments.size() &&
+                          checkCommitments.size() >= priorNotarizationCommitments.size()) ||
+                         priorCommitmentHash == ::GetHash(((CChainObject<CHashCommitments> *)proofComponent)->object)))
+                    {
+                        if (!priorNotarizationCommitments.size())
+                        {
+                            priorNotarizationCommitments = checkCommitments;
+                        }
                         proofState = EXPECT_HEADER_PROOFS;
                     }
                     else
@@ -2696,11 +2742,11 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                 if ((proofComponent->objectType == CHAINOBJ_HEADER) &&
                     numHeaderProofs++ < CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS)
                 {
-                    int indexToProve = (UintToArith256(headerSelectionProofRoot.stateRoot).GetLow64() % smallCommitments.size());
+                    int indexToProve = (UintToArith256(headerSelectionProofRoot.stateRoot).GetLow64() % priorNotarizationCommitments.size());
                     headerSelectionProofRoot.stateRoot = ::GetHash(headerSelectionProofRoot.stateRoot);
-                    uint32_t blockToProve = (defaultProofRoot.rootHeight - smallCommitments.size()) + indexToProve;
+                    uint32_t blockToProve = (defaultProofRoot.rootHeight - priorNotarizationCommitments.size()) + indexToProve;
 
-                    std::vector<uint32_t> oneBlockCommitment = UnpackBlockCommitment(smallCommitments[indexToProve]);
+                    std::vector<uint32_t> oneBlockCommitment = UnpackBlockCommitment(priorNotarizationCommitments[indexToProve]);
                     CBlockHeader &blockHeader = ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.blockHeader;
 
                     if (((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.BlockNum() == blockToProve &&
@@ -2712,7 +2758,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                     {
                         proofState = EXPECT_HEADER_PROOFS;
                     }
-                    validChallengeEvidence = numHeaderProofs == CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS;
+                    validChallengeEvidence = (numHeaderProofs == CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS);
                 }
                 else
                 {
@@ -3597,9 +3643,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                     }
                 }
 
-                // TODO: HARDENING - make and post counter-evidence to the pending notarization
-                // commitments, entropy root, and header proofs, and add an API that creates a challenge from that
-                // by creating a new pending finalization with evidence
                 if (entropyRoot.IsValid())
                 {
                     CNotaryEvidence challengeEvidence;
@@ -5746,7 +5789,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
         if (blockCommitmentsSmall.size())
         {
-            allEvidence.evidence << CHashCommitments(blockCommitmentsSmall);
+            CHashCommitments commitmentsToHash(blockCommitmentsSmall);
+            allEvidence.evidence << CHashCommitments((std::vector<uint256>({::GetHash(commitmentsToHash)}), commitmentsToHash.commitmentTypes, commitmentsToHash.version));
         }
 
         bool provideFullEvidence = counterEvidenceUni.isArray() &&
@@ -5815,6 +5859,9 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
                     if (smallCommitments.size())
                     {
+                        // now add the commitments
+                        allEvidence.evidence << CHashCommitments(smallCommitments);
+
                         // get a pseudo-random number from the returned proof root height + the confirming notarization.
                         // from it, select one or more block headers to prove in the range of provided commitments.
                         // if the proof does not match the commitment numbers, it is considered catastrophic.
