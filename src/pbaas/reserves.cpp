@@ -555,9 +555,11 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                 CNotaryEvidence transactionProof(sysCCITemp.sourceSystemID, evidence.output, evidence.state, evidence.GetSelectEvidence(validEvidenceTypes), CNotaryEvidence::TYPE_IMPORT_PROOF);
 
                 CTransaction exportTx;
+                bool isPartial = false;
                 p = COptCCParams();
                 if (!(transactionProof.evidence.chainObjects.size() &&
-                    !((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.GetPartialTransaction(exportTx).IsNull() &&
+                    importNotarization.proofRoots[pBaseImport->sourceSystemID].stateRoot ==
+                        ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.CheckPartialTransaction(exportTx, &isPartial) &&
                     ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.TransactionHash() == pBaseImport->exportTxId &&
                     exportTx.vout.size() > pBaseImport->exportTxOutNum &&
                     exportTx.vout[pBaseImport->exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&

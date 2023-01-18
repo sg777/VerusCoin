@@ -2438,7 +2438,8 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                 if (proofComponent->objectType == CHAINOBJ_TRANSACTION_PROOF)
                 {
                     CTransaction outTx;
-                    uint256 txMMRRoot = ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetPartialTransaction(outTx);
+                    bool isPartial = false;
+                    uint256 txMMRRoot = ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.CheckPartialTransaction(outTx, &isPartial);
                     uint256 txHash = ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.TransactionHash();
 
                     if (LogAcceptCategory("notarization"))
@@ -2499,7 +2500,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                             lastNotarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
                             checkHeight <= chainActive.Height() &&
                             (provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight -
-                                    lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight) <
+                                    lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight) >=
                                         (chainActive[provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight]->nBits >=
                                         PBAAS_TESTFORK_TIME ?
                                             1 :
@@ -2574,13 +2575,19 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                 if (proofComponent->objectType == CHAINOBJ_TRANSACTION_PROOF)
                 {
                     CTransaction outTx;
-                    uint256 txMMRRoot = ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetPartialTransaction(outTx);
+                    bool isPartial = false;
+                    uint256 txMMRRoot = ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.CheckPartialTransaction(outTx, &isPartial);
                     uint256 txHash = ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.TransactionHash();
 
                     // loop through and check all the valid outputs to find a match
                     if (!provenNotarization.SetMirror(false) ||
                         txMMRRoot != futureProofRoot.stateRoot)
                     {
+                        if (LogAcceptCategory("notarization"))
+                        {
+                            printf("%s: invalid notarization transaction proof, from height %u, proven at height %u\n", __func__, ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight(), ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetProofHeight());
+                            LogPrintf("%s: invalid notarization transaction proof, from height %u, proven at height %u\n", __func__, ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight(), ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetProofHeight());
+                        }
                         proofState = EXPECT_NOTHING;
                     }
                     else
@@ -2596,7 +2603,9 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                                 notaP.vData.size() &&
                                 ::AsVector(CPBaaSNotarization(notaP.vData[0])) == ::AsVector(CPBaaSNotarization(provenNotarization)))
                             {
+                                // just record we found a match
                                 notarizationFound = true;
+                                break;
                             }
                         }
 
@@ -5790,7 +5799,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         if (blockCommitmentsSmall.size())
         {
             CHashCommitments commitmentsToHash(blockCommitmentsSmall);
-            allEvidence.evidence << CHashCommitments((std::vector<uint256>({::GetHash(commitmentsToHash)}), commitmentsToHash.commitmentTypes, commitmentsToHash.version));
+            allEvidence.evidence << CHashCommitments(std::vector<uint256>({::GetHash(commitmentsToHash)}), commitmentsToHash.commitmentTypes, commitmentsToHash.version);
         }
 
         bool provideFullEvidence = counterEvidenceUni.isArray() &&

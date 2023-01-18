@@ -569,7 +569,7 @@ bool GetBlockOneLaunchNotarization(const CRPCChainData &notarySystem,
     params.push_back(EncodeDestination(CIdentityID(currencyID)));
 
     // VRSC and VRSCTEST do not start with a notary chain
-    if (!IsVerusActive() && ConnectedChains.IsNotaryAvailable())
+    if (notarySystem.GetID() == ASSETCHAINS_CHAINID || (!IsVerusActive() && ConnectedChains.IsNotaryAvailable()))
     {
         // we are starting a PBaaS chain. We only assume that our chain definition and the first notary chain, if there is one, are setup
         // in ConnectedChains. All other currencies and identities necessary to start have not been populated and must be in block 1 by
@@ -1131,6 +1131,218 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
         outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &newNotarization))));
     }
     return true;
+}
+
+// create all special PBaaS outputs for block 1
+bool BlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
+                             CPBaaSNotarization &launchNotarization,
+                             CCurrencyValueMap &additionalFees,
+                             const CRPCChainData &_launchChain,
+                             const CCurrencyDefinition &_newChainCurrency,
+                             const Consensus::Params &consensusParams)
+{
+    CCurrencyDefinition newChainCurrency = _newChainCurrency;
+    CCoinbaseCurrencyState currencyState;
+    std::map<uint160, std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>>> blockOneExportImports;
+
+    std::pair<CUTXORef, CPartialTransactionProof> launchNotarizationProof;
+    std::pair<CUTXORef, CPartialTransactionProof> launchExportProof;
+    std::vector<CReserveTransfer> launchExportTransfers;
+    CPBaaSNotarization notaryNotarization, notaryConverterNotarization;
+
+    if (!GetBlockOneLaunchNotarization(_launchChain,
+                                       newChainCurrency.GetID(),
+                                       newChainCurrency,
+                                       launchNotarization,
+                                       notaryNotarization,
+                                       launchNotarizationProof,
+                                       launchExportProof,
+                                       launchExportTransfers))
+    {
+        // cannot make block 1 unless we can get the initial currency state from the first notary system
+        LogPrintf("Cannot find chain on notary system\n");
+        printf("Cannot find chain on notary system\n");
+        return false;
+    }
+
+    // we need to have a launch decision to be able to mine any blocks, prior to launch being clear,
+    // it is not an error. we are just not ready.
+    if (!launchNotarization.IsLaunchCleared())
+    {
+        return false;
+    }
+
+    if (!launchNotarization.IsLaunchConfirmed())
+    {
+        // we must reach minimums in all currencies to launch
+        LogPrintf("This chain did not receive the minimum currency contributions and cannot launch. Pre-launch contributions to this chain can be refunded.\n");
+        printf("This chain did not receive the minimum currency contributions and cannot launch. Pre-launch contributions to this chain can be refunded.\n");
+        return false;
+    }
+
+    // get initial imports
+    if (!GetBlockOneImports(_launchChain, launchNotarization, blockOneExportImports))
+    {
+        // we must reach minimums in all currencies to launch
+        LogPrintf("Cannot retrieve initial export imports from notary system\n");
+        printf("Cannot retrieve initial export imports from notary system\n");
+        return false;
+    }
+
+    // get all currencies/IDs that we will need to retrieve from our notary chain
+    std::set<uint160> blockOneCurrencies;
+    std::set<uint160> blockOneIDs = {ASSETCHAINS_CHAINID};
+    std::set<uint160> convertersToCreate;
+
+    CPBaaSNotarization converterNotarization;
+    std::pair<CUTXORef, CPartialTransactionProof> converterNotarizationProof;
+    std::pair<CUTXORef, CPartialTransactionProof> converterExportProof;
+    std::vector<CReserveTransfer> converterExportTransfers;
+    uint160 converterCurrencyID = newChainCurrency.GatewayConverterID();
+    CCurrencyDefinition converterCurDef;
+
+    // if we have a converter currency, ensure that it also meets requirements for currency launch
+    if (!newChainCurrency.gatewayConverterName.empty())
+    {
+        if (!GetBlockOneLaunchNotarization(_launchChain,
+                                           converterCurrencyID,
+                                           converterCurDef,
+                                           converterNotarization,
+                                           notaryConverterNotarization,
+                                           converterNotarizationProof,
+                                           converterExportProof,
+                                           converterExportTransfers))
+        {
+            LogPrintf("Unable to get gateway converter initial state\n");
+            printf("Unable to get gateway converter initial state\n");
+            return false;
+        }
+
+        notaryConverterNotarization.currencyStates[converterCurrencyID] = converterNotarization.currencyState;
+
+        // both currency and primary gateway must have their pre-launch phase complete before we can make a decision
+        // about launching
+        if (!converterNotarization.IsLaunchCleared())
+        {
+            return false;
+        }
+
+        // we need to have a cleared launch to be able to launch
+        if (!converterNotarization.IsLaunchConfirmed())
+        {
+            LogPrintf("Primary currency met requirements for launch, but gateway currency converter did not\n");
+            printf("Primary currency met requirements for launch, but gateway currency converter did not\n");
+            return false;
+        }
+
+        convertersToCreate.insert(converterCurrencyID);
+
+        for (auto &oneCurrency : converterCurDef.currencies)
+        {
+            blockOneCurrencies.insert(oneCurrency);
+        }
+    }
+
+    // Now, add block 1 imports, which provide a foundation of all IDs and currencies needed to launch the
+    // new system, including ID and currency outputs for notary chain, all currencies we accept for pre-conversion,
+    // native currency of system launching the chain.
+    for (auto &oneNotary : ConnectedChains.notarySystems)
+    {
+        // first, we need to have the native notary currency itself and its notaries, if it has them
+        blockOneCurrencies.insert(oneNotary.first);
+        blockOneIDs.insert(oneNotary.second.notaryChain.chainDefinition.notaries.begin(), oneNotary.second.notaryChain.chainDefinition.notaries.end());
+    }
+
+    for (auto &oneCurrency : newChainCurrency.currencies)
+    {
+        blockOneCurrencies.insert(oneCurrency);
+    }
+
+    for (auto &onePrealloc : newChainCurrency.preAllocation)
+    {
+        blockOneIDs.insert(onePrealloc.first);
+    }
+
+    // get this chain's notaries
+    auto &notaryIDs = ConnectedChains.ThisChain().notaries;
+    blockOneIDs.insert(notaryIDs.begin(), notaryIDs.end());
+
+    // now retrieve IDs and currencies
+    std::map<uint160, std::pair<CCurrencyDefinition,CPBaaSNotarization>> currencyImports;
+    std::map<uint160, CIdentity> identityImports;
+    if (!ConnectedChains.GetNotaryCurrencies(_launchChain, blockOneCurrencies, currencyImports) ||
+        !ConnectedChains.GetNotaryIDs(_launchChain, blockOneIDs, identityImports))
+    {
+        // we must reach minimums in all currencies to launch
+        LogPrintf("Cannot retrieve identity and currency definitions needed to create block 1\n");
+        printf("Cannot retrieve identity and currency definitions needed to create block 1\n");
+        return false;
+    }
+
+    if (currencyImports.count(notaryNotarization.currencyID))
+    {
+        currencyImports[notaryNotarization.currencyID].second = notaryNotarization;
+    }
+
+    // add all imported currency and identity outputs, identity revocaton and recovery IDs must be explicitly imported if needed
+    for (auto &oneIdentity : identityImports)
+    {
+        outputs.push_back(CTxOut(0, oneIdentity.second.IdentityUpdateOutputScript(1)));
+    }
+
+    // calculate all issued currency on this chain for both the native and converter currencies,
+    // which is the only currency that can be considered a gateway deposit at launch. this can
+    // be used for native currency fee conversions
+    CCurrencyValueMap gatewayDeposits;
+    launchNotarization.proofRoots[ASSETCHAINS_CHAINID] = notaryNotarization.proofRoots[ASSETCHAINS_CHAINID];
+    bool success = AddOneCurrencyImport(newChainCurrency,
+                                        launchNotarization,
+                                        &launchNotarizationProof,
+                                        &launchExportProof,
+                                        launchExportTransfers,
+                                        gatewayDeposits,
+                                        outputs,
+                                        additionalFees);
+
+    // now, the converter
+    if (success && converterCurDef.IsValid())
+    {
+        // TODO: add a new ID for the converter currency, controlled by the same primary addresses as the
+        // ID for this chain
+        CCurrencyValueMap converterDeposits;
+        converterNotarization.proofRoots[ASSETCHAINS_CHAINID] = notaryConverterNotarization.proofRoots[ASSETCHAINS_CHAINID];
+        success = AddOneCurrencyImport(converterCurDef,
+                                       converterNotarization,
+                                       &converterNotarizationProof,
+                                       &converterExportProof,
+                                       converterExportTransfers,
+                                       converterDeposits,
+                                       outputs,
+                                       additionalFees);
+    }
+
+    if (success)
+    {
+        currencyImports.erase(ASSETCHAINS_CHAINID);
+        currencyImports.erase(converterCurrencyID);
+        // now, add the rest of necessary currencies
+        for (auto &oneCurrency : currencyImports)
+        {
+            success = AddOneCurrencyImport(oneCurrency.second.first,
+                                           oneCurrency.second.second,
+                                           nullptr,
+                                           nullptr,
+                                           std::vector<CReserveTransfer>(),
+                                           gatewayDeposits,
+                                           outputs,
+                                           additionalFees);
+            if (!success)
+            {
+                break;
+            }
+        }
+    }
+    return success;
 }
 
 // create all special PBaaS outputs for block 1
