@@ -731,29 +731,22 @@ CHashCommitments::CHashCommitments(const std::vector<__uint128_t> &smallCommitme
     std::vector<__uint128_t> smallCommitments = smallCommitmentsLowBool;
     if (smallCommitments.size())
     {
-        if (smallCommitments.size() > 256)
+        int lastSmallIndex = (smallCommitments.size() - 1);
+        int currentIndex = lastSmallIndex >> 1;
+        int currentOffset = lastSmallIndex & 1;
+        arith_uint256 typeBitsVal(0);
+        for (; currentIndex >= 0 && smallCommitments.size(); smallCommitments.pop_back())
         {
-            version = VERSION_INVALID;
-        }
-        else
-        {
-            int lastSmallIndex = (smallCommitments.size() - 1);
-            int currentIndex = lastSmallIndex >> 1;
-            int currentOffset = lastSmallIndex & 1;
-            arith_uint256 typeBitsVal(0);
-            for (; currentIndex >= 0 && smallCommitments.size(); smallCommitments.pop_back())
+            typeBitsVal = typeBitsVal << 1;
+            typeBitsVal |= (smallCommitmentsLowBool.back() & 1);
+            arith_uint256 from128 = (arith_uint256(int64_t((uint64_t)(smallCommitments.back() >> 64))) << 64) + arith_uint256(int64_t((uint64_t)smallCommitments.back()));
+            hashCommitments[currentIndex] = ArithToUint256(UintToArith256(hashCommitments[currentIndex]) | (currentOffset ? from128 << 128 : from128));
+            if (currentOffset ^= 1)
             {
-                typeBitsVal = typeBitsVal << 1;
-                typeBitsVal |= (smallCommitmentsLowBool.back() & 1);
-                arith_uint256 from128 = (arith_uint256(int64_t((uint64_t)(smallCommitments.back() >> 64))) << 64) + arith_uint256(int64_t((uint64_t)smallCommitments.back()));
-                hashCommitments[currentIndex] = ArithToUint256(UintToArith256(hashCommitments[currentIndex]) | (currentOffset ? from128 << 128 : from128));
-                if (currentOffset ^= 1)
-                {
-                    currentIndex--;
-                }
+                currentIndex--;
             }
-            commitmentTypes = ArithToUint256(typeBitsVal);
         }
+        commitmentTypes = ArithToUint256(typeBitsVal);
     }
 }
 

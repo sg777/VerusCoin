@@ -229,7 +229,17 @@ public:
         DEFAULT_NOTARIZATION_FEE = 10000,               // price of a notarization fee in native or launch system currency
         MAX_NODES = 2,                                  // only provide 2 nodes per notarization
         MIN_NOTARIZATION_OUTPUT = 0,                    // minimum amount for notarization output
-        EXPECT_MIN_HEADER_PROOFS = 3,                   // if header proofs are needed, we need this many at least
+
+        EXPECT_MIN_HEADER_PROOFS = 3,                   // if header proofs are needed, we need this many or number of blocks
+        MAX_HEADER_PROOFS_PER_PROOF = 1000,             // don't use more than 1000 header proofs to prove an alternate chain once
+        MAX_BLOCKS_PER_COMMITMENT_RANGE = 256,          // up to 256 blocks per commitment range
+        MAX_BLOCK_RANGES_PER_PROOF = 5,                 // no more than 5 randomly selected ranges to cover any gap length
+        NUM_BLOCKS_PER_PROOF_RANGE = 100,               // number of blocks in an ideal proof range
+        NUM_HEADER_REFS_PER_PROOF_RANGE = 7,            // prove at least this many randomly selected headers OR REFs per proof range
+        NUM_STAKE_HEADERS_PER_PROOF_RANGE = 2,          // prove at least this many randomly selected stake headers per proof range
+        NUM_HEADERS_PER_PROOF_RANGE = 4,                // prove this many randomly selected headers w/2 stake headers per range
+        MIN_BLOCKS_PER_CHECKPOINT = 256,                // blocks before we need another checkpoint
+        MAX_PROOF_CHECKPOINTS = 100,                    // we do not add more than 100, after that, they are spaced further apart
     };
     //static const int FINAL_CONFIRMATIONS = 10;
     //static const int MIN_BLOCKS_BETWEEN_NOTARIZATIONS = 8;
@@ -451,6 +461,11 @@ public:
         return "vrsc::system.currency.launch.complete";
     }
 
+    static std::string RangeSelectEntropyKeyName()
+    {
+        return "vrsc::system.notarization.entropy";
+    }
+
     static uint160 NotaryNotarizationKey()
     {
         static uint160 nameSpace;
@@ -514,11 +529,18 @@ public:
         return signatureKey;
     }
 
+    static uint160 RangeSelectEntropyKey()
+    {
+        static uint160 nameSpace;
+        static uint160 rangeSelectKey = CVDXF::GetDataKey(RangeSelectEntropyKeyName(), nameSpace);
+        return rangeSelectKey;
+    }
+
     // if false, *this is unmodifed, otherwise, it is set to the last valid notarization in the requested range
     bool GetLastNotarization(const uint160 &currencyID,
                              int32_t startHeight=0,
                              int32_t endHeight=0,
-                             uint256 *txIDOut=nullptr,
+                             CAddressIndexDbEntry *txOutIdx=nullptr,
                              CTransaction *txOut=nullptr);
 
     // if false, no matching, unspent notarization found
@@ -540,6 +562,9 @@ public:
                               CCurrencyValueMap &spentCurrencyOut,
                               CTransferDestination feeRecipient=CTransferDestination(),
                               bool forcedRefunding=false) const;
+
+    static int GetBlocksPerCheckpoint(int heightChange);
+    static int GetNumCheckpoints(int heightChange);
 
     static bool CreateEarnedNotarization(const CRPCChainData &externalSystem,
                                          const CTransferDestination &Proposer,
@@ -589,6 +614,9 @@ public:
         }
         return proofRootIt->second;
     }
+
+    static std::vector<std::pair<uint32_t, uint32_t>>
+        GetBlockCommitmentRanges(uint32_t lastNotarizationHeight, uint32_t currentNotarizationHeight, uint256 entropy);
 
     void SetLaunchComplete(bool setTrue=true)
     {

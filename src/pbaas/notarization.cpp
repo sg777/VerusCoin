@@ -872,6 +872,26 @@ bool operator<(const CProofRoot &op1, const CProofRoot &op2)
                 (op1.systemID < op2.systemID);
 }
 
+int CPBaaSNotarization::GetBlocksPerCheckpoint(int heightChange)
+{
+    int blocksPerCheckpoint = std::min(heightChange, (int)MIN_BLOCKS_PER_CHECKPOINT);
+    if (heightChange > (MIN_BLOCKS_PER_CHECKPOINT * MAX_PROOF_CHECKPOINTS))
+    {
+        blocksPerCheckpoint = (heightChange / MAX_PROOF_CHECKPOINTS) +
+                                ((heightChange % MAX_PROOF_CHECKPOINTS) ? 1 : 0);
+    }
+    return blocksPerCheckpoint;
+}
+
+int CPBaaSNotarization::GetNumCheckpoints(int heightChange)
+{
+    int blocksPerCheckpoint = GetBlocksPerCheckpoint(heightChange);
+
+    // unless we have another proof range sized chunk at the end, don't add another checkpoint
+    return heightChange / blocksPerCheckpoint + ((heightChange % blocksPerCheckpoint) >= NUM_BLOCKS_PER_PROOF_RANGE ? 0 : -1);
+}
+
+
 CProofRoot CProofRoot::GetProofRoot(uint32_t blockHeight)
 {
     if (blockHeight > chainActive.Height())
@@ -926,7 +946,7 @@ CNotaryEvidence::CNotaryEvidence(const CTransaction &tx, int outputNum, int &aft
 bool CPBaaSNotarization::GetLastNotarization(const uint160 &currencyID,
                                              int32_t startHeight,
                                              int32_t endHeight,
-                                             uint256 *txIDOut,
+                                             CAddressIndexDbEntry *txOutIdx,
                                              CTransaction *txOut)
 {
     CPBaaSNotarization notarization;
@@ -951,9 +971,9 @@ bool CPBaaSNotarization::GetLastNotarization(const uint160 &currencyID,
                 if ((notarization = CPBaaSNotarization(oneTx.vout[it->first.index].scriptPubKey)).IsValid())
                 {
                     *this = notarization;
-                    if (txIDOut)
+                    if (txOutIdx)
                     {
-                        *txIDOut = it->first.txhash;
+                        *txOutIdx = *it;
                     }
                     if (txOut)
                     {
@@ -1594,7 +1614,7 @@ CChainNotarizationData::CChainNotarizationData(UniValue &obj, bool loadNotarizat
     bestChain = (uint32_t)uni_get_int(find_value(obj, "bestchain"));
 }
 
-UniValue CChainNotarizationData::ToUniValue(const std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> &counterEvidence) const
+UniValue CChainNotarizationData::ToUniValue(const std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot, CProofRoot>>> &counterEvidence) const
 {
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("version", (int32_t)version));
@@ -1615,6 +1635,7 @@ UniValue CChainNotarizationData::ToUniValue(const std::vector<std::vector<std::t
                 counterEvidenceElement.pushKV("counterproof", std::get<0>(oneCounterItem).ToUniValue());
                 counterEvidenceElement.pushKV("counterroot", std::get<1>(oneCounterItem).ToUniValue());
                 counterEvidenceElement.pushKV("entropyroot", std::get<2>(oneCounterItem).ToUniValue());
+                counterEvidenceElement.pushKV("challengestart", std::get<3>(oneCounterItem).ToUniValue());
                 counterEvidenceUni.push_back(counterEvidenceElement);
             }
             if (counterEvidenceUni.size())
@@ -2156,7 +2177,11 @@ std::vector<uint32_t> UnpackBlockCommitment(__uint128_t oneBlockCommitment)
     return retVal;
 }
 
-CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot, const CNotaryEvidence &e, CProofRoot &entropyRoot, uint32_t height)
+CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
+                                         const CNotaryEvidence &e,
+                                         CProofRoot &entropyRoot,
+                                         CProofRoot &challengeStartRoot,
+                                         uint32_t height)
 {
     bool validCounterEvidence = false;
 
@@ -2167,6 +2192,9 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot, con
     evidenceTypes.insert(CHAINOBJ_HEADER);
     evidenceTypes.insert(CHAINOBJ_HEADER_REF);
     CCrossChainProof autoProof(e.GetSelectEvidence(evidenceTypes));
+
+    CPBaaSNotarization lastNotarization;
+    CBlockHeader alternateHeader;
 
     // valid counter evidence includes:
     // commitment to more powerful chain since the last confirmed notarization:
@@ -2180,13 +2208,15 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot, con
         EXPECT_NOTHING = 0,
         EXPECT_ALTERNATE_PROOF_ROOT = 1,            // alternate root to the notarization being challenged
         EXPECT_ALTERNATE_HEADER = 2,                // proof of alternate header at the challenge height
-        EXPECT_ALTERNATE_COMMITMENTS = 3,           // alternate commitments of prior blocks from this notarization/alternate header
-        EXPECT_ENTROPY_PROOF_ROOT = 4,              // local proof root from this chain for entropy
-        EXPECT_ALTERNATE_HEADER_PROOFS = 5,         // selected header proofs from the entropy root
+        EXPECT_ALT_LAST_NOTARIZATION_PROOF = 3,     // proof for the last notarization
+        EXPECT_ALTERNATE_COMMITMENTS = 4,           // alternate commitments of prior blocks from this notarization/alternate header
+        EXPECT_ENTROPY_PROOF_ROOT = 5,              // local proof root from this chain for entropy
+        EXPECT_ALTERNATE_HEADER_PROOFS = 6,         // selected header proofs from the entropy root
     };
     EProofState proofState = EXPECT_ALTERNATE_PROOF_ROOT;
     int numHeaderProofs = 0;
-    int expectNumHeaderProofs = 2;
+    int rangeLen = 0;
+    int expectNumHeaderProofs = 0;
 
     CProofRoot counterEvidenceRoot, evolvingEntropyRoot;
     std::vector<__uint128_t> smallCommitments;
@@ -2225,12 +2255,100 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot, con
             {
                 if (proofComponent->objectType == CHAINOBJ_HEADER)
                 {
-                    CBlockHeader &blockHeader = ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.blockHeader;
+                    alternateHeader = ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.blockHeader;
 
                     if (((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.BlockNum() == counterEvidenceRoot.rootHeight &&
-                        ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.ValidateBlockHash(blockHeader.GetHash(), counterEvidenceRoot.rootHeight) ==
+                        ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.ValidateBlockHash(alternateHeader.GetHash(), counterEvidenceRoot.rootHeight) ==
                             counterEvidenceRoot.stateRoot)
                     {
+                        proofState = EXPECT_ALT_LAST_NOTARIZATION_PROOF;
+                    }
+                    else
+                    {
+                        proofState = EXPECT_NOTHING;
+                    }
+                }
+                else
+                {
+                    proofState = EXPECT_NOTHING;
+                }
+                break;
+            }
+            // last notarization proof is based on the stateroot of the prior block from the alternate header
+            // ensuring that both alternate proof root and alternate block header both have MMR-compatible roots
+            // this must prove a confirmed notarization counterpart from the other chain before the one being challenged
+            case EXPECT_ALT_LAST_NOTARIZATION_PROOF:
+            {
+                if (proofComponent->objectType == CHAINOBJ_TRANSACTION_PROOF)
+                {
+                    CTransaction outTx;
+                    bool isPartial = false;
+                    uint256 txMMRRoot = ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.CheckPartialTransaction(outTx, &isPartial);
+                    uint256 txHash = ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.TransactionHash();
+
+                    if (LogAcceptCategory("notarization"))
+                    {
+                        LogPrint("notarization", "Last notarization alternate proof expected\n");
+
+                        UniValue jsonTx(UniValue::VOBJ);
+                        uint256 blockHash;
+                        TxToUniv(outTx, blockHash, jsonTx);
+                        printf("%s: alternate proof for transaction %s\nwith txid: %s\nproof: %s\nat height: %u\n",
+                                __func__,
+                                jsonTx.write(1,2).c_str(),
+                                txHash.GetHex().c_str(),
+                                ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.ToUniValue().write(1,2).c_str(),
+                                ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight());
+                        LogPrint("verbose", "%s: alternate proof for transaction %s\nwith txid: %s\nproof: %s\nat height: %u\n",
+                                __func__,
+                                jsonTx.write(1,2).c_str(),
+                                txHash.GetHex().c_str(),
+                                ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.ToUniValue().write(1,2).c_str(),
+                                ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight());
+                    }
+
+                    // find the last notarization on the transaction. if we need more proof to address a challenge, we will need to retain this
+                    // either the notarization is the block 1 coinbase proof, or it is a proof of a transaction on the other chain that corresponds
+                    // to a confirmed or pending transaction on this chain.
+                    if (txMMRRoot == alternateHeader.GetPrevMMRRoot())
+                    {
+                        for (auto &oneOut : outTx.vout)
+                        {
+                            COptCCParams lastNotaP;
+                            if (oneOut.nValue >= 0 &&
+                                oneOut.scriptPubKey.size() &&
+                                oneOut.scriptPubKey.IsPayToCryptoCondition(lastNotaP) &&
+                                lastNotaP.IsValid() &&
+                                (lastNotaP.evalCode == EVAL_ACCEPTEDNOTARIZATION || lastNotaP.evalCode == EVAL_EARNEDNOTARIZATION) &&
+                                lastNotaP.vData.size() &&
+                                (lastNotarization = CPBaaSNotarization(lastNotaP.vData[0])).IsValid() &&
+                                lastNotarization.SetMirror(true) &&
+                                lastNotarization.currencyID == counterEvidenceRoot.systemID &&
+                                lastNotarization.proofRoots.count(lastNotarization.currencyID) &&
+                                lastNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
+                            {
+                                break;
+                            }
+                            lastNotarization = CPBaaSNotarization();
+                        }
+                        if (lastNotarization.IsValid() &&
+                            !lastNotarization.IsBlockOneNotarization())
+                        {
+                            CObjectFinalization lastOf;
+                            CAddressIndexDbEntry lastNotarizationAddressEntry;
+                            if (!lastNotarization.FindEarnedNotarization(lastOf, &lastNotarizationAddressEntry) ||
+                                !lastOf.IsConfirmed())
+                            {
+                                lastNotarization = CPBaaSNotarization();
+                            }
+                        }
+                    }
+                    if (lastNotarization.IsValid())
+                    {
+                        challengeStartRoot = lastNotarization.proofRoots[lastNotarization.currencyID];
+                        rangeLen = counterEvidenceRoot.rootHeight - challengeStartRoot.rootHeight;
+                        expectNumHeaderProofs = std::min(std::max(rangeLen, (int)CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS),
+                                                std::min((int)CPBaaSNotarization::MAX_HEADER_PROOFS_PER_PROOF, rangeLen / 10));
                         proofState = EXPECT_ALTERNATE_COMMITMENTS;
                     }
                     else
@@ -2276,6 +2394,9 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot, con
                         entropyRoot == CProofRoot::GetProofRoot(entropyRoot.rootHeight) &&
                         entropyRoot.rootHeight >= ((height + 5) - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA))
                     {
+                        expectNumHeaderProofs = std::min(std::max(rangeLen, (int)CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS),
+                                                std::min((int)CPBaaSNotarization::MAX_HEADER_PROOFS_PER_PROOF, rangeLen / 10));
+
                         proofState = EXPECT_ALTERNATE_HEADER_PROOFS;
                         evolvingEntropyRoot = entropyRoot;
                     }
@@ -2295,9 +2416,12 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot, con
                 if ((proofComponent->objectType == CHAINOBJ_HEADER) &&
                     numHeaderProofs++ < expectNumHeaderProofs)
                 {
+                    int rangeStart = lastNotarization.proofRoots[lastNotarization.currencyID].rootHeight;
+                    int rangeLen = counterEvidenceRoot.rootHeight - rangeStart++;
+
                     int indexToProve = (UintToArith256(evolvingEntropyRoot.stateRoot).GetLow64() % smallCommitments.size());
                     evolvingEntropyRoot.stateRoot = ::GetHash(evolvingEntropyRoot.stateRoot);
-                    uint32_t blockToProve = (counterEvidenceRoot.rootHeight - smallCommitments.size()) + indexToProve;
+                    uint32_t blockToProve = rangeStart + indexToProve;
 
                     std::vector<uint32_t> oneBlockCommitment = UnpackBlockCommitment(smallCommitments[indexToProve]);
                     CBlockHeader &blockHeader = ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.blockHeader;
@@ -2337,7 +2461,8 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                                                const CPBaaSNotarization &expectedNotarization,
                                                uint32_t height,
                                                const CProofRoot &challengeProofRoot,
-                                               const CProofRoot &entropyProofRoot)
+                                               const CProofRoot &entropyProofRoot,
+                                               const CProofRoot &challengStartPoint)
 {
     std::set<int> evidenceTypes;
 
@@ -2393,7 +2518,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
         EXPECT_LASTNOTARIZATION_PROOF = 1,      // transaction proof of block 1 coinbase or last confirmed on this chain
         EXPECT_FUTURE_PROOF_ROOT = 2,           // future root to prove this notarization
         EXPECT_THISNOTARIZATION_PROOF = 3,      // proof of this notarization
-        EXPECT_COMMITMENT_PROOF_HASH = 4,       // commitments of prior blocks from this notarization (only needed if there is a challenge proof root)
+        EXPECT_CHECKPOINT = 4,                  // checkpoints between large spans of notarizations to narrow challenges
         EXPECT_COMMITMENT_PROOF = 5,            // commitments of prior blocks from this notarization (only needed if there is a challenge proof root)
         EXPECT_HEADER_PROOFS = 6,               // header proofs randomly selected from prior commitments, based on entropy
     };
@@ -2414,8 +2539,17 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
     uint256 commitmentHash;
     uint256 priorCommitmentHash;
     std::vector<__uint128_t> priorNotarizationCommitments;
+    std::vector<std::pair<uint32_t, uint32_t>> commitmentRanges;
     CTransaction priorNotaryTx;
     CNotaryEvidence priorEvidence;
+
+    int startingHeight = 0;
+    int rangeLen = 0;
+    int numHeaders = 0;
+    int numExpectedCheckpoints = 0;
+    int numCheckpointsFound = 0;
+    int blocksPerCheckpoint = 0;
+    std::vector<CProofRoot> checkpointRoots;
 
     int numHeaderProofs = 0;
     std::vector<__uint128_t> smallCommitments;
@@ -2425,7 +2559,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
     bool validBasicEvidence = false;
 
     CProofRoot &defaultProofRoot = provenNotarization.proofRoots[provenNotarization.currencyID];
-    CProofRoot &lastChainRoot = provenNotarization.proofRoots[ASSETCHAINS_CHAINID];
+    CProofRoot &currentChainRoot = provenNotarization.proofRoots[ASSETCHAINS_CHAINID];
 
     CProofRoot headerSelectionProofRoot = entropyProofRoot;
 
@@ -2466,79 +2600,82 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                     // find the last notarization on the transaction. if we need more proof to address a challenge, we will need to retain this
                     // either the notarization is the block 1 coinbase proof, or it is a proof of a transaction on the other chain that corresponds
                     // to a confirmed or pending transaction on this chain.
-
-                    for (auto &oneOut : outTx.vout)
+                    if (txMMRRoot == provenNotarization.proofRoots[provenNotarization.currencyID].stateRoot)
                     {
-                        COptCCParams lastNotaP;
-                        if (oneOut.nValue >= 0 &&
-                            oneOut.scriptPubKey.size() &&
-                            oneOut.scriptPubKey.IsPayToCryptoCondition(lastNotaP) &&
-                            lastNotaP.IsValid() &&
-                            (lastNotaP.evalCode == EVAL_ACCEPTEDNOTARIZATION || lastNotaP.evalCode == EVAL_EARNEDNOTARIZATION) &&
-                            lastNotaP.vData.size() &&
-                            (lastNotarization = CPBaaSNotarization(lastNotaP.vData[0])).IsValid() &&
-                            lastNotarization.SetMirror(expectedNotarization.IsMirror()) &&
-                            lastNotarization.currencyID == expectedNotarization.currencyID)
+                        for (auto &oneOut : outTx.vout)
                         {
-                            uint32_t checkHeight = provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
-                            if (checkHeight <= chainActive.Height() &&
-                                (checkHeight - lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight) >=
-                                         (chainActive[checkHeight]->nBits <= PBAAS_TESTFORK_TIME ?
-                                            1 :
-                                            ConnectedChains.ThisChain().blockNotarizationModulo))
+                            COptCCParams lastNotaP;
+                            if (oneOut.nValue >= 0 &&
+                                oneOut.scriptPubKey.size() &&
+                                oneOut.scriptPubKey.IsPayToCryptoCondition(lastNotaP) &&
+                                lastNotaP.IsValid() &&
+                                (lastNotaP.evalCode == EVAL_ACCEPTEDNOTARIZATION || lastNotaP.evalCode == EVAL_EARNEDNOTARIZATION) &&
+                                lastNotaP.vData.size() &&
+                                (lastNotarization = CPBaaSNotarization(lastNotaP.vData[0])).IsValid() &&
+                                lastNotarization.SetMirror(expectedNotarization.IsMirror()) &&
+                                lastNotarization.currencyID == expectedNotarization.currencyID)
                             {
-                                break;
-                            }
-                        }
-                        lastNotarization = CPBaaSNotarization();
-                    }
-                    if (lastNotarization.IsValid())
-                    {
-                        // if any of this is not true, the notarization evidence is not valid
-                        uint32_t checkHeight = provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
-                        if (lastNotarization.proofRoots.count(lastNotarization.currencyID) &&
-                            lastNotarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
-                            checkHeight <= chainActive.Height() &&
-                            (provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight -
-                                    lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight) >=
-                                        (chainActive[provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight]->nBits >=
-                                        PBAAS_TESTFORK_TIME ?
-                                            1 :
-                                            ConnectedChains.ThisChain().blockNotarizationModulo))
-                        {
-                            // evidence from the last notarization, unless it is prelaunch, includes
-                            // proof of a prior notarization that is also on this chain (after PBAAS_TESTFORK_TIME)
-                            // it also either includes commitments to pull from when proving headers, or a hash of
-                            // full prior commitments.
-                            // if the proven notarization is block 1, confirm that it is the full coinbase proof.
-                            // if it is not block one, and we find no match in confirmed or pending
-                            // notarizations, we must fail
-                            if (lastNotarization.IsBlockOneNotarization())
-                            {
-                                // the prior confirmed notarization on our chain must be prelaunch when this was made,
-                                // and we should be able to find it with a search between the first height of the block 1
-                                // proof root for our chain and the current height being considered
-                                if (!(lastLocalNotarization.GetLastNotarization(provenNotarization.currencyID,
-                                                                                lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight,
-                                                                                height) &&
-                                      lastLocalNotarization.IsPreLaunch()))
+                                uint32_t checkHeight = provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
+                                if (checkHeight <= chainActive.Height() &&
+                                    (checkHeight - lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight) >=
+                                            (chainActive[checkHeight]->nBits <= PBAAS_TESTFORK_TIME ?
+                                                1 :
+                                                ConnectedChains.ThisChain().blockNotarizationModulo))
                                 {
-                                    lastNotarization = CPBaaSNotarization();
+                                    break;
                                 }
                             }
-                            else if (chainActive[lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight]->nBits >= PBAAS_TESTFORK_TIME)
-                            {
-                                CObjectFinalization lastOf;
-                                lastLocalNotarization = lastNotarization;
-                                if (!lastLocalNotarization.FindEarnedNotarization(lastOf, &lastNotarizationAddressEntry))
-                                {
-                                    lastLocalNotarization = lastNotarization = CPBaaSNotarization();
-                                }
-                            }
-                        }
-                        else
-                        {
                             lastNotarization = CPBaaSNotarization();
+                        }
+
+                        if (lastNotarization.IsValid())
+                        {
+                            // if any of this is not true, the notarization evidence is not valid
+                            uint32_t checkHeight = provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
+                            if (lastNotarization.proofRoots.count(lastNotarization.currencyID) &&
+                                lastNotarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                                checkHeight <= chainActive.Height() &&
+                                (provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight -
+                                        lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight) >=
+                                            (chainActive[provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight]->nBits >=
+                                            PBAAS_TESTFORK_TIME ?
+                                                1 :
+                                                ConnectedChains.ThisChain().blockNotarizationModulo))
+                            {
+                                // evidence from the last notarization, unless it is prelaunch, includes
+                                // proof of a prior notarization that is also on this chain (after PBAAS_TESTFORK_TIME)
+                                // it also either includes commitments to pull from when proving headers, or a hash of
+                                // full prior commitments.
+                                // if the proven notarization is block 1, confirm that it is the full coinbase proof.
+                                // if it is not block one, and we find no match in confirmed or pending
+                                // notarizations, we must fail
+                                if (lastNotarization.IsBlockOneNotarization())
+                                {
+                                    // the prior confirmed notarization on our chain must be prelaunch when this was made,
+                                    // and we should be able to find it with a search between the first height of the block 1
+                                    // proof root for our chain and the current height being considered
+                                    if (!(lastLocalNotarization.GetLastNotarization(provenNotarization.currencyID,
+                                                                                    lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight,
+                                                                                    height) &&
+                                        lastLocalNotarization.IsPreLaunch()))
+                                    {
+                                        lastNotarization = CPBaaSNotarization();
+                                    }
+                                }
+                                else if (chainActive[lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight]->nBits >= PBAAS_TESTFORK_TIME)
+                                {
+                                    CObjectFinalization lastOf;
+                                    lastLocalNotarization = lastNotarization;
+                                    if (!lastLocalNotarization.FindEarnedNotarization(lastOf, &lastNotarizationAddressEntry))
+                                    {
+                                        lastLocalNotarization = lastNotarization = CPBaaSNotarization();
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                lastNotarization = CPBaaSNotarization();
+                            }
                         }
                     }
                     proofState = lastNotarization.IsValid() ? EXPECT_FUTURE_PROOF_ROOT : EXPECT_NOTHING;
@@ -2549,6 +2686,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                 }
                 break;
             }
+
             case EXPECT_FUTURE_PROOF_ROOT:
             {
                 if (proofComponent->objectType == CHAINOBJ_PROOF_ROOT)
@@ -2570,6 +2708,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                 }
                 break;
             }
+
             case EXPECT_THISNOTARIZATION_PROOF:
             {
                 if (proofComponent->objectType == CHAINOBJ_TRANSACTION_PROOF)
@@ -2609,8 +2748,22 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                             }
                         }
 
-                        validBasicEvidence = expectedNotarization.IsBlockOneNotarization() || expectedNotarization.IsDefinitionNotarization();
-                        proofState = !notarizationFound || validBasicEvidence ? EXPECT_NOTHING : EXPECT_COMMITMENT_PROOF_HASH;
+                        // if we are spanning more than the min blocks per checkpoint, expect checkpoint(s)
+                        int heightChange = provenNotarization.proofRoots[lastLocalNotarization.currencyID].rootHeight -
+                                            lastNotarization.proofRoots[lastLocalNotarization.currencyID].rootHeight;
+                        numExpectedCheckpoints = CPBaaSNotarization::GetNumCheckpoints(heightChange);
+                        if (notarizationFound &&
+                            numExpectedCheckpoints &&
+                            chainActive[lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight]->nBits >= PBAAS_TESTFORK_TIME)
+                        {
+                            blocksPerCheckpoint = CPBaaSNotarization::GetBlocksPerCheckpoint(heightChange);
+                            proofState = EXPECT_CHECKPOINT;
+                        }
+                        else
+                        {
+                            validBasicEvidence = lastLocalNotarization.IsPreLaunch() || (notarizationFound && !challengeProofRoot.IsValid());
+                            proofState = !notarizationFound || validBasicEvidence ? EXPECT_NOTHING : EXPECT_COMMITMENT_PROOF;
+                        }
                     }
 
                     if (LogAcceptCategory("notarization"))
@@ -2640,99 +2793,97 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                 }
                 break;
             }
-            case EXPECT_COMMITMENT_PROOF_HASH:
-            {
-                proofState = EXPECT_NOTHING;
-                // this should be a hash of what the commitment for this tx would be if challenged
-                // we also support the older protocol where it was full commitments, not just hash
-                if (proofComponent->objectType == CHAINOBJ_COMMITMENTDATA &&
-                    ((CChainObject<CHashCommitments> *)proofComponent)->object.hashCommitments.size() == 1 &&
-                    !(commitmentHash = ((CChainObject<CHashCommitments> *)proofComponent)->object.hashCommitments[0]).IsNull())
-                {
-                    validBasicEvidence = true;
-                    if (challengeProofRoot.IsValid() && entropyProofRoot.IsValid())
-                    {
-                        proofState = EXPECT_COMMITMENT_PROOF;
-                    }
-                    break;
-                }
-                else if (proofComponent->objectType == CHAINOBJ_COMMITMENTDATA &&
-                         ((CChainObject<CHashCommitments> *)proofComponent)->object.hashCommitments.size() > 1)
-                {
-                    blockTypes = ((CChainObject<CHashCommitments> *)proofComponent)->object.GetSmallCommitments(smallCommitments);
 
-                    if (smallCommitments.size())
+            case EXPECT_CHECKPOINT:
+            {
+                if (proofComponent->objectType == CHAINOBJ_PROOF_ROOT)
+                {
+                    CProofRoot oneCheckpoint = ((CChainObject<CProofRoot> *)proofComponent)->object;
+                    if (blocksPerCheckpoint &&
+                        oneCheckpoint.systemID == expectedNotarization.currencyID &&
+                        oneCheckpoint.rootHeight ==
+                            (lastNotarization.proofRoots[lastLocalNotarization.currencyID].rootHeight +
+                             (++numCheckpointsFound * blocksPerCheckpoint)))
                     {
-                        validBasicEvidence = true;
-                        if (challengeProofRoot.IsValid())
+                        checkpointRoots.push_back(oneCheckpoint);
+                        if (numCheckpointsFound == numExpectedCheckpoints)
                         {
-                            proofState = EXPECT_HEADER_PROOFS;
+                            validBasicEvidence = lastLocalNotarization.IsPreLaunch() || !challengeProofRoot.IsValid();
+                            proofState = validBasicEvidence ? EXPECT_NOTHING : EXPECT_COMMITMENT_PROOF;
+                            proofState = EXPECT_NOTHING;
+                        }
+                        else
+                        {
+                            proofState = EXPECT_CHECKPOINT;
                         }
                     }
+                    else
+                    {
+                        proofState = EXPECT_CHECKPOINT;
+                    }
+                }
+                else
+                {
+                    proofState = EXPECT_NOTHING;
                 }
                 break;
             }
+
             case EXPECT_COMMITMENT_PROOF:
             {
                 if (proofComponent->objectType == CHAINOBJ_COMMITMENTDATA)
                 {
-                    // this will only be hit and present if there is a challenge after the updated test
-                    // protocol goes into effect. these commitments must match the commitment hash or be a superset of
-                    // the commitments from the last notarization
-                    uint256 blockHash;
-                    if (lastLocalNotarization.IsValid() &&
-                        !lastLocalNotarization.IsPreLaunch() &&
-                        myGetTransaction(lastNotarizationAddressEntry.first.txhash, priorNotaryTx, blockHash) &&
-                        priorNotaryTx.vout.size() > lastNotarizationAddressEntry.first.index)
-                    {
-                        // get evidence from prior notarization and get the commitments or commitment hash to verify
-                        int afterEvidenceOut = 0;
-                        priorEvidence = CNotaryEvidence(priorNotaryTx, lastNotarizationAddressEntry.first.index + 1, afterEvidenceOut, CNotaryEvidence::TYPE_NOTARY_EVIDENCE);
-                    }
-
-                    // we need to process prior evidence to get the first commitment hash or commitment set
-                    // if commitment hash, we need to confirm that the current full commitments match
-                    // if commitment set, convert to commitment hash
-                    if (priorEvidence.IsValid())
-                    {
-                        std::set<int> commitmentTypeQuery;
-                        commitmentTypeQuery.insert(CHAINOBJ_COMMITMENTDATA);
-                        CCrossChainProof priorCommitmentProof(priorEvidence.GetSelectEvidence(commitmentTypeQuery));
-
-                        if (priorCommitmentProof.chainObjects.size() &&
-                            priorCommitmentProof.chainObjects[0]->objectType == CHAINOBJ_COMMITMENTDATA)
-                        {
-                            if (((CChainObject<CHashCommitments> *)priorCommitmentProof.chainObjects[0])->object.hashCommitments.size() == 1)
-                            {
-                                priorCommitmentHash = ((CChainObject<CHashCommitments> *)proofComponent)->object.hashCommitments[0];
-                            }
-                            else if (((CChainObject<CHashCommitments> *)priorCommitmentProof.chainObjects[0])->object.hashCommitments.size() > 1)
-                            {
-                                uint256 typeData = ((CChainObject<CHashCommitments> *)priorCommitmentProof.chainObjects[0])->object.GetSmallCommitments(priorNotarizationCommitments);
-                                priorCommitmentHash = ::GetHash(((CChainObject<CHashCommitments> *)priorCommitmentProof.chainObjects[0])->object);
-                            }
-                            else
-                            {
-                                priorCommitmentHash.SetNull();
-                            }
-                        }
-                    }
-
                     std::vector<__uint128_t> checkCommitments;
                     blockTypes = ((CChainObject<CHashCommitments> *)proofComponent)->object.GetSmallCommitments(checkCommitments);
 
-                    validBasicEvidence = true;
-                    if (checkCommitments.size() &&
+                    startingHeight = challengStartPoint.rootHeight;
+                    int endHeight = lastNotarization.proofRoots[expectedNotarization.currencyID].rootHeight;
+                    rangeLen = endHeight - startingHeight++;
+
+                    commitmentRanges = CPBaaSNotarization::GetBlockCommitmentRanges(startingHeight, endHeight, entropyProofRoot.stateRoot);
+
+                    int checkIndex = 0;
+                    bool mismatchIndex = false;
+                    for (auto &oneRange : commitmentRanges)
+                    {
+                        for (uint32_t loop = oneRange.first; loop < oneRange.second; loop++, checkIndex++)
+                        {
+                            if (loop != ((uint32_t)checkCommitments[checkIndex]) >> 1)
+                            {
+                                mismatchIndex = true;
+                                break;
+                            }
+                        }
+                        if (mismatchIndex)
+                        {
+                            break;
+                        }
+                    }
+
+                    // TODO: HARDENING ensure that the block numbers provided in the commitment data are
+                    // those that should be based on the entropy and block range.
+                    // 1) Choose the total number of blocks to prove based on number of commitments.
+                    // 2) Prove the first block header in the range to establish baseline.
+                    // 3) PoS and PoW difficulty verification - work back to confirm difficulty values based
+                    //    on commitment data for a number of blocks we are able to up to a certain target
+                    //    in the commitment.
+                    // 4) Select random blocks from each 256 block range. Following up one level of PoS and repeat
+                    //    until we have reached the total number of blocks proof target.
+
+                    if (!mismatchIndex &&
+                        checkCommitments.size() &&
                         challengeProofRoot.IsValid() &&
-                        entropyProofRoot.IsValid() &&
-                        ((priorNotarizationCommitments.size() &&
-                          checkCommitments.size() >= priorNotarizationCommitments.size()) ||
-                         priorCommitmentHash == ::GetHash(((CChainObject<CHashCommitments> *)proofComponent)->object)))
+                        entropyProofRoot.IsValid())
                     {
                         if (!priorNotarizationCommitments.size())
                         {
                             priorNotarizationCommitments = checkCommitments;
                         }
+
+                        numHeaders = std::min(std::max(rangeLen, (int)CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS),
+                                              std::min((int)CPBaaSNotarization::MAX_HEADER_PROOFS_PER_PROOF, rangeLen / 10));
+
+
                         proofState = EXPECT_HEADER_PROOFS;
                     }
                     else
@@ -2748,26 +2899,35 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
             }
             case EXPECT_HEADER_PROOFS:
             {
-                if ((proofComponent->objectType == CHAINOBJ_HEADER) &&
-                    numHeaderProofs++ < CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS)
+                if ((proofComponent->objectType == CHAINOBJ_HEADER) && numHeaderProofs++ < numHeaders)
                 {
-                    int indexToProve = (UintToArith256(headerSelectionProofRoot.stateRoot).GetLow64() % priorNotarizationCommitments.size());
+                    int indexToProve = (UintToArith256(headerSelectionProofRoot.stateRoot).GetLow64() % rangeLen);
                     headerSelectionProofRoot.stateRoot = ::GetHash(headerSelectionProofRoot.stateRoot);
-                    uint32_t blockToProve = (defaultProofRoot.rootHeight - priorNotarizationCommitments.size()) + indexToProve;
+
+                    // height is kept shifted up one from the PoS/PoW bit
+                    uint32_t blockToProve = startingHeight + indexToProve;
 
                     std::vector<uint32_t> oneBlockCommitment = UnpackBlockCommitment(priorNotarizationCommitments[indexToProve]);
                     CBlockHeader &blockHeader = ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.blockHeader;
 
                     if (((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.BlockNum() == blockToProve &&
                         blockHeader.nTime == oneBlockCommitment[0] &&
-                        blockHeader.IsVerusPOSBlock() == oneBlockCommitment[3] &&
+                        blockHeader.IsVerusPOSBlock() == (oneBlockCommitment[3] & 1) &&
                         (oneBlockCommitment[3] ? blockHeader.GetVerusPOSTarget() == oneBlockCommitment[2] : blockHeader.nBits == oneBlockCommitment[1]) &&
                         ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.ValidateBlockHash(blockHeader.GetHash(), blockToProve) ==
                             defaultProofRoot.stateRoot)
                     {
                         proofState = EXPECT_HEADER_PROOFS;
                     }
-                    validChallengeEvidence = (numHeaderProofs == CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS);
+                    validChallengeEvidence = (numHeaderProofs >= numHeaders);
+                    /* Move to a new model of determining how many proofs we need
+                    validChallengeEvidence = (numHeaderProofs >= (priorNotarizationCommitments.size() /
+                                                                  (CPBaaSNotarization::MAX_BLOCKS_PER_COMMITMENT_RANGE /
+                                                                   CPBaaSNotarization::NUM_HEADERS_PER_PROOF_RANGE) +
+                                                                  (priorNotarizationCommitments.size() %
+                                                                   (CPBaaSNotarization::MAX_BLOCKS_PER_COMMITMENT_RANGE /
+                                                                    CPBaaSNotarization::NUM_HEADERS_PER_PROOF_RANGE) ? 1 : 0)));
+                    */
                 }
                 else
                 {
@@ -3193,9 +3353,11 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     uint256 lastTxId;
     int32_t lastTxOutNum;
     CTransaction lastTx;
-    if (!lastUnspentNotarization.GetLastUnspentNotarization(SystemID, lastTxId, lastTxOutNum, &lastTx))
+    if (!lastUnspentNotarization.GetLastUnspentNotarization(SystemID, lastTxId, lastTxOutNum, &lastTx) ||
+        (lastUnspentNotarization.proofRoots[ASSETCHAINS_CHAINID] == newNotarization.proofRoots[ASSETCHAINS_CHAINID] ||
+         lastUnspentNotarization.proofRoots[SystemID] == newNotarization.proofRoots[SystemID]))
     {
-        return state.Error(errorPrefix + "invalid prior notarization");
+        return state.Error(errorPrefix + "invalid new notarization");
     }
 
     // add prior unspent accepted notarization as our input
@@ -3231,8 +3393,9 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
 
         // Check the evidence for the prior notarization that we indend to confirm,
         // if there is valid counter-evidence, do not confirm. Instead, reject and replace it with the new pending.
-        CProofRoot validCounterRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
-        CProofRoot validEntropyRoot;
+        std::vector<CProofRoot> validCounterRoots;
+        CProofRoot validEntropyRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+        CProofRoot challengeStartRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
         for (auto &oneItem : evidenceVec[priorNotarizationIdx])
         {
             // valid counter evidence includes:
@@ -3244,12 +3407,22 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
             //       c) proof of prior random headers based on current system root as of evidence tx submission
             if (oneItem.IsRejected())
             {
-                if (newNotarization.proofRoots.count(externalSystem.GetID()))
+                if (cnd.vtx[priorNotarizationIdx].second.proofRoots.count(SystemID))
                 {
-                    validCounterRoot = IsValidAlternateChainEvidence(newNotarization.proofRoots[externalSystem.GetID()], oneItem, validEntropyRoot, height);
-                    if (validCounterRoot.IsValid() && validCounterRoot == newNotarization.proofRoots[externalSystem.GetID()])
+                    CProofRoot entropyRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+                    CProofRoot challengeStart(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+                    CProofRoot counterRoot = IsValidAlternateChainEvidence(cnd.vtx[priorNotarizationIdx].second.proofRoots[SystemID], oneItem, entropyRoot, challengeStart, height - 1);
+                    if (challengeStart.IsValid() && counterRoot.IsValid())
                     {
-                        validCounterRoot = CProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+                        validCounterRoots.push_back(counterRoot);
+                        if (!validEntropyRoot.IsValid())
+                        {
+                            validEntropyRoot = entropyRoot;
+                        }
+                        if (!challengeStartRoot.IsValid() || challengeStart.rootHeight < challengeStartRoot.rootHeight)
+                        {
+                            challengeStartRoot = challengeStart;
+                        }
                     }
                 }
             }
@@ -3258,9 +3431,22 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         // we should always be getting proofs of block headers to verify prior commitments
         // ensure that we can refute any valid counter root claim
         // if we can't refute a counter-claim, we are done
-        if (!IsValidPrimaryChainEvidence(notaryEvidence, newNotarization, height, validCounterRoot, validEntropyRoot).IsValid())
+        if (validCounterRoots.size())
         {
-            return state.Error(errorPrefix + "insufficient proof to verify challenged notarization");
+            for (auto &validCounterRoot : validCounterRoots)
+            {
+                if (!IsValidPrimaryChainEvidence(notaryEvidence, newNotarization, height, validCounterRoot, validEntropyRoot, challengeStartRoot).IsValid())
+                {
+                    return state.Error(errorPrefix + "insufficient proof to verify challenged notarization");
+                }
+            }
+        }
+        else
+        {
+            if (IsValidPrimaryChainEvidence(notaryEvidence, newNotarization, height).IsValid())
+            {
+                return state.Error(errorPrefix + "insufficient proof to verify unchallenged notarization");
+            }
         }
 
         if (!cnd.CalculateConfirmation(priorNotarizationIdx, confirmedOutputNums, invalidatedOutputNums))
@@ -3467,34 +3653,69 @@ std::vector<CNodeData> GetGoodNodes(int maxNum)
     return retVal;
 }
 
-std::vector<__uint128_t> GetBlockCommitments(uint32_t lastNotarizationHeight, uint32_t currentNotarizationHeight)
+std::vector<std::pair<uint32_t, uint32_t>>
+CPBaaSNotarization::GetBlockCommitmentRanges(uint32_t lastNotarizationHeight, uint32_t currentNotarizationHeight, uint256 entropy)
+{
+    std::vector<std::pair<uint32_t, uint32_t>> retVal = std::vector<std::pair<uint32_t, uint32_t>>({{std::make_pair(lastNotarizationHeight, currentNotarizationHeight)}});
+
+    // if our range is larger than 256, break it into up to 5, 256 block ranges and
+    // spread them randomly over the target proof space
+    if ((currentNotarizationHeight - lastNotarizationHeight) > MAX_BLOCKS_PER_COMMITMENT_RANGE)
+    {
+        int totalRange = currentNotarizationHeight - lastNotarizationHeight;
+        int rangeLeft = totalRange;
+        int numBlockRanges = std::max(std::min((int)((rangeLeft >> 1) / MAX_BLOCKS_PER_COMMITMENT_RANGE), (int)MAX_BLOCK_RANGES_PER_PROOF), 1);
+        int blocksPerSection = (currentNotarizationHeight - lastNotarizationHeight) / numBlockRanges;
+
+        CNativeHashWriter hw;
+        hw << RangeSelectEntropyKey();
+        hw << entropy;
+        entropy = hw.GetHash();
+
+        // take off blocks per section at a time until we have no more whole blocks per section left
+        while (rangeLeft)
+        {
+            int blocksThisSection = blocksPerSection;
+            rangeLeft -= blocksPerSection;
+            if (rangeLeft < blocksPerSection)
+            {
+                blocksThisSection += rangeLeft;
+                rangeLeft = 0;
+            }
+            // we need room for the range we will prove
+            blocksThisSection -= std::min(totalRange, (int)MAX_BLOCKS_PER_COMMITMENT_RANGE);
+
+            uint32_t rangeStart = (UintToArith256(entropy).GetLow64() % blocksThisSection);
+            retVal.push_back(std::make_pair(rangeStart, rangeStart + MAX_BLOCKS_PER_COMMITMENT_RANGE));
+        }
+    }
+    return retVal;
+}
+
+std::vector<__uint128_t> GetBlockCommitments(uint32_t lastNotarizationHeight, uint32_t currentNotarizationHeight, const uint256 &entropy)
 {
     std::vector<__uint128_t> blockCommitmentsSmall;
     if (chainActive.Height() >= currentNotarizationHeight)
     {
+        auto blockRanges = CPBaaSNotarization::GetBlockCommitmentRanges(lastNotarizationHeight, currentNotarizationHeight, entropy);
         // commit to prior blocks nTime, nBits, stakeBits, & work or stake power component for up to 256 blocks prior or back,
         // to the last notarization, whichever comes first, enabling later random verification of subset
-
-        int32_t loopCount = std::max((int32_t)lastNotarizationHeight,
-                                    (int32_t)currentNotarizationHeight -
-                                     (int32_t)std::max(ConnectedChains.ThisChain().powAveragingWindow,
-                                                 (uint32_t)((Params().consensus.nPOSAveragingWindow << 1) + (Params().consensus.nPOSAveragingWindow >> 1))));
-        loopCount = currentNotarizationHeight - loopCount;
-        if (loopCount > 256)
+        auto rangeOffset = blockCommitmentsSmall.size();
+        for (auto &oneRange : blockRanges)
         {
-            loopCount = 256;
-        }
-        int32_t loopLimit = std::max((int32_t)0, (int32_t)(currentNotarizationHeight - loopCount));
-        blockCommitmentsSmall.resize(currentNotarizationHeight - loopLimit);
+            int currentOffset = oneRange.second - oneRange.first;
+            blockCommitmentsSmall.resize(blockCommitmentsSmall.size() + currentOffset--);
 
-        for (uint32_t blockNum = currentNotarizationHeight; blockNum > loopLimit; blockNum--)
-        {
-            bool isPosBlock = chainActive[blockNum]->IsVerusPOSBlock();
-            __uint128_t bigCommitmentNum((uint32_t)chainActive[blockNum]->nTime);
-            bigCommitmentNum = (bigCommitmentNum << 32) | (uint32_t)chainActive[blockNum]->nBits;
-            bigCommitmentNum = (bigCommitmentNum << 32) | (uint32_t)chainActive[blockNum]->GetVerusPOSTarget();
-            bigCommitmentNum = (bigCommitmentNum << 32) | (uint32_t)isPosBlock;
-            blockCommitmentsSmall[(blockNum - loopLimit) - 1] = bigCommitmentNum;
+            uint32_t blockNum = oneRange.second - 1;
+            for (; blockNum >= oneRange.first; blockNum--, currentOffset--)
+            {
+                bool isPosBlock = chainActive[blockNum]->IsVerusPOSBlock();
+                __uint128_t bigCommitmentNum((uint32_t)chainActive[blockNum]->nTime);
+                bigCommitmentNum = (bigCommitmentNum << 32) | (uint32_t)chainActive[blockNum]->nBits;
+                bigCommitmentNum = (bigCommitmentNum << 32) | (uint32_t)chainActive[blockNum]->GetVerusPOSTarget();
+                bigCommitmentNum = (bigCommitmentNum << 32) | ((uint32_t)(blockNum << 1) | (uint32_t)isPosBlock);
+                blockCommitmentsSmall[currentOffset] = bigCommitmentNum;
+            }
         }
     }
     return blockCommitmentsSmall;
@@ -3514,7 +3735,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     uint32_t height;
     uint160 SystemID;
     const CCurrencyDefinition &systemDef = externalSystem.chainDefinition;
-    SystemID = externalSystem.chainDefinition.GetID();
+    SystemID = systemDef.GetID();
 
     CChainNotarizationData cnd;
     std::vector<std::pair<CTransaction, uint256>> txes;
@@ -3609,12 +3830,10 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
     // if we find pending notarizations that we disagree with, create counter-evidence and post it
     UniValue counterEvidenceUni = find_value(notarizationResult, "counterevidence");
-
-
     UniValue challenges(UniValue::VARR);
 
     {
-        LOCK(cs_main);
+        LOCK2(cs_main, mempool.cs);
         for (int i = 1; i < crosschainCND.vtx.size(); i++)
         {
             auto proofRootIT = crosschainCND.vtx[i].second.proofRoots.find(ASSETCHAINS_CHAINID);
@@ -3671,16 +3890,10 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                     // EXPECT_ALTERNATE_PROOF_ROOT = 1,            // alternate root to the notarization being challenged
                     challengeEvidence.evidence << CProofRoot::GetProofRoot(altHeight);
 
-                    std::vector<__uint128_t> blockCommitmentsSmall =
-                        GetBlockCommitments(crosschainCND.vtx[i].second.IsPreLaunch() ? 1 : crosschainCND.vtx[0].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight,
-                                            altHeight);
+                    uint32_t rangeStart = crosschainCND.vtx[0].second.IsPreLaunch() ? 0 : crosschainCND.vtx[0].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
+                    int32_t rangeLen = altHeight - rangeStart++;
 
-                    if (!blockCommitmentsSmall.size())
-                    {
-                        LogPrintf("cannot get block commitments for challenge on %s\n", EncodeDestination(CIdentityID(systemDef.GetID())).c_str());
-                        continue;
-                    }
-
+                    // EXPECT_ALTERNATE_HEADER = 2,                // proof of alternate header at the challenge height or lower
                     CMMRProof headerProof;
                     if (!chainActive.GetBlockProof(curMMV, headerProof, altHeight))
                     {
@@ -3688,25 +3901,85 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                         continue;
                     }
                     CBlockHeaderAndProof blockHeaderProof(headerProof, chainActive[altHeight]->GetBlockHeader());
-
-                    // EXPECT_ALTERNATE_HEADER = 2,                // proof of alternate header at the challenge height
                     challengeEvidence.evidence << blockHeaderProof;
 
-                    // EXPECT_ALTERNATE_COMMITMENTS = 3,           // alternate commitments of prior blocks from this notarization/alternate header
+                    // EXPECT_ALT_LAST_NOTARIZATION_PROOF = 3,     // proof for the last notarization
+                    CObjectFinalization crossConfirmedFinalization;
+                    CAddressIndexDbEntry crossConfirmedIndexEntry;
+                    CPBaaSNotarization lastNotarization;
+                    bool notarizationFound = false;
+                    if (rangeStart == 1)
+                    {
+                        // prove the block 1 coinbase notarization
+                        if (!lastNotarization.GetLastNotarization(SystemID, 1, 1, &crossConfirmedIndexEntry))
+                        {
+                            LogPrintf("cannot find block one notarization for %s\n", EncodeDestination(CIdentityID(SystemID)).c_str());
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        // prove our counterpart of the other chain's last confirmed
+                        notarizationFound =
+                            crosschainCND.vtx[crosschainCND.lastConfirmed].second.FindEarnedNotarization(crossConfirmedFinalization,
+                                                                                                         &crossConfirmedIndexEntry);
+                    }
+
+                    // prove the transaction output in crossConfirmedIndexEntry with the proof root of the
+                    // block just behind the alternate header proof
+                    CTransaction txToProve;
+                    uint256 blockHash;
+
+                    if (!myGetTransaction(crossConfirmedIndexEntry.first.txhash, txToProve, blockHash) || blockHash.IsNull())
+                    {
+                        LogPrintf("ERROR: cannot retrieve cross-confirmed transaction for system (%s), LIKELY DUE TO LOCAL CHAIN STATE CORRUPTION\n", EncodeDestination(CIdentityID(systemDef.GetID())).c_str());
+                        continue;
+                    }
+
+                    auto blockIt = mapBlockIndex.find(blockHash);
+                    if (blockIt == mapBlockIndex.end() ||
+                        !chainActive.Contains(blockIt->second))
+                    {
+                        LogPrintf("ERROR: cross-confirmed transaction for system (%s) is not in active chain, LIKELY DUE TO LOCAL CHAIN STATE CORRUPTION\n", EncodeDestination(CIdentityID(systemDef.GetID())).c_str());
+                        continue;
+                    }
+
+                    CPartialTransactionProof oneTxProof(txToProve,
+                                                        std::vector<int>(),
+                                                        std::vector<int>({(int)crossConfirmedIndexEntry.first.index}),
+                                                        blockIt->second,
+                                                        altHeight - 1);
+
+                    if (!oneTxProof.IsValid())
+                    {
+                        LogPrintf("ERROR: cross-confirmed tx proof for system (%s) is invalid\n", EncodeDestination(CIdentityID(systemDef.GetID())).c_str());
+                        continue;
+                    }
+                    challengeEvidence.evidence << oneTxProof;
+
+                    // EXPECT_ALTERNATE_COMMITMENTS = 4,           // alternate commitments of prior blocks from this notarization/alternate header
+                    std::vector<__uint128_t> blockCommitmentsSmall = GetBlockCommitments(rangeStart, altHeight, entropyRoot.stateRoot);
+                    if (!blockCommitmentsSmall.size())
+                    {
+                        LogPrintf("cannot get block commitments for challenge on %s\n", EncodeDestination(CIdentityID(systemDef.GetID())).c_str());
+                        continue;
+                    }
                     challengeEvidence.evidence << CHashCommitments(blockCommitmentsSmall);
 
-                    // EXPECT_ENTROPY_PROOF_ROOT = 4,              // local proof root from this chain for entropy or same as first challenge
+
+                    // EXPECT_ENTROPY_PROOF_ROOT = 5,              // proof root from notary chain for entropy or same as first challenge
                     challengeEvidence.evidence << entropyRoot;
 
-                    // EXPECT_ALTERNATE_HEADER_PROOFS = 5,         // selected header proofs from commitments using the entropy root
-                    for (int headerLoop = 0; headerLoop < CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS; headerLoop++)
+
+                    // EXPECT_ALTERNATE_HEADER_PROOFS = 6,         // selected header proofs from commitments using the entropy root
+                    int loopNum = std::min(std::max(rangeLen, (int)EXPECT_MIN_HEADER_PROOFS),
+                                           std::min((int)MAX_HEADER_PROOFS_PER_PROOF, rangeLen / 10));
+
+                    for (int headerLoop = 0; headerLoop < loopNum; headerLoop++)
                     {
-                        int indexToProve = (UintToArith256(entropyRoot.stateRoot).GetLow64() % blockCommitmentsSmall.size());
+                        int indexToProve = (UintToArith256(entropyRoot.stateRoot).GetLow64() % rangeLen);
                         entropyRoot.stateRoot = ::GetHash(entropyRoot.stateRoot);
-
-                        uint32_t blockToProve =
-                            (crosschainCND.vtx[i].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight - blockCommitmentsSmall.size()) + indexToProve;
-
+                        uint32_t blockToProve = rangeStart + indexToProve;
                         CMMRProof headerProof;
                         if (!chainActive.GetBlockProof(curMMV, headerProof, blockToProve))
                         {
@@ -3717,6 +3990,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
                         challengeEvidence.evidence << blockHeaderProof;
                     }
+
                     UniValue challengeUni(UniValue::VOBJ);
                     challengeUni.pushKV("notarizationref", crosschainCND.vtx[i].first.ToUniValue());
                     challengeUni.pushKV("challengeroot", ourCorrectRoot.ToUniValue());
@@ -5320,6 +5594,7 @@ bool CPBaaSNotarization::FindEarnedNotarization(CObjectFinalization &confirmedFi
     if (!GetAddressIndex(finalizedNotarizationKey, CScript::P2IDX, addressIndex) ||
          !addressIndex.size())
     {
+        confirmedFinalization = CObjectFinalization();
         return true;
     }
 
@@ -5594,6 +5869,10 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                                         crosschainCND.vtx[confirmingIdx].second.IsPreLaunch();
 
     CPBaaSNotarization lastConfirmedNotarization = cnd.vtx[cnd.lastConfirmed].second;
+    CPBaaSNotarization confirmingLocalNotarization;
+    CAddressIndexDbEntry crossConfirmedIndexEntry;
+    CAddressIndexDbEntry earnedNotarizationIndexEntry;
+    CPBaaSNotarization crossConfirmedNotarization;
     bool isBlock1Proof = false;
 
     {
@@ -5601,17 +5880,16 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
         nHeight = chainActive.Height();
 
-        CAddressIndexDbEntry earnedNotarizationIndexEntry;
-
         if (crosschainCND.IsConfirmed() || crosschainCND.vtx.size() == 1)
         {
-            // ensure that we at least agree with the last notarization, or we can't submit
+            // ensure that we at least agree with the last notarization being finalized, or we can't submit
             confirmingIdx = crosschainCND.IsConfirmed() ? crosschainCND.lastConfirmed : 0;
             CObjectFinalization finalizationObj;
 
             if (!isFirstLaunchingNotarization)
             {
-                if (!crosschainCND.vtx[confirmingIdx].second.FindEarnedNotarization(finalizationObj, &earnedNotarizationIndexEntry))
+                if (!crosschainCND.vtx[confirmingIdx].second.FindEarnedNotarization(finalizationObj, &crossConfirmedIndexEntry) ||
+                    !finalizationObj.IsConfirmed())
                 {
                     return retVal;
                 }
@@ -5624,9 +5902,9 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                     CPBaaSNotarization checkNotarization1, checkNotarization2 = crosschainCND.vtx[confirmingIdx].second;
                     uint256 blkHash;
                     COptCCParams nP;
-                    if (!myGetTransaction(earnedNotarizationIndexEntry.first.txhash, notarizationTx, blkHash) ||
-                        earnedNotarizationIndexEntry.first.index >= notarizationTx.vout.size() ||
-                        !(notarizationTx.vout[earnedNotarizationIndexEntry.first.index].scriptPubKey.IsPayToCryptoCondition(nP) &&
+                    if (!myGetTransaction(crossConfirmedIndexEntry.first.txhash, notarizationTx, blkHash) ||
+                        crossConfirmedIndexEntry.first.index >= notarizationTx.vout.size() ||
+                        !(notarizationTx.vout[crossConfirmedIndexEntry.first.index].scriptPubKey.IsPayToCryptoCondition(nP) &&
                           nP.IsValid() &&
                           nP.evalCode == EVAL_EARNEDNOTARIZATION &&
                           nP.vData.size() &&
@@ -5637,10 +5915,12 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                           cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(ASSETCHAINS_CHAINID) &&
                           checkNotarization1.proofRoots[ASSETCHAINS_CHAINID].rootHeight < cnd.vtx[cnd.lastConfirmed].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight))
                     {
-                        LogPrintf("Invalid notarization index entry for txid: %s\n", earnedNotarizationIndexEntry.first.txhash.GetHex().c_str());
-                        printf("Invalid notarization index entry for txid: %s\n", earnedNotarizationIndexEntry.first.txhash.GetHex().c_str());
+                        LogPrintf("Invalid notarization index entry for txid: %s\n", crossConfirmedIndexEntry.first.txhash.GetHex().c_str());
+                        printf("Invalid notarization index entry for txid: %s\n", crossConfirmedIndexEntry.first.txhash.GetHex().c_str());
                         return retVal;
                     }
+                    crossConfirmedNotarization = checkNotarization1;
+                    crossConfirmedNotarization.SetMirror(true);
                 }
             }
         }
@@ -5660,6 +5940,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                     earnedNotarizationIndexEntry = tmpIndexEntry;
                     isFirstLaunchingNotarization = false;
                     confirmingIdx = i;
+                    confirmingLocalNotarization = crosschainCND.vtx[i].second;
+                    confirmingLocalNotarization.SetMirror(false);
                     break;
                 }
             }
@@ -5693,17 +5975,15 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                                                     firstProof);
             }
         }
-
         if (isFirstLaunchingNotarization)
         {
-            CPBaaSNotarization launchNotarization;
             ConnectedChains.GetLaunchNotarization(externalSystem.chainDefinition,
                                                   notarizationTxInfo,
-                                                  launchNotarization,
+                                                  confirmingLocalNotarization,
                                                   newConfirmedNotarization);
 
             if (!((((PBAAS_TESTMODE && !IsVerusActive() && chainActive[std::min((uint32_t)chainActive.Height(), nHeight)]->nTime < PBAAS_TESTFORK_TIME) ||
-                    (launchNotarization.IsValid())) &&
+                    (confirmingLocalNotarization.IsValid())) &&
                    ConnectedChains.ThisChain().launchSystemID == externalSystem.chainDefinition.GetID()) ||
                    ::AsVector(newConfirmedNotarization) == ::AsVector(cnd.vtx[cnd.lastConfirmed].second)))
             {
@@ -5712,9 +5992,9 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 return retVal;
             }
             else if (crosschainCND.vtx[confirmingIdx].second.IsPreLaunch() &&
-                     launchNotarization.IsValid() &&
-                     launchNotarization.IsBlockOneNotarization() &&
-                     launchNotarization.currencyID == externalSystem.chainDefinition.GetID() &&
+                     confirmingLocalNotarization.IsValid() &&
+                     confirmingLocalNotarization.IsBlockOneNotarization() &&
+                     confirmingLocalNotarization.currencyID == externalSystem.chainDefinition.GetID() &&
                      ConnectedChains.ThisChain().launchSystemID == externalSystem.chainDefinition.GetID())
             {
                 isBlock1Proof = true;
@@ -5778,6 +6058,26 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         {
             allEvidence.evidence << notarizationTxInfo.second;
         }
+
+        uint32_t startHeight = confirmingLocalNotarization.IsValid() ? confirmingLocalNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight : 1;
+        uint32_t heightChange = newConfirmedNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight - startHeight;
+
+        int blocksPerCheckpoint = GetBlocksPerCheckpoint(heightChange);
+
+        // unless we have another proof range sized chunk at the end, don't add another checkpoint
+        int numCheckPoints = GetNumCheckpoints(heightChange);
+
+        // let any challengers know where we might diverge roots
+        for (int i = 1; i <= numCheckPoints; i++)
+        {
+            CProofRoot checkpointRoot = CProofRoot::GetProofRoot(startHeight + (i * blocksPerCheckpoint));
+            if (!checkpointRoot.IsValid())
+            {
+                LogPrint("notarization", "Invalid checkpoint, likely from local corruption when preparing proof for notarization to %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                return retVal;
+            }
+            allEvidence.evidence << checkpointRoot;
+        }
     }
 
     // allEvidence has all signatures that were used to confirm on this chain
@@ -5792,15 +6092,6 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         auto curProofRoot = CProofRoot::GetProofRoot(firstProofHeight);
         allEvidence.evidence << curProofRoot;
         allEvidence.evidence << txProofEvidence;
-        std::vector<__uint128_t> blockCommitmentsSmall =
-            GetBlockCommitments(crosschainCND.vtx[confirmingIdx].second.IsPreLaunch() ? 1 : crosschainCND.vtx[confirmingIdx].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight,
-                                lastConfirmedNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight);
-
-        if (blockCommitmentsSmall.size())
-        {
-            CHashCommitments commitmentsToHash(blockCommitmentsSmall);
-            allEvidence.evidence << CHashCommitments(std::vector<uint256>({::GetHash(commitmentsToHash)}), commitmentsToHash.commitmentTypes, commitmentsToHash.version);
-        }
 
         bool provideFullEvidence = counterEvidenceUni.isArray() &&
                                     counterEvidenceUni.size() > confirmingIdx &&
@@ -5809,20 +6100,31 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
         // if there is counter evidence, we are going to have to provide more evidence
         CProofRoot entropyRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+
+        // handle multiple challenges by starting at the earliest
+        CProofRoot challengeRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
         if (provideFullEvidence)
         {
             for (int j = 0; j < counterEvidenceUni[confirmingIdx].size(); j++)
             {
-                CProofRoot entropyRoot(find_value(counterEvidenceUni[confirmingIdx][j], "entropyroot"));
-                if (entropyRoot.IsValid())
+                CProofRoot entropyCandidate(find_value(counterEvidenceUni[confirmingIdx][j], "entropyroot"));
+                CProofRoot challengeCandidate(find_value(counterEvidenceUni[confirmingIdx][j], "challengeroot"));
+                if (entropyCandidate.IsValid() && challengeCandidate.IsValid())
                 {
-                    break;
+                    if (!entropyRoot.IsValid())
+                    {
+                        entropyRoot = entropyCandidate;
+                    }
+                    if (challengeRoot.IsValid() || challengeCandidate.rootHeight < challengeRoot.rootHeight)
+                    {
+                        challengeRoot = challengeCandidate;
+                    }
                 }
             }
-            if (!entropyRoot.IsValid())
-            {
-                provideFullEvidence = false;
-            }
+        }
+        if (!entropyRoot.IsValid() || !challengeRoot.IsValid())
+        {
+            provideFullEvidence = false;
         }
 
         // select random block from the last commitments to prove, based on entropy from the recent block, provided by the destination system
@@ -5832,80 +6134,89 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             if (!crosschainCND.vtx[confirmingIdx].second.IsPreLaunch())
             {
                 CObjectFinalization finalizationObj;
-                CAddressIndexDbEntry tmpIndexEntry;
 
-                if (crosschainCND.vtx[0].second.IsPreLaunch() ||
-                    (crosschainCND.vtx[0].second.FindEarnedNotarization(finalizationObj, &tmpIndexEntry) &&
+                if (!crossConfirmedNotarization.IsValid() &&
+                    (crosschainCND.vtx[0].second.FindEarnedNotarization(finalizationObj, &crossConfirmedIndexEntry) &&
                      finalizationObj.IsConfirmed()))
                 {
                     CTransaction priorConfirmedNTx;
                     uint256 blkHash;
                     COptCCParams nP;
-                    CPBaaSNotarization priorConfirmedNotarization;
-                    uint32_t startingHeight = 1;
                     if (!crosschainCND.vtx[0].second.IsPreLaunch())
                     {
-                       if (!myGetTransaction(tmpIndexEntry.first.txhash, priorConfirmedNTx, blkHash) ||
-                             tmpIndexEntry.first.index >= priorConfirmedNTx.vout.size() ||
-                             !(priorConfirmedNTx.vout[tmpIndexEntry.first.index].scriptPubKey.IsPayToCryptoCondition(nP) &&
+                       if (!myGetTransaction(crossConfirmedIndexEntry.first.txhash, priorConfirmedNTx, blkHash) ||
+                             crossConfirmedIndexEntry.first.index >= priorConfirmedNTx.vout.size() ||
+                             !(priorConfirmedNTx.vout[crossConfirmedIndexEntry.first.index].scriptPubKey.IsPayToCryptoCondition(nP) &&
                                nP.IsValid() &&
                                nP.evalCode == EVAL_EARNEDNOTARIZATION &&
                                nP.vData.size() &&
-                               (priorConfirmedNotarization = CPBaaSNotarization(nP.vData[0])).IsValid() &&
-                               priorConfirmedNotarization.SetMirror(false)))
+                               (crossConfirmedNotarization = CPBaaSNotarization(nP.vData[0])).IsValid() &&
+                               crossConfirmedNotarization.SetMirror(false)))
                         {
                             LogPrint("notarization", "Cannot confirm prior confirmed notarization for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
                             return retVal;
                         }
-                        startingHeight = priorConfirmedNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
-                    }
-
-                    // last commitments will be in the evidence on the other chain
-                    // for us, it's more efficient to get the last notarization and recreate them, since they are not stored on this chain
-                    std::vector<__uint128_t> smallCommitments =
-                        GetBlockCommitments(startingHeight,
-                                            crosschainCND.vtx[confirmingIdx].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight);
-
-                    if (smallCommitments.size())
-                    {
-                        // now add the commitments
-                        allEvidence.evidence << CHashCommitments(smallCommitments);
-
-                        // get a pseudo-random number from the returned proof root height + the confirming notarization.
-                        // from it, select one or more block headers to prove in the range of provided commitments.
-                        // if the proof does not match the commitment numbers, it is considered catastrophic.
-                        // the bridge will be stopped pending software update and reactivation.
-                        // this blocks function in the error case, but since such a discrepancy may
-                        // be the result of a blockchain mining/staking/+witness colluding attack (ie. a rogue chain),
-                        // it provides yet another proof check to prevent risk of funds loss, making failure
-                        // and exposure the most likely attack outcome, even with collaboration of technologists,
-                        // miners, stakers, and witnesses
-                        for (int headerLoop = 0; headerLoop < CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS; headerLoop++)
-                        {
-                            int indexToProve = (UintToArith256(entropyRoot.stateRoot).GetLow64() % smallCommitments.size());
-                            entropyRoot.stateRoot = ::GetHash(entropyRoot.stateRoot);
-
-                            uint32_t blockToProve =
-                                (crosschainCND.vtx[confirmingIdx].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight - smallCommitments.size()) + indexToProve;
-
-                            auto curMMV = chainActive.GetMMV();
-                            curMMV.resize(crosschainCND.vtx[confirmingIdx].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight);
-                            CMMRProof headerProof;
-                            if (!chainActive.GetBlockProof(curMMV, headerProof, blockToProve))
-                            {
-                                LogPrint("notarization", "Cannot prove evidence for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-                                return retVal;
-                            }
-                            CBlockHeaderAndProof blockHeaderProof(headerProof, chainActive[blockToProve]->GetBlockHeader());
-
-                            allEvidence.evidence << blockHeaderProof;
-                        }
                     }
                 }
-                else if (!crosschainCND.vtx[confirmingIdx].second.IsBlockOneNotarization())
+
+                uint32_t startingHeight = crossConfirmedNotarization.IsValid() ? crossConfirmedNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight : 1;
+
+                // last commitments will be in the evidence on the other chain
+                // for us, it's more efficient to get the last notarization and recreate them, since they are not stored on this chain
+                std::vector<__uint128_t> smallCommitments =
+                    GetBlockCommitments(startingHeight,
+                                        crosschainCND.vtx[confirmingIdx].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight, entropyRoot.stateRoot);
+                int32_t rangeEnd = crosschainCND.vtx[confirmingIdx].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
+                int32_t rangeLen = rangeEnd - startingHeight++;
+
+                if (smallCommitments.size())
                 {
-                    LogPrint("notarization", "Missing prior commitment evidence for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-                    return retVal;
+                    // now add the commitments
+                    allEvidence.evidence << CHashCommitments(smallCommitments);
+
+                    // get a pseudo-random number from the returned proof root height + the confirming notarization.
+                    // from it, select one or more block headers to prove in the range of provided commitments.
+                    // if the proof does not match the commitment numbers, it is considered catastrophic.
+                    // the bridge will be stopped pending software update and reactivation.
+                    // this blocks function in the error case, but since such a discrepancy may
+                    // be the result of a blockchain mining/staking/+witness colluding attack (ie. a rogue chain),
+                    // it provides yet another proof check to prevent risk of funds loss, making failure
+                    // and exposure the most likely attack outcome, even with collaboration of technologists,
+                    // miners, stakers, and witnesses
+
+                    auto curMMV = chainActive.GetMMV();
+                    curMMV.resize(rangeEnd);
+
+                    int loopNum = std::min(std::max(rangeLen, (int)EXPECT_MIN_HEADER_PROOFS),
+                                           std::min((int)MAX_HEADER_PROOFS_PER_PROOF, rangeLen / 10));
+
+                    for (int headerLoop = 0; headerLoop < loopNum; headerLoop++)
+                    {
+                        int indexToProve = (UintToArith256(entropyRoot.stateRoot).GetLow64() % rangeLen);
+                        entropyRoot.stateRoot = ::GetHash(entropyRoot.stateRoot);
+
+                        // height is kept shifted up one from the PoS/PoW bit
+                        uint32_t blockToProve = startingHeight + indexToProve;;
+
+                        CMMRProof headerProof;
+                        if (!chainActive.GetBlockProof(curMMV, headerProof, blockToProve))
+                        {
+                            LogPrint("notarization", "Cannot prove evidence for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                            return retVal;
+                        }
+                        CBlockHeaderAndProof blockHeaderProof(headerProof, chainActive[blockToProve]->GetBlockHeader());
+
+                        allEvidence.evidence << blockHeaderProof;
+
+                        // if this is a proof of stake header, we need to prove the two source block hashes
+                        // if the spender is an ID, prove the last ID to enable signature verification
+                        // the last piece of the puzzle in calculating/verifying PoS hash is determining
+                        // the magic number of the chain, which can be done by the currencyDef
+                        if (blockHeaderProof.blockHeader.IsVerusPOSBlock())
+                        {
+
+                        }
+                    }
                 }
             }
         }
@@ -6487,9 +6798,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                         CTransaction priorNotTx;
                         uint256 hashBlock;
                         COptCCParams priorP;
-                        // if there is a proof root in this accepted notarization, it must be as part of an import
-                        // and the proof root should match the evidence notarization reference used to prove the
-                        // import.
+
                         if (!myGetTransaction(tx.vin[0].prevout.hash, priorNotTx, hashBlock) ||
                             priorNotTx.vout.size() <= tx.vin[0].prevout.n ||
                             !priorNotTx.vout[tx.vin[0].prevout.n].scriptPubKey.IsPayToCryptoCondition(priorP) ||
@@ -7036,6 +7345,13 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     }
                 }
 
+                // Check the evidence for the prior notarization that we indend to confirm,
+                // if there is valid counter-evidence, do not confirm. Instead, reject and replace it with the new pending.
+                std::vector<CProofRoot> validCounterRoots;
+                CProofRoot validEntropyRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+                CProofRoot challengeStartRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+
+                bool primaryValidated = false;
                 for (auto &oneFinalization : ofsToCheck)
                 {
                     std::vector<CNotaryEvidence> ofEvidence = std::get<3>(oneFinalization).GetFinalizationEvidence(std::get<2>(oneFinalization), state);
@@ -7045,19 +7361,38 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                         // if we find a rejection, check it
                         if (oneEItem.IsRejected())
                         {
-                            CProofRoot entropyRoot;
-                            CProofRoot alternateRoot = IsValidAlternateChainEvidence(normalizedNotarization.proofRoots[notaryCurrencyDef.GetID()], oneEItem, entropyRoot, height);
-                            if (!firstEntropyRoot.IsValid())
+                            CProofRoot entropyRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+                            CProofRoot challengeStart(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+                            CProofRoot counterRoot = IsValidAlternateChainEvidence(normalizedNotarization.proofRoots[notaryCurrencyDef.GetID()], oneEItem, entropyRoot, challengeStart, height - 1);
+                            if (challengeStart.IsValid() && counterRoot.IsValid())
                             {
-                                firstEntropyRoot = entropyRoot;
-                            }
-                            if (alternateRoot.IsValid() &&
-                                !IsValidPrimaryChainEvidence(evidenceMap[notaryCurrencyDef.SystemOrGatewayID()], normalizedNotarization, height - 1, alternateRoot, firstEntropyRoot).IsValid())
-                            {
-                                return state.Error("Cannot validate notarization with valid counter-evidence");
+                                validCounterRoots.push_back(counterRoot);
+                                if (!validEntropyRoot.IsValid())
+                                {
+                                    validEntropyRoot = entropyRoot;
+                                }
+                                if (!challengeStartRoot.IsValid() || challengeStart.rootHeight < challengeStartRoot.rootHeight)
+                                {
+                                    challengeStartRoot = challengeStart;
+                                }
                             }
                         }
                     }
+                }
+
+                for (auto &oneChallenge : validCounterRoots)
+                {
+                    if (!IsValidPrimaryChainEvidence(evidenceMap[notaryCurrencyDef.SystemOrGatewayID()], normalizedNotarization, height - 1, oneChallenge, validEntropyRoot, challengeStartRoot).IsValid())
+                    {
+                        return state.Error("Cannot validate notarization against valid counter-evidence");
+                    }
+                    primaryValidated = true;
+                }
+
+                if (!primaryValidated &&
+                    !IsValidPrimaryChainEvidence(evidenceMap[notaryCurrencyDef.SystemOrGatewayID()], normalizedNotarization, height - 1).IsValid())
+                {
+                    return state.Error("Invalid notarization proof without counter-evidence");
                 }
 
                 if (notaryCurrencyDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID &&
@@ -7120,6 +7455,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
 
                 CProofRoot counterRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
                 CProofRoot counterEntropyRoot;
+                CProofRoot challengeStartRoot;
                 for (auto &oneItem : evidenceVec)
                 {
                     // valid pending finalization evidence for notarizations include:
@@ -7127,11 +7463,11 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     // counter-evidence of a valid, alternate chain
                     if (notarization.proofRoots.count(notaryCurrencyDef.SystemOrGatewayID()) && notaryCurrencyDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
                     {
-                        counterRoot = IsValidAlternateChainEvidence(notarization.proofRoots[notaryCurrencyDef.SystemOrGatewayID()], oneItem, counterEntropyRoot, height);
+                        counterRoot = IsValidAlternateChainEvidence(notarization.proofRoots[notaryCurrencyDef.SystemOrGatewayID()], oneItem, counterEntropyRoot, challengeStartRoot, height - 1);
                         if (counterRoot.IsValid() &&
-                            counterRoot != notarization.proofRoots[notaryCurrencyDef.SystemOrGatewayID()] &&
-                            CChainPower::ExpandCompactPower(counterRoot.compactPower) >
-                                CChainPower::ExpandCompactPower(notarization.proofRoots[notaryCurrencyDef.SystemOrGatewayID()].compactPower))
+                            counterEntropyRoot.IsValid() &&
+                            challengeStartRoot.IsValid() &&
+                            counterRoot != notarization.proofRoots[notaryCurrencyDef.SystemOrGatewayID()])
                         {
                             break;
                         }
@@ -7158,6 +7494,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
     {
         CProofRoot counterRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
         CProofRoot counterEntropyRoot;
+        CProofRoot challengeStartRoot;
         bool hasSignature = false;
 
         for (auto &oneItem : evidenceVec)
@@ -7167,7 +7504,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             // counter-evidence of a valid, alternate chain
             if (notarization.proofRoots.count(notaryCurrencyDef.SystemOrGatewayID()) && notaryCurrencyDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
             {
-                counterRoot = IsValidAlternateChainEvidence(notarization.proofRoots[notaryCurrencyDef.SystemOrGatewayID()], oneItem, counterEntropyRoot, height);
+                counterRoot = IsValidAlternateChainEvidence(notarization.proofRoots[notaryCurrencyDef.SystemOrGatewayID()], oneItem, counterEntropyRoot, challengeStartRoot, height - 1);
                 if (counterRoot.IsValid())
                 {
                     break;

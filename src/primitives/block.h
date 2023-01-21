@@ -883,7 +883,9 @@ public:
     CHashCommitments(const std::vector<uint256> &priors, const uint256 &pastTypes, uint32_t nVersion=VERSION_CURRENT) :
         hashCommitments(priors), commitmentTypes(pastTypes), version(nVersion) {}
 
-    // takes <= 256, 128 byte values with a low bool indicator, packs them in with the indicator in bits for commitment types
+    // takes any size vector of 128 byte values with a low bool indicator, packs them in with the indicator
+    // in bits for commitment types. if there are more than 256 total when finished, the first 256 are represented
+    // in the commitmentTypes as low bit boolean indicators of PoS vs. PoW (PoS == true)
     CHashCommitments(const std::vector<__uint128_t> &smallCommitmentsLowBool, uint32_t nVersion=VERSION_CURRENT);
 
     CHashCommitments(const UniValue &uniObj)
