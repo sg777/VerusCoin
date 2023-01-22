@@ -888,7 +888,8 @@ int CPBaaSNotarization::GetNumCheckpoints(int heightChange)
     int blocksPerCheckpoint = GetBlocksPerCheckpoint(heightChange);
 
     // unless we have another proof range sized chunk at the end, don't add another checkpoint
-    return heightChange / blocksPerCheckpoint + ((heightChange % blocksPerCheckpoint) >= NUM_BLOCKS_PER_PROOF_RANGE ? 0 : -1);
+    return !blocksPerCheckpoint ? blocksPerCheckpoint :
+             (heightChange / blocksPerCheckpoint + ((heightChange % blocksPerCheckpoint) >= NUM_BLOCKS_PER_PROOF_RANGE ? 0 : -1));
 }
 
 
@@ -2762,8 +2763,8 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                         }
 
                         // if we are spanning more than the min blocks per checkpoint, expect checkpoint(s)
-                        int heightChange = provenNotarization.proofRoots[lastLocalNotarization.currencyID].rootHeight -
-                                            lastNotarization.proofRoots[lastLocalNotarization.currencyID].rootHeight;
+                        int heightChange = provenNotarization.proofRoots[lastNotarization.currencyID].rootHeight -
+                                            lastNotarization.proofRoots[lastNotarization.currencyID].rootHeight;
                         numExpectedCheckpoints = CPBaaSNotarization::GetNumCheckpoints(heightChange);
                         if (notarizationFound &&
                             numExpectedCheckpoints &&
@@ -2774,7 +2775,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                         }
                         else
                         {
-                            validBasicEvidence = lastLocalNotarization.IsPreLaunch() || (notarizationFound && !challengeProofRoot.IsValid());
+                            validBasicEvidence = (lastLocalNotarization.IsValid() && lastLocalNotarization.IsPreLaunch()) || (notarizationFound && !challengeProofRoot.IsValid());
                             proofState = !notarizationFound || validBasicEvidence ? EXPECT_NOTHING : EXPECT_COMMITMENT_PROOF;
                         }
                     }
@@ -2815,13 +2816,13 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                     if (blocksPerCheckpoint &&
                         oneCheckpoint.systemID == expectedNotarization.currencyID &&
                         oneCheckpoint.rootHeight ==
-                            (lastNotarization.proofRoots[lastLocalNotarization.currencyID].rootHeight +
+                            (lastNotarization.proofRoots[lastNotarization.currencyID].rootHeight +
                              (++numCheckpointsFound * blocksPerCheckpoint)))
                     {
                         checkpointRoots.push_back(oneCheckpoint);
                         if (numCheckpointsFound == numExpectedCheckpoints)
                         {
-                            validBasicEvidence = lastLocalNotarization.IsPreLaunch() || !challengeProofRoot.IsValid();
+                            validBasicEvidence = (lastLocalNotarization.IsValid() && lastLocalNotarization.IsPreLaunch()) || !challengeProofRoot.IsValid();
                             proofState = validBasicEvidence ? EXPECT_NOTHING : EXPECT_COMMITMENT_PROOF;
                             proofState = EXPECT_NOTHING;
                         }
