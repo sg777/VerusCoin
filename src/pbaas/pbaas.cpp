@@ -6097,6 +6097,7 @@ bool CConnectedChains::GetLaunchNotarization(const CCurrencyDefinition &curDef,
                         {
                             proofHeight = notaryNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
                         }
+                        else
                         {
                             proofHeight = blockIt->second->GetHeight();
                             notaryNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(proofHeight);

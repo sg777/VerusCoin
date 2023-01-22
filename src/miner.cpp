@@ -3168,47 +3168,21 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
         pblock->hashFinalSaplingRoot   = sapling_tree.root();
 
-        // all Verus PoS chains need this data in the block at all times
-        if ( ASSETCHAINS_LWMAPOS || ASSETCHAINS_SYMBOL[0] == 0 || ASSETCHAINS_STAKED == 0 || KOMODO_MININGTHREADS > 0 )
-        {
-            UpdateTime(pblock, Params().GetConsensus(), pindexPrev);
-            pblock->nBits = GetNextWorkRequired(pindexPrev, pblock, Params().GetConsensus());
-        }
+        // all Verus PBaaS chains need this data in the block at all times
+        UpdateTime(pblock, Params().GetConsensus(), pindexPrev);
+        pblock->nBits = GetNextWorkRequired(pindexPrev, pblock, Params().GetConsensus());
 
-        if ( ASSETCHAINS_SYMBOL[0] == 0 && IS_KOMODO_NOTARY != 0 && My_notaryid >= 0 )
+        CValidationState state;
+        //fprintf(stderr,"check validity\n");
+        /* if (LogAcceptCategory("checknewblockvalidity"))
         {
-            uint32_t r;
-            CMutableTransaction txNotary = CreateNewContextualCMutableTransaction(Params().GetConsensus(), chainActive.Height() + 1);
-            if ( pblock->nTime < pindexPrev->nTime+60 )
-                pblock->nTime = pindexPrev->nTime + 60;
-
-            if ( komodo_notaryvin(txNotary,NOTARY_PUBKEY33) > 0 )
-            {
-                CAmount txfees = 5000;
-                pblock->vtx.push_back(txNotary);
-                pblocktemplate->vTxFees.push_back(txfees);
-                pblocktemplate->vTxSigOps.push_back(GetLegacySigOpCount(txNotary));
-                nFees += txfees;
-                pblocktemplate->vTxFees[0] = -nFees;
-                //*(uint64_t *)(&pblock->vtx[0].vout[0].nValue) += txfees;
-                //fprintf(stderr,"added notaryvin\n");
-            }
-            else
-            {
-                fprintf(stderr,"error adding notaryvin, need to create 0.0001 utxos\n");
-                return(0);
-            }
-        }
-        else if ( ASSETCHAINS_CC == 0 && pindexPrev != 0 && ASSETCHAINS_STAKED == 0 && (ASSETCHAINS_SYMBOL[0] != 0 || IS_KOMODO_NOTARY == 0 || My_notaryid < 0) )
-        {
-            CValidationState state;
-            //fprintf(stderr,"check validity\n");
             if (!TestBlockValidity(state, chainparams, *pblock, pindexPrev, false, false)) // invokes CC checks
             {
-                throw std::runtime_error("CreateNewBlock(): TestBlockValidity failed");
+                LogPrintf("created invalid block at height %u, returning NULL\n", (uint32_t)pindexPrev->GetHeight());
+                printf("created invalid block at height %u, returning NULL\n", (uint32_t)pindexPrev->GetHeight());
+                return NULL;
             }
-            //fprintf(stderr,"valid\n");
-        }
+        } */
     }
     //fprintf(stderr,"done new block\n");
 

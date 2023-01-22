@@ -817,6 +817,8 @@ public:
         return GetID(Name, Parent);
     }
 
+    uint32_t MagicNumber() const;
+
     std::set<uint160> GetNotarySet() const
     {
         std::set<uint160> notarySet;

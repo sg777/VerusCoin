@@ -2678,6 +2678,19 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                             }
                         }
                     }
+                    else if (LogAcceptCategory("notarization"))
+                    {
+                        printf("expected state root: %s, from proof at height %u\ntxid: %s\nproven notarization: %s\n",
+                                txMMRRoot.GetHex().c_str(),
+                                ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetProofHeight(),
+                                txHash.GetHex().c_str(),
+                                provenNotarization.ToUniValue().write(1,2).c_str());
+                        LogPrintf("expected state root: %s, from proof at height %u\ntxid: %s\nproven notarization: %s\n",
+                                txMMRRoot.GetHex().c_str(),
+                                ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetProofHeight(),
+                                txHash.GetHex().c_str(),
+                                provenNotarization.ToUniValue().write(1,2).c_str());
+                    }
                     proofState = lastNotarization.IsValid() ? EXPECT_FUTURE_PROOF_ROOT : EXPECT_NOTHING;
                 }
                 else
@@ -2859,16 +2872,6 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                             break;
                         }
                     }
-
-                    // TODO: HARDENING ensure that the block numbers provided in the commitment data are
-                    // those that should be based on the entropy and block range.
-                    // 1) Choose the total number of blocks to prove based on number of commitments.
-                    // 2) Prove the first block header in the range to establish baseline.
-                    // 3) PoS and PoW difficulty verification - work back to confirm difficulty values based
-                    //    on commitment data for a number of blocks we are able to up to a certain target
-                    //    in the commitment.
-                    // 4) Select random blocks from each 256 block range. Following up one level of PoS and repeat
-                    //    until we have reached the total number of blocks proof target.
 
                     if (!mismatchIndex &&
                         checkCommitments.size() &&
@@ -3989,6 +3992,12 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                         CBlockHeaderAndProof blockHeaderProof(headerProof, chainActive[blockToProve]->GetBlockHeader());
 
                         challengeEvidence.evidence << blockHeaderProof;
+
+                        // TODO: HARDENING
+                        if (blockHeaderProof.blockHeader.IsVerusPOSBlock())
+                        {
+
+                        }
                     }
 
                     UniValue challengeUni(UniValue::VOBJ);
@@ -6212,6 +6221,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                         // if the spender is an ID, prove the last ID to enable signature verification
                         // the last piece of the puzzle in calculating/verifying PoS hash is determining
                         // the magic number of the chain, which can be done by the currencyDef
+                        // TODO: HARDENING
                         if (blockHeaderProof.blockHeader.IsVerusPOSBlock())
                         {
 
@@ -7751,7 +7761,8 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
             {
                 if (oldFinalization.IsConfirmed() && !newFinalization.IsConfirmed())
                 {
-                    LogPrint("notarization", "TODO: HARDENING WARNING: Unconfirmed finalization attempting to spend confirmed finalization - will be error.\n old: %s\nnew: %s\n", oldFinalization.ToUniValue().write(1,2).c_str(), newFinalization.ToUniValue().write(1,2).c_str());
+                    LogPrint("notarization", "WARNING: Unconfirmed finalization attempting to spend confirmed finalization.\n old: %s\nnew: %s\n", oldFinalization.ToUniValue().write(1,2).c_str(), newFinalization.ToUniValue().write(1,2).c_str());
+                    return eval->Error("unconfirmed-spending-confirmed");
                 }
                 if (foundFinalization)
                 {
@@ -7765,14 +7776,6 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
         if (!foundFinalization)
         {
             return eval->Error("invalid-finalization-spend");
-        }
-
-        // TODO: HARDENING - complete
-        // validate both rejection and confirmation
-        // in order to finalize confirmation and not just rejection, we need to spend the last
-        // confirmed transaction. that means that if this finalization asserts it is confirmed, we must prove it
-        if (newFinalization.IsConfirmed())
-        {
         }
     }
     return true;

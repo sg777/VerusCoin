@@ -2344,14 +2344,21 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         }
     }
 
-    // TODO: HARDENING at block one, a new PBaaS chain can mint IDs, but only those on its own chain or imported from its launch chain
-    // imported IDs must come from a system that can import the ID in question
+    // TODO: HARDENING - ensure that the block one coinbase only mints the IDs it is supposed to mint
+    // this may be a redundant note and may be removed when block one coinbase is fully checked
     if (isPBaaS)
     {
         if (height == 1)
         {
             // for block one IDs, ensure they are valid as per the launch parameters
-            return true;
+            if (tx.IsCoinBase())
+            {
+                return true;
+            }
+            else
+            {
+                return state.Error("Invalid ID minting in block 1");
+            }
         }
         else if (validCrossChainImport)
         {

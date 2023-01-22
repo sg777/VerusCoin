@@ -6772,9 +6772,13 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
 bool TestBlockValidity(CValidationState& state, const CChainParams& chainparams, const CBlock& block, CBlockIndex* pindexPrev, bool fCheckPOW, bool fCheckMerkleRoot)
 {
     AssertLockHeld(cs_main);
-    assert(pindexPrev == chainActive.Tip());
 
     bool success = false;
+
+    if (pindexPrev != chainActive.Tip())
+    {
+        return success;
+    }
 
     CCoinsViewCache viewNew(pcoinsTip);
     CBlockIndex indexDummy(block);

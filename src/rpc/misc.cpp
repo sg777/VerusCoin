@@ -194,7 +194,8 @@ UniValue getinfo(const UniValue& params, bool fHelp)
         //obj.push_back(Pair("name",        ASSETCHAINS_SYMBOL));
         obj.push_back(Pair("p2pport",        ASSETCHAINS_P2PPORT));
         obj.push_back(Pair("rpcport",        ASSETCHAINS_RPCPORT));
-        obj.push_back(Pair("magic",        (int)ASSETCHAINS_MAGIC));
+        obj.push_back(Pair("magic",          (int)ASSETCHAINS_MAGIC));
+        obj.push_back(Pair("calculatedmagic",(int)ConnectedChains.ThisChain().MagicNumber()));
 
         obj.push_back(Pair("premine",        ASSETCHAINS_SUPPLY));
 
