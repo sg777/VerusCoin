@@ -1361,7 +1361,11 @@ uint32_t CCurrencyDefinition::MagicNumber() const
     }
 
     std::string currencyName(name);
-    if (currencyName != "VRSC")
+    if (currencyName == "VRSC")
+    {
+        currencyName = boost::to_upper_copy(currencyName);
+    }
+    else
     {
         currencyName = boost::to_lower_copy(currencyName);
     }
@@ -1372,8 +1376,13 @@ uint32_t CCurrencyDefinition::MagicNumber() const
     uint32_t crc0 = 0;
     bits256 hash;
 
+    LogPrint("magicnumber", "hashing buffer: %s\n", HexBytes(&extraBuffer[0], extraBuffer.size()).c_str());
+
     iguana_rwnum(1, &crcHeader[0], sizeof(supply), (void *)&supply);
-    memcpy(&(crcHeader[sizeof(supply)]), name.c_str(), nameLen);
+    memcpy(&(crcHeader[sizeof(supply)]), currencyName.c_str(), nameLen);
+
+    LogPrint("magicnumber", "crc header buffer: %s\n", HexBytes(&crcHeader[0], crcHeader.size()).c_str());
+
     vcalc_sha256(nullptr, hash.bytes, &(extraBuffer[0]), lastSize);
     crc0 = hash.uints[0];
     return(calc_crc32(crc0, &crcHeader[0], sizeof(supply) + nameLen));
