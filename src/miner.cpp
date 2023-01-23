@@ -2290,6 +2290,9 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                 CValidationState state;
                 CPBaaSNotarization earnedNotarization;
 
+                // TODO: HARDENING - get this chain and cross chain notarizations from CreateEarnedNotarization
+                // or use an LRU cache and add age
+
                 int numOuts = coinbaseTx.vout.size();
                 if (CPBaaSNotarization::CreateEarnedNotarization(ConnectedChains.FirstNotaryChain(),
                                                                  DestinationToTransferDestination(proposer),

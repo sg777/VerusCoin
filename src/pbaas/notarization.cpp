@@ -2923,14 +2923,6 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                         proofState = EXPECT_HEADER_PROOFS;
                     }
                     validChallengeEvidence = (numHeaderProofs >= numHeaders);
-                    /* Move to a new model of determining how many proofs we need
-                    validChallengeEvidence = (numHeaderProofs >= (priorNotarizationCommitments.size() /
-                                                                  (CPBaaSNotarization::MAX_BLOCKS_PER_COMMITMENT_RANGE /
-                                                                   CPBaaSNotarization::NUM_HEADERS_PER_PROOF_RANGE) +
-                                                                  (priorNotarizationCommitments.size() %
-                                                                   (CPBaaSNotarization::MAX_BLOCKS_PER_COMMITMENT_RANGE /
-                                                                    CPBaaSNotarization::NUM_HEADERS_PER_PROOF_RANGE) ? 1 : 0)));
-                    */
                 }
                 else
                 {
@@ -3724,7 +3716,7 @@ std::vector<__uint128_t> GetBlockCommitments(uint32_t lastNotarizationHeight, ui
     return blockCommitmentsSmall;
 }
 
-// create a notarization that is validated as part of the block, generally benefiting the miner or staker if the
+// create a notarization that is validated as part of the block, statistically benefiting the miner or staker if the
 // cross notarization is valid
 bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalSystem,
                                                   const CTransferDestination &Proposer,
@@ -4874,7 +4866,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
         if (!externalSystem.IsValid() || externalSystem.rpcHost.empty())
         {
             // technically not a real error
-            return state.Error("no-notary");
+            return state.Error("no-notary-chain");
         }
 
         if (!GetNotarizationData(SystemID, cnd, &txes))
@@ -4892,6 +4884,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     {
         return state.Error(errorPrefix + "too early");
     }
+
     // spend all outputs we need to, even if there gets to be too many for 1 tx
     // rules to confirm or reject an earned notarization
     // 1) Notaries may confirm an earned notarization if and only if the following is true:
@@ -4910,6 +4903,31 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     // if we are auto-notarizing, the following conditions must be true to qualify for us to confirm a notarization:
     // 1) the notarization must be agreed to by 2 or greater valid earned notarizations since the next longest fork.
     //
+
+
+
+    // TODO: HARDENING - post evidence to finalize a notarization if the following is true:
+    //
+    // 1) We agree with the last finalized or a pending fork of notarizations on the other chain
+    //    Said differently, we we can only attempt to submit finalization evidence if there is
+    //    no pending notarization on the alternate chain that we agree with, which is more recent
+    //    than 10x the block notarization modulo (BNM) of both chains.
+    //
+    //    If we agree with a pending notarization, do not control a notary, and the notarization
+    //    we agree with is less than 10x the (BNM) of both chains, we don't submit anything, as our
+    //    notarization can never be finalized if someone proves the alternate notarization that
+    //    disqualifies us.
+    //
+    // 2) the last confirmed notarization on this chain occurred more than 10x our period prior
+    //    and the other chain has progressed 10x its BNM period in blocks on the proof root, and we
+    //    have 10 or more valid notarizations behind this one that we agree with.
+    //
+    // If #1 and #2 are true, we package up enough proof to make a transaction that can stand alone with evidence
+    // that miners and stakers of this chain agree on and there is no valid challenge as we settled on this finalization.
+    // It is then submitted as a finalization on this chain and accepted as a finalization. It will later be submitted
+    // as an accepted notarization to the other chain to confirm the last pending and become a pending notarization.
+    //
+
     std::vector<int> bestFork;
     if (cnd.forks.size() > 1)
     {
@@ -6853,8 +6871,10 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
     return true;
 }
 
+LRUCache<CUTXORef, std::tuple<CTransaction, int32_t, std::vector<CNotaryEvidence>>> finalizationEvidenceCache(100, 0.3);
+
 // get and aggregate all evidence from a finalization
-std::vector<CNotaryEvidence> CObjectFinalization::GetFinalizationEvidence(const CTransaction &thisTx, CValidationState &state, CTransaction *pOutputTx) const
+std::vector<CNotaryEvidence> CObjectFinalization::GetFinalizationEvidence(const CTransaction &thisTx, int32_t outNum, CValidationState &state, CTransaction *pOutputTx) const
 {
     CTransaction _outputTx;
     CUTXORef fullOutput(output);
@@ -6981,7 +7001,7 @@ std::vector<CNotaryEvidence> CObjectFinalization::GetFinalizationEvidence(const 
                 }
 
                 CTransaction priorFinalizationTx;
-                auto priorFinalizationVec = priorFinalization.GetFinalizationEvidence(priorOutputTx, state, &priorFinalizationTx);
+                auto priorFinalizationVec = priorFinalization.GetFinalizationEvidence(priorOutputTx, thisTx.vin[oneIn].prevout.n, state, &priorFinalizationTx);
 
                 // TODO: HARDENING - this assumes that evidence inputs for a finalization are consecutive to calculate how to get
                 // to the end of the inputs as a result, we MUST enforce that inputs from a prior finalization are consecutive.
@@ -7250,7 +7270,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
     CTransaction notarizationTx;
 
     // combine and verify all evidence
-    evidenceVec = currentFinalization.GetFinalizationEvidence(tx, state, &notarizationTx);
+    evidenceVec = currentFinalization.GetFinalizationEvidence(tx, outNum, state, &notarizationTx);
     if (state.IsError())
     {
         return !haveFullChain;
@@ -7377,7 +7397,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                 bool primaryValidated = false;
                 for (auto &oneFinalization : ofsToCheck)
                 {
-                    std::vector<CNotaryEvidence> ofEvidence = std::get<3>(oneFinalization).GetFinalizationEvidence(std::get<2>(oneFinalization), state);
+                    std::vector<CNotaryEvidence> ofEvidence = std::get<3>(oneFinalization).GetFinalizationEvidence(std::get<2>(oneFinalization), std::get<1>(oneFinalization).n, state);
                     for (auto &oneEItem : ofEvidence)
                     {
                         CProofRoot firstEntropyRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
@@ -7438,12 +7458,6 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         }
         else
         {
-            evidenceVec = currentFinalization.GetFinalizationEvidence(tx, state, &notarizationTx);
-            if (state.IsError())
-            {
-                return !haveFullChain;
-            }
-
             // this is asserting rejection, so we must confirm that it can be rejected and that it only spends
             // inputs that are now invalidated due to the rejection
             if (p.evalCode == EVAL_EARNEDNOTARIZATION)

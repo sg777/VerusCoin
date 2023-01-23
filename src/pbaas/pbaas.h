@@ -231,13 +231,12 @@ public:
         MIN_NOTARIZATION_OUTPUT = 0,                    // minimum amount for notarization output
 
         EXPECT_MIN_HEADER_PROOFS = 3,                   // if header proofs are needed, we need this many or number of blocks
-        MAX_HEADER_PROOFS_PER_PROOF = 1000,             // don't use more than 1000 header proofs to prove an alternate chain once
+        MAX_HEADER_PROOFS_PER_PROOF = 50,               // don't use more than this many header proofs in an alternate chain proof tx
         MAX_BLOCKS_PER_COMMITMENT_RANGE = 256,          // up to 256 blocks per commitment range
         MAX_BLOCK_RANGES_PER_PROOF = 5,                 // no more than 5 randomly selected ranges to cover any gap length
         NUM_BLOCKS_PER_PROOF_RANGE = 100,               // number of blocks in an ideal proof range
-        NUM_HEADER_REFS_PER_PROOF_RANGE = 7,            // prove at least this many randomly selected headers OR REFs per proof range
-        NUM_STAKE_HEADERS_PER_PROOF_RANGE = 2,          // prove at least this many randomly selected stake headers per proof range
-        NUM_HEADERS_PER_PROOF_RANGE = 4,                // prove this many randomly selected headers w/2 stake headers per range
+        NUM_HEADER_REFS_PER_PROOF_RANGE = 10,           // target to prove at least this many randomly selected headers OR REFs per proof range
+        NUM_STAKE_HEADERS_PER_PROOF_RANGE = 3,          // expect to prove at least this many stake headers per proof range
         MIN_BLOCKS_PER_CHECKPOINT = 256,                // blocks before we need another checkpoint
         MAX_PROOF_CHECKPOINTS = 100,                    // we do not add more than 100, after that, they are spaced further apart
     };

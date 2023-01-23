@@ -190,7 +190,7 @@ public:
     }
 
     bool GetOutputTransaction(const CTransaction &initialTx, CTransaction &tx, uint256 &blockHash) const;
-    std::vector<CNotaryEvidence> GetFinalizationEvidence(const CTransaction &thisTx, CValidationState &state, CTransaction *pOutputTx=nullptr) const;
+    std::vector<CNotaryEvidence> GetFinalizationEvidence(const CTransaction &thisTx, int32_t outputNum, CValidationState &state, CTransaction *pOutputTx=nullptr) const;
 
     // Sign the output object with an ID or signing authority of the ID from the wallet.
     CNotaryEvidence SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EHashTypes hashType) const;
@@ -306,7 +306,12 @@ public:
 class CChainNotarizationData
 {
 public:
-    static const int CURRENT_VERSION = PBAAS_VERSION;
+    enum {
+        VERSION_INVALID = 0,
+        VERSION_FIRST = 1,
+        VERSION_LAST = 1,
+        CURRENT_VERSION = VERSION_LAST
+    };
     uint32_t version;
 
     std::vector<std::pair<CUTXORef, CPBaaSNotarization>> vtx;
@@ -352,7 +357,8 @@ public:
 
     bool IsValid() const
     {
-        return version != 0 && ((!vtx.size() && lastConfirmed == -1 && !forks.size()) || (vtx.size() && forks.size()));
+        return version >= VERSION_FIRST && version <= VERSION_LAST &&
+               ((vtx.size() && forks.size()) || (vtx.size() && forks.size()));
     }
 
     bool IsConfirmed() const

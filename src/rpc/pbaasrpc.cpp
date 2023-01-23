@@ -3505,12 +3505,15 @@ bool GetUnspentChainTransfers(std::multimap<uint160, ChainTransferData> &inputDe
     }
 }
 
-bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &notarizationData, vector<std::pair<CTransaction, uint256>> *optionalTxOut, std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot, CProofRoot>>> *pCounterEvidence)
+// since same chain notarizations are always up to date, we only need to cache cross-chain notarizations that require analysis
+LRUCache<std::pair<uint160, uint256>, std::pair<CChainNotarizationData, std::vector<std::pair<CTransaction, uint256>>>> crossChainNotarizationDataCache(100, 0.3);
+
+bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut, std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot, CProofRoot>>> *pCounterEvidence)
 {
     notarizationData = CChainNotarizationData(std::vector<std::pair<CUTXORef, CPBaaSNotarization>>());
 
     vector<std::pair<CTransaction, uint256>> _extraTxOut;
-    if (pCounterEvidence && !optionalTxOut)
+    if (!optionalTxOut)
     {
         optionalTxOut = &_extraTxOut;
     }
@@ -3525,6 +3528,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
 
     // if we are being asked for a notarization of the current chain, we make one
     uint32_t height = chainActive.Height();
+
     if ((IsVerusActive() || height == 0) && currencyID == ASSETCHAINS_CHAINID)
     {
         CIdentityID proposer = VERUS_NOTARYID.IsNull() ? (VERUS_DEFAULTID.IsNull() ? VERUS_NODEID : VERUS_DEFAULTID) : VERUS_NOTARYID;
@@ -3550,56 +3554,90 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         notarizationData.bestChain = 0;
         return true;
     }
-
-    // look for unspent, confirmed finalizations first
-    uint160 finalizeNotarizationKey = CCrossChainRPCData::GetConditionID(currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey());
-    uint160 confirmedNotarizationKey = CCrossChainRPCData::GetConditionID(finalizeNotarizationKey, CObjectFinalization::ObjectFinalizationConfirmedKey());
-
-    if (GetAddressUnspent(confirmedNotarizationKey, CScript::P2IDX, unspentFinalizations) &&
-        unspentFinalizations.size())
+    else if (!chainDef.IsToken() && height > 0)
     {
-        // get the latest, confirmed notarization
-        auto bestIt = unspentFinalizations.begin();
-        for (auto oneIt = bestIt; oneIt != unspentFinalizations.end(); oneIt++)
+        std::pair<CChainNotarizationData, std::vector<std::pair<CTransaction, uint256>>> cacheResult;
+        if (crossChainNotarizationDataCache.Get(std::make_pair(currencyID, chainActive[height - 1]->GetBlockHash()), cacheResult))
         {
-            if (oneIt->second.blockHeight > bestIt->second.blockHeight)
+            notarizationData = cacheResult.first;
+            if (notarizationData.IsValid())
             {
-                bestIt = oneIt;
+                *optionalTxOut = cacheResult.second;
             }
         }
+    }
 
-        CTransaction nTx;
-        uint256 blkHash;
-        COptCCParams p;
-        if (!bestIt->second.script.IsPayToCryptoCondition(p) ||
-            !p.IsValid() ||
-            !(p.evalCode == EVAL_FINALIZE_NOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION || p.evalCode == EVAL_ACCEPTEDNOTARIZATION) ||
-            !p.vData.size())
+    if (!notarizationData.IsValid())
+    {
+        // look for unspent, confirmed finalizations first
+        uint160 finalizeNotarizationKey = CCrossChainRPCData::GetConditionID(currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey());
+        uint160 confirmedNotarizationKey = CCrossChainRPCData::GetConditionID(finalizeNotarizationKey, CObjectFinalization::ObjectFinalizationConfirmedKey());
+
+        if (GetAddressUnspent(confirmedNotarizationKey, CScript::P2IDX, unspentFinalizations) &&
+            unspentFinalizations.size())
         {
-            LogPrintf("Invalid finalization or notarization on transaction %s, output %ld may need to reindex\n", bestIt->first.txhash.GetHex().c_str(), bestIt->first.index);
-            printf("Invalid finalization or notarization on transaction %s, output %ld may need to reindex\n", bestIt->first.txhash.GetHex().c_str(), bestIt->first.index);
-            return false;
-        }
-
-        CUTXORef txInfo(bestIt->first.txhash, bestIt->first.index);
-
-        // if this is actually a finalization, get the notarization it is for
-        if (p.evalCode == EVAL_FINALIZE_NOTARIZATION)
-        {
-            CObjectFinalization finalization(p.vData[0]);
-            if (!finalization.output.hash.IsNull())
+            // get the latest, confirmed notarization
+            auto bestIt = unspentFinalizations.begin();
+            for (auto oneIt = bestIt; oneIt != unspentFinalizations.end(); oneIt++)
             {
-                txInfo.hash = finalization.output.hash;
+                if (oneIt->second.blockHeight > bestIt->second.blockHeight)
+                {
+                    bestIt = oneIt;
+                }
             }
-            txInfo.n = finalization.output.n;
 
-            if (myGetTransaction(txInfo.hash, nTx, blkHash) && nTx.vout.size() > txInfo.n)
+            CTransaction nTx;
+            uint256 blkHash;
+            COptCCParams p;
+            if (!bestIt->second.script.IsPayToCryptoCondition(p) ||
+                !p.IsValid() ||
+                !(p.evalCode == EVAL_FINALIZE_NOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION || p.evalCode == EVAL_ACCEPTEDNOTARIZATION) ||
+                !p.vData.size())
             {
-                CPBaaSNotarization thisNotarization(nTx.vout[txInfo.n].scriptPubKey);
+                LogPrintf("Invalid finalization or notarization on transaction %s, output %ld may need to reindex\n", bestIt->first.txhash.GetHex().c_str(), bestIt->first.index);
+                printf("Invalid finalization or notarization on transaction %s, output %ld may need to reindex\n", bestIt->first.txhash.GetHex().c_str(), bestIt->first.index);
+                return false;
+            }
+
+            CUTXORef txInfo(bestIt->first.txhash, bestIt->first.index);
+
+            // if this is actually a finalization, get the notarization it is for
+            if (p.evalCode == EVAL_FINALIZE_NOTARIZATION)
+            {
+                CObjectFinalization finalization(p.vData[0]);
+                if (!finalization.output.hash.IsNull())
+                {
+                    txInfo.hash = finalization.output.hash;
+                }
+                txInfo.n = finalization.output.n;
+
+                if (myGetTransaction(txInfo.hash, nTx, blkHash) && nTx.vout.size() > txInfo.n)
+                {
+                    CPBaaSNotarization thisNotarization(nTx.vout[txInfo.n].scriptPubKey);
+                    if (!thisNotarization.IsValid())
+                    {
+                        LogPrintf("Invalid notarization on transaction %s, output %u may need to reindex\n", txInfo.hash.GetHex().c_str(), txInfo.n);
+                        printf("Invalid finalization on transaction %s, output %u may need to reindex\n", txInfo.hash.GetHex().c_str(), txInfo.n);
+                        return false;
+                    }
+                    notarizationData.vtx.push_back(std::make_pair(txInfo, thisNotarization));
+                    notarizationData.forks = std::vector<std::vector<int>>({{0}});
+                    notarizationData.bestChain = 0;
+                    notarizationData.lastConfirmed = 0;
+                    if (optionalTxOut)
+                    {
+                        optionalTxOut->push_back(make_pair(nTx, blkHash));
+                    }
+                }
+            }
+            else
+            {
+                // straightforward, get the notarization and return
+                CPBaaSNotarization thisNotarization(p.vData[0]);
                 if (!thisNotarization.IsValid())
                 {
-                    LogPrintf("Invalid notarization on transaction %s, output %u may need to reindex\n", txInfo.hash.GetHex().c_str(), txInfo.n);
-                    printf("Invalid finalization on transaction %s, output %u may need to reindex\n", txInfo.hash.GetHex().c_str(), txInfo.n);
+                    LogPrintf("Invalid notarization on index entry for %s, output %u may need to reindex\n", txInfo.hash.GetHex().c_str(), txInfo.n);
+                    printf("Invalid finalization on index entry for %s, output %u may need to reindex\n", txInfo.hash.GetHex().c_str(), txInfo.n);
                     return false;
                 }
                 notarizationData.vtx.push_back(std::make_pair(txInfo, thisNotarization));
@@ -3608,219 +3646,202 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                 notarizationData.lastConfirmed = 0;
                 if (optionalTxOut)
                 {
-                    optionalTxOut->push_back(make_pair(nTx, blkHash));
-                }
-            }
-        }
-        else
-        {
-            // straightforward, get the notarization and return
-            CPBaaSNotarization thisNotarization(p.vData[0]);
-            if (!thisNotarization.IsValid())
-            {
-                LogPrintf("Invalid notarization on index entry for %s, output %u may need to reindex\n", txInfo.hash.GetHex().c_str(), txInfo.n);
-                printf("Invalid finalization on index entry for %s, output %u may need to reindex\n", txInfo.hash.GetHex().c_str(), txInfo.n);
-                return false;
-            }
-            notarizationData.vtx.push_back(std::make_pair(txInfo, thisNotarization));
-            notarizationData.forks = std::vector<std::vector<int>>({{0}});
-            notarizationData.bestChain = 0;
-            notarizationData.lastConfirmed = 0;
-            if (optionalTxOut)
-            {
-                if (myGetTransaction(txInfo.hash, nTx, blkHash) && nTx.vout.size() > txInfo.n)
-                {
-                    CPBaaSNotarization thisNotarization(nTx.vout[txInfo.n].scriptPubKey);
-                    if (!thisNotarization.IsValid())
+                    if (myGetTransaction(txInfo.hash, nTx, blkHash) && nTx.vout.size() > txInfo.n)
                     {
-                        LogPrintf("Invalid notarization on transaction %s, output %u\n", txInfo.hash.GetHex().c_str(), txInfo.n);
-                        printf("Invalid finalization on transaction %s, output %u\n", txInfo.hash.GetHex().c_str(), txInfo.n);
-                        return false;
-                    }
-                    optionalTxOut->push_back(make_pair(nTx, blkHash));
-                }
-                else
-                {
-                    LogPrintf("Cannot retrieve transaction %s, may need to reindex\n", txInfo.hash.GetHex().c_str());
-                    printf("Cannot retrieve transaction %s, may need to reindex\n", txInfo.hash.GetHex().c_str());
-                    return false;
-                }
-            }
-            // if this is a token, we're done, otherwise, get pending below as well
-            if (chainDef.IsToken())
-            {
-                return true;
-            }
-        }
-    }
-
-    if (!notarizationData.vtx.size())
-    {
-        LogPrint("notarization", "%s: failure to find confirmed notarization starting point for currency %s\n", __func__, chainDef.ToUniValue().write(1,2).c_str());
-        return false;
-    }
-
-    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> pendingFinalizations;
-
-    // now, add all pending notarizations, if present, and sort them out
-    if (GetAddressUnspent(CCrossChainRPCData::GetConditionID(finalizeNotarizationKey, CObjectFinalization::ObjectFinalizationPendingKey()),
-                          CScript::P2IDX,
-                          pendingFinalizations) &&
-        pendingFinalizations.size())
-    {
-        // all pending finalizations must be later than the last confirmed transaction and
-        // refer to a previous valid / confirmable, not necessarily confirmed, notarization
-        multimap<uint32_t, std::pair<CUTXORef, CPBaaSNotarization>> sorted;
-        multimap<uint32_t, std::pair<CTransaction, uint256>> sortedTxs;
-        std::multimap<CUTXORef, std::pair<CUTXORef, CPBaaSNotarization>> notarizationReferences;
-        std::map<CUTXORef, std::pair<CTransaction, uint256>> referencedTxes;
-
-        CTransaction nTx;
-        uint256  blkHash;
-        COptCCParams p;
-        CObjectFinalization f;
-        CPBaaSNotarization n;
-        BlockMap::iterator blockIt;
-        for (auto it = pendingFinalizations.begin(); it != pendingFinalizations.end(); it++)
-        {
-            if (!(it->second.script.IsPayToCryptoCondition(p) &&
-                  p.IsValid() &&
-                  p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
-                  p.vData.size() &&
-                  (f = CObjectFinalization(p.vData[0])).IsValid() &&
-                  myGetTransaction(f.output.hash.IsNull() ? it->first.txhash : f.output.hash, nTx, blkHash) &&
-                  nTx.vout.size() > f.output.n &&
-                  nTx.vout[f.output.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-                  p.IsValid() &&
-                  (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
-                  p.vData.size() &&
-                  (n = CPBaaSNotarization(p.vData[0])).IsValid() &&
-                  !blkHash.IsNull() &&
-                  (blockIt = mapBlockIndex.find(blkHash)) != mapBlockIndex.end() &&
-                  chainActive.Contains(blockIt->second)))
-            {
-                LogPrintf("%s: invalid, indexed finalization on transaction %s, output %d\n", __func__, it->first.txhash.GetHex().c_str(), (int)it->first.index);
-                continue;
-            }
-
-            // if the notarization is a mirror, it's prior notarization is on the alternate chain
-            CUTXORef priorRef = n.prevNotarization;
-            if (p.evalCode == EVAL_ACCEPTEDNOTARIZATION && n.IsMirror())
-            {
-                // we should have another finalization of our prior following the
-                // pending finalization
-                CTransaction finalizationTx;
-                if (f.output.hash.IsNull())
-                {
-                    finalizationTx = nTx;
-                }
-
-                CObjectFinalization priorOF;
-                if (!(myGetTransaction(it->first.txhash, finalizationTx, blkHash) &&
-                        (it->first.index + 1) < finalizationTx.vout.size() &&
-                        finalizationTx.vout[it->first.index + 1].scriptPubKey.IsPayToCryptoCondition(p) &&
-                        p.IsValid() &&
-                        p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
-                        p.vData.size() &&
-                        (priorOF = CObjectFinalization(p.vData[0])).IsValid()))
-                {
-                    LogPrintf("%s: invalid index for finalization %s, output %d\n", __func__, it->first.txhash.GetHex().c_str(), (int)it->first.index);
-                    continue;
-                }
-                // we should have a finalization right after on the same TX, pointing to the prior notarization that we care about
-                priorRef = priorOF.output;
-            }
-
-            // if finalization is on same transaction as notarization, set it
-            if (f.output.hash.IsNull())
-            {
-                f.output.hash = it->first.txhash;
-            }
-
-            notarizationReferences.insert(std::make_pair(priorRef, std::make_pair(f.output, n)));
-            if (optionalTxOut)
-            {
-                referencedTxes.insert(std::make_pair(f.output, std::make_pair(nTx, blkHash)));
-            }
-        }
-
-        // now that we have all pending notarizations (not finalizations) in a sorted list, keep all those which
-        // directly or indirectly refer to the last confirmed notarization
-        // all others should be pruned
-        bool somethingAdded = true;
-        while (somethingAdded && notarizationReferences.size())
-        {
-            somethingAdded = false;
-            int numForks = notarizationData.forks.size();
-            int forkNum;
-            for (forkNum = 0; forkNum < numForks; forkNum++)
-            {
-                CUTXORef searchRef = notarizationData.vtx[notarizationData.forks[forkNum].back()].first;
-
-                std::multimap<CUTXORef, std::pair<CUTXORef, CPBaaSNotarization>>::iterator pendingIt;
-
-                bool newFork = false;
-
-                for (pendingIt = notarizationReferences.lower_bound(searchRef);
-                     pendingIt != notarizationReferences.end() && pendingIt->first == searchRef;
-                     pendingIt++)
-                {
-                    notarizationData.vtx.push_back(pendingIt->second);
-                    if (optionalTxOut)
-                    {
-                        optionalTxOut->push_back(referencedTxes[pendingIt->second.first]);
-                    }
-                    if (newFork)
-                    {
-                        notarizationData.forks.push_back(notarizationData.forks[forkNum]);
-                        notarizationData.forks.back().back() = notarizationData.vtx.size() - 1;
+                        CPBaaSNotarization thisNotarization(nTx.vout[txInfo.n].scriptPubKey);
+                        if (!thisNotarization.IsValid())
+                        {
+                            LogPrintf("Invalid notarization on transaction %s, output %u\n", txInfo.hash.GetHex().c_str(), txInfo.n);
+                            printf("Invalid finalization on transaction %s, output %u\n", txInfo.hash.GetHex().c_str(), txInfo.n);
+                            return false;
+                        }
+                        optionalTxOut->push_back(make_pair(nTx, blkHash));
                     }
                     else
                     {
-                        notarizationData.forks[forkNum].push_back(notarizationData.vtx.size() - 1);
-                        newFork = true;
-                        somethingAdded = true;
+                        LogPrintf("Cannot retrieve transaction %s, may need to reindex\n", txInfo.hash.GetHex().c_str());
+                        printf("Cannot retrieve transaction %s, may need to reindex\n", txInfo.hash.GetHex().c_str());
+                        return false;
                     }
                 }
-                notarizationReferences.erase(searchRef);
+                // if this is a token, we're done, otherwise, get pending below as well
+                if (chainDef.IsToken())
+                {
+                    return true;
+                }
             }
         }
 
-        // now, we should have all forks in vectors
-        // they should all have roots that point to the same confirmed or initial notarization, which should be enforced by chain rules
-        // the best chain should simply be the tip with most power
-        notarizationData.bestChain = 0;
-        CChainPower best;
-        for (int i = 0; i < notarizationData.forks.size(); i++)
+        if (!notarizationData.vtx.size())
         {
-            if (notarizationData.vtx[notarizationData.forks[i].back()].second.proofRoots.count(currencyID))
+            LogPrint("notarization", "%s: failure to find confirmed notarization starting point for currency %s\n", __func__, chainDef.ToUniValue().write(1,2).c_str());
+            return false;
+        }
+
+        std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> pendingFinalizations;
+
+        // now, add all pending notarizations, if present, and sort them out
+        if (GetAddressUnspent(CCrossChainRPCData::GetConditionID(finalizeNotarizationKey, CObjectFinalization::ObjectFinalizationPendingKey()),
+                            CScript::P2IDX,
+                            pendingFinalizations) &&
+            pendingFinalizations.size())
+        {
+            // all pending finalizations must be later than the last confirmed transaction and
+            // refer to a previous valid / confirmable, not necessarily confirmed, notarization
+            multimap<uint32_t, std::pair<CUTXORef, CPBaaSNotarization>> sorted;
+            multimap<uint32_t, std::pair<CTransaction, uint256>> sortedTxs;
+            std::multimap<CUTXORef, std::pair<CUTXORef, CPBaaSNotarization>> notarizationReferences;
+            std::map<CUTXORef, std::pair<CTransaction, uint256>> referencedTxes;
+
+            CTransaction nTx;
+            uint256  blkHash;
+            COptCCParams p;
+            CObjectFinalization f;
+            CPBaaSNotarization n;
+            BlockMap::iterator blockIt;
+            for (auto it = pendingFinalizations.begin(); it != pendingFinalizations.end(); it++)
             {
-                CChainPower curPower =
-                    CChainPower::ExpandCompactPower(notarizationData.vtx[notarizationData.forks[i].back()].second.proofRoots[currencyID].compactPower, i);
-                if (curPower > best)
+                if (!(it->second.script.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                    p.vData.size() &&
+                    (f = CObjectFinalization(p.vData[0])).IsValid() &&
+                    myGetTransaction(f.output.hash.IsNull() ? it->first.txhash : f.output.hash, nTx, blkHash) &&
+                    nTx.vout.size() > f.output.n &&
+                    nTx.vout[f.output.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
+                    p.vData.size() &&
+                    (n = CPBaaSNotarization(p.vData[0])).IsValid() &&
+                    !blkHash.IsNull() &&
+                    (blockIt = mapBlockIndex.find(blkHash)) != mapBlockIndex.end() &&
+                    chainActive.Contains(blockIt->second)))
                 {
-                    best = curPower;
-                    notarizationData.bestChain = i;
+                    LogPrintf("%s: invalid, indexed finalization on transaction %s, output %d\n", __func__, it->first.txhash.GetHex().c_str(), (int)it->first.index);
+                    continue;
+                }
+
+                // if the notarization is a mirror, it's prior notarization is on the alternate chain
+                CUTXORef priorRef = n.prevNotarization;
+                if (p.evalCode == EVAL_ACCEPTEDNOTARIZATION && n.IsMirror())
+                {
+                    // we should have another finalization of our prior following the
+                    // pending finalization
+                    CTransaction finalizationTx;
+                    if (f.output.hash.IsNull())
+                    {
+                        finalizationTx = nTx;
+                    }
+
+                    CObjectFinalization priorOF;
+                    if (!(myGetTransaction(it->first.txhash, finalizationTx, blkHash) &&
+                            (it->first.index + 1) < finalizationTx.vout.size() &&
+                            finalizationTx.vout[it->first.index + 1].scriptPubKey.IsPayToCryptoCondition(p) &&
+                            p.IsValid() &&
+                            p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                            p.vData.size() &&
+                            (priorOF = CObjectFinalization(p.vData[0])).IsValid()))
+                    {
+                        LogPrintf("%s: invalid index for finalization %s, output %d\n", __func__, it->first.txhash.GetHex().c_str(), (int)it->first.index);
+                        continue;
+                    }
+                    // we should have a finalization right after on the same TX, pointing to the prior notarization that we care about
+                    priorRef = priorOF.output;
+                }
+
+                // if finalization is on same transaction as notarization, set it
+                if (f.output.hash.IsNull())
+                {
+                    f.output.hash = it->first.txhash;
+                }
+
+                notarizationReferences.insert(std::make_pair(priorRef, std::make_pair(f.output, n)));
+                if (optionalTxOut)
+                {
+                    referencedTxes.insert(std::make_pair(f.output, std::make_pair(nTx, blkHash)));
                 }
             }
-            else if (notarizationData.vtx[notarizationData.forks[i].back()].second.IsLaunchCleared() &&
-                     notarizationData.vtx[notarizationData.forks[i].back()].second.IsPreLaunch() &&
-                     notarizationData.vtx[notarizationData.forks[i].back()].second.IsLaunchConfirmed())
+
+            // now that we have all pending notarizations (not finalizations) in a sorted list, keep all those which
+            // directly or indirectly refer to the last confirmed notarization
+            // all others should be pruned
+            bool somethingAdded = true;
+            while (somethingAdded && notarizationReferences.size())
             {
-                notarizationData.bestChain = i;
+                somethingAdded = false;
+                int numForks = notarizationData.forks.size();
+                int forkNum;
+                for (forkNum = 0; forkNum < numForks; forkNum++)
+                {
+                    CUTXORef searchRef = notarizationData.vtx[notarizationData.forks[forkNum].back()].first;
+
+                    std::multimap<CUTXORef, std::pair<CUTXORef, CPBaaSNotarization>>::iterator pendingIt;
+
+                    bool newFork = false;
+
+                    for (pendingIt = notarizationReferences.lower_bound(searchRef);
+                        pendingIt != notarizationReferences.end() && pendingIt->first == searchRef;
+                        pendingIt++)
+                    {
+                        notarizationData.vtx.push_back(pendingIt->second);
+                        if (optionalTxOut)
+                        {
+                            optionalTxOut->push_back(referencedTxes[pendingIt->second.first]);
+                        }
+                        if (newFork)
+                        {
+                            notarizationData.forks.push_back(notarizationData.forks[forkNum]);
+                            notarizationData.forks.back().back() = notarizationData.vtx.size() - 1;
+                        }
+                        else
+                        {
+                            notarizationData.forks[forkNum].push_back(notarizationData.vtx.size() - 1);
+                            newFork = true;
+                            somethingAdded = true;
+                        }
+                    }
+                    notarizationReferences.erase(searchRef);
+                }
             }
-            else
+
+            // now, we should have all forks in vectors
+            // they should all have roots that point to the same confirmed or initial notarization, which should be enforced by chain rules
+            // the best chain should simply be the tip with most power
+            notarizationData.bestChain = 0;
+            CChainPower best;
+            for (int i = 0; i < notarizationData.forks.size(); i++)
             {
-                printf("%s: invalid notarization expecting proofroot for %s:\n%s\n",
-                    __func__,
-                    EncodeDestination(CIdentityID(currencyID)).c_str(),
-                    notarizationData.vtx[notarizationData.forks[i].back()].second.ToUniValue().write(1,2).c_str());
-                LogPrintf("%s: invalid notarization on transaction %s, output %u\n", __func__,
-                           notarizationData.vtx[notarizationData.forks[i].back()].first.hash.GetHex().c_str(),
-                           notarizationData.vtx[notarizationData.forks[i].back()].first.n);
-                //assert(false);
+                if (notarizationData.vtx[notarizationData.forks[i].back()].second.proofRoots.count(currencyID))
+                {
+                    CChainPower curPower =
+                        CChainPower::ExpandCompactPower(notarizationData.vtx[notarizationData.forks[i].back()].second.proofRoots[currencyID].compactPower, i);
+                    if (curPower > best)
+                    {
+                        best = curPower;
+                        notarizationData.bestChain = i;
+                    }
+                }
+                else if (notarizationData.vtx[notarizationData.forks[i].back()].second.IsLaunchCleared() &&
+                        notarizationData.vtx[notarizationData.forks[i].back()].second.IsPreLaunch() &&
+                        notarizationData.vtx[notarizationData.forks[i].back()].second.IsLaunchConfirmed())
+                {
+                    notarizationData.bestChain = i;
+                }
+                else
+                {
+                    printf("%s: invalid notarization expecting proofroot for %s:\n%s\n",
+                        __func__,
+                        EncodeDestination(CIdentityID(currencyID)).c_str(),
+                        notarizationData.vtx[notarizationData.forks[i].back()].second.ToUniValue().write(1,2).c_str());
+                    LogPrintf("%s: invalid notarization on transaction %s, output %u\n", __func__,
+                            notarizationData.vtx[notarizationData.forks[i].back()].first.hash.GetHex().c_str(),
+                            notarizationData.vtx[notarizationData.forks[i].back()].first.n);
+                    //assert(false);
+                }
             }
         }
+
+        crossChainNotarizationDataCache.Put(std::make_pair(currencyID, chainActive.LastTip()->GetBlockHash()), std::make_pair(notarizationData, *optionalTxOut));
     }
 
     // if we have unconfirmed notarizations and have been asked for
@@ -3845,7 +3866,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
 
         pCounterEvidence->resize(notarizationData.vtx.size());
 
-        // look for pending counter-evidence
+        // look for pending evidence/counter-evidence
         std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>>
             finalizations =
                 CObjectFinalization::GetFinalizations(currencyID, CObjectFinalization::ObjectFinalizationPendingKey(), startHeight, 0);
@@ -3862,11 +3883,14 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
             }
 
             CValidationState state;
-            std::vector<CNotaryEvidence> ofEvidence = std::get<3>(finalizations[i]).GetFinalizationEvidence(std::get<2>(finalizations[i]), state);
+            std::vector<CNotaryEvidence> ofEvidence = std::get<3>(finalizations[i]).GetFinalizationEvidence(std::get<2>(finalizations[i]),
+                                                                                                            std::get<1>(finalizations[i]).n,
+                                                                                                            state);
             if (state.IsError())
             {
                 return false;
             }
+
             for (auto &oneEItem : ofEvidence)
             {
                 // if we find a rejection, check it
