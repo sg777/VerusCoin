@@ -2612,7 +2612,8 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                                 (lastNotaP.evalCode == EVAL_ACCEPTEDNOTARIZATION || lastNotaP.evalCode == EVAL_EARNEDNOTARIZATION) &&
                                 lastNotaP.vData.size() &&
                                 (lastNotarization = CPBaaSNotarization(lastNotaP.vData[0])).IsValid() &&
-                                lastNotarization.SetMirror(expectedNotarization.IsMirror()) &&
+                                (lastNotarization.IsPreLaunch() ||
+                                 lastNotarization.SetMirror(expectedNotarization.IsMirror())) &&
                                 lastNotarization.currencyID == expectedNotarization.currencyID)
                             {
                                 uint32_t checkHeight = provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
@@ -3790,7 +3791,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     }
     params.push_back(oneParam);
 
-    bool logNotarization = LogAcceptCategory("notarization");
+    bool logNotarization = LogAcceptCategory("earnednotarizations");
 
     UniValue bestProofRootResult;
     try
@@ -5757,7 +5758,10 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     int startingNotarizationIdx = cnd.BestConfirmedNotarization(2);
     if (startingNotarizationIdx == -1 || cnd.vtx[cnd.lastConfirmed].second.IsBlockOneNotarization())
     {
-        LogPrint("notarization", "Not enough confirmations to submit finalized notarizations for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+        if (LogAcceptCategory("verbose"))
+        {
+            LogPrint("notarization", "Not enough confirmations to submit finalized notarizations for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+        }
         return retVal;
     }
 
@@ -6119,6 +6123,20 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         {
             allEvidence.evidence << notarizationTxInfo.second;
         }
+    }
+
+    // allEvidence has all signatures that were used to confirm on this chain
+    // now, if we are auto-notarizing, add the supporting evidence
+    if (txProofEvidence.IsValid())
+    {
+        // make sure we have a more recent notarization, after the one we are posting, that is consistent with the other chain/system
+        LOCK(cs_main);
+
+        // now, allEvidence has all signatures that were used to confirm on this chain and chain commitments
+        // add the supporting evidence
+        auto curProofRoot = CProofRoot::GetProofRoot(firstProofHeight);
+        allEvidence.evidence << curProofRoot;
+        allEvidence.evidence << txProofEvidence;
 
         uint32_t startHeight = confirmingLocalNotarization.IsValid() ? confirmingLocalNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight : 1;
         uint32_t heightChange = newConfirmedNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight - startHeight;
@@ -6139,20 +6157,6 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             }
             allEvidence.evidence << checkpointRoot;
         }
-    }
-
-    // allEvidence has all signatures that were used to confirm on this chain
-    // now, if we are auto-notarizing, add the supporting evidence
-    if (txProofEvidence.IsValid())
-    {
-        // make sure we have a more recent notarization, after the one we are posting, that is consistent with the other chain/system
-        LOCK(cs_main);
-
-        // now, allEvidence has all signatures that were used to confirm on this chain and chain commitments
-        // add the supporting evidence
-        auto curProofRoot = CProofRoot::GetProofRoot(firstProofHeight);
-        allEvidence.evidence << curProofRoot;
-        allEvidence.evidence << txProofEvidence;
 
         bool provideFullEvidence = counterEvidenceUni.isArray() &&
                                     counterEvidenceUni.size() > confirmingIdx &&
