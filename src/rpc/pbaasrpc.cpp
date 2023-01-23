@@ -3557,7 +3557,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
     else if (!chainDef.IsToken() && height > 0)
     {
         std::pair<CChainNotarizationData, std::vector<std::pair<CTransaction, uint256>>> cacheResult;
-        if (crossChainNotarizationDataCache.Get(std::make_pair(currencyID, chainActive[height - 1]->GetBlockHash()), cacheResult))
+        if (crossChainNotarizationDataCache.Get(std::make_pair(currencyID, chainActive[height]->GetBlockHash()), cacheResult))
         {
             notarizationData = cacheResult.first;
             if (notarizationData.IsValid())

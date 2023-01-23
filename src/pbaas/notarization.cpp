@@ -2392,7 +2392,7 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
                     entropyRoot = ((CChainObject<CProofRoot> *)proofComponent)->object;
                     if (entropyRoot.systemID == ASSETCHAINS_CHAINID &&
                         entropyRoot == CProofRoot::GetProofRoot(entropyRoot.rootHeight) &&
-                        entropyRoot.rootHeight >= ((height + 5) - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA))
+                        entropyRoot.rootHeight >= (height - (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 5)))
                     {
                         expectNumHeaderProofs = std::min(std::max(rangeLen, (int)CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS),
                                                 std::min((int)CPBaaSNotarization::MAX_HEADER_PROOFS_PER_PROOF, rangeLen / 10));
@@ -3406,7 +3406,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
                 {
                     CProofRoot entropyRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
                     CProofRoot challengeStart(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
-                    CProofRoot counterRoot = IsValidAlternateChainEvidence(cnd.vtx[priorNotarizationIdx].second.proofRoots[SystemID], oneItem, entropyRoot, challengeStart, height - 1);
+                    CProofRoot counterRoot = IsValidAlternateChainEvidence(cnd.vtx[priorNotarizationIdx].second.proofRoots[SystemID], oneItem, entropyRoot, challengeStart, height);
                     if (challengeStart.IsValid() && counterRoot.IsValid())
                     {
                         validCounterRoots.push_back(counterRoot);
@@ -3755,7 +3755,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
     bool isGatewayFirstContact = systemDef.IsGateway() && cnd.vtx[cnd.lastConfirmed].second.IsDefinitionNotarization();
 
-    // all we really want is the system proof roots for each notarization to make the JSON for the API smaller
+    // we really want the system proof roots for each notarization to make the JSON for the API smaller
     UniValue proofRootsUni(UniValue::VARR);
     for (auto &oneNot : cnd.vtx)
     {
@@ -3790,14 +3790,28 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     }
     params.push_back(oneParam);
 
-    //printf("%s: about to get cross notarization with %lu notarizations found\n", __func__, cnd.vtx.size());
+    bool logNotarization = LogAcceptCategory("notarization");
 
     UniValue bestProofRootResult;
     try
     {
+        if (logNotarization)
+        {
+            LogPrintf("calling getbestproofroot with params: %s\n", params.write(1,2).c_str());
+            printf("calling getbestproofroot with params: %s\n", params.write(1,2).c_str());
+        }
         bestProofRootResult = find_value(RPCCallRoot("getbestproofroot", params), "result");
+        if (logNotarization)
+        {
+            LogPrintf("result from getbestproofroot: %s\n", bestProofRootResult.write(1,2).c_str());
+            printf("result from getbestproofroot: %s\n", bestProofRootResult.write(1,2).c_str());
+        }
     } catch (exception e)
     {
+        if (logNotarization)
+        {
+            LogPrintf("exception from getbestproofroot: %s\n", e.what());
+        }
         bestProofRootResult = NullUniValue;
     }
 
@@ -3807,8 +3821,16 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     try
     {
         notarizationResult = find_value(RPCCallRoot("getnotarizationdata", params), "result");
+        if (logNotarization)
+        {
+            LogPrintf("result from getnotarizationdata: %s\n", notarizationResult.write(1,2).c_str());
+        }
     } catch (exception e)
     {
+        if (logNotarization)
+        {
+            LogPrintf("exception from getnotarizationdata: %s\n", e.what());
+        }
         notarizationResult = NullUniValue;
     }
 
@@ -4019,6 +4041,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     }
 
 
+
     // TODO: HARDENING
     // if we have 10 notarizations in a row with the ones we agree with and
     // have no valid alternatives, we can finalize the notarization that is 10 behind
@@ -4055,8 +4078,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
         CProofRoot lastStableProofRoot(find_value(bestProofRootResult, "laststableproofroot"));
 
-        // work around race condition or Infura API issue under investigation in ETH bridge, where it does not confirm
-        // one of our proof roots, while at the same time returning identical data in laststableproofroot.
         if (!lastConfirmedProofRoot.IsValid() && lastStableProofRoot.IsValid())
         {
             for (int i = cnd.vtx.size() - 1; i >= 0; i--)
@@ -6811,7 +6832,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                         return state.Error("Notarization cannot be unmirrored");
                     }
                     hw << currentNotarization;
-                    if (evidence.CheckSignatureConfirmation(hw.GetHash(), curDef.GetNotarySet(), curDef.minNotariesConfirm, height) !=
+                    if (evidence.CheckSignatureConfirmation(hw.GetHash(), curDef.GetNotarySet(), curDef.minNotariesConfirm, height - 1) !=
                         CNotaryEvidence::EStates::STATE_CONFIRMED)
                     {
                         if (LogAcceptCategory("notarization"))
@@ -7326,7 +7347,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     evidenceMap[ASSETCHAINS_CHAINID].CheckSignatureConfirmation(objHash,
                                                                                 notarySet,
                                                                                 pNotaryCurrency->minNotariesConfirm,
-                                                                                height) != CNotaryEvidence::STATE_CONFIRMED)
+                                                                                height - 1) != CNotaryEvidence::STATE_CONFIRMED)
                 {
                     return state.Error("insufficient evidence for finalization");
                 }
@@ -7446,7 +7467,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     evidenceMap[normalizedNotarization.currencyID].CheckSignatureConfirmation(objHash,
                                                                                     notarySet,
                                                                                     pNotaryCurrency->minNotariesConfirm,
-                                                                                    height) != CNotaryEvidence::STATE_CONFIRMED))
+                                                                                    height - 1) != CNotaryEvidence::STATE_CONFIRMED))
                 {
                     if (LogAcceptCategory("notarization"))
                     {
@@ -7477,7 +7498,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     evidenceMap[ASSETCHAINS_CHAINID].CheckSignatureConfirmation(objHash,
                                                                                 notarySet,
                                                                                 pNotaryCurrency->minNotariesConfirm,
-                                                                                height) != CNotaryEvidence::STATE_REJECTED)
+                                                                                height - 1) != CNotaryEvidence::STATE_REJECTED)
                 {
                     return state.Error("insufficient evidence to reject finalization");
                 }
@@ -7520,7 +7541,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     evidenceMap[notaryCurrencyDef.SystemOrGatewayID()].CheckSignatureConfirmation(objHash,
                                                                                     notarySet,
                                                                                     pNotaryCurrency->minNotariesConfirm,
-                                                                                    height) != CNotaryEvidence::STATE_REJECTED))
+                                                                                    height - 1) != CNotaryEvidence::STATE_REJECTED))
                 {
                     return state.Error("insufficient evidence from notary system to reject finalization");
                 }
@@ -7548,7 +7569,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                 }
             }
             if (oneItem.GetNotarySignatures().size() &&
-                oneItem.CheckSignatureConfirmation(objHash, notarySet, pNotaryCurrency->minNotariesConfirm, height) != CNotaryEvidence::EStates::STATE_INVALID)
+                oneItem.CheckSignatureConfirmation(objHash, notarySet, pNotaryCurrency->minNotariesConfirm, height - 1) != CNotaryEvidence::EStates::STATE_INVALID)
             {
                 hasSignature = true;
                 break;
