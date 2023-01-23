@@ -4020,7 +4020,7 @@ UniValue getlaunchinfo(const UniValue& params, bool fHelp)
     }
 
     std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>> exports;
-    ConnectedChains.GetSystemExports(curDef.systemID, exports, 0, notarizationTx.second.GetBlockHeight(), true);
+    ConnectedChains.GetSystemExports(curDef.systemID, exports, 0, notarizationTx.second.GetProofHeight(), true);
 
     std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>> foundExport;
     bool isExportFound = false;

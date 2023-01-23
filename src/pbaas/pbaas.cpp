@@ -6198,17 +6198,8 @@ bool CConnectedChains::GetLaunchNotarization(const CCurrencyDefinition &curDef,
                                                                  notarizationTx.vout[idx.first.index].nValue,
                                                                  CTxIn(idx.first.txhash, idx.first.index));
 
-                        uint32_t proofHeight;
-                        if (notaryNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
-                        {
-                            proofHeight = notaryNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
-                        }
-                        else
-                        {
-                            proofHeight = blockIt->second->GetHeight();
-                            notaryNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(proofHeight);
-                        }
-
+                        uint32_t proofHeight = blockIt->second->GetHeight();
+                        notaryNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(proofHeight);
                         notarizationRef.second = CPartialTransactionProof(notarizationTx,
                                                                           inputNums,
                                                                           outputNums,

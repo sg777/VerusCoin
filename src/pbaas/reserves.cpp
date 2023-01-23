@@ -568,6 +568,17 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                     p.vData.size() &&
                     (ccx = CCrossChainExport(p.vData[0])).IsValid()))
                 {
+                    if (LogAcceptCategory("notarization"))
+                    {
+                        printf("%s: Invalid export tx (%s) evidence from block height %u at proof height %u\ncomparing hash %s with proofroot for %s in notarization:\n%s\n",
+                                __func__,
+                                ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.TransactionHash().GetHex().c_str(),
+                                ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.GetBlockHeight(),
+                                ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.GetProofHeight(),
+                                ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.CheckPartialTransaction(exportTx, &isPartial).GetHex().c_str(),
+                                EncodeDestination(CIdentityID(pBaseImport->sourceSystemID)).c_str(),
+                                importNotarization.ToUniValue().write(1,2).c_str());
+                    }
                     return state.Error(strprintf("%s: invalid export evidence for import", __func__));
                 }
 
