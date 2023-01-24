@@ -2583,18 +2583,20 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                         UniValue jsonTx(UniValue::VOBJ);
                         uint256 blockHash;
                         TxToUniv(outTx, blockHash, jsonTx);
-                        printf("%s: proof for transaction %s\nwith txid: %s\nproof: %s\nat height: %u\n",
+                        printf("%s: proof for transaction %s\nwith txid: %s\nproof: %s\nat height: %u, proofheight: %u\n",
                                 __func__,
                                 jsonTx.write(1,2).c_str(),
                                 txHash.GetHex().c_str(),
                                 ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.ToUniValue().write(1,2).c_str(),
-                                ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight());
-                        LogPrint("verbose", "%s: proof for transaction %s\nwith txid: %s\nproof: %s\nat height: %u\n",
+                                ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight(),
+                                ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetProofHeight());
+                        LogPrintf("%s: proof for transaction %s\nwith txid: %s\nproof: %s\nat height: %u, proofheight: %u\n",
                                 __func__,
                                 jsonTx.write(1,2).c_str(),
                                 txHash.GetHex().c_str(),
                                 ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.ToUniValue().write(1,2).c_str(),
-                                ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight());
+                                ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight(),
+                                ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetProofHeight());
                     }
 
                     // find the last notarization on the transaction. if we need more proof to address a challenge, we will need to retain this
@@ -2653,12 +2655,12 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                                 if (lastNotarization.IsBlockOneNotarization())
                                 {
                                     // the prior confirmed notarization on our chain must be prelaunch when this was made,
-                                    // and we should be able to find it with a search between the first height of the block 1
-                                    // proof root for our chain and the current height being considered
+                                    // and we should be able to find it with a search before the root height of the last
+                                    // proof root for our chain and up to the height of the block 1 notarization proof root.
                                     if (!(lastLocalNotarization.GetLastNotarization(provenNotarization.currencyID,
-                                                                                    lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight,
-                                                                                    height) &&
-                                        lastLocalNotarization.IsPreLaunch()))
+                                                                                    0,
+                                                                                    lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight) &&
+                                          lastLocalNotarization.IsPreLaunch()))
                                     {
                                         lastNotarization = CPBaaSNotarization();
                                     }
@@ -5951,10 +5953,31 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             confirmingIdx = crosschainCND.IsConfirmed() ? crosschainCND.lastConfirmed : 0;
             CObjectFinalization finalizationObj;
 
+            if (crosschainCND.vtx.size() != 1)
+            {
+                // go backwards until we find one to confirm or fail
+                for (int i = crosschainCND.vtx.size() - 1; i > 0; i--)
+                {
+                    CAddressIndexDbEntry tmpIndexEntry;
+                    if (crosschainCND.vtx[i].second.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                        crosschainCND.vtx[i].second.FindEarnedNotarization(finalizationObj, &tmpIndexEntry) &&
+                        finalizationObj.IsConfirmed())
+                    {
+                        isFirstLaunchingNotarization = false;
+                        confirmingIdx = i;
+                        earnedNotarizationIndexEntry = crossConfirmedIndexEntry = tmpIndexEntry;
+                        confirmingLocalNotarization = crosschainCND.vtx[i].second;
+                        confirmingLocalNotarization.SetMirror(false);
+                        break;
+                    }
+                    finalizationObj = CObjectFinalization();
+                }
+            }
+
             if (!isFirstLaunchingNotarization)
             {
-                if (!crosschainCND.vtx[confirmingIdx].second.FindEarnedNotarization(finalizationObj, &crossConfirmedIndexEntry) ||
-                    !finalizationObj.IsConfirmed())
+                if (!confirmingLocalNotarization.IsValid() &&
+                    !crosschainCND.vtx[confirmingIdx].second.FindEarnedNotarization(finalizationObj, &crossConfirmedIndexEntry))
                 {
                     return retVal;
                 }
@@ -5993,23 +6016,6 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         // if we have pending notarizations, see which of the possible ones we agree with
         if (!(crosschainCND.vtx.size() == 1 && isFirstLaunchingNotarization))
         {
-            // go backwards until we find one to confirm or fail
-            for (int i = crosschainCND.vtx.size() - 1; i > 0; i--)
-            {
-                CAddressIndexDbEntry tmpIndexEntry;
-                CObjectFinalization finalizationObj;
-                if (crosschainCND.vtx[i].second.proofRoots.count(ASSETCHAINS_CHAINID) &&
-                    crosschainCND.vtx[i].second.FindEarnedNotarization(finalizationObj, &tmpIndexEntry) &&
-                    finalizationObj.IsConfirmed())
-                {
-                    earnedNotarizationIndexEntry = tmpIndexEntry;
-                    isFirstLaunchingNotarization = false;
-                    confirmingIdx = i;
-                    confirmingLocalNotarization = crosschainCND.vtx[i].second;
-                    confirmingLocalNotarization.SetMirror(false);
-                    break;
-                }
-            }
             if (!crosschainCND.vtx[confirmingIdx].second.IsDefinitionNotarization())
             {
                 // if we found one we agree with, make it the one we prove with our own notarization
@@ -6075,7 +6081,11 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             return retVal;
         }
         std::vector<int> outputNums({(int)cnd.vtx[cnd.lastConfirmed].first.n});
-        txProofEvidence = CPartialTransactionProof(block.vtx[0], std::vector<int>({0}), outputNums, pfirstProofIdxIt->second, firstProofHeight);
+        txProofEvidence = CPartialTransactionProof(notarizationTxes[cnd.lastConfirmed].first,
+                                                   std::vector<int>({0}),
+                                                   outputNums,
+                                                   pfirstProofIdxIt->second,
+                                                   firstProofHeight);
 
         if (!isFirstLaunchingNotarization && !(notarizationTxInfo.second.IsValid() && notarizationTxInfo.second.components.size()))
         {
