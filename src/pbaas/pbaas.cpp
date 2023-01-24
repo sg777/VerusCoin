@@ -8408,18 +8408,18 @@ GetPendingExports(const CCurrencyDefinition &sourceChain,
         lastCCI = CCrossChainImport(find_value(result, "lastimport"));
         if (!lastCCI.IsValid())
         {
-            LogPrintf("%s: Invalid last import from external chain %s\n", __func__, uni_get_str(params[0]).c_str());
+            LogPrint("crosschainexports", "%s: Invalid last import from external chain %s\n", __func__, uni_get_str(params[0]).c_str());
             return exports;
         }
         if (!pbn.proofRoots.count(sourceChainID))
         {
-            LogPrintf("%s: No adequate notarization available yet to support export to %s\n", __func__, uni_get_str(params[0]).c_str());
+            LogPrint("crosschainexports", "%s: No adequate notarization available yet to support export to %s\n", __func__, uni_get_str(params[0]).c_str());
             return exports;
         }
         lastConfirmed = pbn;
         if (lastConfirmedUTXO.hash.IsNull() || lastConfirmedUTXO.n < 0)
         {
-            LogPrintf("%s: No confirmed notarization available to support export to %s\n", __func__, uni_get_str(params[0]).c_str());
+            LogPrint("crosschainexports", "%s: No confirmed notarization available to support export to %s\n", __func__, uni_get_str(params[0]).c_str());
             return exports;
         }
     }

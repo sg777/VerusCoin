@@ -3439,7 +3439,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         }
         else
         {
-            if (IsValidPrimaryChainEvidence(notaryEvidence, newNotarization, height).IsValid())
+            if (!IsValidPrimaryChainEvidence(notaryEvidence, newNotarization, height).IsValid())
             {
                 return state.Error(errorPrefix + "insufficient proof to verify unchallenged notarization");
             }
