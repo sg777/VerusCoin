@@ -3768,6 +3768,13 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     // add prior unspent accepted notarization as our input
     txBuilder.AddTransparentInput(CUTXORef(lastTxId, lastTxOutNum), lastTx.vout[lastTxOutNum].scriptPubKey, lastTx.vout[lastTxOutNum].nValue);
 
+    {
+        LOCK(mempool.cs);
+        std::list<CTransaction> removed;
+        // eliminate any conflict with ourselves or someone else doing the same thing
+        mempool.removeConflicts(txBuilder.mtx, removed);
+    }
+
     // if we are going to confirm a prior notarization, we also should spend its prior
     // pending finalizations and all conflicting as well
     CUTXORef newConfirmedOutput;
