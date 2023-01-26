@@ -335,6 +335,32 @@ void CBlockHeader::SetVerusV2Hash()
     CBlockHeader::hashFunction = &CBlockHeader::GetVerusV2Hash;
 }
 
+uint256 CBlockHeader::GetRawVerusPOSHash(int32_t blockVersion, uint32_t solVersion, uint32_t magic, const uint256 &nonce, int32_t height, bool isVerusMainnet)
+{
+    if (isVerusMainnet && !CPOSNonce::NewNonceActive(height))
+    {
+        return uint256();
+    }
+    if (blockVersion == VERUS_V2)
+    {
+        CVerusHashV2Writer hashWriter = CVerusHashV2Writer(SER_GETHASH, PROTOCOL_VERSION);
+
+        hashWriter << ASSETCHAINS_MAGIC;
+        hashWriter << nonce;
+        hashWriter << height;
+        return hashWriter.GetHash();
+    }
+    else
+    {
+        CVerusHashWriter hashWriter = CVerusHashWriter(SER_GETHASH, PROTOCOL_VERSION);
+
+        hashWriter << ASSETCHAINS_MAGIC;
+        hashWriter << nonce;
+        hashWriter << height;
+        return hashWriter.GetHash();
+    }
+}
+
 // returns false if unable to fast calculate the VerusPOSHash from the header.
 // if it returns false, value is set to 0, but it can still be calculated from the full block
 // in that case. the only difference between this and the POS hash for the contest is that it is not divided by the value out
@@ -349,34 +375,7 @@ bool CBlockHeader::GetRawVerusPOSHash(uint256 &ret, int32_t nHeight) const
         return false;
     }
 
-    // if we can calculate, this assumes the protocol that the POSHash calculation is:
-    //    hashWriter << ASSETCHAINS_MAGIC;
-    //    hashWriter << nNonce; (nNonce is:
-    //                           (high 128 bits == low 128 bits of verus hash of low 128 bits of nonce)
-    //                           (low 32 bits == compact PoS difficult)
-    //                           (mid 96 bits == low 96 bits of HASH(pastHash, txid, voutnum)
-    //                              pastHash is hash of height - 100, either PoW hash of block or PoS hash, if new PoS
-    //                          )
-    //    hashWriter << height;
-    //    return hashWriter.GetHash();
-    if (nVersion == VERUS_V2)
-    {
-        CVerusHashV2Writer hashWriter = CVerusHashV2Writer(SER_GETHASH, PROTOCOL_VERSION);
-
-        hashWriter << ASSETCHAINS_MAGIC;
-        hashWriter << nNonce;
-        hashWriter << nHeight;
-        ret = hashWriter.GetHash();
-    }
-    else
-    {
-        CVerusHashWriter hashWriter = CVerusHashWriter(SER_GETHASH, PROTOCOL_VERSION);
-
-        hashWriter << ASSETCHAINS_MAGIC;
-        hashWriter << nNonce;
-        hashWriter << nHeight;
-        ret = hashWriter.GetHash();
-    }
+    ret = GetRawVerusPOSHash(nVersion, CConstVerusSolutionVector::Version(nSolution), ASSETCHAINS_MAGIC, nNonce, nHeight);
     return true;
 }
 
@@ -396,7 +395,7 @@ uint256 CBlockHeader::GetVerusEntropyHashComponent(int32_t height) const
 {
     uint256 retVal;
     // if we qualify as PoW, use PoW hash, regardless of PoS state
-    if (GetRawVerusPOSHash(retVal, height))
+    if (IsVerusPOSBlock() && GetRawVerusPOSHash(retVal, height))
     {
         // POS hash
         return retVal;
@@ -518,7 +517,7 @@ BlockMMRange CBlock::BuildBlockMMRTree() const
         mmRange.Add(tx.GetDefaultMMRNode());
     }
 
-    if (IsPBaaS() != 0)
+    if (IsAdvancedHeader() != 0)
     {
         // add one additional object to the block MMR that contains
         // a hash of the entire CPBaaSPreHeader for this block, except
@@ -543,7 +542,7 @@ BlockMMRange CBlock::GetBlockMMRTree() const
 
 CPartialTransactionProof CBlock::GetPreHeaderProof() const
 {
-    if (IsPBaaS() != 0)
+    if (IsAdvancedHeader() != 0)
     {
         // make a partial transaction proof for the export opret only
         BlockMMRange blockMMR(GetBlockMMRTree());
@@ -571,7 +570,7 @@ CPartialTransactionProof CBlock::GetPartialTransactionProof(const CTransaction &
 {
     std::vector<CTransactionComponentProof> components;
 
-    if (IsPBaaS() != 0)
+    if (IsAdvancedHeader() != 0 && partIndexes.size())
     {
         // make a partial transaction proof for the export opret only
         BlockMMRange blockMMR(GetBlockMMRTree());

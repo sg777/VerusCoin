@@ -86,11 +86,11 @@ public:
     }
 
     // returns 0 if not PBaaS, 1 if PBaaS PoW, -1 if PBaaS PoS
-    int32_t IsPBaaS() const
+    int32_t IsAdvancedHeader() const
     {
         if (nVersion == VERUS_V2)
         {
-            return CConstVerusSolutionVector::IsPBaaS(nSolution);
+            return CConstVerusSolutionVector::IsAdvancedSolution(nSolution);
         }
         return 0;
     }
@@ -258,6 +258,7 @@ public:
     uint256 GetVerusV2Hash() const;
     static void SetVerusV2Hash();
 
+    static uint256 GetRawVerusPOSHash(int32_t blockVersion, uint32_t solVersion, uint32_t magic, const uint256 &nonce, int32_t height, bool isVerusMainnet=true);
     bool GetRawVerusPOSHash(uint256 &ret, int32_t nHeight) const;
     bool GetVerusPOSHash(arith_uint256 &ret, int32_t nHeight, CAmount value) const; // value is amount of stake tx
     uint256 GetVerusEntropyHashComponent(int32_t nHeight) const;
@@ -466,7 +467,7 @@ public:
     // get transaction node from the block
     CDefaultMMRNode GetMMRNode(int index) const;
 
-    CPartialTransactionProof GetPartialTransactionProof(const CTransaction &tx, int txIndex, const std::vector<std::pair<int16_t, int16_t>> &partIndexes) const;
+    CPartialTransactionProof GetPartialTransactionProof(const CTransaction &tx, int txIndex, const std::vector<std::pair<int16_t, int16_t>> &partIndexes=std::vector<std::pair<int16_t, int16_t>>()) const;
     CPartialTransactionProof GetPreHeaderProof() const;
 
     std::vector<uint256> GetMerkleBranch(int nIndex) const;

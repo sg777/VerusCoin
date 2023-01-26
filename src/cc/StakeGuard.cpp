@@ -173,7 +173,7 @@ bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakePa
                 COptCCParams p;
 
                 if (stakeParams.srcHeight == pindex->GetHeight() &&
-                    (stakeParams.blkHeight - stakeParams.srcHeight >= VERUS_MIN_STAKEAGE) &&
+                    ((stakeParams.blkHeight - stakeParams.srcHeight) >= VERUS_MIN_STAKEAGE) &&
                     ((srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
                       extendedStake &&
                       p.IsValid() &&
@@ -386,13 +386,8 @@ bool MakeCheatEvidence(CMutableTransaction &mtx, const CTransaction &ccTx, uint3
 // a version 3 guard output should be a 1 of 2 meta condition, with both of the
 // conditions being stakeguard only and one of the conditions being sent to the public
 // stakeguard destination. Only for smart transaction V3 and beyond.
-bool PrecheckStakeGuardOutput(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+bool RawPrecheckStakeGuardOutput(const CTransaction &tx, int32_t outNum, CValidationState &state)
 {
-    if (CConstVerusSolutionVector::GetVersionByHeight(height) < CActivationHeight::ACTIVATE_EXTENDEDSTAKE)
-    {
-        return true;
-    }
-
     // ensure that we have all required spend conditions for primary, revocation, and recovery
     // if there are additional spend conditions, their addition or removal is checked for validity
     // depending on which of the mandatory spend conditions is authorized.
@@ -421,6 +416,15 @@ bool PrecheckStakeGuardOutput(const CTransaction &tx, int32_t outNum, CValidatio
         return true;
     }
     return false;
+}
+
+bool PrecheckStakeGuardOutput(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    if (CConstVerusSolutionVector::GetVersionByHeight(height) < CActivationHeight::ACTIVATE_EXTENDEDSTAKE)
+    {
+        return true;
+    }
+    return RawPrecheckStakeGuardOutput(tx, outNum, state);
 }
 
 typedef struct ccFulfillmentCheck {

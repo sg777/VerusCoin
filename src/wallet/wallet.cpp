@@ -1699,6 +1699,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
     CAmount totalStakingAmount = 0;
 
     uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
+    bool isPBaaS = solutionVersion >= CActivationHeight::ACTIVATE_PBAAS;
     bool extendedStake = solutionVersion >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
 
     {
@@ -1800,6 +1801,8 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         std::vector<CTxDestination> addressRet;
         int nRequiredRet;
 
+        std::map<uint160, uint32_t> idHeights;
+
         BOOST_FOREACH(COutput &txout, vecOutputs)
         {
             COptCCParams p;
@@ -1825,10 +1828,38 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                     {
                         if (view.HaveCoins(txHash) && Consensus::CheckTxInputs(checkStakeTx, state, view, nHeight, consensusParams))
                         {
-                            //printf("Found PoS block\nnNonce:    %s\n", pBlock->nNonce.GetHex().c_str());
-                            pwinner = &txout;
-                            curNonce = pBlock->nNonce;
-                            srcIndex = nHeight - txout.nDepth;
+                            bool isValid = true;
+                            // after PBaaS activation,
+                            // we can't stake an output that is to an ID, which has been modified more recently than stakeage
+                            if (whichType == txnouttype::TX_CRYPTOCONDITION &&
+                                isPBaaS &&
+                                (chainActive.Height() >= (nHeight - 1) ?
+                                    chainActive[nHeight - 1]->nBits > PBAAS_TESTFORK_TIME :
+                                    chainActive.LastTip()->nBits > PBAAS_TESTFORK_TIME))
+                            {
+                                for (auto &oneDest : destinations)
+                                {
+                                    if (oneDest.which() == COptCCParams::ADDRTYPE_ID)
+                                    {
+                                        uint256 idTxId;
+                                        std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+                                        if (!GetIdentity(CIdentityMapKey(GetDestinationID(oneDest)), idTxId, keyAndIdentity) ||
+                                            (nHeight - keyAndIdentity.first.blockHeight) < VERUS_MIN_STAKEAGE)
+                                        {
+                                            isValid = false;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (isValid)
+                            {
+                                //printf("Found PoS block\nnNonce:    %s\n", pBlock->nNonce.GetHex().c_str());
+                                pwinner = &txout;
+                                curNonce = pBlock->nNonce;
+                                srcIndex = nHeight - txout.nDepth;
+                            }
                         }
                         else
                         {

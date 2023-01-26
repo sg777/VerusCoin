@@ -4594,6 +4594,13 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
         RelayTransaction(newTx);
         return newTx.GetHash().GetHex();
     }
+
+    if (LogAcceptCategory("notarization"))
+    {
+        UniValue jsonTx(UniValue::VOBJ);
+        TxToUniv(tb.mtx, uint256(), jsonTx);
+        LogPrintf("Failure to add notarization transaction to mempool: %s\n", jsonTx.write(1,2).c_str());
+    }
     return NullUniValue;
 }
 

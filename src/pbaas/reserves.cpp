@@ -3361,13 +3361,11 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                  ((preexistingID.systemID != registeredCurrency.systemID &&
                    !((registeredCurrency.nativeCurrencyID.TypeNoFlags() == registeredCurrency.nativeCurrencyID.DEST_ETH ||
                       registeredCurrency.nativeCurrencyID.TypeNoFlags() == registeredCurrency.nativeCurrencyID.DEST_ETHNFT) &&
-                     (registeredCurrency.parent == registeredCurrency.systemID &&
-                      systemCurrency.IsValid() &&
+                     (systemCurrency.IsValid() &&
                       systemCurrency.IsGateway() &&
                       !systemCurrency.IsNameController())) &&
-                 !((preexistingID.systemID == registeredCurrency.launchSystemID ||
-                    (registeredCurrency.launchSystemID.IsNull() && preexistingID.parent.IsNull())) &&
-                   preexistingID.GetID() == registeredCurrency.SystemOrGatewayID())) ||
+                   !(preexistingID.systemID == registeredCurrency.launchSystemID ||
+                      (registeredCurrency.launchSystemID.IsNull() && preexistingID.parent.IsNull()))) ||
                  boost::to_lower_copy(preexistingID.name) != boost::to_lower_copy(registeredCurrency.name))))
             {
                 printf("WARNING!: Imported currency collides with pre-existing identity of another name.\n"
@@ -3433,13 +3431,11 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                  (importedID.systemID != preexistingCurrency.systemID &&
                   !((preexistingCurrency.nativeCurrencyID.TypeNoFlags() == preexistingCurrency.nativeCurrencyID.DEST_ETH ||
                      preexistingCurrency.nativeCurrencyID.TypeNoFlags() == preexistingCurrency.nativeCurrencyID.DEST_ETHNFT) &&
-                    (preexistingCurrency.parent == preexistingCurrency.systemID &&
-                     systemCurrency.IsValid() &&
+                    (systemCurrency.IsValid() &&
                      systemCurrency.IsGateway() &&
                      !systemCurrency.IsNameController())) &&
-                  !((importedID.systemID == preexistingCurrency.launchSystemID ||
-                    (preexistingCurrency.launchSystemID.IsNull() && importedID.parent.IsNull())) &&
-                   importedID.GetID() == preexistingCurrency.SystemOrGatewayID())) ||
+                  !(importedID.systemID == preexistingCurrency.launchSystemID ||
+                    (preexistingCurrency.launchSystemID.IsNull() && importedID.parent.IsNull()))) ||
                  boost::to_lower_copy(importedID.name) != boost::to_lower_copy(preexistingCurrency.name)))
             {
                 currencyCollision = true;

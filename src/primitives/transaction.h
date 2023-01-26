@@ -731,7 +731,7 @@ public:
         return a.hash != b.hash;
     }
 
-    // verus hash will be the same for a given txid, output number, block height, and blockhash of 100 blocks past
+    // verus hash will be the same for a given txid, output number, block height, and blockhash from >= 100 blocks past
     static uint256 _GetVerusPOSHash(CPOSNonce *pNonce, const uint256 &txid, int32_t voutNum, int32_t height, const uint256 &pastHash, int64_t value)
     {
         //printf("Nonce:%s\n txid:%s\nnvout:%d\nheight:%d\npastHash:%s\nvalue:%lu\n",

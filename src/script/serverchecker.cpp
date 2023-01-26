@@ -21,6 +21,7 @@
 #include <boost/tuple/tuple_comparison.hpp>
 
 extern uint32_t KOMODO_STOPAT;
+extern int32_t VERUS_MIN_STAKEAGE;
 extern CChain chainActive;
 
 namespace {
@@ -91,6 +92,12 @@ std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> Serve
     // and substitute the correct addresses when checking signatures
     COptCCParams p;
     std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> idAddresses;
+
+    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(spendHeight) > CActivationHeight::ACTIVATE_PBAAS;
+
+    uint32_t checkHeight = chainActive.Height() < spendHeight ? chainActive.Height() : spendHeight - 1;
+    bool enforceIDStakeHeightLimit = isPBaaS && chainActive[checkHeight]->nBits > PBAAS_TESTFORK_TIME;
+
     if (scriptPubKeyIn.IsPayToCryptoCondition(p) && p.IsValid() && p.n >= 1 && p.vKeys.size() >= p.n && p.version >= p.VERSION_V3 && p.vData.size())
     {
         // get mapping to any identities used that are available. if a signing identity is unavailable, a transaction may still be able to be spent
@@ -125,15 +132,21 @@ std::map<uint160, std::pair<int, std::vector<std::vector<unsigned char>>>> Serve
                         CIdentity id;
                         std::pair<CIdentityMapKey, CIdentityMapValue> idMapEntry;
                         bool sourceIsSelf = selfIdentity.IsValid() && destId == selfID;
+                        uint32_t idHeight = 0;
                         if (selfIdentity.IsValidUnrevoked() && destId == selfID)
                         {
                             id = selfIdentity;
                         }
                         else
                         {
-                            id = CIdentity::LookupIdentity(destId, spendHeight);
+                            id = CIdentity::LookupIdentity(destId, spendHeight, &idHeight);
                         }
-                        if (id.IsValidUnrevoked() && (isStake || sourceIsSelf || !id.IsLocked(spendHeight)))
+                        // we won't enable a stake spend from an ID that isn't > min stakeage since
+                        // its last modification
+                        if (id.IsValidUnrevoked() &&
+                            ((isStake && (!enforceIDStakeHeightLimit || (idHeight && (spendHeight - idHeight) >= VERUS_MIN_STAKEAGE))) ||
+                             sourceIsSelf ||
+                             !id.IsLocked(spendHeight)))
                         {
                             std::vector<std::vector<unsigned char>> idAddrBytes;
                             for (auto &oneAddr : id.primaryAddresses)
