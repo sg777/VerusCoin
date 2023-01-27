@@ -29,7 +29,7 @@ static const uint32_t PBAAS_VERSION = 1;
 static const uint32_t PBAAS_VERSION_INVALID = 0;
 
 //static const uint32_t PBAAS_TESTFORK_TIME = 1674216000;
-static const uint32_t PBAAS_TESTFORK_TIME = 1604216000;
+static const uint32_t PBAAS_TESTFORK_TIME = 1704216000;
 
 class CTransaction;
 class CScript;

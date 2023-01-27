@@ -2143,7 +2143,7 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
             ret.push_back(Pair("definitiontxout", (int)defUTXO.n));
         }
 
-        UniValue lastStateUni = ConnectedChains.GetCurrencyState(chainDef, height + 1, defHeight).ToUniValue();
+        UniValue lastStateUni = ConnectedChains.GetCurrencyState(chainDef, height, defHeight).ToUniValue();
 
         if (chainDef.IsToken() && chainDef.systemID == ASSETCHAINS_CHAINID)
         {
@@ -3508,7 +3508,7 @@ bool GetUnspentChainTransfers(std::multimap<uint160, ChainTransferData> &inputDe
 // since same chain notarizations are always up to date, we only need to cache cross-chain notarizations that require analysis
 LRUCache<std::pair<uint160, uint256>, std::pair<CChainNotarizationData, std::vector<std::pair<CTransaction, uint256>>>> crossChainNotarizationDataCache(100, 0.3);
 
-bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut, std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot, CProofRoot>>> *pCounterEvidence)
+bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut, std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> *pCounterEvidence)
 {
     notarizationData = CChainNotarizationData(std::vector<std::pair<CUTXORef, CPBaaSNotarization>>());
 
@@ -3898,11 +3898,16 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                 {
                     CProofRoot entropyRoot;
                     CProofRoot challengeStartRoot;
+                    int entryIdx = vtxMap[finalizationOutput];
                     CProofRoot alternateRoot =
-                        IsValidAlternateChainEvidence(notarizationData.vtx[vtxMap[finalizationOutput]].second.proofRoots[currencyID], oneEItem, entropyRoot, challengeStartRoot, std::get<0>(finalizations[i]));
+                        IsValidAlternateChainEvidence(notarizationData.vtx[entryIdx].second.proofRoots[currencyID],
+                                                      oneEItem,
+                                                      (*optionalTxOut)[entryIdx].second,
+                                                      challengeStartRoot,
+                                                      std::get<0>(finalizations[i]));
                     if (alternateRoot.IsValid())
                     {
-                        (*pCounterEvidence)[i].push_back(std::make_tuple(oneEItem, alternateRoot, entropyRoot, challengeStartRoot));
+                        (*pCounterEvidence)[i].push_back(std::make_tuple(oneEItem, alternateRoot, challengeStartRoot));
                     }
                 }
             }
@@ -3947,22 +3952,11 @@ UniValue getnotarizationdata(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currencyid");
     }
 
-    std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot, CProofRoot>>> counterEvidence;
-    if (GetNotarizationData(chainID, nData, nullptr, &counterEvidence))
+    std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> counterEvidence;
+    std::vector<std::pair<CTransaction, uint256>> transactionsAndBlockHash;
+    if (GetNotarizationData(chainID, nData, &transactionsAndBlockHash, &counterEvidence))
     {
-        UniValue nDataUni = nData.ToUniValue();
-        CChainNotarizationData notaryCND;
-
-        // this is a value used for entropy and cannot be depended on as a truly stable tip.
-        //
-        // it will only be accepted on a chain that matches it, so if it becomes stale, all evidence
-        // and proof using it must be regenerated for the new values for the transactions to be valid.
-        // it is checked on the first challenge to establish a root for all responses or subsequent challenges
-        // and ensure that it is within 5 blocks of the DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA
-        // from the expiry of that transaction, meaning the transaction was made and sent.
-        uint32_t nHeight = chainActive.Height();
-        nDataUni.pushKV("semistableroot", CProofRoot::GetProofRoot((nHeight - 5) > 0 ? (nHeight - 5) : 1).ToUniValue());
-        return nDataUni;
+        return nData.ToUniValue(transactionsAndBlockHash, counterEvidence);
     }
     else
     {
@@ -4233,7 +4227,6 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
     {
         retVal.pushKV("laststableproofroot", CProofRoot::GetProofRoot((nHeight - COINBASE_MATURITY) > 0 ? (nHeight - COINBASE_MATURITY) : 1).ToUniValue());
     }
-    retVal.pushKV("semistableroot", CProofRoot::GetProofRoot((nHeight - 5) > 0 ? (nHeight - 5) : 1).ToUniValue());
 
     std::set<uint160> currenciesSet({ASSETCHAINS_CHAINID});
     CCurrencyDefinition targetCur;
@@ -4346,7 +4339,7 @@ UniValue challengenotarizations(const UniValue& params, bool fHelp)
             }
             CChainNotarizationData currentCND;
             std::map<CUTXORef, int> currentNotarizationMap;
-            std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot, CProofRoot>>> counterEvidence;
+            std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> counterEvidence;
             std::set<std::pair<CUTXORef, CProofRoot>> preexistingChallenges;
 
             if (!GetNotarizationData(oneSystemChallenges.first, currentCND, nullptr, &counterEvidence) ||
@@ -4367,7 +4360,7 @@ UniValue challengenotarizations(const UniValue& params, bool fHelp)
             {
                 for (auto &oneCounterEvidence : oneCounterSet)
                 {
-                    preexistingChallenges.insert(std::make_pair(std::get<0>(oneCounterEvidence).output, std::get<2>(oneCounterEvidence)));
+                    preexistingChallenges.insert(std::make_pair(std::get<0>(oneCounterEvidence).output, std::get<1>(oneCounterEvidence)));
                 }
             }
             CCcontract_info CC;
@@ -4400,8 +4393,7 @@ UniValue challengenotarizations(const UniValue& params, bool fHelp)
                     chkP.IsValid() &&
                     chkP.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
                 {
-                    CNotaryEvidence emptyEvidence;
-                    int baseOverhead = (evidenceScript.size() - ::AsVector(std::get<2>(oneChallenge.second)).size()) + 128;
+                    int baseOverhead = (evidenceScript.size() - ::AsVector(std::get<3>(oneChallenge.second)).size()) + 128;
                     auto evidenceVec = std::get<3>(oneChallenge.second).BreakApart(CScript::MAX_SCRIPT_ELEMENT_SIZE - baseOverhead);
                     if (!evidenceVec.size())
                     {

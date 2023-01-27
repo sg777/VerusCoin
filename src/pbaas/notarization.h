@@ -337,7 +337,10 @@ public:
         ::FromVector(vch, *this);
     }
 
-    CChainNotarizationData(UniValue &obj, bool loadNotarizations=false);
+    CChainNotarizationData(UniValue &obj,
+                           bool loadNotarizations=false,
+                           std::vector<uint256> *pBlockHash=nullptr,
+                           std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> *pCounterEvidence=nullptr);
 
     ADD_SERIALIZE_METHODS;
 
@@ -377,8 +380,9 @@ public:
     // without conflicts in agreement. calls out, so should not be called holding locks. returns -1 if none found.
     int BestConfirmedNotarization(int minConfirms);
 
-    UniValue ToUniValue(const std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot, CProofRoot>>> &counterEvidence=
-                            std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot, CProofRoot>>>()) const;
+    UniValue ToUniValue(const std::vector<std::pair<CTransaction, uint256>> &transactionsAndBlockHash=std::vector<std::pair<CTransaction, uint256>>(),
+                        const std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> &counterEvidence=
+                            std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>>()) const;
 };
 
 std::vector<CNodeData> GetGoodNodes(int maxNum=CCurrencyDefinition::MAX_STARTUP_NODES);
@@ -394,14 +398,14 @@ bool IsFinalizeNotarizationInput(const CScript &scriptSig);
 bool IsNotaryEvidenceInput(const CScript &scriptSig);
 CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
                                          const CNotaryEvidence &e,
-                                         CProofRoot &entropyRoot,
+                                         const uint256 &entropyHash,
                                          CProofRoot &challengeStartRoot,
                                          uint32_t height);
 CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                                                const CPBaaSNotarization &expectedNotarization,
                                                uint32_t height,
+                                               uint256 *pOptEntropyHash=nullptr, // only needed when responding to a challenge
                                                const CProofRoot &challengeProofRoot=CProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID),
-                                               const CProofRoot &entropyProofRoot=CProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID),
                                                const CProofRoot &challengeStartPoint=CProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID));
 extern string PBAAS_HOST, PBAAS_USERPASS, ASSETCHAINS_RPCHOST, ASSETCHAINS_RPCCREDENTIALS;;
 extern int32_t PBAAS_PORT;

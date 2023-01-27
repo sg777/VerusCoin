@@ -2377,7 +2377,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                 std::map<uint160, std::string> requiredDefinitions = newDefinitions;
                 // TODO: HARDENING - Need to prepare to validate all newly mapped and defined supporting currencies
                 // skips the case where we are defining a new mapped currency, need to cover that
-                if (!ValidateNewUnivalueCurrencyDefinition(newCurrency.ToUniValue(), height, ASSETCHAINS_CHAINID, requiredDefinitions, false).IsValid())
+                if (!ValidateNewUnivalueCurrencyDefinition(newCurrency.ToUniValue(), height - 1, ASSETCHAINS_CHAINID, requiredDefinitions, false).IsValid())
                 {
                     LogPrint("currencydefinition", "%s: Currency definition in output violates current definition rules.\n%s\n", __func__, newCurrency.ToUniValue().write(1,2).c_str());
                     return state.Error("Currency definition in output violates current definition rules");
@@ -2891,7 +2891,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
         CCoinbaseCurrencyState importState;
 
-        if (!(importCurrencyDef.IsValid() && (importState = ConnectedChains.GetCurrencyState(importCurrencyID, height, true)).IsValid()))
+        if (!(importCurrencyDef.IsValid() && (importState = ConnectedChains.GetCurrencyState(importCurrencyID, height - 1, true)).IsValid()))
         {
             // only pre-conversion gets this benefit
             if (rt.IsPreConversion())
@@ -3030,8 +3030,16 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
         if (importState.IsPrelaunch())
         {
+            if (!haveFullChain)
+            {
+                return true;
+            }
             if (!rt.IsPreConversion())
             {
+                if (!haveFullChain)
+                {
+                    return true;
+                }
                 return state.Error("Only preconversion transfers are valid during the prelaunch phase of a currency " + rt.ToUniValue().write(1,2));
             }
             if (rt.FeeCurrencyID() != importCurrencyDef.launchSystemID || importCurrencyDef.launchSystemID.IsNull())
