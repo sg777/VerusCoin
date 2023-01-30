@@ -233,12 +233,13 @@ public:
         EXPECT_MIN_HEADER_PROOFS = 3,                   // if header proofs are needed, we need this many or number of blocks
         MAX_HEADER_PROOFS_PER_PROOF = 50,               // don't use more than this many header proofs in an alternate chain proof tx
         MAX_BLOCKS_PER_COMMITMENT_RANGE = 256,          // up to 256 blocks per commitment range
-        COMMITMENT_BLOCKS_START_OFFSET = 100,           // commitment blocks start this far before the actual start or at 1
         MAX_BLOCK_RANGES_PER_PROOF = 5,                 // no more than 5 randomly selected ranges to cover any gap length
+        NUM_COMMITMENT_BLOCKS_START_OFFSET = 100,       // commitment blocks start this far before the actual start or at 1
         NUM_BLOCKS_PER_PROOF_RANGE = 100,               // number of blocks in an ideal proof range
         NUM_HEADER_REFS_PER_PROOF_RANGE = 10,           // target to prove at least this many randomly selected headers OR REFs per proof range
         NUM_STAKE_HEADERS_PER_PROOF_RANGE = 3,          // expect to prove at least this many stake headers per proof range
         MIN_BLOCKS_PER_CHECKPOINT = 256,                // blocks before we need another checkpoint
+        MIN_EARNED_FOR_AUTO = 4,                        // minimum earned notarizations to auto-notarize
         MAX_PROOF_CHECKPOINTS = 100,                    // we do not add more than 100, after that, they are spaced further apart
     };
     //static const int FINAL_CONFIRMATIONS = 10;

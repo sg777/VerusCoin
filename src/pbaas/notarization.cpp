@@ -2230,17 +2230,50 @@ std::vector<uint32_t> UnpackBlockCommitment(__uint128_t oneBlockCommitment)
     return retVal;
 }
 
-CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
+CProofRoot IsValidChallengeEvidence(const CProofRoot &defaultProofRoot,
                                          const CNotaryEvidence &e,
                                          const uint256 &entropyHash,
+                                         bool &invalidates,
                                          CProofRoot &challengeStartRoot,
                                          uint32_t height)
 {
-    if (!e.IsRejected())
+    if (!e.IsRejected() || defaultProofRoot.systemID == ASSETCHAINS_CHAINID)
     {
         return CProofRoot();
     }
     bool validCounterEvidence = false;
+    invalidates = false;
+
+    // challenges to earned or accepted notarizations only differ in
+    // the polarity of notarizations mirrored or not and each chain's
+    // initial states.
+    //
+    // if the proof root system is a notary chain of this chain, we
+    // can assume earned notarizations, except initial definition for
+    // gateways. otherwise, we are working with mirrored, accepted
+    // notarizations.
+    //
+    // currently, we support two types of challenges with the following properties:
+    // 1) General challenge for proof, must have an alternate chain at least 3 blocks long. There
+    //    are two subclasses of this kind of proof:
+    //    a) Simply force proof about a chain that does not match the observed chain. In most cases,
+    //       this is benign and will self-resolve, especially by sharing "good nodes" in notarizations.
+    //    b) Proving a more powerful chain for an extended period of time and preventing finalization
+    //       of alternate notarizations.
+    //
+    // 2) Fraud proof of failure to follow the notarization rule that requires a notarization to refer to
+    //    the prior notarization on the blockchain with which it agrees, whether or not doing so would
+    //    disqualify the miner or staker from being able to notarize at all.
+    //    This type of proof simply proves or more recent notarization than the one claimed as being
+    //    prior good one in the chain, using the proof root of the notarization to be invalidated.
+    //    A notarization may be finalized as rejected, which invalidates all of its successors, if valid
+    //    evidence of fraud is provided.
+    //
+    bool earnedNotarizations = false;
+    if (ConnectedChains.NotarySystems().count(defaultProofRoot.systemID))
+    {
+        earnedNotarizations = true;
+    }
 
     std::set<int> evidenceTypes;
     evidenceTypes.insert(CHAINOBJ_PROOF_ROOT);
@@ -2270,6 +2303,8 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
         EXPECT_ALTERNATE_HEADER_PROOFS = 5,         // selected header proofs from the entropy root
         EXPECT_ALT_STAKE_TX = 6,                    // stake transaction in block for stake headers
         EXPECT_ALT_ID_PROOF_OR_STAKEGUARD = 7,      // necessary ID proof(s) to be able to confirm signature & end with stakeguard
+        EXPECT_SKIPPED_NOTARIZATION_REF = 8,        // UTXO reference to the notarization that was skipped
+        EXPECT_SKIPPED_HEADERREF_PROOF = 9,         // proof of a header ref from the skipped notarization using the challenged notarization
     };
     EProofState proofState = EXPECT_ALTERNATE_PROOF_ROOT;
     int numHeaderProofs = 0;
@@ -2288,6 +2323,10 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
     std::vector<CIdentity> stakeSpendingIDs;
     CCurrencyDefinition externalCurrency;
 
+    // used for fraud proofs to prove the skipped notarization proof root and other
+    // consistencies with the challenged notarization
+    CPBaaSNotarization skippedNotarization, priorNotarization, challengedNotarization;
+
     for (auto &proofComponent : autoProof.chainObjects)
     {
         switch (proofState)
@@ -2297,15 +2336,23 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
                 if (proofComponent->objectType == CHAINOBJ_PROOF_ROOT)
                 {
                     counterEvidenceRoot = ((CChainObject<CProofRoot> *)proofComponent)->object;
-                    if (counterEvidenceRoot.systemID != ASSETCHAINS_CHAINID &&
-                        counterEvidenceRoot.rootHeight == defaultProofRoot.rootHeight &&
-                        (CChainPower::ExpandCompactPower(counterEvidenceRoot.compactPower, counterEvidenceRoot.rootHeight) >
-                            CChainPower::ExpandCompactPower(defaultProofRoot.compactPower,
-                                                            counterEvidenceRoot.rootHeight)) &&
-                        (counterEvidenceRoot.stateRoot != defaultProofRoot.stateRoot ||
-                            counterEvidenceRoot.blockHash != defaultProofRoot.blockHash))
+                    if (counterEvidenceRoot.systemID == defaultProofRoot.systemID)
                     {
-                        proofState = EXPECT_ALTERNATE_HEADER;
+                        if (counterEvidenceRoot.stateRoot != defaultProofRoot.stateRoot ||
+                            counterEvidenceRoot.blockHash != defaultProofRoot.blockHash)
+                        {
+                            proofState = EXPECT_ALTERNATE_HEADER;
+                        }
+                        else if (counterEvidenceRoot == defaultProofRoot)
+                        {
+                            // this is a fraud proof, which must use this proof root to
+                            // prove something that should not be able to be proven
+                            proofState = EXPECT_SKIPPED_NOTARIZATION_REF;
+                        }
+                        else
+                        {
+                            proofState = EXPECT_NOTHING;
+                        }
                     }
                     else
                     {
@@ -2318,6 +2365,7 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
                 }
                 break;
             }
+
             case EXPECT_ALTERNATE_HEADER:
             {
                 if (proofComponent->objectType == CHAINOBJ_HEADER)
@@ -2341,7 +2389,6 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
                 }
                 break;
             }
-
             // last notarization proof is based on the stateroot of the prior block from the alternate header
             // ensuring that both alternate proof root and alternate block header both have MMR-compatible roots
             // this must prove a confirmed notarization counterpart from the other chain before the one being challenged
@@ -2376,8 +2423,10 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
                     }
 
                     // find the last notarization on the transaction. if we need more proof to address a challenge, we will need to retain this
-                    // either the notarization is the block 1 coinbase proof, or it is a proof of a transaction on the other chain that corresponds
-                    // to a confirmed or pending transaction on this chain.
+                    // either the notarization is:
+                    // 1) the block 1 coinbase proof, or
+                    // 2) the prelaunch notarization on the launch chain, or
+                    // 2) a proof of a transaction on the other chain that corresponds to a confirmed or pending transaction on this chain.
                     if (txMMRRoot == alternateHeader.GetPrevMMRRoot())
                     {
                         for (auto &oneOut : outTx.vout)
@@ -2390,7 +2439,7 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
                                 (lastNotaP.evalCode == EVAL_ACCEPTEDNOTARIZATION || lastNotaP.evalCode == EVAL_EARNEDNOTARIZATION) &&
                                 lastNotaP.vData.size() &&
                                 (lastNotarization = CPBaaSNotarization(lastNotaP.vData[0])).IsValid() &&
-                                lastNotarization.SetMirror(true) &&
+                                lastNotarization.SetMirror(!earnedNotarizations) &&
                                 lastNotarization.currencyID == counterEvidenceRoot.systemID &&
                                 lastNotarization.proofRoots.count(lastNotarization.currencyID) &&
                                 lastNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
@@ -2399,25 +2448,30 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
                             }
                             lastNotarization = CPBaaSNotarization();
                         }
-                        if (lastNotarization.IsValid() &&
-                            !lastNotarization.IsBlockOneNotarization())
+
+                        if (lastNotarization.IsValid())
                         {
                             CObjectFinalization lastOf;
                             CAddressIndexDbEntry lastNotarizationAddressEntry;
-                            if (!lastNotarization.FindEarnedNotarization(lastOf, &lastNotarizationAddressEntry) ||
-                                !lastOf.IsConfirmed())
+                            // if we expect it to be on our chain, find it
+                            if (!lastNotarization.IsBlockOneNotarization() && !lastNotarization.IsPreLaunch())
                             {
-                                lastNotarization = CPBaaSNotarization();
+                                if (!lastNotarization.FindEarnedNotarization(lastOf, &lastNotarizationAddressEntry) ||
+                                    !lastOf.IsConfirmed())
+                                {
+                                    lastNotarization = CPBaaSNotarization();
+                                }
                             }
                         }
                     }
                     if (lastNotarization.IsValid())
                     {
-                        challengeStartRoot = lastNotarization.proofRoots[lastNotarization.currencyID];
+                        challengeStartRoot = lastNotarization.proofRoots[defaultProofRoot.systemID];
                         rangeLen = counterEvidenceRoot.rootHeight - challengeStartRoot.rootHeight;
                         expectNumHeaderProofs = std::min(std::max(rangeLen, (int)CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS),
                                                 std::min((int)CPBaaSNotarization::MAX_HEADER_PROOFS_PER_PROOF, rangeLen / 10));
-                        proofState = EXPECT_ALTERNATE_COMMITMENTS;
+                        // a challenge must have moved forward at least the number of block of minimum header proofs
+                        proofState = rangeLen > CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS ? EXPECT_ALTERNATE_COMMITMENTS : EXPECT_NOTHING;
                     }
                     else
                     {
@@ -2432,15 +2486,6 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
             }
             case EXPECT_ALTERNATE_COMMITMENTS:
             {
-
-
-
-
-
-
-
-
-
                 if (proofComponent->objectType == CHAINOBJ_COMMITMENTDATA)
                 {
                     std::vector<__uint128_t> checkCommitments;
@@ -2513,6 +2558,10 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
                                                blockHeader.GetVerusPOSTarget(),
                                                blockToProve << 1 | (uint32_t)blockHeader.IsVerusPOSBlock()});
 
+                    // TODO: HARDENING - verify that we match commitments
+                    // both here and in PoS, we need to calculate the new power from the old power
+                    // and this header solve if two overlap
+
                     if (((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.BlockNum() == blockToProve &&
                         blockHeader.nTime == oneBlockCommitment[0] &&
                         blockHeader.IsVerusPOSBlock() == (oneBlockCommitment[3] & 1) &&
@@ -2559,7 +2608,6 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
                         }
                         else
                         {
-                            // TODO: HARDENING - verify that we match commitments
                             numHeaderProofs++;
                             proofState = EXPECT_ALTERNATE_HEADER_PROOFS;
                         }
@@ -2581,7 +2629,7 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
             {
                 if (proofComponent->objectType == CHAINOBJ_TRANSACTION_PROOF)
                 {
-                    // this should be a full transaction proof up to the merkle tree root
+                    // expect a full transaction proof up to the merkle tree root
                     // of the block header of the actual PoS transaction in the block. along with the source output
                     // entropy blocks, and proof contained in the last PoS header, we can confirm both the
                     // validity of the PoS win from that source transaction, as well as the input script signature
@@ -2716,6 +2764,72 @@ CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
                     {
                         proofState = EXPECT_NOTHING;
                     }
+                }
+                break;
+            }
+            case EXPECT_SKIPPED_NOTARIZATION_REF:
+            {
+                // we should find an output reference to a notarization present on this chain
+                // proven in the next step by the non-compliant notarization and which is not
+                // referenced as a prior by this notarization, proving that the notarization
+                // should have referenced the more recent one, rather than skipping it.
+                //
+                // proof of a specific header referred to by a notarization that should
+                // have been referenced, but was skipped by the notarization this challenge refers to
+                CUTXORef notarizationTxRef;
+                CTransaction priorTx, skippedTx;
+                uint256 priorBlkHash, skippedBlkHash;
+
+                BlockMap::iterator priorIdx, skippedIdx, challengedIdx;
+
+                if (proofComponent->objectType == CHAINOBJ_EVIDENCEDATA &&
+                    ((CChainObject<CEvidenceData> *)proofComponent)->object.vdxfd == CVDXF_Data::UTXORefKey() &&
+                    ((CChainObject<CEvidenceData> *)proofComponent)->object.dataVec.size() &&
+                    (notarizationTxRef = CUTXORef(((CChainObject<CEvidenceData> *)proofComponent)->object.dataVec)).IsValid() &&
+                    myGetTransaction(notarizationTxRef.hash, skippedTx, skippedBlkHash) &&
+                    !skippedBlkHash.IsNull() &&
+                    (skippedIdx = mapBlockIndex.find(skippedBlkHash)) != mapBlockIndex.end() &&
+                    chainActive.Contains(skippedIdx->second) &&
+                    skippedTx.vout.size() > notarizationTxRef.n &&
+                    (skippedNotarization = CPBaaSNotarization(priorTx.vout[notarizationTxRef.n].scriptPubKey)).IsValid() &&
+                    e.output.GetOutputTransaction(priorTx, priorBlkHash) &&
+                    notarizationTxRef.n > 0 &&
+                    priorTx.vout.size() > notarizationTxRef.n &&
+                    (challengedNotarization = CPBaaSNotarization(priorTx.vout[e.output.n].scriptPubKey)).IsValid() &&
+                    challengedNotarization.currencyID == defaultProofRoot.systemID &&
+                    !priorBlkHash.IsNull() &&
+                    (challengedIdx = mapBlockIndex.find(priorBlkHash)) != mapBlockIndex.end() &&
+                    chainActive.Contains(challengedIdx->second) &&
+                    challengedNotarization.prevNotarization.GetOutputTransaction(priorTx, priorBlkHash) &&
+                    !priorBlkHash.IsNull() &&
+                    (priorIdx = mapBlockIndex.find(priorBlkHash)) != mapBlockIndex.end() &&
+                    chainActive.Contains(priorIdx->second) &&
+                    priorTx.vout.size() > challengedNotarization.prevNotarization.n &&
+                    (priorNotarization = CPBaaSNotarization(priorTx.vout[challengedNotarization.prevNotarization.n].scriptPubKey)).IsValid() &&
+                    skippedIdx->second->GetHeight() <= challengedIdx->second->GetHeight() &&
+                    priorIdx->second->GetHeight() <= skippedIdx->second->GetHeight() &&
+                    priorNotarization.proofRoots.count(defaultProofRoot.systemID) &&
+                    priorNotarization.proofRoots[defaultProofRoot.systemID].rootHeight < skippedNotarization.proofRoots[defaultProofRoot.systemID].rootHeight)
+                {
+                    proofState = EXPECT_SKIPPED_HEADERREF_PROOF;
+                }
+                else
+                {
+                    proofState = EXPECT_NOTHING;
+                }
+                break;
+            }
+            case EXPECT_SKIPPED_HEADERREF_PROOF:
+            {
+                // this should be a header ref proof of the proof root in the skipped notarization with the proof root in
+                // the challenged notarization
+                if (proofComponent->objectType == CHAINOBJ_HEADER_REF &&
+                    challengedNotarization.proofRoots[defaultProofRoot.systemID].stateRoot ==
+                     ((CChainObject<CBlockHeaderProof> *)proofComponent)->object.ValidateBlockHash(skippedNotarization.proofRoots[defaultProofRoot.systemID].blockHash,
+                                                                                                  skippedNotarization.proofRoots[defaultProofRoot.systemID].rootHeight))
+                {
+                    validCounterEvidence = true;
+                    invalidates = true;
                 }
                 break;
             }
@@ -3904,11 +4018,17 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
                 if (cnd.vtx[priorNotarizationIdx].second.proofRoots.count(SystemID))
                 {
                     CProofRoot challengeStart(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
-                    CProofRoot counterRoot = IsValidAlternateChainEvidence(cnd.vtx[priorNotarizationIdx].second.proofRoots[SystemID],
+                    bool invalidates = false;
+                    CProofRoot counterRoot = IsValidChallengeEvidence(cnd.vtx[priorNotarizationIdx].second.proofRoots[SystemID],
                                                                            oneItem,
                                                                            txes[priorNotarizationIdx - 1].second,
+                                                                           invalidates,
                                                                            challengeStart,
                                                                            height);
+                    if (invalidates)
+                    {
+                        return state.Error(errorPrefix + "notarization has been proven invalid");
+                    }
                     if (challengeStart.IsValid() && counterRoot.IsValid())
                     {
                         validCounterRoots.push_back(counterRoot);
@@ -4165,7 +4285,7 @@ CPBaaSNotarization::GetBlockCommitmentRanges(uint32_t lastNotarizationHeight, ui
 {
     std::vector<std::pair<uint32_t, uint32_t>> retVal = std::vector<std::pair<uint32_t, uint32_t>>({{std::make_pair(lastNotarizationHeight, currentNotarizationHeight)}});
 
-    int priorHeight = std::max((int)lastNotarizationHeight - COMMITMENT_BLOCKS_START_OFFSET, 1);
+    int priorHeight = std::max((int)lastNotarizationHeight - NUM_COMMITMENT_BLOCKS_START_OFFSET, 1);
 
     // if our range is larger than 256, break it into up to 5, 256 block ranges and
     // spread them randomly over the target proof space
@@ -4472,11 +4592,567 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         return state.Error("invalid crosschain notarization data");
     }
 
-    // if we find pending notarizations that we disagree with, create counter-evidence and post it
-    UniValue challenges(UniValue::VARR);
+    // look for the following things to challenge:
+    // 1) pending notarizations on the notary chain that we disagree with
+    // 2) pending notarizations that agree with a prior notarization in a different notarization fork
+    // 3) local notarizations that disagree with the notary chain we see
+    //
+    // as long as there is a potentially valid fork with a notarization since the last one in our chain of
+    // valid notarizations, we must provide evidence to submit a new notarization. randomness (entropyhash)
+    // will be the blockhash of the block that contains the latest instance of a valid fork we do not agree
+    // with.
+    //
 
+
+
+
+
+    // Once there are 10 consecutive notarizations in any notarization chain,
+    //
+    // if we find any of the above, we first look to see if they have counter-evidence already
+    // if not, post counter evidence and spend the last pending finalization in doing so to prevent
+    // duplicates
+    //
+    // once we determine that we have something to do, take the following action for each case:
+    //
+    // 1) submit a challenge with supporting evidence from this chain. if the chain is longer than ours,
+    //    attempt to connect to the published nodes
+    // 2) create a fraud proof and finalize the earliest notarization of each fork as rejected, rejecting
+    //    any dependents automatically
+    // 3) get a challenge from the notary chain for the specified range and with the specified
+    //    entropy hash, then submit it to this chain
+    //
+    // 1) select pending notarizations on the other chain that do not agree with our chain
+    // 2) select the fork containing the most advanced proof root on the other chain
+    //    a) confirm that no other forks contain a matching root that is not present in the best fork
+    //    b) if we find entries in another fork with a validated root that is not present in the
+    //       best fork, the earliest good, pending root serves as proof to invalidate any entries
+    //       in any other fork
+    // select local notarizations with proof roots not confirmed by the notary chain for #3
+
+    // look for the earliest correct notarization. that must be the base of any fork that will be
+    // valid to us. any fork that does not have this entry must be false according to our data,
+    // either due to being incorrect or because a correct notarization was skipped. the next valid
+    // proof root must either be on a notarization that refers to this one, or it is false. we use
+    // the same logic to eliminate all forks except one, which will be the fork we refer to, if we
+    // qualify
+    //
+    // we challenge all forks we disagree with and reject invalid forks we can prove
+    //
+
+    UniValue validIndexesUni = find_value(bestProofRootResult, "validindexes");
+    UniValue validIndexProofsUni(UniValue::VNULL);
+
+    // all challenges we make will require requesting challenge data from the notary chain
+    UniValue challengeRequests(UniValue::VARR);
+    if (validIndexesUni.isArray() && validIndexesUni.size())
+    {
+        std::vector<std::vector<int>> unchallengedForks = cnd.forks;
+        std::set<int> validIndexes;
+        for (int i = 0; i < validIndexesUni.size(); i++)
+        {
+            validIndexes.insert(uni_get_int(validIndexesUni[i], -1));
+        }
+        if (validIndexes.count(-1))
+        {
+            return state.Error("invalid-validindexes-from-getbestproofroot");
+        }
+        for (int i = 1; i < cnd.vtx.size(); i++)
+        {
+            auto proofRootIT = cnd.vtx[i].second.proofRoots.find(SystemID);
+            if (proofRootIT == cnd.vtx[i].second.proofRoots.end())
+            {
+                continue;
+            }
+
+            // find this entry's first location, k, in fork j
+            int j, k;
+            for (j = 0; j < unchallengedForks.size(); j++)
+            {
+                for (k = 0; k < unchallengedForks[j].size(); k++)
+                {
+                    if (unchallengedForks[j][k] == i)
+                    {
+                        break;
+                    }
+                }
+                if (k < unchallengedForks[j].size())
+                {
+                    break;
+                }
+            }
+
+            // if we didn't find this entry in the pruned forks, nothing to do
+            if (j >= unchallengedForks.size())
+            {
+                continue;
+            }
+
+            // if valid, use it to eliminate remaining forks and collect remaining challenges
+            if (validIndexes.count(i))
+            {
+                // we found the first valid fork with this entry
+                // all forks that do not have the same value in the k'th entry
+                // should be challenged, either because we don't agree,
+                // or because they skipped this valid one and did not reference it
+                // if their entry is not the same, but valid, they are provably
+                // rejectable, otherwise just to be challenged
+                for (int forkToChallenge = 0; forkToChallenge < unchallengedForks.size(); forkToChallenge++)
+                {
+                    if (forkToChallenge == j)
+                    {
+                        continue;
+                    }
+                    if (unchallengedForks[forkToChallenge].size() > k &&
+                        unchallengedForks[forkToChallenge][k] != unchallengedForks[j][k])
+                    {
+                        for (int challengeNum = k; challengeNum < unchallengedForks[forkToChallenge].size(); challengeNum++)
+                        {
+                            // is there already counter evidence for this entry?
+                            // 1) if there is a fraud proof, prune and move on
+                            // 2) if there is a validity challenge, only add one if we intend to
+                            //    expand its range
+                            bool moveToNext = false;
+                            for (auto &oneChallenge : counterEvidence[unchallengedForks[forkToChallenge][k]])
+                            {
+                                if (!std::get<0>(oneChallenge).evidence.chainObjects.size() ||
+                                    std::get<0>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
+                                {
+                                    continue;
+                                }
+                                // if the challenge root is the same as the root being challenged, it is a skip challenge
+                                // and would not be on-chain or in mempool if not valid. we can ignore the rest of this fork.
+                                if (((CChainObject<CProofRoot> *)std::get<0>(oneChallenge).evidence.chainObjects[0])->object ==
+                                    cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID])
+                                {
+                                    unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
+                                    continue;
+                                }
+                                // TODO: POST HARDENING - right now, we actually don't break down ranges to a lower level of
+                                // granularity, based on checkpoints, so until we do, just consider this one covered and move
+                                // on to the next
+                                moveToNext = true;
+                                break;
+                            }
+                            if (moveToNext)
+                            {
+                                continue;
+                            }
+
+                            // if it's valid, then it skipped a valid notarization and can be proven false
+                            if (validIndexes.count(unchallengedForks[forkToChallenge][k]))
+                            {
+                                // prove the root on the j fork with this root and submit the proof along with a rejection
+                                // finalization
+                                CNotaryEvidence fraudProof;
+                                fraudProof.output = cnd.vtx[unchallengedForks[forkToChallenge][k]].first;
+                                fraudProof.state = CNotaryEvidence::STATE_REJECTED;
+
+                                // create evidence in this order
+                                // EXPECT_ALTERNATE_PROOF_ROOT  // give it the same root as it has, indicating fraud proof
+                                fraudProof.evidence << cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID];
+
+                                // EXPECT_SKIPPED_NOTARIZATION_REF - this is the notarization it should not have skipped
+                                fraudProof.evidence << CEvidenceData(CVDXF_Data::UTXORefKey(), ::AsVector(cnd.vtx[unchallengedForks[j][k]].first));
+
+                                // TODO: HARDENING - confirm that in precheck notarization, if a notarization has the same proofroot as
+                                // any prior notarization, whether it refers to it or not, it cannot pass precheck. that is easy to check,
+                                // may already be checked as of this note, and eliminates the need for an equality proof.
+
+                                int64_t proveHeight = std::min(cnd.vtx[unchallengedForks[j][k]].second.proofRoots[SystemID].rootHeight,
+                                                                cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight);
+
+                                int64_t atHeight = std::max(cnd.vtx[unchallengedForks[j][k]].second.proofRoots[SystemID].rootHeight,
+                                                                cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight);
+
+                                UniValue challengeRequest(UniValue::VOBJ);
+                                challengeRequest.pushKV("type", "skipchallenge");
+                                challengeRequest.pushKV("evidence", fraudProof.ToUniValue());
+                                challengeRequest.pushKV("proveheight", proveHeight);
+                                challengeRequest.pushKV("atheight", atHeight);
+                                challengeRequest.pushKV("entropyhash", txes[unchallengedForks[forkToChallenge][k]].second.GetHex());
+                                challengeRequests.push_back(challengeRequest);
+
+                                // once we've created an invalidation proof, which a skipped proof is,
+                                // the entire fork will be automatically invalidated
+                                unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
+                            }
+                            else
+                            {
+                                // we need to get the challenge from the notary chain, and it should only need
+                                // to challenge and prove from the last agreed entry forward, using entropy hash
+                                // of the block of the notarization that we are challenging
+
+                                CNotaryEvidence challengeEvidence;
+                                challengeEvidence.output = cnd.vtx[i].first;
+                                challengeEvidence.state = CNotaryEvidence::STATE_REJECTED;
+
+                                // create evidence to either use when notarizing, or for a challenge
+                                int64_t fromHeight = cnd.vtx[unchallengedForks[j][k - 1]].second.IsBlockOneNotarization() ?
+                                                        1 :
+                                                        cnd.vtx[unchallengedForks[j][k - 1]].second.proofRoots[SystemID].rootHeight;
+
+                                int64_t toHeight = cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight;
+
+                                UniValue challengeRequest(UniValue::VOBJ);
+                                challengeRequest.pushKV("type", "validitychallenge");
+                                challengeRequest.pushKV("evidence", challengeEvidence.ToUniValue());
+                                challengeRequest.pushKV("fromheight", fromHeight);
+                                challengeRequest.pushKV("toheight", toHeight);
+                                challengeRequest.pushKV("challengedroot", cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].ToUniValue());
+                                challengeRequest.pushKV("confirmroot", cnd.vtx[unchallengedForks[j][k - 1]].second.proofRoots[SystemID].ToUniValue());
+                                challengeRequest.pushKV("entropyhash", txes[unchallengedForks[forkToChallenge][k]].second.GetHex());
+                                challengeRequests.push_back(challengeRequest);
+                            }
+                        }
+                        unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + k, unchallengedForks[forkToChallenge].end());
+                    }
+                }
+            }
+            else
+            {
+                // all descendents of this entry are invalid according to our perspective
+                // look for the first fork that agrees and create challenges until the end
+                // then look for the next
+                int invalidIndex = unchallengedForks[j][k];
+                for (int forkToChallenge = 0; forkToChallenge < unchallengedForks.size(); forkToChallenge++)
+                {
+                    if (unchallengedForks[forkToChallenge].size() > k &&
+                        unchallengedForks[forkToChallenge][k] == invalidIndex)
+                    {
+                        for (int challengeNum = k; challengeNum < unchallengedForks[forkToChallenge].size(); challengeNum++)
+                        {
+                            bool moveToNext = false;
+                            for (auto &oneChallenge : counterEvidence[unchallengedForks[forkToChallenge][k]])
+                            {
+                                if (!std::get<0>(oneChallenge).evidence.chainObjects.size() ||
+                                    std::get<0>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
+                                {
+                                    continue;
+                                }
+                                // if the challenge root is the same as the root being challenged, it is a skip challenge
+                                // and would not be on-chain or in mempool if not valid. we can ignore the rest of this fork.
+                                if (((CChainObject<CProofRoot> *)std::get<0>(oneChallenge).evidence.chainObjects[0])->object ==
+                                    cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID])
+                                {
+                                    unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
+                                    continue;
+                                }
+                                // TODO: POST HARDENING - right now, we actually don't break down ranges to a lower level of
+                                // granularity, based on checkpoints, so until we do, just consider this one covered and move
+                                // on to the next
+                                moveToNext = true;
+                                break;
+                            }
+                            if (moveToNext)
+                            {
+                                continue;
+                            }
+
+                            CNotaryEvidence challengeEvidence;
+                            challengeEvidence.output = cnd.vtx[i].first;
+                            challengeEvidence.state = CNotaryEvidence::STATE_REJECTED;
+
+                            // create evidence to either use when notarizing, or for a challenge
+                            int64_t fromHeight = cnd.vtx[cnd.lastConfirmed].second.IsBlockOneNotarization() ?
+                                                    1 :
+                                                    cnd.vtx[cnd.lastConfirmed].second.proofRoots[SystemID].rootHeight;
+
+                            int64_t toHeight = cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight;
+
+                            UniValue challengeRequest(UniValue::VOBJ);
+                            challengeRequest.pushKV("type", "validitychallenge");
+                            challengeRequest.pushKV("evidence", challengeEvidence.ToUniValue());
+                            challengeRequest.pushKV("fromheight", fromHeight);
+                            challengeRequest.pushKV("toheight", toHeight);
+                            challengeRequest.pushKV("challengedroot", cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].ToUniValue());
+                            challengeRequest.pushKV("confirmroot", cnd.vtx[cnd.lastConfirmed].second.proofRoots[SystemID].ToUniValue());
+                            challengeRequest.pushKV("entropyhash", txes[unchallengedForks[forkToChallenge][k]].second.GetHex());
+                            challengeRequests.push_back(challengeRequest);
+                        }
+                        unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + k, unchallengedForks[forkToChallenge].end());
+                    }
+                }
+            }
+        }
+        // if we have challenge requests, get them to either submit rejections or add to our notarization, if it challenges
+        // a pre-existing notarization. we decide which later on
+        if (challengeRequests.size())
+        {
+            LogPrint("notarization", "Getting challenge proofs %s", challengeRequests.write(1,2).c_str());
+            params = UniValue(UniValue::VARR);
+            params.push_back(challengeRequests);
+            try
+            {
+                challengeRequests = find_value(RPCCallRoot("getchallengeproofs", params), "result");
+            } catch (exception e)
+            {
+                challengeRequests = NullUniValue;
+            }
+            LogPrint("notarization", "Challenge proofs returned %s", challengeRequests.write(1,2).c_str());
+        }
+    }
+
+    // we challenge any notarizations about a chain that is not us
+    // we also challenge and finalize as rejected notarizations that skip over a prior notarization
+    // which they actually should agree with
+    UniValue challenges(UniValue::VARR);
     {
         LOCK2(cs_main, mempool.cs);
+
+        std::vector<std::vector<int>> unchallengedForks = crosschainCND.forks;
+        std::set<int> validIndexes;
+        for (int i = 0; i < crosschainCND.vtx.size(); i++)
+        {
+            auto proofRootIT = crosschainCND.vtx[i].second.proofRoots.find(ASSETCHAINS_CHAINID);
+            if (proofRootIT == crosschainCND.vtx[i].second.proofRoots.end())
+            {
+                continue;
+            }
+
+            if (proofRootIT->second == CProofRoot::GetProofRoot(proofRootIT->second.rootHeight))
+            {
+                validIndexes.insert(i);
+            }
+        }
+        for (int i = 1; i < crosschainCND.vtx.size(); i++)
+        {
+            auto proofRootIT = crosschainCND.vtx[i].second.proofRoots.find(SystemID);
+            if (proofRootIT == crosschainCND.vtx[i].second.proofRoots.end())
+            {
+                continue;
+            }
+
+            // find this entry's first location, k, in fork j
+            int j, k;
+            for (j = 0; j < unchallengedForks.size(); j++)
+            {
+                for (k = 0; k < unchallengedForks[j].size(); k++)
+                {
+                    if (unchallengedForks[j][k] == i)
+                    {
+                        break;
+                    }
+                }
+                if (k < unchallengedForks[j].size())
+                {
+                    break;
+                }
+            }
+
+            // if we didn't find this entry in the pruned forks, nothing to do
+            if (j >= unchallengedForks.size())
+            {
+                continue;
+            }
+
+            // if valid, use it to eliminate remaining forks and collect remaining challenges
+            if (validIndexes.count(i))
+            {
+                // we found the first valid fork with this entry
+                // all forks that do not have the same value in the k'th entry
+                // should be challenged, either because we don't agree,
+                // or because they skipped this valid one and did not reference it
+                // if their entry is not the same, but valid, they are provably
+                // rejectable, otherwise just to be challenged
+                for (int forkToChallenge = 0; forkToChallenge < unchallengedForks.size(); forkToChallenge++)
+                {
+                    if (forkToChallenge == j)
+                    {
+                        continue;
+                    }
+                    if (unchallengedForks[forkToChallenge].size() > k &&
+                        unchallengedForks[forkToChallenge][k] != unchallengedForks[j][k])
+                    {
+                        for (int challengeNum = k; challengeNum < unchallengedForks[forkToChallenge].size(); challengeNum++)
+                        {
+                            // is there already counter evidence for this entry?
+                            // 1) if there is a fraud proof, prune and move on
+                            // 2) if there is a validity challenge, only add one if we intend to
+                            //    expand its range
+                            bool moveToNext = false;
+                            for (auto &oneChallenge : counterEvidence[unchallengedForks[forkToChallenge][k]])
+                            {
+                                if (!std::get<0>(oneChallenge).evidence.chainObjects.size() ||
+                                    std::get<0>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
+                                {
+                                    continue;
+                                }
+                                // if the challenge root is the same as the root being challenged, it is a skip challenge
+                                // and would not be on-chain or in mempool if not valid. we can ignore the rest of this fork.
+                                if (((CChainObject<CProofRoot> *)std::get<0>(oneChallenge).evidence.chainObjects[0])->object ==
+                                    crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID])
+                                {
+                                    unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
+                                    continue;
+                                }
+                                // TODO: POST HARDENING - right now, we actually don't break down ranges to a lower level of
+                                // granularity, based on checkpoints, so until we do, just consider this one covered and move
+                                // on to the next
+                                moveToNext = true;
+                                break;
+                            }
+                            if (moveToNext)
+                            {
+                                continue;
+                            }
+
+                            // if it's valid, then it skipped a valid notarization and can be proven false
+                            if (validIndexes.count(unchallengedForks[forkToChallenge][k]))
+                            {
+                                // prove the root on the j fork with this root and submit the proof along with a rejection
+                                // finalization
+                                CNotaryEvidence fraudProof;
+                                fraudProof.output = crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].first;
+                                fraudProof.state = CNotaryEvidence::STATE_REJECTED;
+
+                                // create evidence in this order
+                                // EXPECT_ALTERNATE_PROOF_ROOT  // give it the same root as it has, indicating fraud proof
+                                fraudProof.evidence << crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID];
+
+                                // EXPECT_SKIPPED_NOTARIZATION_REF - this is the notarization it should not have skipped
+                                fraudProof.evidence << CEvidenceData(CVDXF_Data::UTXORefKey(), ::AsVector(crosschainCND.vtx[unchallengedForks[j][k]].first));
+
+                                // TODO: HARDENING - confirm that in precheck notarization, if a notarization has the same proofroot as
+                                // any prior notarization, whether it refers to it or not, it cannot pass precheck. that is easy to check,
+                                // may already be checked as of this note, and eliminates the need for an equality proof.
+
+                                int64_t proveHeight = std::min(crosschainCND.vtx[unchallengedForks[j][k]].second.proofRoots[SystemID].rootHeight,
+                                                                crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight);
+
+                                int64_t atHeight = std::max(crosschainCND.vtx[unchallengedForks[j][k]].second.proofRoots[SystemID].rootHeight,
+                                                                crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight);
+
+                                UniValue challengeRequest(UniValue::VOBJ);
+                                challengeRequest.pushKV("type", "skipchallenge");
+                                challengeRequest.pushKV("evidence", fraudProof.ToUniValue());
+                                challengeRequest.pushKV("proveheight", proveHeight);
+                                challengeRequest.pushKV("atheight", atHeight);
+                                challengeRequest.pushKV("entropyhash", blockHashes[unchallengedForks[forkToChallenge][k]].GetHex());
+                                challenges.push_back(challengeRequest);
+
+                                // once we've created an invalidation proof, which a skipped proof is,
+                                // the entire fork will be automatically invalidated
+                                unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
+                            }
+                            else
+                            {
+                                // we need to get the challenge from the notary chain, and it should only need
+                                // to challenge and prove from the last agreed entry forward, using entropy hash
+                                // of the block of the notarization that we are challenging
+
+                                CNotaryEvidence challengeEvidence;
+                                challengeEvidence.output = crosschainCND.vtx[i].first;
+                                challengeEvidence.state = CNotaryEvidence::STATE_REJECTED;
+
+                                // create evidence to either use when notarizing, or for a challenge
+                                int64_t fromHeight = crosschainCND.vtx[unchallengedForks[j][k - 1]].second.IsBlockOneNotarization() ?
+                                                        1 :
+                                                        crosschainCND.vtx[unchallengedForks[j][k - 1]].second.proofRoots[SystemID].rootHeight;
+
+                                int64_t toHeight = crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight;
+
+                                UniValue challengeRequest(UniValue::VOBJ);
+                                challengeRequest.pushKV("type", "validitychallenge");
+                                challengeRequest.pushKV("evidence", challengeEvidence.ToUniValue());
+                                challengeRequest.pushKV("fromheight", fromHeight);
+                                challengeRequest.pushKV("toheight", toHeight);
+                                challengeRequest.pushKV("challengedroot", crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].ToUniValue());
+                                challengeRequest.pushKV("confirmroot", crosschainCND.vtx[unchallengedForks[j][k - 1]].second.proofRoots[SystemID].ToUniValue());
+                                challengeRequest.pushKV("entropyhash", blockHashes[unchallengedForks[forkToChallenge][k]].GetHex());
+                                challenges.push_back(challengeRequest);
+                            }
+                        }
+                        unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + k, unchallengedForks[forkToChallenge].end());
+                    }
+                }
+            }
+            else
+            {
+                // all descendents of this entry are invalid according to our perspective
+                // look for the first fork that agrees and create challenges until the end
+                // then look for the next
+                int invalidIndex = unchallengedForks[j][k];
+                for (int forkToChallenge = 0; forkToChallenge < unchallengedForks.size(); forkToChallenge++)
+                {
+                    if (unchallengedForks[forkToChallenge].size() > k &&
+                        unchallengedForks[forkToChallenge][k] == invalidIndex)
+                    {
+                        for (int challengeNum = k; challengeNum < unchallengedForks[forkToChallenge].size(); challengeNum++)
+                        {
+                            bool moveToNext = false;
+                            for (auto &oneChallenge : counterEvidence[unchallengedForks[forkToChallenge][k]])
+                            {
+                                if (!std::get<0>(oneChallenge).evidence.chainObjects.size() ||
+                                    std::get<0>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
+                                {
+                                    continue;
+                                }
+                                // if the challenge root is the same as the root being challenged, it is a skip challenge
+                                // and would not be on-chain or in mempool if not valid. we can ignore the rest of this fork.
+                                if (((CChainObject<CProofRoot> *)std::get<0>(oneChallenge).evidence.chainObjects[0])->object ==
+                                    crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID])
+                                {
+                                    unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
+                                    continue;
+                                }
+                                // TODO: POST HARDENING - right now, we actually don't break down ranges to a lower level of
+                                // granularity, based on checkpoints, so until we do, just consider this one covered and move
+                                // on to the next
+                                moveToNext = true;
+                                break;
+                            }
+                            if (moveToNext)
+                            {
+                                continue;
+                            }
+
+                            CNotaryEvidence challengeEvidence;
+                            challengeEvidence.output = crosschainCND.vtx[i].first;
+                            challengeEvidence.state = CNotaryEvidence::STATE_REJECTED;
+
+                            // create evidence to either use when notarizing, or for a challenge
+                            int64_t fromHeight = crosschainCND.vtx[cnd.lastConfirmed].second.IsPreLaunch() ?
+                                                    1 :
+                                                    crosschainCND.vtx[cnd.lastConfirmed].second.proofRoots[SystemID].rootHeight;
+
+                            int64_t toHeight = crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight;
+
+                            UniValue challengeRequest(UniValue::VOBJ);
+                            challengeRequest.pushKV("type", "validitychallenge");
+                            challengeRequest.pushKV("evidence", challengeEvidence.ToUniValue());
+                            challengeRequest.pushKV("fromheight", fromHeight);
+                            challengeRequest.pushKV("toheight", toHeight);
+                            challengeRequest.pushKV("challengedroot", crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].ToUniValue());
+                            challengeRequest.pushKV("confirmnotarization", crosschainCND.vtx[cnd.lastConfirmed].second.ToUniValue());
+                            challengeRequest.pushKV("entropyhash", blockHashes[unchallengedForks[forkToChallenge][k]].GetHex());
+                            challenges.push_back(challengeRequest);
+                        }
+                        unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + k, unchallengedForks[forkToChallenge].end());
+                    }
+                }
+            }
+        }
+
+        // if we have challenge requests, get them to either submit rejections or add to our notarization, if it challenges
+        // a pre-existing notarization. we decide which later on
+        if (challenges.size())
+        {
+            LogPrint("notarization", "Getting challenge proofs from local chain %s", challenges.write(1,2).c_str());
+            params = UniValue(UniValue::VARR);
+            params.push_back(challenges);
+            try
+            {
+                UniValue getchallengeproofs(const UniValue& params, bool fHelp);
+                challenges = getchallengeproofs(params, false);
+            } catch (exception e)
+            {
+                challenges = NullUniValue;
+            }
+            LogPrint("notarization", "Challenge proofs returned from local chain %s", challenges.write(1,2).c_str());
+        }
+
+        /*
         for (int i = 1; i < crosschainCND.vtx.size(); i++)
         {
             auto proofRootIT = crosschainCND.vtx[i].second.proofRoots.find(ASSETCHAINS_CHAINID);
@@ -4551,6 +5227,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                         LogPrintf("cannot find block one notarization for %s\n", EncodeDestination(CIdentityID(SystemID)).c_str());
                         continue;
                     }
+                    notarizationFound = true;
                 }
                 else
                 {
@@ -4561,6 +5238,11 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                     if (notarizationFound)
                     {
                         lastNotarization = crosschainCND.vtx[crosschainCND.lastConfirmed].second;
+                    }
+                    else
+                    {
+                        LogPrintf("%s: cannot find notarization for %s\n", __func__, EncodeDestination(CIdentityID(SystemID)).c_str());
+                        continue;
                     }
                 }
 
@@ -4606,8 +5288,8 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 challengeEvidence.evidence << CHashCommitments(blockCommitmentsSmall);
 
                 // EXPECT_ALTERNATE_HEADER_PROOFS = 5,         // selected header proofs from commitments using the entropy root
-                int loopNum = std::min(std::max(rangeLen, (int)EXPECT_MIN_HEADER_PROOFS),
-                                        std::min((int)MAX_HEADER_PROOFS_PER_PROOF, rangeLen / 10));
+                int loopNum = std::min(std::max(rangeLen, (int)CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS),
+                                        std::min((int)CPBaaSNotarization::MAX_HEADER_PROOFS_PER_PROOF, rangeLen / 10));
 
                 uint256 headerSelectionHash = blockHashes.size() ? blockHashes[i] : uint256();
                 for (int headerLoop = 0; headerLoop < loopNum; headerLoop++)
@@ -4629,6 +5311,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                     {
                         if (!ProvePosBlock(rangeStart, chainActive[blockToProve], challengeEvidence, state))
                         {
+                            // This is an internal failure, so rather than continue, we fail the function
                             return false;
                         }
                     }
@@ -4637,39 +5320,114 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 UniValue challengeUni(UniValue::VOBJ);
                 challengeUni.pushKV("notarizationref", crosschainCND.vtx[i].first.ToUniValue());
                 challengeUni.pushKV("challengeroot", ourCorrectRoot.ToUniValue());
+                challengeUni.pushKV("forkroot", crosschainCND.vtx[i - 1].second.proofRoots[ASSETCHAINS_CHAINID].ToUniValue());
                 challengeUni.pushKV("evidence", challengeEvidence.ToUniValue());
                 challenges.push_back(challengeUni);
             }
         }
+        */
     }
 
     // if we have challenges, submit them
     if (challenges.size())
     {
-        LogPrintf("Submitting challenges %s", challenges.write(1,2).c_str());
+        UniValue submitParams(UniValue::VARR);
+        for (int i = 0; i < challenges.size(); i++)
+        {
+            if (find_value(challenges[i], "error").isNull())
+            {
+                UniValue resultUni = find_value(challenges[i], "result");
+                if (resultUni.isObject())
+                {
+                    submitParams.push_back(resultUni);
+                }
+            }
+        }
+        LogPrint("notarization", "Submitting challenges %s", submitParams.write(1,2).c_str());
         UniValue challengeResult;
         params = UniValue(UniValue::VARR);
-        params.push_back(challenges);
+        params.push_back(submitParams);
         try
         {
-            challengeResult = find_value(RPCCallRoot("challengenotarizations", params), "result");
+            challengeResult = find_value(RPCCallRoot("submitchallenges", params), "result");
         } catch (exception e)
         {
             challengeResult = NullUniValue;
         }
+        LogPrint("notarization", "Response from challenges %s", challengeResult.write(1,2).c_str());
     }
 
-
+    int numConsecutiveNeeded = std::max((int)CPBaaSNotarization::MIN_EARNED_FOR_AUTO,
+                                        (int)((CPBaaSNotarization::NUM_BLOCKS_PER_PROOF_RANGE / ConnectedChains.ThisChain().blockNotarizationModulo) +
+                                               ((CPBaaSNotarization::NUM_BLOCKS_PER_PROOF_RANGE % ConnectedChains.ThisChain().blockNotarizationModulo) ? 1 : 0)));
 
     // TODO: HARDENING
-    // if we have 10 notarizations in a row with the ones we agree with and
+    // if we have numConsecutiveNeeded notarizations in a row with the ones we agree with and
     // have no valid alternatives, we can finalize the notarization that is 10 behind
     // as long as it is 10x the blocknotarizationmodulo of the notary chain blocks behind
     // the proof notarization on both chains
     // submitting a new accepted notarization does not require us to be eligible to submit a
     // new earned notarization.
 
+    int32_t notaryIdx = uni_get_int(find_value(bestProofRootResult, "bestindex"), isGatewayFirstContact ? 0 : -1);
 
+    UniValue lastConfirmedUni = find_value(bestProofRootResult, "lastconfirmedproofroot");
+    CProofRoot lastConfirmedProofRoot;
+    if (!lastConfirmedUni.isNull())
+    {
+        lastConfirmedProofRoot = CProofRoot(lastConfirmedUni);
+    }
+
+    if (bestProofRootResult.isNull() || notaryIdx == -1)
+    {
+        return state.Error(bestProofRootResult.isNull() ? "no-notary" : "no-matching-proof-roots-found");
+    }
+
+    CProofRoot lastStableProofRoot(find_value(bestProofRootResult, "laststableproofroot"));
+
+    if (!lastConfirmedProofRoot.IsValid() && lastStableProofRoot.IsValid())
+    {
+        for (int i = cnd.vtx.size() - 1; i >= 0; i--)
+        {
+            auto it = cnd.vtx[i].second.proofRoots.find(SystemID);
+            if (it != cnd.vtx[i].second.proofRoots.end())
+            {
+                if (it->second.rootHeight < lastStableProofRoot.rootHeight)
+                {
+                    break;
+                }
+                else if (it->second.rootHeight == lastStableProofRoot.rootHeight &&
+                        it->second == lastStableProofRoot && notaryIdx != i)
+                {
+                    LogPrintf("%s: notarization was rejected with identical proof root to last stable: %s\n", __func__, cnd.vtx[i].second.ToUniValue().write(1,2).c_str());
+                    notaryIdx = i;
+                }
+            }
+        }
+    }
+
+    // now, we have the index for the transaction and notarization we agree with, a list of those we consider invalid,
+    // and the most recent notarization to use when creating the new one
+    //
+    // we need to potentially make transactions to challenge the indexes that are not in the validindexes array.
+    //
+    // also see if there is a prior one in the same notarization modulo block period that we also agree with, and if
+    // so, reject/finalize the one that is more recent and confirm the one before it
+    //
+    UniValue validIndexes = find_value(bestProofRootResult, "validindexes");
+    if (!validIndexes.isArray() || !validIndexes.size())
+    {
+        return state.Error("no-valid-proofroots");
+    }
+    std::set<int> validIndexSet;
+    for (int i = 0; i < validIndexes.size(); i++)
+    {
+        validIndexSet.insert(uni_get_int(validIndexes[0], INT32_MAX));
+        if (!(cnd.vtx.size() > *validIndexSet.rbegin() && *validIndexSet.rbegin() >= 0))
+        {
+            return state.Error("invalid-validindex-returned");
+        }
+    }
 
     {
         // take the lock again, now that we're back from calling out
@@ -4681,45 +5439,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             return state.Error("stale-block");
         }
 
-        int32_t notaryIdx = uni_get_int(find_value(bestProofRootResult, "bestindex"), isGatewayFirstContact ? 0 : -1);
-
-        UniValue lastConfirmedUni = find_value(bestProofRootResult, "lastconfirmedproofroot");
-        CProofRoot lastConfirmedProofRoot;
-        if (!lastConfirmedUni.isNull())
-        {
-            lastConfirmedProofRoot = CProofRoot(lastConfirmedUni);
-        }
-
-        if (bestProofRootResult.isNull() || notaryIdx == -1)
-        {
-            return state.Error(bestProofRootResult.isNull() ? "no-notary" : "no-matching-proof-roots-found");
-        }
-
-        CProofRoot lastStableProofRoot(find_value(bestProofRootResult, "laststableproofroot"));
-
-        if (!lastConfirmedProofRoot.IsValid() && lastStableProofRoot.IsValid())
-        {
-            for (int i = cnd.vtx.size() - 1; i >= 0; i--)
-            {
-                auto it = cnd.vtx[i].second.proofRoots.find(SystemID);
-                if (it != cnd.vtx[i].second.proofRoots.end())
-                {
-                    if (it->second.rootHeight < lastStableProofRoot.rootHeight)
-                    {
-                        break;
-                    }
-                    else if (it->second.rootHeight == lastStableProofRoot.rootHeight &&
-                            it->second == lastStableProofRoot && notaryIdx != i)
-                    {
-                        LogPrintf("%s: notarization was rejected with identical proof root to last stable: %s\n", __func__, cnd.vtx[i].second.ToUniValue().write(1,2).c_str());
-                        notaryIdx = i;
-                    }
-                }
-            }
-        }
-
-        // now, we have the index for the transaction and notarization we agree with, a list of those we consider invalid,
-        // and the most recent notarization to use when creating the new one
         const CTransaction &priorNotarizationTx = txes[notaryIdx].first;
         uint256 priorBlkHash = txes[notaryIdx].second;
         const CUTXORef &priorUTXO = cnd.vtx[notaryIdx].first;
@@ -5573,8 +6292,8 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     {
         // need to get most recent forks. if we have
         // no conflict for the past 3 earned notarizations,
-        // we are good to confirm, otherwise after 10 blocks, the one
-        // that ends up > 2 longer can be notarized/finalized.
+        // we are good to confirm, otherwise after 10 blocks, the
+        // 10th prior on the best fork can be notarized/finalized.
         std::multimap<uint32_t, std::pair<int, int>> forkAndIndexByBlock;
         for (int i = 0; i < cnd.forks.size(); i++)
         {
@@ -5591,6 +6310,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
         int forkNum = -1;
         int elemCount = 0;
         int disagreements = 0;
+
         for (auto firstIt = forkAndIndexByBlock.rbegin(); firstIt != forkAndIndexByBlock.rend(); firstIt++)
         {
             if (forkNum == -1 || forkNum == firstIt->second.first)
@@ -5714,7 +6434,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     }
 
     // if the most recent valid earned notarization is prior to the eligible height,
-    // we cannot notarize until a more recent one is mined
+    // we cannot finalize until a more recent one is mined
 
     // now, assuming that our notarization of the other chain is confirmed, sign the latest valid one on this chain
     UniValue proofRootArr = find_value(result, "validindexes");
@@ -6867,7 +7587,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                     auto curMMV = chainActive.GetMMV();
                     curMMV.resize(rangeEnd);
 
-                    int loopNum = std::min(std::max(rangeLen, (int)EXPECT_MIN_HEADER_PROOFS),
+                    int loopNum = std::min(std::max(rangeLen, (int)CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS),
                                            std::min((int)MAX_HEADER_PROOFS_PER_PROOF, rangeLen / 10));
 
                     for (int headerLoop = 0; headerLoop < loopNum; headerLoop++)
@@ -8009,10 +8729,6 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                 //          staked chain since the last notarization
                 // 2) for accepted notarizations (see below after else):
 
-
-
-
-
                 CNotaryEvidence::EStates signatureState = CNotaryEvidence::EStates::STATE_CONFIRMING;
 
                 if (!evidenceMap.count(ASSETCHAINS_CHAINID) ||
@@ -8031,6 +8747,14 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                 if (signatureState != CNotaryEvidence::EStates::STATE_CONFIRMED)
                 {
                     bool provenWithEvidence = false;
+
+                    int numConsecutiveNeeded = std::max((int)CPBaaSNotarization::MIN_EARNED_FOR_AUTO,
+                                                        ((int)CPBaaSNotarization::NUM_BLOCKS_PER_PROOF_RANGE / ConnectedChains.ThisChain().blockNotarizationModulo) +
+                                                         (((int)CPBaaSNotarization::NUM_BLOCKS_PER_PROOF_RANGE % ConnectedChains.ThisChain().blockNotarizationModulo) ? 1 : 0));
+
+                    // check to see that we have a notarization recent enough that also has
+                    // valid numConsecutiveNeeded, has been the most powerful fork
+                    // for the last numConsecutiveNeeded, and is the most powerful fork
 
 
 
@@ -8117,8 +8841,13 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                         // if we find a rejection, check it
                         if (oneEItem.IsRejected())
                         {
+                            bool invalidates;
                             CProofRoot challengeStart(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
-                            CProofRoot counterRoot = IsValidAlternateChainEvidence(normalizedNotarization.proofRoots[notaryCurrencyDef.GetID()], oneEItem, txBlockHash, challengeStart, height - 1);
+                            CProofRoot counterRoot = IsValidChallengeEvidence(normalizedNotarization.proofRoots[notaryCurrencyDef.GetID()], oneEItem, txBlockHash, invalidates, challengeStart, height - 1);
+                            if (invalidates)
+                            {
+                                return state.Error("Cannot confirm notarization against valid counter-evidence");
+                            }
                             if (challengeStart.IsValid() && counterRoot.IsValid())
                             {
                                 validCounterRoots.push_back(counterRoot);
@@ -8180,74 +8909,94 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             //    to challenges for 3 modulo periods.
             //
 
-
-
-
-
-
-            // this is asserting rejection, so we must confirm that it can be rejected and that it only spends
-            // inputs that are now invalidated due to the rejection
-            if (p.evalCode == EVAL_EARNEDNOTARIZATION)
+            CProofRoot counterRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+            CProofRoot challengeStartRoot;
+            bool invalidates;
+            for (auto &oneItem : evidenceVec)
             {
-                if (!ConnectedChains.notarySystems.count(notarization.currencyID))
+                CProofRoot tmpCounterRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+                CProofRoot tmpChallengeStartRoot;
+                // valid pending finalization evidence for notarizations include:
+                // signatures for or against confirmation
+                // counter-evidence of a valid, alternate chain
+                if (notarization.proofRoots.count(notaryCurrencyDef.SystemOrGatewayID()) && notaryCurrencyDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
                 {
-                    return state.Error("insufficient foundation for rejection proof of notarization");
-                }
-
-                // 1) for earned notarizations:
-                //  a) disagreeing earned notarization between the notarization and the second agreed notarization
-                //  b) other forms of proof that render the to-be-confirmed proof root invalid, such as rejecting signatures
-                //     by the confirming IDs that cancel enough confirming, or proof of a more powerful, provably mined and
-                //     staked chain since the last notarization
-
-                if (!evidenceMap.count(ASSETCHAINS_CHAINID) ||
-                    evidenceMap[ASSETCHAINS_CHAINID].CheckSignatureConfirmation(objHash,
-                                                                                notarySet,
-                                                                                pNotaryCurrency->minNotariesConfirm,
-                                                                                height - 1) != CNotaryEvidence::STATE_REJECTED)
-                {
-                    return state.Error("insufficient evidence to reject finalization");
-                }
-            }
-            else
-            {
-                // 2) for accepted notarizations:
-                //  a) Majority on-chain rejection signatures in blocks prior to this one
-                //  b) IDs revoked that result in less than majority for the confirmation
-                //  c) proof of a more powerful, provably mined/staked chain since the last notarization that is different than
-                //     the accepted notarization
-
-                CProofRoot counterRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
-                CProofRoot challengeStartRoot;
-                for (auto &oneItem : evidenceVec)
-                {
-                    // valid pending finalization evidence for notarizations include:
-                    // signatures for or against confirmation
-                    // counter-evidence of a valid, alternate chain
-                    if (notarization.proofRoots.count(notaryCurrencyDef.SystemOrGatewayID()) && notaryCurrencyDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
+                    tmpCounterRoot = IsValidChallengeEvidence(notarization.proofRoots[notaryCurrencyDef.SystemOrGatewayID()], oneItem, txBlockHash, invalidates, tmpChallengeStartRoot, height - 1);
+                    if (invalidates)
                     {
-                        counterRoot = IsValidAlternateChainEvidence(notarization.proofRoots[notaryCurrencyDef.SystemOrGatewayID()], oneItem, txBlockHash, challengeStartRoot, height - 1);
-                        if (counterRoot.IsValid() &&
-                            challengeStartRoot.IsValid() &&
-                            counterRoot != notarization.proofRoots[notaryCurrencyDef.SystemOrGatewayID()])
+                        if (tmpCounterRoot.IsValid())
                         {
-                            break;
+                            counterRoot = tmpCounterRoot;
                         }
-                        counterRoot = CProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+                        if (tmpChallengeStartRoot.IsValid() &&
+                            (!challengeStartRoot.IsValid() || challengeStartRoot.rootHeight < tmpChallengeStartRoot.rootHeight))
+                        {
+                            challengeStartRoot = tmpChallengeStartRoot;
+                        }
+                        break;
+                    }
+                    if (tmpCounterRoot.IsValid() &&
+                        tmpChallengeStartRoot.IsValid() &&
+                        tmpCounterRoot != notarization.proofRoots[notaryCurrencyDef.SystemOrGatewayID()])
+                    {
+                        // we may need to keep a vector of these, but we don't have the variability to need that yet
+                        if (!counterRoot.IsValid())
+                        {
+                            counterRoot = tmpCounterRoot;
+                        }
+                        if (!challengeStartRoot.IsValid() || challengeStartRoot.rootHeight < tmpChallengeStartRoot.rootHeight)
+                        {
+                            challengeStartRoot = tmpChallengeStartRoot;
+                        }
+                        continue;
                     }
                 }
+            }
 
-                if (counterRoot.IsValid() ||
-                    (notaryCurrencyDef.IsPBaaSChain() || notaryCurrencyDef.IsGateway()) &&
-                    !notarization.IsPreLaunch() &&
-                    (notaryCurrencyDef.launchSystemID != ASSETCHAINS_CHAINID ||
-                    !evidenceMap.count(notaryCurrencyDef.SystemOrGatewayID()) ||
-                    evidenceMap[notaryCurrencyDef.SystemOrGatewayID()].CheckSignatureConfirmation(objHash,
+            if (!invalidates)
+            {
+                // this is asserting rejection, so we must confirm that it can be rejected and that it only spends
+                // inputs that are now invalidated due to the rejection
+                if (p.evalCode == EVAL_EARNEDNOTARIZATION)
+                {
+                    if (!ConnectedChains.notarySystems.count(notarization.currencyID))
+                    {
+                        return state.Error("insufficient foundation for rejection proof of notarization");
+                    }
+
+                    // 1) for earned notarizations:
+                    //  a) disagreeing earned notarization between the notarization and the second agreed notarization
+                    //  b) other forms of proof that render the to-be-confirmed proof root invalid, such as rejecting signatures
+                    //     by the confirming IDs that cancel enough confirming, or proof of a more powerful, provably mined and
+                    //     staked chain since the last notarization
+                    if (!evidenceMap.count(ASSETCHAINS_CHAINID) ||
+                        evidenceMap[ASSETCHAINS_CHAINID].CheckSignatureConfirmation(objHash,
                                                                                     notarySet,
                                                                                     pNotaryCurrency->minNotariesConfirm,
-                                                                                    height - 1) != CNotaryEvidence::STATE_REJECTED))
+                                                                                    height - 1) != CNotaryEvidence::STATE_REJECTED)
+                    {
+                        return state.Error("insufficient evidence to reject finalization");
+                    }
+                }
+                else
                 {
-                    return state.Error("insufficient evidence from notary system to reject finalization");
+                    // 2) for accepted notarizations:
+                    //  a) Majority on-chain rejection signatures in blocks prior to this one
+                    //  b) IDs revoked that result in less than majority for the confirmation
+                    //  c) proof of a more powerful, provably mined/staked chain since the last notarization that is different than
+                    //     the accepted notarization
+                    if (counterRoot.IsValid() ||
+                        (notaryCurrencyDef.IsPBaaSChain() || notaryCurrencyDef.IsGateway()) &&
+                        !notarization.IsPreLaunch() &&
+                        (notaryCurrencyDef.launchSystemID != ASSETCHAINS_CHAINID ||
+                        !evidenceMap.count(notaryCurrencyDef.SystemOrGatewayID()) ||
+                        evidenceMap[notaryCurrencyDef.SystemOrGatewayID()].CheckSignatureConfirmation(objHash,
+                                                                                        notarySet,
+                                                                                        pNotaryCurrency->minNotariesConfirm,
+                                                                                        height - 1) != CNotaryEvidence::STATE_REJECTED))
+                    {
+                        return state.Error("insufficient evidence from notary system to reject finalization");
+                    }
                 }
             }
         }
@@ -8257,6 +9006,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         CProofRoot counterRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
         CProofRoot challengeStartRoot;
         bool hasSignature = false;
+        bool invalidates;
 
         for (auto &oneItem : evidenceVec)
         {
@@ -8266,7 +9016,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             if (notarization.proofRoots.count(notaryCurrencyDef.SystemOrGatewayID()) &&
                 notaryCurrencyDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
             {
-                counterRoot = IsValidAlternateChainEvidence(notarization.proofRoots[notaryCurrencyDef.SystemOrGatewayID()], oneItem, txBlockHash, challengeStartRoot, height - 1);
+                counterRoot = IsValidChallengeEvidence(notarization.proofRoots[notaryCurrencyDef.SystemOrGatewayID()], oneItem, txBlockHash, invalidates, challengeStartRoot, height - 1);
                 if (counterRoot.IsValid())
                 {
                     break;
@@ -8282,6 +9032,10 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         if (evidenceVec.size() && !counterRoot.IsValid() && !hasSignature)
         {
             return state.Error("insufficient evidence to create new pending finalization for notarization");
+        }
+        if (invalidates)
+        {
+            return state.Error("challenge invalidates notarization and should be on rejecting, not pending finalization for notarization");
         }
     }
     return true;

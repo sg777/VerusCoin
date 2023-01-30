@@ -566,7 +566,7 @@ public:
 
     CBlockHeaderProof(uint32_t nVersion=VERSION_INVALID) : version(nVersion) {}
     CBlockHeaderProof(const CBlockHeaderProof &obj) : version(obj.version), headerProof(obj.headerProof), mmrBridge(obj.mmrBridge), preHeader(obj.preHeader) {}
-    CBlockHeaderProof(const CMMRProof &powerNodeProof, const CBlockHeader &bh, uint32_t nVersion=VERSION_INVALID) :
+    CBlockHeaderProof(const CMMRProof &powerNodeProof, const CBlockHeader &bh, uint32_t nVersion=VERSION_CURRENT) :
         headerProof(powerNodeProof), mmrBridge(bh.MMRProofBridge()), preHeader(bh), version(nVersion) {}
 
     CBlockHeaderProof(const UniValue &uniObj)
@@ -782,7 +782,7 @@ public:
     {
         uint256 hash = blockHeader.BlockProofBridge().SafeCheck(checkHash);
         hash = headerProof.CheckProof(hash);
-        return blockHeight == BlockNum() ? hash : uint256();
+        return blockHeight == BlockNum() && checkHash == blockHeader.GetHash() ? hash : uint256();
     }
 
     // simple version check
@@ -1195,15 +1195,11 @@ public:
         }
     }
 
-    CEvidenceData(uint160 vdxfKey, uint32_t EvidenceType=TYPE_DATA, uint32_t nVersion=VERSION_CURRENT) :
-        type(EvidenceType),
-        version(nVersion)
-    {
-        if (type != TYPE_MULTIPART_DATA)
-        {
-            vdxfd = vdxfKey;
-        }
-    }
+    CEvidenceData(uint160 vdxfKey, const std::vector<unsigned char> &DataVec, uint32_t nVersion=VERSION_CURRENT) :
+        type(TYPE_DATA),
+        vdxfd(vdxfKey),
+        version(nVersion),
+        dataVec(DataVec) {}
 
     CEvidenceData(const std::vector<unsigned char> &asVector)
     {
@@ -2128,7 +2124,7 @@ public:
     uint8_t state;                          // confirmed or rejected if signed
     CCrossChainProof evidence;              // evidence in the form of signatures, cross chain proofs of transactions, block hashes, and power
 
-    CNotaryEvidence(uint8_t EvidenceType=TYPE_NOTARY_EVIDENCE, uint8_t nVersion=VERSION_CURRENT, uint8_t State=STATE_CONFIRMED) : version(nVersion), type(EvidenceType), state(State) {}
+    CNotaryEvidence(uint8_t EvidenceType=TYPE_NOTARY_EVIDENCE, uint8_t nVersion=VERSION_CURRENT, uint8_t State=STATE_CONFIRMED,const uint160 &System=ASSETCHAINS_CHAINID) : version(nVersion), type(EvidenceType), state(State) {}
     CNotaryEvidence(const uint160 &sysID,
                     const CUTXORef &finalRef,
                     uint8_t State=STATE_CONFIRMED,

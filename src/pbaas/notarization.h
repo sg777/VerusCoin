@@ -396,9 +396,10 @@ bool PreCheckNotaryEvidence(const CTransaction &tx, int32_t outNum, CValidationS
 bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsFinalizeNotarizationInput(const CScript &scriptSig);
 bool IsNotaryEvidenceInput(const CScript &scriptSig);
-CProofRoot IsValidAlternateChainEvidence(const CProofRoot &defaultProofRoot,
+CProofRoot IsValidChallengeEvidence(const CProofRoot &defaultProofRoot,
                                          const CNotaryEvidence &e,
                                          const uint256 &entropyHash,
+                                         bool &invalidates,
                                          CProofRoot &challengeStartRoot,
                                          uint32_t height);
 CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
