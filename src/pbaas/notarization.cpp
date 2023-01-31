@@ -4156,6 +4156,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     of.evidenceOutputs = evidenceOuts;
     txBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &of)), 0);
 
+
     // if there are outputs to close for this entry, it will first be
     // a finalization, then evidence
     COptCCParams fP;
@@ -4644,9 +4645,10 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     UniValue validIndexProofsUni(UniValue::VNULL);
 
     // all challenges we make will require requesting challenge data from the notary chain
-    UniValue challengeRequests(UniValue::VARR);
+    UniValue validityChallenges(UniValue::VARR);
     if (validIndexesUni.isArray() && validIndexesUni.size())
     {
+        UniValue challengeRequests(UniValue::VARR);
         std::vector<std::vector<int>> unchallengedForks = cnd.forks;
         std::set<int> validIndexes;
         for (int i = 0; i < validIndexesUni.size(); i++)
@@ -4890,6 +4892,42 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 challengeRequests = NullUniValue;
             }
             LogPrint("notarization", "Challenge proofs returned %s", challengeRequests.write(1,2).c_str());
+
+            // separate out skip challenges and submit those now to ensure they just get removed from the equation
+            UniValue skipChallenges(UniValue::VARR);
+            for (int j = 0; j < challengeRequests.size(); j++)
+            {
+                UniValue oneChallengeUni;
+                if (find_value(challengeRequests[j], "error").isNull() &&
+                    (oneChallengeUni = find_value(challengeRequests[j], "result")).isObject())
+                {
+                    if (ParseVDXFKey(uni_get_str(find_value(oneChallengeUni, "type"))) == CNotaryEvidence::SkipChallengeKey())
+                    {
+                        skipChallenges.push_back(oneChallengeUni);
+                    }
+                    else
+                    {
+                        // validity challenges will hang off of our notarization
+                        validityChallenges.push_back(oneChallengeUni);
+                    }
+                }
+            }
+
+            if (skipChallenges.size())
+            {
+                LogPrint("notarization", "Submitting skip challenges to local chain %s", skipChallenges.write(1,2).c_str());
+                params = UniValue(UniValue::VARR);
+                params.push_back(skipChallenges);
+                try
+                {
+                    UniValue submitchallenges(const UniValue& params, bool fHelp);
+                    skipChallenges = submitchallenges(params, false);
+                } catch (exception e)
+                {
+                    skipChallenges = NullUniValue;
+                }
+                LogPrint("notarization", "Results of submissions returned from local chain %s", skipChallenges.write(1,2).c_str());
+            }
         }
     }
 
