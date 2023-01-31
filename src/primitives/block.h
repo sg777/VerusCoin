@@ -2293,6 +2293,32 @@ public:
         return signatureKey;
     }
 
+    static std::string SkipChallengeKeyName()
+    {
+        return "vrsc::evidence.skipchallenge";
+    }
+
+    static uint160 SkipChallengeKey()
+    {
+        static uint160 nameSpace;
+        static uint160 challengeKey = CVDXF::GetDataKey(SkipChallengeKeyName(), nameSpace);
+        return challengeKey;
+    }
+
+    static std::string ValidityChallengeKeyName()
+    {
+        return "vrsc::evidence.validitychallenge";
+    }
+
+    static uint160 ValidityChallengeKey()
+    {
+        static uint160 nameSpace;
+        static uint160 challengeKey = CVDXF::GetDataKey(ValidityChallengeKeyName(), nameSpace);
+        return challengeKey;
+    }
+
+
+
     CIdentitySignature::ESignatureVerification SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType);
     CIdentitySignature::ESignatureVerification SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType);
 

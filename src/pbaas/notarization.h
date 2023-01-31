@@ -201,6 +201,15 @@ public:
     static std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>>
         GetFinalizations(const uint160 &currencyID, const uint160 &finalizationTypeKey, uint32_t startHeight=0, uint32_t endHeight=0);
 
+    static bool GetPendingEvidence(const uint160 &currencyID,
+                                   const CUTXORef &notarizationRef,
+                                   uint32_t untilHeight,
+                                   std::vector<CProofRoot> &validCounterRoots,
+                                   CProofRoot &challengeStartRoot,
+                                   std::vector<CInputDescriptor> &outputs,
+                                   bool &invalidates,
+                                   CValidationState &state);
+
     static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentEvidence(const uint160 &currencyID,
                                                                                  const uint256 &notarizationTxId,
                                                                                  int32_t notarizationOutNum);

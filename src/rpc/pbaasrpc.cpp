@@ -4277,8 +4277,12 @@ UniValue getchallengeproofs(const UniValue& params, bool fHelp)
     if (fHelp || params.size() != 1)
     {
         throw runtime_error(
-            "getchallengeproofs '[{\"type\":\"skipchallenge\", \"evidence\":{CNotaryEvidence}, \"entropyhash\":\"hex\", \"proveheight\":n, \"atheight\":n},\n"
-            "                     {\"type\":\"validitychallenge\",\n"
+            "getchallengeproofs '[{\"type\":\"vrsc::evidence.skipchallenge\" || \"iCwxpRL6h3YeCRtGjgQSsqoKdZCuM4Dxaf\",\n"
+            "                      \"evidence\":{CNotaryEvidence},\n"
+            "                      \"entropyhash\":\"hex\",\n"
+            "                      \"proveheight\":n,\n"
+            "                      \"atheight\":n}\n"
+            "                     {\"type\":\"vrsc::evidence.validitychallenge\" || \"iCPb8ywQna7jYV2SHrGZ6vQMj7kuyWFxvb\",\n"
             "                      \"evidence\":{CNotaryEvidence},\n"
             "                      \"entropyhash\":\"hex\",\n"
             "                      \"fromheight\":n,\n"
@@ -4299,8 +4303,8 @@ UniValue getchallengeproofs(const UniValue& params, bool fHelp)
             "{\"evidence\":[{CNotaryEvidence}, ...]   (array) notary evidence challenges, including proofs for challenges requested\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("getchallengeproofs", "'[{\"type\":\"skipchallenge\", \"evidence\":{CNotaryEvidence}, \"proveheight\":n, \"atheight\":n}, ...]'")
-            + HelpExampleRpc("getchallengeproofs", "[{\"type\":\"skipchallenge\", \"evidence\":{CNotaryEvidence}, \"proveheight\":n, \"atheight\":n}, ...]")
+            + HelpExampleCli("getchallengeproofs", "'[{\"type\":\"iCwxpRL6h3YeCRtGjgQSsqoKdZCuM4Dxaf\", \"evidence\":{CNotaryEvidence}, \"proveheight\":n, \"atheight\":n}, ...]'")
+            + HelpExampleRpc("getchallengeproofs", "[{\"type\":\"iCwxpRL6h3YeCRtGjgQSsqoKdZCuM4Dxaf\", \"evidence\":{CNotaryEvidence}, \"proveheight\":n, \"atheight\":n}, ...]")
         );
     }
 
@@ -4324,9 +4328,9 @@ UniValue getchallengeproofs(const UniValue& params, bool fHelp)
         {
             UniValue oneRetObj(UniValue::VOBJ);
 
-            std::string challengeTypeStr = uni_get_str(find_value(params[0][i], "type"));
-            EChallengeTypes challengeType = challengeTypeStr == "skipchallenge" ? SKIP_CHALLENGE :
-                                            challengeTypeStr == "validitychallenge" ? VALIDITY_CHALLENGE :
+            uint160 challengeTypeKey = ParseVDXFKey(uni_get_str(find_value(params[0][i], "type")));
+            EChallengeTypes challengeType = challengeTypeKey == CNotaryEvidence::SkipChallengeKey() ? SKIP_CHALLENGE :
+                                            challengeTypeKey == CNotaryEvidence::ValidityChallengeKey() ? VALIDITY_CHALLENGE :
                                             INVALID_CHALLENGE;
 
             CNotaryEvidence evidence(find_value(params[0][i], "evidence"));
@@ -4370,12 +4374,13 @@ UniValue getchallengeproofs(const UniValue& params, bool fHelp)
                             break;
                         }
                         evidence.evidence << CBlockHeaderProof(blockHeaderProof, chainActive[proveHeight]->GetBlockHeader());
-                        oneRetObj.pushKV("result", evidence.ToUniValue());
 
                         UniValue challengeUni(UniValue::VOBJ);
+                        challengeUni.pushKV("type", EncodeDestination(CIdentityID(challengeTypeKey)));
                         challengeUni.pushKV("notarizationref", evidence.output.ToUniValue());
                         challengeUni.pushKV("challengeroot", ((CChainObject<CProofRoot> *)evidence.evidence.chainObjects[0])->object.ToUniValue());
                         challengeUni.pushKV("evidence", evidence.ToUniValue());
+                        oneRetObj.pushKV("result", challengeUni);
                     }
                     else
                     {
@@ -4526,6 +4531,7 @@ UniValue getchallengeproofs(const UniValue& params, bool fHelp)
                             }
 
                             UniValue challengeUni(UniValue::VOBJ);
+                            challengeUni.pushKV("type", EncodeDestination(CIdentityID(challengeTypeKey)));
                             challengeUni.pushKV("notarizationref", CUTXORef(crossConfirmedIndexEntry.first.txhash, crossConfirmedIndexEntry.first.index).ToUniValue());
                             challengeUni.pushKV("challengeroot", confirmRoot.ToUniValue());
                             challengeUni.pushKV("forkroot", CProofRoot::GetProofRoot(rangeStart).ToUniValue());
@@ -4611,8 +4617,9 @@ UniValue getchallengeproofs(const UniValue& params, bool fHelp)
                             }
 
                             UniValue challengeUni(UniValue::VOBJ);
+                            challengeUni.pushKV("type", EncodeDestination(CIdentityID(challengeTypeKey)));
                             challengeUni.pushKV("notarizationref", evidence.output.ToUniValue());
-                            challengeUni.pushKV("challengeroot", confirmRoot.ToUniValue());
+                            challengeUni.pushKV("challengeroot", CProofRoot::GetProofRoot(altHeight).ToUniValue());
                             challengeUni.pushKV("forkroot", CProofRoot::GetProofRoot(rangeStart).ToUniValue());
                             challengeUni.pushKV("evidence", evidence.ToUniValue());
                             oneRetObj.pushKV("result", challengeUni);
@@ -4647,11 +4654,13 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
     if (fHelp || params.size() != 1)
     {
         throw runtime_error(
-            "submitchallenges '[{\"notarizationref\":{\"txid\":\"hexvalue\",\"voutnum\":n},\n"
-            "                           \"forkroot\":{},\n"
-            "                           \"challengeroot\":{},\n"
-            "                           \"evidence\":{}},\n"
-            "                          {...}, ...]'\n"
+            "submitchallenges '[{\"type\":\"vrsc::evidence.skipchallenge\" || \"iCwxpRL6h3YeCRtGjgQSsqoKdZCuM4Dxaf\" ||\n"
+            "                       \"type\":\"vrsc::evidence.validitychallenge\" || \"iCPb8ywQna7jYV2SHrGZ6vQMj7kuyWFxvb\",\n"
+            "                    \"notarizationref\":{\"txid\":\"hexvalue\",\"voutnum\":n},\n"
+            "                    \"forkroot\":{},\n"
+            "                    \"challengeroot\":{},\n"
+            "                    \"evidence\":{}},\n"
+            "                   {...}, ...]'\n"
 
             "\nSubmits one or more cryptographic challenges to existing, unconfirmed notarizations, proving the existence\n"
             "of an alternate chain. Whether the alternate chain has more power than the chain with a pending notarization\n"
@@ -4686,29 +4695,41 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
 
         for (int i = 0; i < params[0].size(); i++)
         {
+            UniValue objRet(UniValue::VOBJ);
+
             CUTXORef notarizationRef = CUTXORef(find_value(params[0][i], "notarizationref"));
             CProofRoot forkRoot = CProofRoot(find_value(params[0][i], "forkroot"));
             CProofRoot challengeRoot = CProofRoot(find_value(params[0][i], "challengeroot"));
             CNotaryEvidence evidence = CNotaryEvidence(find_value(params[0][i], "evidence"));
+            bool skipChallenge = !forkRoot.IsValid();
             if (notarizationRef.IsValid() &&
-                forkRoot.IsValid() &&
                 challengeRoot.IsValid() &&
-                evidence.IsValid() &&
-                forkRoot.rootHeight < challengeRoot.rootHeight &&
-                forkRoot.systemID == challengeRoot.systemID)
+                evidence.IsValid())
             {
-                challengeMap[challengeRoot.systemID].insert(std::make_pair(notarizationRef, std::make_tuple(i, forkRoot, challengeRoot, evidence)));
+                if (!forkRoot.IsValid() ||
+                    (forkRoot.IsValid() &&
+                     (challengeRoot.rootHeight - forkRoot.rootHeight) > CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS &&
+                     forkRoot.systemID == challengeRoot.systemID))
+                {
+                    challengeMap[challengeRoot.systemID].insert(
+                        std::make_pair(notarizationRef, std::make_tuple(i, forkRoot, challengeRoot, evidence)));
+                }
+                else
+                {
+                    objRet.pushKV("error", "Invalid challenge entry 1");
+                    retVal[i] = objRet;
+                }
             }
             else
             {
-                UniValue errMsg(UniValue::VOBJ);
-                errMsg.pushKV("error", "Invalid challenge entry in array of challenges parameter");
-                retVal[i] = errMsg;
+                objRet.pushKV("error", "Invalid challenge entry 2");
+                retVal[i] = objRet;
             }
         }
 
         for (auto &oneSystemChallenges : challengeMap)
         {
+            UniValue objRet(UniValue::VOBJ);
             if (!oneSystemChallenges.second.size())
             {
                 continue;
@@ -4721,12 +4742,12 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
             if (!GetNotarizationData(oneSystemChallenges.first, currentCND, nullptr, &counterEvidence) ||
                 !currentCND.vtx.size())
             {
-                UniValue errMsg(UniValue::VOBJ);
-                errMsg.pushKV("error", "Cannot load notarization data for system (" + EncodeDestination(CIdentityID(oneSystemChallenges.first)) + ").");
+                objRet.pushKV("error", "Cannot load notarization data for system (" + EncodeDestination(CIdentityID(oneSystemChallenges.first)) + ").");
                 for (auto &oneEntry : oneSystemChallenges.second)
                 {
-                    retVal[std::get<0>(oneEntry.second)] = errMsg;
+                    retVal[std::get<0>(oneEntry.second)] = objRet;
                 }
+                continue;
             }
             for (int j = 0; j < currentCND.vtx.size(); j++)
             {
@@ -4744,13 +4765,13 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
             std::vector<CTxDestination> dests({DecodeDestination(cp->unspendableCCaddr)});
             for (auto &oneChallenge : oneSystemChallenges.second)
             {
+                objRet = UniValue(UniValue::VOBJ);
                 // if we have a valid counter-evidence challenge of this notarization with the same proof root,
                 // nothing to do
                 if (preexistingChallenges.count(std::make_pair(oneChallenge.first, std::get<2>(oneChallenge.second))))
                 {
-                    UniValue errMsg(UniValue::VOBJ);
-                    errMsg.pushKV("error", "Duplicate");
-                    retVal[std::get<0>(oneChallenge.second)] = errMsg;
+                    objRet.pushKV("error", "Duplicate");
+                    retVal[std::get<0>(oneChallenge.second)] = objRet;
                     continue;
                 }
                 // we now have a confirmed, new counter evidence challenge and all we need to make a challenge tx
@@ -4759,7 +4780,69 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
                                        std::get<3>(oneChallenge.second).output.hash,
                                        std::get<3>(oneChallenge.second).output.n);
 
+                // get the notarization we refer to
+                CTransaction outputTx;
+                uint256 blkHash;
+                if (!of.output.GetOutputTransaction(outputTx, blkHash) &&
+                    outputTx.vout.size() > of.output.n)
+                {
+                    objRet.pushKV("error", "Invalid or inaccessible output transaction 1");
+                    retVal[std::get<0>(oneChallenge.second)] = objRet;
+                    continue;
+                }
+                CPBaaSNotarization challengedNotarization(outputTx.vout[of.output.n].scriptPubKey);
+                if (!challengedNotarization.IsValid() || !challengedNotarization.proofRoots.count(oneSystemChallenges.first))
+                {
+                    objRet.pushKV("error", "Invalid or inaccessible output transaction 2");
+                    retVal[std::get<0>(oneChallenge.second)] = objRet;
+                    continue;
+                }
+
                 TransactionBuilder tb(Params().GetConsensus(), nHeight, pwalletMain);
+
+                // if it's a skip challenge, finalize the notarization as rejected
+                if (!std::get<1>(oneChallenge.second).IsValid())
+                {
+                    if (!(std::get<3>(oneChallenge.second).evidence.chainObjects.size() &&
+                         std::get<3>(oneChallenge.second).evidence.chainObjects[0]->objectType == CHAINOBJ_PROOF_ROOT &&
+                         ((CChainObject<CProofRoot> *)std::get<3>(oneChallenge.second).evidence.chainObjects[0])->object ==
+                             challengedNotarization.proofRoots[oneSystemChallenges.first]))
+                    {
+                        objRet.pushKV("error", "Invalid skip challenge");
+                        retVal[std::get<0>(oneChallenge.second)] = objRet;
+                        continue;
+                    }
+                    of.SetRejected();
+
+                    // get block height to get pending evidence since
+                    std::vector<CProofRoot> validCounterRoots;
+                    CProofRoot challengeStartRoot;
+                    std::vector<CInputDescriptor> outputs;
+                    bool invalidates = false;
+                    CValidationState state;
+                    if (of.GetPendingEvidence(oneSystemChallenges.first,
+                                              std::get<3>(oneChallenge.second).output,
+                                              nHeight,
+                                              validCounterRoots,
+                                              challengeStartRoot,
+                                              outputs,
+                                              invalidates,
+                                              state))
+                    {
+                        for (auto &oneInput : outputs)
+                        {
+                            of.evidenceInputs.push_back(tb.mtx.vin.size());
+                            tb.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
+                        }
+                        std::vector<std::pair<uint32_t, CInputDescriptor>> unspentEvidence = of.GetUnspentEvidence(oneSystemChallenges.first,
+                                                                                                    std::get<3>(oneChallenge.second).output.hash,
+                                                                                                    std::get<3>(oneChallenge.second).output.n);
+                        for (auto &oneInput : unspentEvidence)
+                        {
+                            tb.AddTransparentInput(oneInput.second.txIn.prevout, oneInput.second.scriptPubKey, oneInput.second.nValue);
+                        }
+                    }
+                }
 
                 CScript evidenceScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &std::get<3>(oneChallenge.second)));
                 COptCCParams chkP;
@@ -4773,9 +4856,8 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
                     auto evidenceVec = std::get<3>(oneChallenge.second).BreakApart(CScript::MAX_SCRIPT_ELEMENT_SIZE - baseOverhead);
                     if (!evidenceVec.size())
                     {
-                        UniValue errMsg(UniValue::VOBJ);
-                        errMsg.pushKV("error", "Unable to break apart evidence");
-                        retVal[std::get<0>(oneChallenge.second)] = errMsg;
+                        objRet.pushKV("error", "Unable to break apart evidence");
+                        retVal[std::get<0>(oneChallenge.second)] = objRet;
                         continue;
                     }
                     for (auto &oneProof : evidenceVec)
@@ -4786,9 +4868,8 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
                 }
                 else if (!chkP.IsValid())
                 {
-                    UniValue errMsg(UniValue::VOBJ);
-                    errMsg.pushKV("error", "Invalid evidence");
-                    retVal[std::get<0>(oneChallenge.second)] = errMsg;
+                    objRet.pushKV("error", "Invalid evidence");
+                    retVal[std::get<0>(oneChallenge.second)] = objRet;
                     continue;
                 }
                 else
@@ -4818,16 +4899,14 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
                 // add to mem pool and relay
                 if (!relayTx)
                 {
-                    UniValue errMsg(UniValue::VOBJ);
-                    errMsg.pushKV("error", "Unable to prepare challenge tx: " + state.GetRejectReason());
-                    retVal[std::get<0>(oneChallenge.second)] = errMsg;
+                    objRet.pushKV("error", "Unable to prepare challenge tx: " + state.GetRejectReason());
+                    retVal[std::get<0>(oneChallenge.second)] = objRet;
                 }
                 else
                 {
                     RelayTransaction(challengeTx);
-                    UniValue resultMsg(UniValue::VOBJ);
-                    resultMsg.pushKV("txid", challengeTx.GetHash().GetHex());
-                    retVal[std::get<0>(oneChallenge.second)] = resultMsg;
+                    objRet.pushKV("txid", challengeTx.GetHash().GetHex());
+                    retVal[std::get<0>(oneChallenge.second)] = objRet;
                 }
             }
         }

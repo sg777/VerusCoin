@@ -4766,7 +4766,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                                                                 cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight);
 
                                 UniValue challengeRequest(UniValue::VOBJ);
-                                challengeRequest.pushKV("type", "skipchallenge");
+                                challengeRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::SkipChallengeKey())));
                                 challengeRequest.pushKV("evidence", fraudProof.ToUniValue());
                                 challengeRequest.pushKV("proveheight", proveHeight);
                                 challengeRequest.pushKV("atheight", atHeight);
@@ -4795,7 +4795,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                                 int64_t toHeight = cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight;
 
                                 UniValue challengeRequest(UniValue::VOBJ);
-                                challengeRequest.pushKV("type", "validitychallenge");
+                                challengeRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::ValidityChallengeKey())));
                                 challengeRequest.pushKV("evidence", challengeEvidence.ToUniValue());
                                 challengeRequest.pushKV("fromheight", fromHeight);
                                 challengeRequest.pushKV("toheight", toHeight);
@@ -4861,7 +4861,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                             int64_t toHeight = cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight;
 
                             UniValue challengeRequest(UniValue::VOBJ);
-                            challengeRequest.pushKV("type", "validitychallenge");
+                            challengeRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::ValidityChallengeKey())));
                             challengeRequest.pushKV("evidence", challengeEvidence.ToUniValue());
                             challengeRequest.pushKV("fromheight", fromHeight);
                             challengeRequest.pushKV("toheight", toHeight);
@@ -5024,7 +5024,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                                                                 crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight);
 
                                 UniValue challengeRequest(UniValue::VOBJ);
-                                challengeRequest.pushKV("type", "skipchallenge");
+                                challengeRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::SkipChallengeKey())));
                                 challengeRequest.pushKV("evidence", fraudProof.ToUniValue());
                                 challengeRequest.pushKV("proveheight", proveHeight);
                                 challengeRequest.pushKV("atheight", atHeight);
@@ -5053,7 +5053,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                                 int64_t toHeight = crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight;
 
                                 UniValue challengeRequest(UniValue::VOBJ);
-                                challengeRequest.pushKV("type", "validitychallenge");
+                                challengeRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::ValidityChallengeKey())));
                                 challengeRequest.pushKV("evidence", challengeEvidence.ToUniValue());
                                 challengeRequest.pushKV("fromheight", fromHeight);
                                 challengeRequest.pushKV("toheight", toHeight);
@@ -5119,7 +5119,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                             int64_t toHeight = crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight;
 
                             UniValue challengeRequest(UniValue::VOBJ);
-                            challengeRequest.pushKV("type", "validitychallenge");
+                            challengeRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::ValidityChallengeKey())));
                             challengeRequest.pushKV("evidence", challengeEvidence.ToUniValue());
                             challengeRequest.pushKV("fromheight", fromHeight);
                             challengeRequest.pushKV("toheight", toHeight);
@@ -5150,6 +5150,35 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 challenges = NullUniValue;
             }
             LogPrint("notarization", "Challenge proofs returned from local chain %s", challenges.write(1,2).c_str());
+        }
+
+        // if we have challenges, submit them
+        if (challenges.size())
+        {
+            UniValue submitParams(UniValue::VARR);
+            for (int i = 0; i < challenges.size(); i++)
+            {
+                if (find_value(challenges[i], "error").isNull())
+                {
+                    UniValue resultUni = find_value(challenges[i], "result");
+                    if (resultUni.isObject())
+                    {
+                        submitParams.push_back(resultUni);
+                    }
+                }
+            }
+            LogPrint("notarization", "Submitting challenges %s", submitParams.write(1,2).c_str());
+            UniValue challengeResult;
+            params = UniValue(UniValue::VARR);
+            params.push_back(submitParams);
+            try
+            {
+                challengeResult = find_value(RPCCallRoot("submitchallenges", params), "result");
+            } catch (exception e)
+            {
+                challengeResult = NullUniValue;
+            }
+            LogPrint("notarization", "Response from challenges %s", challengeResult.write(1,2).c_str());
         }
 
         /*
@@ -5326,35 +5355,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             }
         }
         */
-    }
-
-    // if we have challenges, submit them
-    if (challenges.size())
-    {
-        UniValue submitParams(UniValue::VARR);
-        for (int i = 0; i < challenges.size(); i++)
-        {
-            if (find_value(challenges[i], "error").isNull())
-            {
-                UniValue resultUni = find_value(challenges[i], "result");
-                if (resultUni.isObject())
-                {
-                    submitParams.push_back(resultUni);
-                }
-            }
-        }
-        LogPrint("notarization", "Submitting challenges %s", submitParams.write(1,2).c_str());
-        UniValue challengeResult;
-        params = UniValue(UniValue::VARR);
-        params.push_back(submitParams);
-        try
-        {
-            challengeResult = find_value(RPCCallRoot("submitchallenges", params), "result");
-        } catch (exception e)
-        {
-            challengeResult = NullUniValue;
-        }
-        LogPrint("notarization", "Response from challenges %s", challengeResult.write(1,2).c_str());
     }
 
     int numConsecutiveNeeded = std::max((int)CPBaaSNotarization::MIN_EARNED_FOR_AUTO,
@@ -8531,6 +8531,83 @@ bool PreCheckNotaryEvidence(const CTransaction &tx, int32_t outNum, CValidationS
                 {
                     notarySigned = true;
                     break;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+bool CObjectFinalization::GetPendingEvidence(const uint160 &currencyID,
+                                             const CUTXORef &notarizationRef,
+                                             uint32_t endHeight,
+                                             std::vector<CProofRoot> &validCounterRoots,
+                                             CProofRoot &challengeStartRoot,
+                                             std::vector<CInputDescriptor> &outputs,
+                                             bool &invalidates,
+                                             CValidationState &state)
+{
+    invalidates = false;
+
+    CPBaaSNotarization normalizedNotarization;
+    CTransaction notarizationTx;
+    uint256 blockHash;
+    CBlockIndex *pIndex = nullptr;
+    if (!(notarizationRef.GetOutputTransaction(notarizationTx, blockHash) &&
+          notarizationTx.vout.size() > notarizationRef.n &&
+          !blockHash.IsNull() &&
+          mapBlockIndex.count(blockHash) &&
+          chainActive.Contains(pIndex = mapBlockIndex[blockHash]) &&
+          (normalizedNotarization = CPBaaSNotarization(notarizationTx.vout[notarizationRef.n].scriptPubKey)).IsValid() &&
+          normalizedNotarization.currencyID == currencyID))
+    {
+        return state.Error("Cannot get valid notarization from output reference");
+    }
+
+    uint32_t startHeight = pIndex->GetHeight();
+
+    std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>>
+        finalizations =
+            CObjectFinalization::GetFinalizations(currencyID,
+                                                  CObjectFinalization::ObjectFinalizationPendingKey(),
+                                                  startHeight,
+                                                  endHeight);
+
+    std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>> ofsToCheck;
+
+    for (auto &oneFinalization : finalizations)
+    {
+        if (std::get<3>(oneFinalization).output == notarizationRef)
+        {
+            ofsToCheck.push_back(oneFinalization);
+        }
+    }
+
+    bool primaryValidated = false;
+    for (auto &oneFinalization : ofsToCheck)
+    {
+        outputs.push_back(CInputDescriptor(std::get<2>(oneFinalization).vout[std::get<1>(oneFinalization).n].scriptPubKey,
+                                           std::get<2>(oneFinalization).vout[std::get<1>(oneFinalization).n].nValue,
+                                           CTxIn(std::get<1>(oneFinalization))));
+        std::vector<CNotaryEvidence> ofEvidence = std::get<3>(oneFinalization).GetFinalizationEvidence(std::get<2>(oneFinalization), std::get<1>(oneFinalization).n, state);
+        for (auto &oneEItem : ofEvidence)
+        {
+            // if we find a rejection, check it
+            if (oneEItem.IsRejected())
+            {
+                CProofRoot challengeStart(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+                CProofRoot counterRoot = IsValidChallengeEvidence(normalizedNotarization.proofRoots[currencyID], oneEItem, blockHash, invalidates, challengeStart, endHeight);
+                if (invalidates)
+                {
+                    break;
+                }
+                if (challengeStart.IsValid() && counterRoot.IsValid())
+                {
+                    validCounterRoots.push_back(counterRoot);
+                    if (!challengeStartRoot.IsValid() || challengeStart.rootHeight < challengeStartRoot.rootHeight)
+                    {
+                        challengeStartRoot = challengeStart;
+                    }
                 }
             }
         }
