@@ -4127,16 +4127,11 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid proof root array parameter");
     }
 
-    CProofRoot lastConfirmedRoot, lastConfirmedRootClaim;
+    CProofRoot lastConfirmedRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID), lastConfirmedRootClaim(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
 
-    if (uniProofRoots.size() > lastConfirmed)
+    if (uniProofRoots.size() && uniProofRoots.size() > lastConfirmed)
     {
         lastConfirmedRootClaim = CProofRoot(uniProofRoots[lastConfirmed]);
-    }
-
-    if (!lastConfirmedRootClaim.IsValid())
-    {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid last confirmed proof root");
     }
 
     LOCK(cs_main);
@@ -4196,6 +4191,7 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
     }
 
     if (lastConfirmedRoot.IsValid() &&
+        lastConfirmedRootClaim.IsValid() &&
         (!validRoots.count(lastConfirmedRootClaim.rootHeight) || lastConfirmedRootClaim.rootHeight > lastConfirmedRoot.rootHeight))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("incorrect claim of confirmed proof root for height %u, %s", lastConfirmedRoot.rootHeight, EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));

@@ -4649,22 +4649,11 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         return state.Error(errorPrefix + "no valid prior state root found");
     }
 
-    if (!proofRootsUni.size())
-    {
-        // add an empty proof root for the call
-        auto oneProofRoot = CProofRoot();
-        oneProofRoot.rootHeight = 1;
-        proofRootsUni.push_back(oneProofRoot.ToUniValue());
-    }
-
     // call notary to determine the prior notarization that we agree with
     UniValue params(UniValue::VARR);
     UniValue oneParam(UniValue::VOBJ);
-    if (proofRootsUni.size())
-    {
-        oneParam.push_back(Pair("proofroots", proofRootsUni));
-    }
-    if (!isGatewayFirstContact)
+    oneParam.push_back(Pair("proofroots", proofRootsUni));
+    if (!isGatewayFirstContact && proofRootsUni.size())
     {
         oneParam.push_back(Pair("lastconfirmed", cnd.lastConfirmed));
     }
