@@ -3510,7 +3510,7 @@ LRUCache<std::pair<uint160, uint256>, std::pair<CChainNotarizationData, std::vec
 
 bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut, std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>> *pCounterEvidence)
 {
-    CChainNotarizationData notarizationData;
+    notarizationData = CChainNotarizationData();
 
     vector<std::pair<CTransaction, uint256>> _extraTxOut;
     if (!optionalTxOut)
