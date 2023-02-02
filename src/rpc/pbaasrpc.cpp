@@ -3527,6 +3527,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
 
     // if we are being asked for a notarization of the current chain, we make one
     uint32_t height = chainActive.Height();
+    bool cacheFound = false;
 
     if ((IsVerusActive() || height == 0) && currencyID == ASSETCHAINS_CHAINID)
     {
@@ -3558,16 +3559,20 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         std::pair<CChainNotarizationData, std::vector<std::pair<CTransaction, uint256>>> cacheResult;
         if (crossChainNotarizationDataCache.Get(std::make_pair(currencyID, chainActive[height]->GetBlockHash()), cacheResult))
         {
+            cacheFound = true;
             notarizationData = cacheResult.first;
             if (notarizationData.IsValid())
             {
                 *optionalTxOut = cacheResult.second;
             }
-            return notarizationData.IsValid() && notarizationData.vtx.size() != 0;
+            if (!pCounterEvidence)
+            {
+                return notarizationData.IsValid() && notarizationData.vtx.size() != 0;
+            }
         }
     }
 
-    if (!notarizationData.IsValid())
+    if (!cacheFound && !notarizationData.IsValid())
     {
         notarizationData = CChainNotarizationData(CChainNotarizationData::CURRENT_VERSION);
 
