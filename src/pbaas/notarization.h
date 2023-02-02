@@ -279,6 +279,11 @@ public:
         return "vrsc::system.finalization.invalidates";
     }
 
+    static std::string FinalizationIsChallengeKeyName()
+    {
+        return "vrsc::system.finalization.ischallenge";
+    }
+
     // enables easily finding all pending finalizations for a
     // currency, either notarizations or exports
     static std::string ObjectFinalizationPendingKeyName()
@@ -336,6 +341,13 @@ public:
     {
         static uint160 nameSpace;
         static uint160 key = CVDXF::GetDataKey(FinalizationInvalidatesKeyName(), nameSpace);
+        return key;
+    }
+
+    static uint160 FinalizationIsChallengeKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(FinalizationIsChallengeKeyName(), nameSpace);
         return key;
     }
 
@@ -407,7 +419,7 @@ public:
     std::vector<std::vector<int32_t>> forks;        // chains that represent alternate branches from the last confirmed notarization
     int32_t bestChain;                              // index in forks of the chain, beginning with the last confirmed notarization, that has the most power
 
-    CChainNotarizationData() : version(0), lastConfirmed(-1), bestChain(-1) {}
+    CChainNotarizationData(uint32_t Version=VERSION_INVALID) : version(0), lastConfirmed(-1), bestChain(-1) {}
 
     CChainNotarizationData(const std::vector<std::pair<CUTXORef, CPBaaSNotarization>> &notarizations,
                            int32_t lastConf=-1,

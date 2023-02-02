@@ -5608,6 +5608,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         uint32_t adjustedNotarizationModulo = CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
                                                                                                 (height + 1) -
                                                                                                 mapBlockIndex[txes[cnd.lastConfirmed].second]->GetHeight());
+
         int blockPeriodNumber = (height + 1) / adjustedNotarizationModulo;
         int priorBlockPeriod = mapBlockIt->second->GetHeight() / adjustedNotarizationModulo;
 

@@ -1221,15 +1221,12 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             {
                 uint160 finalizationNotarizationID = CCrossChainRPCData::GetConditionID(finalization.currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey());
                 // we care about confirmed and pending. no index for rejected
-                if (finalization.IsConfirmed())
+
+                // if this is a more powerful challenge than the confirmation
+                // figuring this out quickly enables efficient decision to not confirm
+                if (finalization.IsChallenge())
                 {
-                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizationNotarizationID, CObjectFinalization::ObjectFinalizationConfirmedKey())));
-                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CObjectFinalization::ObjectFinalizationFinalizedKey(), finalization.output.hash, finalization.output.n)));
-                }
-                else if (finalization.IsPending())
-                {
-                    // if this is a more powerful challenge than the confirmation
-                    // figuring this out quickly enables efficient decision to not confirm
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CObjectFinalization::FinalizationIsChallengeKey(), finalization.output.hash, finalization.output.n)));
                     if (finalization.IsMorePowerful())
                     {
                         destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CObjectFinalization::FinalizationMorePowerfulKey(), finalization.output.hash, finalization.output.n)));
@@ -1238,6 +1235,15 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                     {
                         destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CObjectFinalization::FinalizationInvalidatesKey(), finalization.output.hash, finalization.output.n)));
                     }
+                }
+
+                if (finalization.IsConfirmed())
+                {
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizationNotarizationID, CObjectFinalization::ObjectFinalizationConfirmedKey())));
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CObjectFinalization::ObjectFinalizationFinalizedKey(), finalization.output.hash, finalization.output.n)));
+                }
+                else if (finalization.IsPending())
+                {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizationNotarizationID, CObjectFinalization::ObjectFinalizationPendingKey())));
                     if (!finalization.output.hash.IsNull())
                     {
