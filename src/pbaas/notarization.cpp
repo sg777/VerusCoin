@@ -4643,18 +4643,18 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         {
             proofRootsUni.push_back(rootIt->second.ToUniValue());
         }
-        else
-        {
-            // add an empty proof root for the call
-            auto oneProofRoot = CProofRoot();
-            oneProofRoot.rootHeight = 1;
-            proofRootsUni.push_back(oneProofRoot.ToUniValue());
-        }
     }
-
     if (!proofRootsUni.size() && !isGatewayFirstContact)
     {
         return state.Error(errorPrefix + "no valid prior state root found");
+    }
+
+    if (!proofRootsUni.size())
+    {
+        // add an empty proof root for the call
+        auto oneProofRoot = CProofRoot();
+        oneProofRoot.rootHeight = 1;
+        proofRootsUni.push_back(oneProofRoot.ToUniValue());
     }
 
     // call notary to determine the prior notarization that we agree with
