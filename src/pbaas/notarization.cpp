@@ -9566,6 +9566,10 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                 counterRoot = IsValidChallengeEvidence(notarization.proofRoots[curID], oneItem.second, txBlockHash, invalidates, challengeStartRoot, height - 1);
                 if (counterRoot.IsValid())
                 {
+                    if (!oneItem.first.IsChallenge())
+                    {
+                        return state.Error("challenge notary evidence may only be included with a finalization marked as a challenges");
+                    }
                     // if this challenge invalidates, it needs to be part of a rejection
                     if (invalidates)
                     {
@@ -9573,7 +9577,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     }
                     // if this is more powerful, it needs to be set as such, or it is invalid
                     if (CChainPower::ExpandCompactPower(counterRoot.compactPower) >
-                            CChainPower::ExpandCompactPower(notarization.proofRoots[curID].compactPower) != currentFinalization.IsMorePowerful())
+                            CChainPower::ExpandCompactPower(notarization.proofRoots[curID].compactPower) != oneItem.first.IsMorePowerful())
                     {
                         return state.Error("evidence proving a more powerful chain needs to be part of a more powerful finalization transaction");
                     }
@@ -9590,10 +9594,6 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         if (evidenceVec.size() && !counterRoot.IsValid() && !hasSignature)
         {
             return state.Error("insufficient evidence to create new pending finalization for notarization");
-        }
-        if (invalidates)
-        {
-            return state.Error("challenge invalidates notarization and should be on rejecting, not pending finalization for notarization");
         }
     }
     return true;
