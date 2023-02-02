@@ -2209,7 +2209,6 @@ public:
 
     // merges a second CNotaryEvidence instance with this one, mutating the "this" instance
     CNotaryEvidence &MergeEvidence(const CNotaryEvidence &mergeWith,
-                                   const std::set<uint160> &notarySet,
                                    bool aggregateSignatures=true);
 
     CNotaryEvidence &AddToSignatures(const std::set<uint160> &notarySet,
@@ -2223,7 +2222,7 @@ public:
         CCrossChainProof sigProof;
         sigProof << newSignature;
         CNotaryEvidence newEvidence(systemID, output, thisState, sigProof);
-        MergeEvidence(newEvidence, notarySet, true);
+        MergeEvidence(newEvidence, true);
         return *this;
     }
 

@@ -1140,6 +1140,9 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                         destinations.insert(CIndexID(
                             CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::EarnedNotarizationKey(), objHash)
                         ));
+                        destinations.insert(CIndexID(
+                            CCrossChainRPCData::GetConditionID(CPBaaSNotarization::PriorNotarizationKey(), notarization.prevNotarization.hash, notarization.prevNotarization.n)
+                        ));
                     }
                 }
 
@@ -1225,7 +1228,21 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 }
                 else if (finalization.IsPending())
                 {
+                    // if this is a more powerful challenge than the confirmation
+                    // figuring this out quickly enables efficient decision to not confirm
+                    if (finalization.IsMorePowerful())
+                    {
+                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CObjectFinalization::FinalizationMorePowerfulKey(), finalization.output.hash, finalization.output.n)));
+                    }
+                    if (finalization.Invalidates())
+                    {
+                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CObjectFinalization::FinalizationInvalidatesKey(), finalization.output.hash, finalization.output.n)));
+                    }
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizationNotarizationID, CObjectFinalization::ObjectFinalizationPendingKey())));
+                    if (!finalization.output.hash.IsNull())
+                    {
+                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CObjectFinalization::ObjectFinalizationPendingKey(), finalization.output.hash, finalization.output.n)));
+                    }
                 }
                 else if (finalization.IsRejected())
                 {

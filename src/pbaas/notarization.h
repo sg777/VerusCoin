@@ -79,9 +79,11 @@ public:
         FINALIZE_NOTARIZATION = 1,      // confirmed with FINALIZE_CONFIRMED when notarization is deemed correct / final
         FINALIZE_EXPORT = 2,            // confirmed when export has no more work to do
         FINALIZE_PROPOSAL = 4,          // confirmed on approval of a proposed output
+        FINALIZE_INVALIDATES = 0x10,    // flag set when this challenge invalidates what it is challenging
+        FINALIZE_MOREPOWERFUL = 0x20,   // flag set when this is a challenge that is more powerful than what it is challenging
         FINALIZE_REJECTED = 0x40,       // flag set when confirmation is rejected and/or proven false
         FINALIZE_CONFIRMED = 0x80,      // flag set when object finalization is confirmed
-        FINALIZE_TYPE_MASK = ~(FINALIZE_REJECTED | FINALIZE_CONFIRMED)
+        FINALIZE_TYPE_MASK = ~(FINALIZE_REJECTED | FINALIZE_CONFIRMED | FINALIZE_MOREPOWERFUL)
     };
 
     uint8_t version;
@@ -169,6 +171,42 @@ public:
         }
     }
 
+    bool IsMorePowerful() const
+    {
+        return finalizationType & FINALIZE_MOREPOWERFUL;
+    }
+
+    void SetMorePowerful(bool setTrue=true)
+    {
+        if (setTrue)
+        {
+            SetConfirmed(false);
+            finalizationType |= FINALIZE_MOREPOWERFUL;
+        }
+        else
+        {
+            finalizationType &= ~FINALIZE_MOREPOWERFUL;
+        }
+    }
+
+    bool Invalidates() const
+    {
+        return finalizationType & FINALIZE_INVALIDATES;
+    }
+
+    void SetInvalidates(bool setTrue=true)
+    {
+        if (setTrue)
+        {
+            SetConfirmed(false);
+            finalizationType |= FINALIZE_INVALIDATES;
+        }
+        else
+        {
+            finalizationType &= ~FINALIZE_INVALIDATES;
+        }
+    }
+
     bool IsProposalFinalization() const
     {
         return (finalizationType & FINALIZE_TYPE_MASK) == FINALIZE_PROPOSAL;
@@ -190,7 +228,8 @@ public:
     }
 
     bool GetOutputTransaction(const CTransaction &initialTx, CTransaction &tx, uint256 &blockHash) const;
-    std::vector<CNotaryEvidence> GetFinalizationEvidence(const CTransaction &thisTx, int32_t outputNum, CValidationState &state, CTransaction *pOutputTx=nullptr) const;
+    std::vector<std::pair<CObjectFinalization, CNotaryEvidence>>
+        GetFinalizationEvidence(const CTransaction &thisTx, int32_t outputNum, CValidationState &state, CTransaction *pOutputTx=nullptr) const;
 
     // Sign the output object with an ID or signing authority of the ID from the wallet.
     CNotaryEvidence SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EHashTypes hashType) const;
@@ -201,10 +240,13 @@ public:
     static std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>>
         GetFinalizations(const uint160 &currencyID, const uint160 &finalizationTypeKey, uint32_t startHeight=0, uint32_t endHeight=0);
 
+    static std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>>
+        GetFinalizations(const CUTXORef &outputRef, const uint160 &finalizationTypeKey, uint32_t startHeight=0, uint32_t endHeight=0);
+
     static bool GetPendingEvidence(const uint160 &currencyID,
                                    const CUTXORef &notarizationRef,
                                    uint32_t untilHeight,
-                                   std::vector<CProofRoot> &validCounterRoots,
+                                   std::vector<std::pair<bool, CProofRoot>> &validCounterRoots,
                                    CProofRoot &challengeStartRoot,
                                    std::vector<CInputDescriptor> &outputs,
                                    bool &invalidates,
@@ -213,6 +255,16 @@ public:
     static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentEvidence(const uint160 &currencyID,
                                                                                  const uint256 &notarizationTxId,
                                                                                  int32_t notarizationOutNum);
+
+    static std::string FinalizationMorePowerfulKeyName()
+    {
+        return "vrsc::system.finalization.morepowerful";
+    }
+
+    static std::string FinalizationInvalidatesKeyName()
+    {
+        return "vrsc::system.finalization.invalidates";
+    }
 
     // enables easily finding all pending finalizations for a
     // currency, either notarizations or exports
@@ -258,6 +310,20 @@ public:
     static std::string ObjectFinalizationRejectedKeyName()
     {
         return "vrsc::system.finalization.rejected";
+    }
+
+    static uint160 FinalizationMorePowerfulKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(FinalizationMorePowerfulKeyName(), nameSpace);
+        return key;
+    }
+
+    static uint160 FinalizationInvalidatesKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(FinalizationInvalidatesKeyName(), nameSpace);
+        return key;
     }
 
     static uint160 ObjectFinalizationPendingKey()
@@ -330,13 +396,13 @@ public:
 
     CChainNotarizationData() : version(0), lastConfirmed(-1) {}
 
-    CChainNotarizationData(const std::vector<std::pair<CUTXORef, CPBaaSNotarization>> &txes,
+    CChainNotarizationData(const std::vector<std::pair<CUTXORef, CPBaaSNotarization>> &notarizations,
                            int32_t lastConf=-1,
                            const std::vector<std::vector<int32_t>> &Forks=std::vector<std::vector<int32_t>>(),
                            int32_t Best=-1,
                            uint32_t ver=CURRENT_VERSION) :
                            version(ver),
-                           vtx(txes),
+                           vtx(notarizations),
                            lastConfirmed(lastConf),
                            bestChain(Best),
                            forks(Forks) {}
@@ -370,7 +436,7 @@ public:
     bool IsValid() const
     {
         return version >= VERSION_FIRST && version <= VERSION_LAST &&
-               ((vtx.size() && forks.size()) || (vtx.size() && forks.size()));
+               ((!vtx.size() && !forks.size()) || (vtx.size() && forks.size()));
     }
 
     bool IsConfirmed() const
@@ -390,8 +456,8 @@ public:
     int BestConfirmedNotarization(int minConfirms);
 
     UniValue ToUniValue(const std::vector<std::pair<CTransaction, uint256>> &transactionsAndBlockHash=std::vector<std::pair<CTransaction, uint256>>(),
-                        const std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> &counterEvidence=
-                            std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>>()) const;
+                        const std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>> &counterEvidence=
+                            std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>>()) const;
 };
 
 std::vector<CNodeData> GetGoodNodes(int maxNum=CCurrencyDefinition::MAX_STARTUP_NODES);
@@ -413,6 +479,7 @@ CProofRoot IsValidChallengeEvidence(const CProofRoot &defaultProofRoot,
                                          uint32_t height);
 CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
                                                const CPBaaSNotarization &expectedNotarization,
+                                               uint32_t lastConfirmedHeight,
                                                uint32_t height,
                                                uint256 *pOptEntropyHash=nullptr, // only needed when responding to a challenge
                                                const CProofRoot &challengeProofRoot=CProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID),

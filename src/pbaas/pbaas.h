@@ -231,19 +231,39 @@ public:
         MIN_NOTARIZATION_OUTPUT = 0,                    // minimum amount for notarization output
 
         EXPECT_MIN_HEADER_PROOFS = 3,                   // if header proofs are needed, we need this many or number of blocks
+        MIN_EARNED_FOR_SIGNED = 2,                      // minimum earned notarizations to notarize with witnesses
+        MIN_EARNED_FOR_AUTO = 4,                        // minimum earned notarizations to auto-notarize at any modulo
+        NUM_BLOCKS_BEFORE_EXTENSION = 150,              // if we haven't confirmed a notarization in this long, modulo gets multiplied
+        MODULO_EXTENSION_MULTIPLIER = 10,               // notarization rate drops to 1/10 when not confirmed on time
+        MIN_BLOCKS_TO_AUTOCONFIRM = 200,                // we cannot autoconfirm (signature-free) a notarization < 200 blocks old
+
         MAX_HEADER_PROOFS_PER_PROOF = 50,               // don't use more than this many header proofs in an alternate chain proof tx
         MAX_BLOCKS_PER_COMMITMENT_RANGE = 256,          // up to 256 blocks per commitment range
         MAX_BLOCK_RANGES_PER_PROOF = 5,                 // no more than 5 randomly selected ranges to cover any gap length
         NUM_COMMITMENT_BLOCKS_START_OFFSET = 100,       // commitment blocks start this far before the actual start or at 1
         NUM_BLOCKS_PER_PROOF_RANGE = 100,               // number of blocks in an ideal proof range
         NUM_HEADER_REFS_PER_PROOF_RANGE = 10,           // target to prove at least this many randomly selected headers OR REFs per proof range
-        NUM_STAKE_HEADERS_PER_PROOF_RANGE = 3,          // expect to prove at least this many stake headers per proof range
         MIN_BLOCKS_PER_CHECKPOINT = 256,                // blocks before we need another checkpoint
-        MIN_EARNED_FOR_AUTO = 4,                        // minimum earned notarizations to auto-notarize
         MAX_PROOF_CHECKPOINTS = 100,                    // we do not add more than 100, after that, they are spaced further apart
     };
-    //static const int FINAL_CONFIRMATIONS = 10;
-    //static const int MIN_BLOCKS_BETWEEN_NOTARIZATIONS = 8;
+
+    inline static int32_t MinBlocksToAutoNotarization(uint32_t notarizationBlockModulo)
+    {
+        return std::max(notarizationBlockModulo * MIN_EARNED_FOR_AUTO, (uint32_t)MIN_BLOCKS_TO_AUTOCONFIRM);
+    }
+
+    inline static int32_t GetBlocksBeforeModuloExtension(uint32_t notarizationBlockModulo)
+    {
+        uint32_t maxAutoConfirmBlocks = (notarizationBlockModulo * MODULO_EXTENSION_MULTIPLIER) * (MIN_EARNED_FOR_AUTO + 1);
+        return std::max(maxAutoConfirmBlocks, (uint32_t)NUM_BLOCKS_BEFORE_EXTENSION);
+    }
+
+    inline static int32_t GetAdjustedNotarizationModulo(uint32_t notarizationBlockModulo, uint32_t heightChange)
+    {
+        return heightChange <= GetBlocksBeforeModuloExtension(notarizationBlockModulo) ?
+            notarizationBlockModulo :
+            notarizationBlockModulo * MODULO_EXTENSION_MULTIPLIER;
+    }
 
     enum FLAGS
     {
@@ -437,6 +457,11 @@ public:
         return "vrsc::system.notarization.acceptednotarization";
     }
 
+    static std::string PriorNotarizationKeyName()
+    {
+        return "vrsc::system.notarization.prior";
+    }
+
     static std::string LaunchNotarizationKeyName()
     {
         return "vrsc::system.currency.launch.notarization";
@@ -493,6 +518,13 @@ public:
         static uint160 nameSpace;
         static uint160 acceptedNotarizationKey = CVDXF::GetDataKey(AcceptedNotarizationKeyName(), nameSpace);
         return acceptedNotarizationKey;
+    }
+
+    static uint160 PriorNotarizationKey()
+    {
+        static uint160 nameSpace;
+        static uint160 priorNotarizationKey = CVDXF::GetDataKey(PriorNotarizationKeyName(), nameSpace);
+        return priorNotarizationKey;
     }
 
     static uint160 LaunchNotarizationKey()

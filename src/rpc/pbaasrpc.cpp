@@ -3508,7 +3508,7 @@ bool GetUnspentChainTransfers(std::multimap<uint160, ChainTransferData> &inputDe
 // since same chain notarizations are always up to date, we only need to cache cross-chain notarizations that require analysis
 LRUCache<std::pair<uint160, uint256>, std::pair<CChainNotarizationData, std::vector<std::pair<CTransaction, uint256>>>> crossChainNotarizationDataCache(100, 0.3);
 
-bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut, std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> *pCounterEvidence)
+bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut, std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>> *pCounterEvidence)
 {
     notarizationData = CChainNotarizationData(std::vector<std::pair<CUTXORef, CPBaaSNotarization>>());
 
@@ -3883,9 +3883,8 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
             }
 
             CValidationState state;
-            std::vector<CNotaryEvidence> ofEvidence = std::get<3>(finalizations[i]).GetFinalizationEvidence(std::get<2>(finalizations[i]),
-                                                                                                            std::get<1>(finalizations[i]).n,
-                                                                                                            state);
+            std::vector<std::pair<CObjectFinalization, CNotaryEvidence>> ofEvidence =
+                std::get<3>(finalizations[i]).GetFinalizationEvidence(std::get<2>(finalizations[i]), std::get<1>(finalizations[i]).n, state);
             if (state.IsError())
             {
                 return false;
@@ -3894,7 +3893,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
             for (auto &oneEItem : ofEvidence)
             {
                 // if we find a rejection, check it
-                if (oneEItem.IsRejected())
+                if (oneEItem.second.IsRejected())
                 {
                     CProofRoot entropyRoot;
                     CProofRoot challengeStartRoot;
@@ -3902,14 +3901,14 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                     int entryIdx = vtxMap[finalizationOutput];
                     CProofRoot alternateRoot =
                         IsValidChallengeEvidence(notarizationData.vtx[entryIdx].second.proofRoots[currencyID],
-                                                      oneEItem,
-                                                      (*optionalTxOut)[entryIdx].second,
-                                                      invalidates,
-                                                      challengeStartRoot,
-                                                      std::get<0>(finalizations[i]));
+                                                 oneEItem.second,
+                                                 (*optionalTxOut)[entryIdx].second,
+                                                 invalidates,
+                                                 challengeStartRoot,
+                                                 std::get<0>(finalizations[i]));
                     if (alternateRoot.IsValid())
                     {
-                        (*pCounterEvidence)[i].push_back(std::make_tuple(oneEItem, alternateRoot, challengeStartRoot));
+                        (*pCounterEvidence)[i].push_back(std::make_tuple(oneEItem.first, oneEItem.second, alternateRoot, challengeStartRoot));
                     }
                 }
             }
@@ -3954,7 +3953,7 @@ UniValue getnotarizationdata(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currencyid");
     }
 
-    std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> counterEvidence;
+    std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>> counterEvidence;
     std::vector<std::pair<CTransaction, uint256>> transactionsAndBlockHash;
     if (GetNotarizationData(chainID, nData, &transactionsAndBlockHash, &counterEvidence))
     {
@@ -4736,8 +4735,8 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
             }
             CChainNotarizationData currentCND;
             std::map<CUTXORef, int> currentNotarizationMap;
-            std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> counterEvidence;
-            std::set<std::pair<CUTXORef, CProofRoot>> preexistingChallenges;
+            std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>> counterEvidence;
+            std::map<std::pair<CUTXORef, CProofRoot>, std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>> preexistingChallenges;
 
             if (!GetNotarizationData(oneSystemChallenges.first, currentCND, nullptr, &counterEvidence) ||
                 !currentCND.vtx.size())
@@ -4757,7 +4756,7 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
             {
                 for (auto &oneCounterEvidence : oneCounterSet)
                 {
-                    preexistingChallenges.insert(std::make_pair(std::get<0>(oneCounterEvidence).output, std::get<1>(oneCounterEvidence)));
+                    preexistingChallenges.insert({{std::get<1>(oneCounterEvidence).output, std::get<2>(oneCounterEvidence)}, oneCounterEvidence});
                 }
             }
             CCcontract_info CC;
@@ -4766,32 +4765,79 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
             for (auto &oneChallenge : oneSystemChallenges.second)
             {
                 objRet = UniValue(UniValue::VOBJ);
+
                 // if we have a valid counter-evidence challenge of this notarization with the same proof root,
-                // nothing to do
+                // we will only submit a stronger challenge if we have one
                 if (preexistingChallenges.count(std::make_pair(oneChallenge.first, std::get<2>(oneChallenge.second))))
                 {
+                    CProofRoot mostPowerfulRoot;
+                    CProofRoot earliestChallenge;
+                    bool invalidates = false;
+                    for (auto &oneChallengeVec : counterEvidence)
+                    {
+                        for (auto &oneChallenge : oneChallengeVec)
+                        {
+                            if (std::get<0>(oneChallenge).IsValid() &&
+                                std::get<0>(oneChallenge).Invalidates())
+                            {
+
+                            }
+                            else
+                            {
+
+                            }
+                        }
+                    }
+
+
+
                     objRet.pushKV("error", "Duplicate");
                     retVal[std::get<0>(oneChallenge.second)] = objRet;
                     continue;
                 }
+
                 // we now have a confirmed, new counter evidence challenge and all we need to make a challenge tx
+                bool invalidates = false;
                 CObjectFinalization of(CObjectFinalization::FINALIZE_NOTARIZATION,
                                        oneSystemChallenges.first,
                                        std::get<3>(oneChallenge.second).output.hash,
                                        std::get<3>(oneChallenge.second).output.n);
 
-                // get the notarization we refer to
-                CTransaction outputTx;
-                uint256 blkHash;
-                if (!of.output.GetOutputTransaction(outputTx, blkHash) &&
-                    outputTx.vout.size() > of.output.n)
+                CTransaction outTx;
+                uint256 blockHash;
+                CCurrencyDefinition notarizingCurrency;
+                CPBaaSNotarization challengedNotarization;
+                CProofRoot challengeRoot;
+                if (std::get<3>(oneChallenge.second).output.GetOutputTransaction(outTx, blockHash) &&
+                    outTx.vout.size() > std::get<3>(oneChallenge.second).output.n &&
+                    (challengedNotarization = CPBaaSNotarization(outTx.vout[std::get<3>(oneChallenge.second).output.n].scriptPubKey)).IsValid() &&
+                    challengedNotarization.proofRoots.count(std::get<2>(oneChallenge.second).systemID) &&
+                    std::get<2>(oneChallenge.second).systemID != ASSETCHAINS_CHAINID &&
+                    (notarizingCurrency = ConnectedChains.GetCachedCurrency(std::get<2>(oneChallenge.second).systemID)).IsValid() &&
+                    notarizingCurrency.IsPBaaSChain())
                 {
-                    objRet.pushKV("error", "Invalid or inaccessible output transaction 1");
-                    retVal[std::get<0>(oneChallenge.second)] = objRet;
-                    continue;
+                    // determine if our challenge is more powerful and set the flag if so
+                    challengeRoot = IsValidChallengeEvidence(challengedNotarization.proofRoots[std::get<2>(oneChallenge.second).systemID],
+                                                             std::get<3>(oneChallenge.second),
+                                                             blockHash,
+                                                             invalidates,
+                                                             std::get<1>(oneChallenge.second),
+                                                             nHeight + 1);
+                    if (invalidates)
+                    {
+                        of.SetInvalidates();
+                    }
+                    if (challengeRoot != challengedNotarization.proofRoots[std::get<2>(oneChallenge.second).systemID] &&
+                        CChainPower::ExpandCompactPower(challengeRoot.compactPower) >
+                            CChainPower::ExpandCompactPower(challengedNotarization.proofRoots[std::get<2>(oneChallenge.second).systemID].compactPower))
+                    {
+                        of.SetMorePowerful();
+                    }
                 }
-                CPBaaSNotarization challengedNotarization(outputTx.vout[of.output.n].scriptPubKey);
-                if (!challengedNotarization.IsValid() || !challengedNotarization.proofRoots.count(oneSystemChallenges.first))
+
+                // get the notarization we refer to
+                if (!challengedNotarization.IsValid() ||
+                    !challengedNotarization.proofRoots.count(oneSystemChallenges.first))
                 {
                     objRet.pushKV("error", "Invalid or inaccessible output transaction 2");
                     retVal[std::get<0>(oneChallenge.second)] = objRet;
@@ -4803,10 +4849,7 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
                 // if it's a skip challenge, finalize the notarization as rejected
                 if (!std::get<1>(oneChallenge.second).IsValid())
                 {
-                    if (!(std::get<3>(oneChallenge.second).evidence.chainObjects.size() &&
-                         std::get<3>(oneChallenge.second).evidence.chainObjects[0]->objectType == CHAINOBJ_PROOF_ROOT &&
-                         ((CChainObject<CProofRoot> *)std::get<3>(oneChallenge.second).evidence.chainObjects[0])->object ==
-                             challengedNotarization.proofRoots[oneSystemChallenges.first]))
+                    if (!invalidates)
                     {
                         objRet.pushKV("error", "Invalid skip challenge");
                         retVal[std::get<0>(oneChallenge.second)] = objRet;
@@ -4815,10 +4858,9 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
                     of.SetRejected();
 
                     // get block height to get pending evidence since
-                    std::vector<CProofRoot> validCounterRoots;
+                    std::vector<std::pair<bool, CProofRoot>> validCounterRoots;
                     CProofRoot challengeStartRoot;
                     std::vector<CInputDescriptor> outputs;
-                    bool invalidates = false;
                     CValidationState state;
                     if (of.GetPendingEvidence(oneSystemChallenges.first,
                                               std::get<3>(oneChallenge.second).output,
