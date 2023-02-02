@@ -3531,6 +3531,8 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
 
     if ((IsVerusActive() || height == 0) && currencyID == ASSETCHAINS_CHAINID)
     {
+        notarizationData = CChainNotarizationData(CChainNotarizationData::CURRENT_VERSION);
+
         CIdentityID proposer = VERUS_NOTARYID.IsNull() ? (VERUS_DEFAULTID.IsNull() ? VERUS_NODEID : VERUS_DEFAULTID) : VERUS_NOTARYID;
 
         std::map<uint160, CProofRoot> proofRoots;
