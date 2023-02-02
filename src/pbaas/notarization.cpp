@@ -6113,7 +6113,7 @@ CObjectFinalization::GetFinalizations(const uint160 &currencyID,
 }
 
 std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>>
-GetFinalizations(const CUTXORef &outputRef,
+CObjectFinalization::GetFinalizations(const CUTXORef &outputRef,
                  const uint160 &finalizationTypeKey,
                  uint32_t startHeight,
                  uint32_t endHeight)
