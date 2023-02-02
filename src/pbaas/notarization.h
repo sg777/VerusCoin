@@ -78,7 +78,7 @@ public:
         FINALIZE_INVALID = 0,
         FINALIZE_NOTARIZATION = 1,      // confirmed with FINALIZE_CONFIRMED when notarization is deemed correct / final
         FINALIZE_EXPORT = 2,            // confirmed when export has no more work to do
-        FINALIZE_PROPOSAL = 4,          // confirmed on approval of a proposed output
+        FINALIZE_CHALLENGES = 0x08,     // flag set when this is a challenge of an existing notarization
         FINALIZE_INVALIDATES = 0x10,    // flag set when this challenge invalidates what it is challenging
         FINALIZE_MOREPOWERFUL = 0x20,   // flag set when this is a challenge that is more powerful than what it is challenging
         FINALIZE_REJECTED = 0x40,       // flag set when confirmation is rejected and/or proven false
@@ -171,6 +171,24 @@ public:
         }
     }
 
+    bool IsChallenge() const
+    {
+        return finalizationType & FINALIZE_CHALLENGES;
+    }
+
+    void SetChallenge(bool setTrue=true)
+    {
+        if (setTrue)
+        {
+            SetConfirmed(false);
+            finalizationType |= FINALIZE_CHALLENGES;
+        }
+        else
+        {
+            finalizationType &= ~FINALIZE_CHALLENGES;
+        }
+    }
+
     bool IsMorePowerful() const
     {
         return finalizationType & FINALIZE_MOREPOWERFUL;
@@ -205,11 +223,6 @@ public:
         {
             finalizationType &= ~FINALIZE_INVALIDATES;
         }
-    }
-
-    bool IsProposalFinalization() const
-    {
-        return (finalizationType & FINALIZE_TYPE_MASK) == FINALIZE_PROPOSAL;
     }
 
     bool IsExportFinalization() const

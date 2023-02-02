@@ -3510,7 +3510,7 @@ LRUCache<std::pair<uint160, uint256>, std::pair<CChainNotarizationData, std::vec
 
 bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut, std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>> *pCounterEvidence)
 {
-    notarizationData = CChainNotarizationData(std::vector<std::pair<CUTXORef, CPBaaSNotarization>>());
+    CChainNotarizationData notarizationData;
 
     vector<std::pair<CTransaction, uint256>> _extraTxOut;
     if (!optionalTxOut)
@@ -4768,6 +4768,7 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
 
                 // if we have a valid counter-evidence challenge of this notarization with the same proof root,
                 // we will only submit a stronger challenge if we have one
+                // multiple, weaker challenges have no material effect in the current protocol and cost fees
                 if (preexistingChallenges.count(std::make_pair(oneChallenge.first, std::get<2>(oneChallenge.second))))
                 {
                     CProofRoot mostPowerfulRoot;
@@ -4777,12 +4778,15 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
                     {
                         for (auto &oneChallenge : oneChallengeVec)
                         {
-                            if (std::get<0>(oneChallenge).IsValid() &&
-                                std::get<0>(oneChallenge).Invalidates())
+                            if (std::get<0>(oneChallenge).Invalidates())
+                            {
+                                invalidates = true;
+                            }
+                            else
                             {
 
                             }
-                            else
+                            if (std::get<0>(oneChallenge).IsMorePowerful())
                             {
 
                             }
@@ -4823,15 +4827,19 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
                                                              invalidates,
                                                              std::get<1>(oneChallenge.second),
                                                              nHeight + 1);
-                    if (invalidates)
+                    if (challengeRoot.IsValid())
                     {
-                        of.SetInvalidates();
-                    }
-                    if (challengeRoot != challengedNotarization.proofRoots[std::get<2>(oneChallenge.second).systemID] &&
-                        CChainPower::ExpandCompactPower(challengeRoot.compactPower) >
-                            CChainPower::ExpandCompactPower(challengedNotarization.proofRoots[std::get<2>(oneChallenge.second).systemID].compactPower))
-                    {
-                        of.SetMorePowerful();
+                        of.SetChallenge();
+                        if (invalidates)
+                        {
+                            of.SetInvalidates();
+                        }
+                        if (challengeRoot != challengedNotarization.proofRoots[std::get<2>(oneChallenge.second).systemID] &&
+                            CChainPower::ExpandCompactPower(challengeRoot.compactPower) >
+                                CChainPower::ExpandCompactPower(challengedNotarization.proofRoots[std::get<2>(oneChallenge.second).systemID].compactPower))
+                        {
+                            of.SetMorePowerful();
+                        }
                     }
                 }
 
