@@ -5567,7 +5567,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     // so, reject/finalize the one that is more recent and confirm the one before it
     //
     UniValue validIndexes = find_value(bestProofRootResult, "validindexes");
-    if (!validIndexes.isArray() || !validIndexes.size())
+    if (!isGatewayFirstContact && (!validIndexes.isArray() || !validIndexes.size()))
     {
         return state.Error("no-valid-proofroots");
     }
