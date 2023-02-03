@@ -5521,7 +5521,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     // if we have MIN_EARNED_FOR_AUTO notarizations in a row with the ones we agree with and
     // have no more powerful alternatives, we can finalize the notarization
 
-    int32_t notaryIdx = uni_get_int(find_value(bestProofRootResult, "bestindex"), isGatewayFirstContact ? 0 : -1);
+    int32_t notaryIdx = isGatewayFirstContact ? 0 : uni_get_int(find_value(bestProofRootResult, "bestindex"), -1);
 
     UniValue lastConfirmedUni = find_value(bestProofRootResult, "lastconfirmedproofroot");
     CProofRoot lastConfirmedProofRoot;
