@@ -2209,7 +2209,8 @@ public:
 
     // merges a second CNotaryEvidence instance with this one, mutating the "this" instance
     CNotaryEvidence &MergeEvidence(const CNotaryEvidence &mergeWith,
-                                   bool aggregateSignatures=true);
+                                   bool aggregateSignatures=true,
+                                   bool onlySignatures=false);
 
     CNotaryEvidence &AddToSignatures(const std::set<uint160> &notarySet,
                                      const CIdentityID &signingID,

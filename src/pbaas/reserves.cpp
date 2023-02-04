@@ -3493,7 +3493,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
 
                     // if there is any conflicting entry, we have an issue, otherwise, we are fine
                     foundMemDup = memIndex.size() > 0;
-                    for (auto &oneIdxEntry : memIndex)
+                    for (auto &oneIdxEntry : mempool.FilterUnspent(memIndex))
                     {
                         const CTransaction &identityTx = mempool.mapTx.find(oneIdxEntry.first.txhash)->GetTx();
                         preexistingID = CIdentity(identityTx.vout[oneIdxEntry.first.index].scriptPubKey);

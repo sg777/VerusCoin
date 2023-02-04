@@ -3863,7 +3863,7 @@ void static BitcoinMiner_noeq()
                         error = find_value(params, "error");
                     } catch (std::exception e)
                     {
-                        printf("Failed to connect to %s chain\n", ConnectedChains.FirstNotaryChain().chainDefinition.name.c_str());
+                        LogPrintf("Failed to connect to %s chain\n", ConnectedChains.FirstNotaryChain().chainDefinition.name.c_str());
                         params = UniValue(e.what());
                     }
                     if (mergeMining = (params.isNull() && error.isNull()))

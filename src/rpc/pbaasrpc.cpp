@@ -171,7 +171,7 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
     }
     else if (checkMempool && !ClosedPBaaSChains.count(chainID) && mempool.getAddressIndex(addresses, results) && results.size())
     {
-        for (auto &currencyDefOut : results)
+        for (auto &currencyDefOut : mempool.FilterUnspent(results))
         {
             CTransaction tx;
 
@@ -3894,12 +3894,13 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                         CProofRoot challengeStartRoot;
                         bool invalidates;
                         CProofRoot alternateRoot =
-                            IsValidChallengeEvidence(notarizationData.vtx[i].second.proofRoots[currencyID],
-                                                    oneEItem.second,
-                                                    (*optionalTxOut)[i].second,
-                                                    invalidates,
-                                                    challengeStartRoot,
-                                                    std::get<0>(oneChallenge) - 1);
+                            IsValidChallengeEvidence(chainDef,
+                                                     notarizationData.vtx[i].second.proofRoots[currencyID],
+                                                     oneEItem.second,
+                                                     (*optionalTxOut)[i].second,
+                                                     invalidates,
+                                                     challengeStartRoot,
+                                                     std::get<0>(oneChallenge) - 1);
                         if (alternateRoot.IsValid())
                         {
                             (*pCounterEvidence)[i].push_back(std::make_tuple(oneEItem.first, oneEItem.second, alternateRoot, challengeStartRoot));
@@ -4750,6 +4751,9 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
                     preexistingChallenges.insert({{std::get<1>(oneCounterEvidence).output, std::get<2>(oneCounterEvidence)}, oneCounterEvidence});
                 }
             }
+
+            CCurrencyDefinition challengeDef = ConnectedChains.GetCachedCurrency(oneSystemChallenges.first);
+
             CCcontract_info CC;
             CCcontract_info *cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
             std::vector<CTxDestination> dests({DecodeDestination(cp->unspendableCCaddr)});
@@ -4812,7 +4816,8 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
                     notarizingCurrency.IsPBaaSChain())
                 {
                     // determine if our challenge is more powerful and set the flag if so
-                    challengeRoot = IsValidChallengeEvidence(challengedNotarization.proofRoots[std::get<2>(oneChallenge.second).systemID],
+                    challengeRoot = IsValidChallengeEvidence(challengeDef,
+                                                             challengedNotarization.proofRoots[std::get<2>(oneChallenge.second).systemID],
                                                              std::get<3>(oneChallenge.second),
                                                              blockHash,
                                                              invalidates,
@@ -4861,7 +4866,7 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
                     CProofRoot challengeStartRoot;
                     std::vector<CInputDescriptor> outputs;
                     CValidationState state;
-                    if (of.GetPendingEvidence(oneSystemChallenges.first,
+                    if (of.GetPendingEvidence(challengeDef,
                                               std::get<3>(oneChallenge.second).output,
                                               nHeight,
                                               validCounterRoots,

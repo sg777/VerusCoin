@@ -4005,7 +4005,7 @@ bool CConnectedChains::IsNotaryAvailable(bool callToCheck)
     if (!callToCheck)
     {
         // if we aren't checking, we consider unavailable no contact in the last two minutes
-        return FirstNotaryChain().IsValid() && (GetTime() - FirstNotaryChain().LastConnectionTime() < (120000));
+        return FirstNotaryChain().IsValid() && (GetTime() - FirstNotaryChain().LastConnectionTime() < (120));
     }
     return !(FirstNotaryChain().rpcHost.empty() || FirstNotaryChain().rpcPort == 0 || FirstNotaryChain().rpcUserPass.empty()) &&
            CheckVerusPBaaSAvailable();
@@ -4524,31 +4524,13 @@ bool CConnectedChains::GetUnspentSystemExports(const CCoinsViewCache &view,
     if (mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{exportIndexKey, CScript::P2IDX}}), exportUTXOs) &&
         exportUTXOs.size())
     {
-        std::map<COutPoint, CInputDescriptor> memPoolOuts;
-        std::set<COutPoint> spentMemPoolOuts;
-        for (auto &oneExport : exportUTXOs)
+        for (auto &oneExport : mempool.FilterUnspent(exportUTXOs))
         {
-            if (oneExport.first.spending)
+            const CCoins *coin = view.AccessCoins(oneExport.first.txhash);
+            if (coin->IsAvailable(oneExport.first.index))
             {
-                spentMemPoolOuts.insert(COutPoint(oneExport.second.prevhash, oneExport.second.prevout));
-            }
-            else
-            {
-                const CCoins *coin = view.AccessCoins(oneExport.first.txhash);
-                if (coin->IsAvailable(oneExport.first.index))
-                {
-                    memPoolOuts.insert(std::make_pair(COutPoint(oneExport.first.txhash, oneExport.first.index),
-                                                      CInputDescriptor(coin->vout[oneExport.first.index].scriptPubKey, oneExport.second.amount,
-                                                                       CTxIn(oneExport.first.txhash, oneExport.first.index))));
-                }
-            }
-        }
-
-        for (auto &oneUTXO : memPoolOuts)
-        {
-            if (!spentMemPoolOuts.count(oneUTXO.first))
-            {
-                exportOuts.push_back(std::make_pair(0, oneUTXO.second));
+                exportOuts.push_back(std::make_pair(0, CInputDescriptor(coin->vout[oneExport.first.index].scriptPubKey, oneExport.second.amount,
+                                                                    CTxIn(oneExport.first.txhash, oneExport.first.index))));
             }
         }
     }
@@ -4586,32 +4568,13 @@ bool CConnectedChains::GetUnspentCurrencyExports(const CCoinsViewCache &view,
     if (mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{exportIndexKey, CScript::P2IDX}}), exportUTXOs) &&
         exportUTXOs.size())
     {
-        // we need to remove those that are spent
-        std::map<COutPoint, CInputDescriptor> memPoolOuts;
-        std::set<COutPoint> spentMemPoolOuts;
-        for (auto &oneExport : exportUTXOs)
+        for (auto &oneExport : mempool.FilterUnspent(exportUTXOs))
         {
-            if (oneExport.first.spending)
+            const CCoins *coin = view.AccessCoins(oneExport.first.txhash);
+            if (coin->IsAvailable(oneExport.first.index))
             {
-                spentMemPoolOuts.insert(COutPoint(oneExport.second.prevhash, oneExport.second.prevout));
-            }
-            else
-            {
-                const CCoins *coin = view.AccessCoins(oneExport.first.txhash);
-                if (coin->IsAvailable(oneExport.first.index))
-                {
-                    memPoolOuts.insert(std::make_pair(COutPoint(oneExport.first.txhash, oneExport.first.index),
-                                                      CInputDescriptor(coin->vout[oneExport.first.index].scriptPubKey, oneExport.second.amount,
-                                                                       CTxIn(oneExport.first.txhash, oneExport.first.index))));
-                }
-            }
-        }
-
-        for (auto &oneUTXO : memPoolOuts)
-        {
-            if (!spentMemPoolOuts.count(oneUTXO.first))
-            {
-                exportOuts.push_back(std::make_pair(0, oneUTXO.second));
+                exportOuts.push_back(std::make_pair(0, CInputDescriptor(coin->vout[oneExport.first.index].scriptPubKey, oneExport.second.amount,
+                                                                    CTxIn(oneExport.first.txhash, oneExport.first.index))));
             }
         }
     }
@@ -4630,55 +4593,6 @@ bool CConnectedChains::GetUnspentCurrencyExports(const CCoinsViewCache &view,
     }
     exportOutputs.insert(exportOutputs.end(), exportOuts.begin(), exportOuts.end());
     return exportOuts.size() != 0;
-}
-
-bool CConnectedChains::GetPendingCurrencyExports(const uint160 currencyID,
-                                                 uint32_t fromHeight,
-                                                 std::vector<pair<int, CInputDescriptor>> &exportOutputs)
-{
-    CCurrencyDefinition chainDef;
-    int32_t defHeight;
-    exportOutputs.clear();
-
-    if (GetCurrencyDefinition(currencyID, chainDef, &defHeight))
-    {
-        // which transaction are we in this block?
-        std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
-
-        CChainNotarizationData cnd;
-        if (GetNotarizationData(currencyID, cnd))
-        {
-            uint160 exportKey = CCrossChainRPCData::GetConditionID(currencyID, CCrossChainExport::CurrencyExportKey());
-
-            // get all export transactions including and since this one up to the confirmed cross-notarization
-            if (GetAddressIndex(exportKey, CScript::P2IDX, addressIndex, fromHeight))
-            {
-                for (auto &idx : addressIndex)
-                {
-                    uint256 blkHash;
-                    CTransaction exportTx;
-                    if (!idx.first.spending && myGetTransaction(idx.first.txhash, exportTx, blkHash))
-                    {
-                        std::vector<CBaseChainObject *> opretTransfers;
-                        CCrossChainExport ccx;
-                        if ((ccx = CCrossChainExport(exportTx.vout[idx.first.index].scriptPubKey)).IsValid())
-                        {
-                            exportOutputs.push_back(std::make_pair(idx.first.blockHeight,
-                                                                               CInputDescriptor(exportTx.vout[idx.first.index].scriptPubKey,
-                                                                                                exportTx.vout[idx.first.index].nValue,
-                                                                                                CTxIn(idx.first.txhash, idx.first.index))));
-                        }
-                    }
-                }
-            }
-        }
-        return true;
-    }
-    else
-    {
-        LogPrintf("%s: unrecognized system name or ID\n", __func__);
-        return false;
-    }
 }
 
 CPartialTransactionProof::CPartialTransactionProof(const CTransaction tx, const std::vector<int32_t> &inputNums, const std::vector<int32_t> &outputNums, const CBlockIndex *pIndex, uint32_t proofAtHeight)
@@ -4803,43 +4717,6 @@ bool CConnectedChains::GetExportProofs(uint32_t height,
     return true;
 }
 
-std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> GetUnspentFromMempool(const std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> &memPoolOutputs)
-{
-    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> retVal;
-    std::set<COutPoint> spentTxOuts;
-    std::set<COutPoint> txOuts;
-
-    for (const auto &oneOut : memPoolOutputs)
-    {
-        // get last one in spending list
-        if (oneOut.first.spending)
-        {
-            CTransaction priorOutTx;
-            uint256 blockHash;
-            CTransaction curTx;
-
-            if (mempool.lookup(oneOut.first.txhash, curTx) &&
-                curTx.vin.size() > oneOut.first.index)
-            {
-                spentTxOuts.insert(curTx.vin[oneOut.first.index].prevout);
-            }
-            else
-            {
-                LogPrint("crosschainimports","Unable to retrieve data for prior import\n");
-                return retVal;
-            }
-        }
-    }
-    for (auto &oneOut : memPoolOutputs)
-    {
-        if (!oneOut.first.spending && !spentTxOuts.count(COutPoint(oneOut.first.txhash, oneOut.first.index)))
-        {
-            retVal.push_back(oneOut);
-        }
-    }
-    return retVal;
-}
-
 bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, const CCoinsViewCache &view, std::vector<CInputDescriptor> &reserveDeposits)
 {
     std::vector<CAddressUnspentDbEntry> confirmedUTXOs;
@@ -4869,23 +4746,11 @@ bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, const CCoin
 
     // we need to remove those that are spent
     std::map<COutPoint, CInputDescriptor> memPoolOuts;
-    for (auto &oneUnconfirmed : GetUnspentFromMempool(unconfirmedUTXOs))
+    for (auto &oneUnconfirmed : mempool.FilterUnspent(unconfirmedUTXOs))
     {
         const CTransaction oneTx = mempool.mapTx.find(oneUnconfirmed.first.txhash)->GetTx();
         reserveDeposits.push_back(CInputDescriptor(oneTx.vout[oneUnconfirmed.first.index].scriptPubKey, oneUnconfirmed.second.amount,
                                                     CTxIn(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)));
-        /*
-        COptCCParams p;
-        if (!oneUnconfirmed.first.spending &&
-            !mempool.mapNextTx.count(COutPoint(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)) &&
-            view.GetCoins(oneUnconfirmed.first.txhash, coin) &&
-            coin.IsAvailable(oneUnconfirmed.first.index))
-        {
-            const CTransaction oneTx = mempool.mapTx.find(oneUnconfirmed.first.txhash)->GetTx();
-            reserveDeposits.push_back(CInputDescriptor(oneTx.vout[oneUnconfirmed.first.index].scriptPubKey, oneUnconfirmed.second.amount,
-                                                        CTxIn(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)));
-        }
-        */
     }
     return true;
 }
@@ -4917,7 +4782,7 @@ bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<std
 
     // we need to remove those that are spent
     std::map<COutPoint, CInputDescriptor> memPoolOuts;
-    for (auto &oneUnconfirmed : GetUnspentFromMempool(unconfirmedUTXOs))
+    for (auto &oneUnconfirmed : mempool.FilterUnspent(unconfirmedUTXOs))
     {
         const CTransaction oneTx = mempool.mapTx.find(oneUnconfirmed.first.txhash)->GetTx();
         unspentOutptus.push_back(std::make_pair(CInputDescriptor(oneTx.vout[oneUnconfirmed.first.index].scriptPubKey, oneUnconfirmed.second.amount,
@@ -6397,64 +6262,6 @@ bool CConnectedChains::GetCurrencyExports(const uint160 &currencyID,
         return true;
     }
     return false;
-}
-
-bool CConnectedChains::GetPendingSystemExports(const uint160 systemID,
-                                               uint32_t fromHeight,
-                                               multimap<uint160, pair<int, CInputDescriptor>> &exportOutputs)
-{
-    CCurrencyDefinition chainDef;
-    int32_t defHeight;
-    exportOutputs.clear();
-
-    if (GetCurrencyDefinition(systemID, chainDef, &defHeight))
-    {
-        // which transaction are we in this block?
-        std::vector<std::pair<CAddressIndexKey, CAmount>> addressIndex;
-
-        CChainNotarizationData cnd;
-        if (GetNotarizationData(systemID, cnd))
-        {
-            uint160 exportKey;
-            if (chainDef.IsGateway())
-            {
-                exportKey = CCrossChainRPCData::GetConditionID(chainDef.gatewayID, CCrossChainExport::SystemExportKey());
-            }
-            else
-            {
-                exportKey = CCrossChainRPCData::GetConditionID(systemID, CCrossChainExport::SystemExportKey());
-            }
-
-            // get all export transactions including and since this one up to the confirmed cross-notarization
-            if (GetAddressIndex(exportKey, CScript::P2IDX, addressIndex, fromHeight))
-            {
-                for (auto &idx : addressIndex)
-                {
-                    uint256 blkHash;
-                    CTransaction exportTx;
-                    if (!idx.first.spending && myGetTransaction(idx.first.txhash, exportTx, blkHash))
-                    {
-                        std::vector<CBaseChainObject *> opretTransfers;
-                        CCrossChainExport ccx;
-                        if ((ccx = CCrossChainExport(exportTx.vout[idx.first.index].scriptPubKey)).IsValid())
-                        {
-                            exportOutputs.insert(std::make_pair(ccx.destCurrencyID,
-                                                                std::make_pair(idx.first.blockHeight,
-                                                                               CInputDescriptor(exportTx.vout[idx.first.index].scriptPubKey,
-                                                                                                exportTx.vout[idx.first.index].nValue,
-                                                                                                CTxIn(idx.first.txhash, idx.first.index)))));
-                        }
-                    }
-                }
-            }
-        }
-        return true;
-    }
-    else
-    {
-        LogPrintf("%s: unrecognized system name or ID\n", __func__);
-        return false;
-    }
 }
 
 bool CCurrencyDefinition::IsValidDefinitionImport(const CCurrencyDefinition &sourceSystem, const CCurrencyDefinition &destSystem, const uint160 &nameParent, uint32_t height)

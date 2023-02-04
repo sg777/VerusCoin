@@ -256,7 +256,7 @@ public:
     static std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>>
         GetFinalizations(const CUTXORef &outputRef, const uint160 &finalizationTypeKey, uint32_t startHeight=0, uint32_t endHeight=0);
 
-    static bool GetPendingEvidence(const uint160 &currencyID,
+    static bool GetPendingEvidence(const CCurrencyDefinition &externalSystem,
                                    const CUTXORef &notarizationRef,
                                    uint32_t untilHeight,
                                    std::vector<std::pair<bool, CProofRoot>> &validCounterRoots,
@@ -496,13 +496,15 @@ bool PreCheckNotaryEvidence(const CTransaction &tx, int32_t outNum, CValidationS
 bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsFinalizeNotarizationInput(const CScript &scriptSig);
 bool IsNotaryEvidenceInput(const CScript &scriptSig);
-CProofRoot IsValidChallengeEvidence(const CProofRoot &defaultProofRoot,
-                                         const CNotaryEvidence &e,
-                                         const uint256 &entropyHash,
-                                         bool &invalidates,
-                                         CProofRoot &challengeStartRoot,
-                                         uint32_t height);
-CPBaaSNotarization IsValidPrimaryChainEvidence(const CNotaryEvidence &evidence,
+CProofRoot IsValidChallengeEvidence(const CCurrencyDefinition &externalSystem,
+                                    const CProofRoot &defaultProofRoot,
+                                    const CNotaryEvidence &e,
+                                    const uint256 &entropyHash,
+                                    bool &invalidates,
+                                    CProofRoot &challengeStartRoot,
+                                    uint32_t height);
+CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &externalSystem,
+                                               const CNotaryEvidence &evidence,
                                                const CPBaaSNotarization &expectedNotarization,
                                                uint32_t lastConfirmedHeight,
                                                uint32_t height,

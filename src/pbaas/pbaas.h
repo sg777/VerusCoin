@@ -970,14 +970,6 @@ public:
                             uint32_t fromHeight,
                             uint32_t toHeight);
 
-    bool GetPendingSystemExports(const uint160 systemID,
-                                 uint32_t fromHeight,
-                                 multimap<uint160, pair<int, CInputDescriptor>> &exportOutputs);
-
-    bool GetPendingCurrencyExports(const uint160 currencyID,
-                                   uint32_t fromHeight,
-                                   std::vector<pair<int, CInputDescriptor>> &exportOutputs);
-
     // given exports on this chain, provide the proofs of those export outputs
     bool GetExportProofs(uint32_t height,
                          std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> &exports);
