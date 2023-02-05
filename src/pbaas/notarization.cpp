@@ -3693,10 +3693,11 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
             }
             if ((foundP.IsValid() || priorOf.IsValid()) && !foundNotarization.IsValid())
             {
-                if ((foundP.IsValid() ||
-                     (priorOf.output.GetOutputTransaction(finalTx, finalBlockHash) &&
+                if (((priorOf.IsValid() &&
+                      priorOf.output.GetOutputTransaction(finalTx, finalBlockHash) &&
                       finalTx.vout[priorOf.output.n].scriptPubKey.IsPayToCryptoCondition(foundP) &&
-                      foundP.IsValid())) &&
+                      foundP.IsValid()) ||
+                     foundP.IsValid()) &&
                     ((foundP.evalCode == EVAL_EARNEDNOTARIZATION || foundP.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
                      foundP.vData.size()))
                 {
@@ -6631,7 +6632,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                             mergedEvidence.MergeEvidence(ne, true, true);
 
                             retVal = true;
-                            CScript evidenceScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &ne));
+                            CScript evidenceScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &mergedEvidence));
                             of.evidenceOutputs.push_back(txBuilder.mtx.vout.size());
                             txBuilder.AddTransparentOutput(evidenceScript, CNotaryEvidence::DEFAULT_OUTPUT_VALUE);
                         }
@@ -8619,6 +8620,15 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
     // after we precheck and confirm a notarization finalization for a notary chain of this chain, we record it
     // as the last notarized checkpoint and prevent any unwind of the blockchain from that point
 
+    // Finalizing a notarization does not generally happen without a chain of notarizations, in addition
+    // to some set of evidence.
+    //
+    // Generally, the evidence will include one or more of the following:
+    // 1) Minimum number (2 for signed, 4 for auto) of more recent notarization(s) that build on the notarization being finalized
+    // 2) Answer to any challenge that has occurred since the notarization was posted
+    // 2) A majority of witness signatures
+    //
+
     uint32_t chainHeight = chainActive.Height();
     bool haveFullChain = height <= chainHeight + 1;
 
@@ -8721,11 +8731,6 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
 
     bool confirmNeedsProof = !(notarization.IsPreLaunch() || notarization.IsBlockOneNotarization() || notarization.IsDefinitionNotarization());
 
-    if (confirmNeedsProof && !evidenceVec.size())
-    {
-        return state.Error("Insufficient evidence to validate finalization");
-    }
-
     CNotaryEvidence signatureEvidence;
     std::vector<std::pair<CObjectFinalization, CNotaryEvidence>> counterEvidenceVec;
 
@@ -8784,7 +8789,28 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                                                                         height - 1);
         if (priorFinalizations.size())
         {
-            return state.Error("already " + std::get<3>(priorFinalizations[0]).IsConfirmed() ? "confirmed" : "rejected");
+            // as long as we're spending it, it's ok
+            std::map<CUTXORef, bool> outputSet;
+            for (auto &oneFinalization : priorFinalizations)
+            {
+                if (std::get<3>(oneFinalization).output.hash.IsNull())
+                {
+                    std::get<3>(oneFinalization).output.hash = std::get<2>(oneFinalization).GetHash();
+                }
+                outputSet.insert(std::make_pair(std::get<3>(oneFinalization).output, std::get<3>(oneFinalization).IsConfirmed()));
+            }
+            std::vector<int> spendIdxs;
+            for (int j = 0; j < tx.vin.size(); j++)
+            {
+                auto outputIt = outputSet.find(tx.vin[j].prevout);
+                if (outputIt->second == currentFinalization.IsConfirmed())
+                {
+                    outputSet.erase(tx.vin[j].prevout);
+                }
+            }
+            return outputSet.size() ?
+                        state.Error("already " + std::get<3>(priorFinalizations[0]).IsConfirmed() ? "confirmed" : "rejected") :
+                        true;
         }
 
         std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>> pendingFinalizations;
@@ -8966,10 +8992,6 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                            CChainPower::ExpandCompactPower(normalizedNotarization.proofRoots[notaryCurrencyDef.GetID()].compactPower))))
                 {
                     return state.Error(std::string("Cannot finalize notarization as confirmed") + (mostPowerfulRoot.IsValid() ? " relative to valid counter-evidence" : ""));
-                }
-                if (!(p.evalCode == EVAL_EARNEDNOTARIZATION && !mostPowerfulRoot.IsValid()))
-                {
-                    primaryValidated = true;
                 }
             }
 
