@@ -236,6 +236,7 @@ public:
         NUM_BLOCKS_BEFORE_EXTENSION = 150,              // if we haven't confirmed a notarization in this long, modulo gets multiplied
         MODULO_EXTENSION_MULTIPLIER = 10,               // notarization rate drops to 1/10 when not confirmed on time
         MIN_BLOCKS_TO_AUTOCONFIRM = 200,                // we cannot autoconfirm (signature-free) a notarization < 200 blocks old
+        MIN_BLOCKS_TO_SIGNCONFIRM = 15,                 // we cannot sign confirm a notarization < 15 blocks old
 
         MAX_HEADER_PROOFS_PER_PROOF = 50,               // don't use more than this many header proofs in an alternate chain proof tx
         MAX_BLOCKS_PER_COMMITMENT_RANGE = 256,          // up to 256 blocks per commitment range
@@ -249,7 +250,17 @@ public:
 
     inline static int32_t MinBlocksToAutoNotarization(uint32_t notarizationBlockModulo)
     {
-        return std::max(notarizationBlockModulo * MIN_EARNED_FOR_AUTO, (uint32_t)MIN_BLOCKS_TO_AUTOCONFIRM);
+        return CCurrencyDefinition::MinBlocksToAutoNotarization(notarizationBlockModulo);
+    }
+
+    inline static int32_t MinBlocksToSignedNotarization(uint32_t notarizationBlockModulo)
+    {
+        return CCurrencyDefinition::MinBlocksToSignedNotarization(notarizationBlockModulo);
+    }
+
+    inline static int32_t MinBlocksToStartNotarization(uint32_t notarizationBlockModulo)
+    {
+        return CCurrencyDefinition::MinBlocksToStartNotarization(notarizationBlockModulo);
     }
 
     inline static int32_t GetBlocksBeforeModuloExtension(uint32_t notarizationBlockModulo)

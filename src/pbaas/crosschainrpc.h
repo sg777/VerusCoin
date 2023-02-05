@@ -482,7 +482,10 @@ public:
         DEFAULT_AVERAGING_WINDOW = 45,              // default target spacing (blocks) for difficulty adjustment
         MIN_AVERAGING_WINDOW = 20,                  // min averaging window
         MAX_AVERAGING_WINDOW = 200,                 // max averaging window
-        BLOCK_NOTARIZATION_MODULO = (DEFAULT_BLOCK_NOTARIZATION_TIME / DEFAULT_BLOCKTIME_TARGET) // default min notarization spacing (10 minutes)
+        BLOCK_NOTARIZATION_MODULO = (DEFAULT_BLOCK_NOTARIZATION_TIME / DEFAULT_BLOCKTIME_TARGET), // default min notarization spacing (10 minutes)
+        MIN_EARNED_FOR_AUTO = 4,
+        MIN_BLOCKS_TO_SIGNCONFIRM = 15,
+        MIN_BLOCKS_TO_AUTOCONFIRM = 200,
     };
 
     enum ECurrencyOptions
@@ -849,10 +852,37 @@ public:
         }
     }
 
-    // minimum blocks to notarize 1.5 x notarization period
-    int32_t GetMinBlocksToNotarize() const
+    inline static int32_t MinBlocksToAutoNotarization(uint32_t notarizationBlockModulo)
     {
-        return blockNotarizationModulo + (blockNotarizationModulo >> 1);
+        return std::max((uint32_t)(notarizationBlockModulo * MIN_EARNED_FOR_AUTO), (uint32_t)MIN_BLOCKS_TO_AUTOCONFIRM);
+    }
+
+    inline static int32_t MinBlocksToSignedNotarization(uint32_t notarizationBlockModulo)
+    {
+        return std::max(notarizationBlockModulo + (notarizationBlockModulo >> 1), (uint32_t)MIN_BLOCKS_TO_SIGNCONFIRM);
+    }
+
+    inline static int32_t MinBlocksToStartNotarization(uint32_t notarizationBlockModulo)
+    {
+        return ((MinBlocksToSignedNotarization(notarizationBlockModulo) << 1) + 1);
+    }
+
+    // we may sign and confirm a notarization this many blocks after it has been posted
+    // if when confirming it, it has passed all necessary challenges and is signed by
+    // required notary witnesses
+    int32_t GetMinBlocksToSignNotarize() const
+    {
+        return MinBlocksToSignedNotarization(blockNotarizationModulo);
+    }
+
+    int32_t GetMinBlocksToAutoNotarize() const
+    {
+        return MinBlocksToAutoNotarization(blockNotarizationModulo);
+    }
+
+    int32_t GetMinBlocksToStartNotarization() const
+    {
+        return MinBlocksToStartNotarization(blockNotarizationModulo);
     }
 
     uint160 GatewayConverterID() const

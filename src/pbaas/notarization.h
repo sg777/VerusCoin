@@ -476,10 +476,11 @@ public:
 
     bool CalculateConfirmation(int confirmingIdx, std::set<int> &confirmedOutputNums, std::set<int> &invalidatedOutputNums) const;
 
-    // returns the best notarization with a minimum of minConfirms confirmations by later earned notarizations
+    // returns the best notarization with a minimum of minNotaryConfirms confirmations by later earned notarizations
     // without conflicts in agreement. calls out, so should not be called holding locks. returns -1 if none found.
     int BestConfirmedNotarization(const CCurrencyDefinition &notarizingSystem,
-                                  int minConfirms,
+                                  int minNotaryConfirms,
+                                  int minBlockConfirms,
                                   uint32_t height,
                                   const std::vector<std::pair<CTransaction, uint256>> &txAndBlockVec) const;
 

@@ -8421,7 +8421,7 @@ void CConnectedChains::SubmissionThread()
             uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
 
             // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
-            if (height > ((ConnectedChains.ThisChain().GetMinBlocksToNotarize() << 1) + 1) &&
+            if (height > ConnectedChains.ThisChain().GetMinBlocksToStartNotarization() &&
                 IsNotaryAvailable(true) &&
                 lastImportTime < (GetAdjustedTime() - 30))
             {
