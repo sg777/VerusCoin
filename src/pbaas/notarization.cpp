@@ -3654,12 +3654,16 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                     uint256 inBlockHash;
                     if (myGetTransaction(oneIn.prevout.hash, inTx, inBlockHash) &&
                         inTx.vout.size() > oneIn.prevout.n &&
-                        (((priorOf = CObjectFinalization(inTx.vout[oneIn.prevout.n].scriptPubKey)).IsValid() &&
-                          priorOf.IsConfirmed() &&
-                          priorOf.currencyID == curID) ||
-                          (!priorOf.IsValid() &&
-                           (foundNotarization = CPBaaSNotarization(inTx.vout[oneIn.prevout.n].scriptPubKey)).IsValid() &&
-                           foundNotarization.currencyID == curID)))
+                        ((inTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(checkP) &&
+                          checkP.IsValid() &&
+                          ((checkP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                            (priorOf = CObjectFinalization(checkP.vData[0])).IsValid() &&
+                            priorOf.IsConfirmed() &&
+                            priorOf.currencyID == curID) ||
+                           (checkP.evalCode == EVAL_EARNEDNOTARIZATION &&
+                            (foundNotarization = CPBaaSNotarization(checkP.vData[0])).IsValid() &&
+                            foundNotarization.currencyID == curID &&
+                            (foundNotarization.IsBlockOneNotarization() || foundNotarization.IsPreLaunch()))))))
                     {
                         found = true;
                         firstUnspentFinalization.second = CInputDescriptor(inTx.vout[oneIn.prevout.n].scriptPubKey,
