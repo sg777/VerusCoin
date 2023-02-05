@@ -2233,7 +2233,9 @@ public:
                                        uint32_t checkHeight=0,
                                        uint32_t *pDecisionHeight=nullptr,
                                        std::map<CIdentityID, CIdentitySignature> *pConfirmedAtHeight=nullptr,
-                                       std::map<CIdentityID, CIdentitySignature> *pRejectedAtHeight=nullptr) const;
+                                       std::map<CIdentityID, CIdentitySignature> *pRejectedAtHeight=nullptr,
+                                       std::map<CIdentityID, std::set<std::vector<unsigned char>>> *pNotarySetRejects=nullptr,
+                                       std::map<CIdentityID, std::set<std::vector<unsigned char>>> *pNotarySetConfirms=nullptr) const;
 
     static std::string NotarySignatureKeyName()
     {

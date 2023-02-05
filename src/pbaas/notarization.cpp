@@ -475,12 +475,18 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
                                                                      uint32_t checkHeight,
                                                                      uint32_t *pDecisionHeight,
                                                                      std::map<CIdentityID, CIdentitySignature> *pConfirmedAtHeight,
-                                                                     std::map<CIdentityID, CIdentitySignature> *pRejectedAtHeight) const
+                                                                     std::map<CIdentityID, CIdentitySignature> *pRejectedAtHeight,
+                                                                     std::map<CIdentityID, std::set<std::vector<unsigned char>>> *pNotarySetRejects,
+                                                                     std::map<CIdentityID, std::set<std::vector<unsigned char>>> *pNotarySetConfirms) const
 {
-
     std::map<uint32_t, std::map<CIdentityID, CIdentitySignature>> confirmedByHeight;
     std::map<uint32_t, std::map<CIdentityID, CIdentitySignature>> rejectedByHeight;
     std::vector<CNotarySignature> notarySignatures = GetNotarySignatures(&confirmedByHeight, &rejectedByHeight);
+
+    std::map<CIdentityID, std::set<std::vector<unsigned char>>> _notarySetRejects;
+    std::map<CIdentityID, std::set<std::vector<unsigned char>>> _notarySetConfirms;
+    std::map<CIdentityID, std::set<std::vector<unsigned char>>> &notarySetRejects = pNotarySetRejects ? *pNotarySetRejects : _notarySetRejects;
+    std::map<CIdentityID, std::set<std::vector<unsigned char>>> &notarySetConfirms = pNotarySetConfirms ? *pNotarySetConfirms : _notarySetConfirms;
 
     CNotaryEvidence::EStates retVal = CNotaryEvidence::EStates::STATE_CONFIRMING;
 
@@ -512,8 +518,6 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
 
     // for every height, we check and merge
     uint32_t lastHeight = 0;
-    std::map<CIdentityID, std::set<std::vector<unsigned char>>> notarySetRejects;
-    std::map<CIdentityID, std::set<std::vector<unsigned char>>> notarySetConfirms;
 
     for (auto &oneSigBlock : notarySignatures)
     {
@@ -586,7 +590,7 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
 
                 for (auto &oneDup : dupSigs)
                 {
-                    rejectedByHeight[oneIDSig.second.blockHeight][oneIDSig.first].signatures.erase(oneDup);
+                    confirmedByHeight[oneIDSig.second.blockHeight][oneIDSig.first].signatures.erase(oneDup);
                 }
 
                 if (result == oneIDSig.second.SIGNATURE_INVALID)
@@ -2849,6 +2853,12 @@ CProofRoot IsValidChallengeEvidence(const CCurrencyDefinition &externalSystem,
     return validCounterEvidence ? counterEvidenceRoot : CProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
 }
 
+bool IsPreTestnetFork(const uint256 &blockHash)
+{
+    auto notaIndexIT = mapBlockIndex.find(blockHash);
+    return notaIndexIT->second->nTime < PBAAS_TESTFORK_TIME;
+}
+
 CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &externalSystem,
                                                const CNotaryEvidence &evidence,
                                                const CPBaaSNotarization &expectedNotarization,
@@ -2908,8 +2918,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
         {
             return expectedNotarization;
         }
-        auto notaIndexIT = mapBlockIndex.find(notaRootIT->second.blockHash);
-        if (notaIndexIT->second->nTime < PBAAS_TESTFORK_TIME)
+        if (IsPreTestnetFork(notaRootIT->second.blockHash))
         {
             return expectedNotarization;
         }
@@ -3615,15 +3624,29 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
         {
             // get the transaction and go backwards to get the finalized notarization it spends
             CTransaction checkTx;
+            COptCCParams checkP;
             CObjectFinalization checkOf;
             uint256 checkBlockHash;
             if (myGetTransaction(firstUnspentFinalization.second.txIn.prevout.hash, checkTx, checkBlockHash) &&
                 checkTx.vout.size() > firstUnspentFinalization.second.txIn.prevout.n &&
-                (checkOf = CObjectFinalization(checkTx.vout[firstUnspentFinalization.second.txIn.prevout.n].scriptPubKey)).IsValid() &&
-                checkOf.IsConfirmed() &&
-                checkOf.currencyID == curID)
+                checkTx.vout[firstUnspentFinalization.second.txIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(checkP) &&
+                checkP.IsValid() &&
+                ((checkP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                  (checkOf = CObjectFinalization(checkP.vData[0])).IsValid() &&
+                  checkOf.IsConfirmed() &&
+                  checkOf.currencyID == curID) ||
+                 ((checkP.evalCode == EVAL_EARNEDNOTARIZATION || checkP.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
+                  (foundNotarization = CPBaaSNotarization(checkP.vData[0])).IsValid() &&
+                  foundNotarization.currencyID == curID)))
             {
                 bool found = false;
+                if (foundNotarization.IsValid())
+                {
+                    // if we found an actual notarization, it is inherently confirmed and after requested height, error
+                    error = true;
+                    foundNotarization = CPBaaSNotarization();
+                    break;
+                }
                 // go backwards and look for the prior confirmed finalization
                 for (auto &oneIn : checkTx.vin)
                 {
@@ -3667,7 +3690,13 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                 if (!found)
                 {
                     error = true;
+                    foundNotarization = CPBaaSNotarization();
+                    break;
                 }
+            }
+            else
+            {
+                foundNotarization = CPBaaSNotarization();
             }
         }
         if (!error &&
@@ -4188,7 +4217,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
                                                  &entropyHash,
                                                  validCounterRoot,
                                                  challengeStartRoot).IsValid() ||
-                    entropyHash != txes[priorNotarizationIdx - 1].second)
+                    (entropyHash != txes[priorNotarizationIdx - 1].second && !IsPreTestnetFork(txes[priorNotarizationIdx - 1].second)))
                 {
                     return state.Error(errorPrefix + "insufficient proof to verify challenged notarization");
                 }
@@ -5983,133 +6012,153 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
     return retVal;
 }
 
-int CChainNotarizationData::BestConfirmedNotarization(int minConfirms)
+int CChainNotarizationData::BestConfirmedNotarization(const CCurrencyDefinition &notarizingSystem,
+                                                      int minConfirms,
+                                                      uint32_t height,
+                                                      const std::vector<std::pair<CTransaction, uint256>> &txAndBlockVec) const
 {
-    if (!IsConfirmed() || !vtx.size())
+    int maxDepth = notarizingSystem.blockNotarizationModulo << 1;
+
+    BlockMap::iterator blockIt;
+    if (!IsConfirmed() ||
+        !vtx.size() ||
+        forks[bestChain].size() <= minConfirms ||
+        !((blockIt = mapBlockIndex.find(txAndBlockVec[forks[bestChain].back()].second)) != mapBlockIndex.end() &&
+          (height - blockIt->second->GetHeight()) > 0 &&
+          (height - blockIt->second->GetHeight()) <= maxDepth))
     {
         return -1;
     }
 
-    uint160 currencyID = vtx[0].second.currencyID;
-
-    std::vector<int> bestFork;
-    if (forks.size() > 1)
+    if (notarizingSystem.IsPBaaSChain())
     {
-        // need to get most recent forks. if we have
-        // no conflict for the past 3 earned notarizations,
-        // we are good to confirm, otherwise after 10 blocks, the one
-        // that ends up > 2 longer can be notarized/finalized.
-        std::multimap<int, std::pair<int, int>> forkAndIndexByBlock;
-        for (int i = 0; i < forks.size(); i++)
+        return *(forks[bestChain].rbegin() + minConfirms);
+    }
+    else
+    {
+        // if notarizing a gateway or non-PBaaS chain, don't assume
+        // the concept of "more power" is enough
+        uint160 currencyID = vtx[0].second.currencyID;
+
+        std::vector<int> bestFork;
+        if (forks.size() > 1)
         {
-            auto &oneFork = forks[i];
-            for (auto &oneRoot : oneFork)
+            // need to get most recent forks. if we have
+            // no conflict for the past 3 earned notarizations,
+            // we are good to confirm, otherwise after 10 blocks, the one
+            // that ends up > 2 longer can be notarized/finalized.
+            std::multimap<int, std::pair<int, int>> forkAndIndexByBlock;
+            for (int i = 0; i < forks.size(); i++)
             {
-                if (vtx[oneRoot].second.proofRoots.count(currencyID))
+                auto &oneFork = forks[i];
+                for (auto &oneRoot : oneFork)
                 {
-                    forkAndIndexByBlock.insert(std::make_pair(vtx[oneRoot].second.proofRoots[currencyID].rootHeight, std::make_pair(i, oneRoot)));
+                    if (vtx[oneRoot].second.proofRoots.count(currencyID))
+                    {
+                        forkAndIndexByBlock.insert(std::make_pair(vtx[oneRoot].second.proofRoots.find(currencyID)->second.rootHeight, std::make_pair(i, oneRoot)));
+                    }
+                }
+            }
+
+            int forkNum = -1;
+            int elemCount = 0;
+            for (auto firstIt = forkAndIndexByBlock.rbegin(); firstIt != forkAndIndexByBlock.rend(); firstIt++)
+            {
+                if (forkNum == -1 || forkNum == firstIt->second.first)
+                {
+                    elemCount++;
+                    forkNum = firstIt->second.first;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            if (elemCount >= minConfirms)
+            {
+                bestFork = forks[forkNum];
+            }
+        }
+        else if (forks.size() &&
+                (forks[0].size() > std::max(minConfirms, 1) || ConnectedChains.ThisChain().notarizationProtocol != CCurrencyDefinition::NOTARIZATION_AUTO))
+        {
+            bestFork = forks[0];
+        }
+
+        if (bestFork.size() < minConfirms || !vtx[lastConfirmed].second.proofRoots.count(currencyID))
+        {
+            LogPrint("notarization", "insufficient validator confirmations\n");
+            return -1;
+        }
+
+        // all we really want is the system proof roots for each notarization to make the JSON for the API smaller
+        UniValue proofRootsUni(UniValue::VARR);
+
+        proofRootsUni.push_back(vtx[lastConfirmed].second.proofRoots.find(currencyID)->second.ToUniValue());
+
+        for (auto forkIdxIt = bestFork.begin(); forkIdxIt != bestFork.end(); forkIdxIt++)
+        {
+            // don't enter the confirmed notarization twice
+            if (*forkIdxIt != lastConfirmed)
+            {
+                auto &oneNot = vtx[*forkIdxIt];
+                auto rootIt = oneNot.second.proofRoots.find(currencyID);
+                if (rootIt != oneNot.second.proofRoots.end())
+                {
+                    proofRootsUni.push_back(rootIt->second.ToUniValue());
+                }
+                else
+                {
+                    proofRootsUni.push_back(CProofRoot().ToUniValue());
                 }
             }
         }
 
-        int forkNum = -1;
-        int elemCount = 0;
-        for (auto firstIt = forkAndIndexByBlock.rbegin(); firstIt != forkAndIndexByBlock.rend(); firstIt++)
+        if (!proofRootsUni.size())
         {
-            if (forkNum == -1 || forkNum == firstIt->second.first)
-            {
-                elemCount++;
-                forkNum = firstIt->second.first;
-            }
-            else
-            {
-                break;
-            }
+            LogPrint("notarization", "no valid prior state root found\n");
+            return -1;
         }
-        if (elemCount >= minConfirms)
+
+        UniValue firstParam(UniValue::VOBJ);
+        firstParam.push_back(Pair("proofroots", proofRootsUni));
+        firstParam.push_back(Pair("lastconfirmed", 0));
+
+        // call notary to determine the notarization that we should notarize
+        UniValue params(UniValue::VARR);
+        params.push_back(firstParam);
+
+        //printf("%s: about to getbestproofroot with:\n%s\n", __func__, params.write(1,2).c_str());
+
+        UniValue result;
+        try
         {
-            bestFork = forks[forkNum];
-        }
-    }
-    else if (forks.size() &&
-             (forks[0].size() > std::max(minConfirms, 1) || ConnectedChains.ThisChain().notarizationProtocol != CCurrencyDefinition::NOTARIZATION_AUTO))
-    {
-        bestFork = forks[0];
-    }
-
-    if (bestFork.size() < minConfirms || !vtx[lastConfirmed].second.proofRoots.count(currencyID))
-    {
-        LogPrint("notarization", "insufficient validator confirmations\n");
-        return -1;
-    }
-
-    // all we really want is the system proof roots for each notarization to make the JSON for the API smaller
-    UniValue proofRootsUni(UniValue::VARR);
-
-    proofRootsUni.push_back(vtx[lastConfirmed].second.proofRoots[currencyID].ToUniValue());
-
-    for (auto forkIdxIt = bestFork.begin(); forkIdxIt != bestFork.end(); forkIdxIt++)
-    {
-        // don't enter the confirmed notarization twice
-        if (*forkIdxIt != lastConfirmed)
+            result = find_value(RPCCallRoot("getbestproofroot", params), "result");
+        } catch (exception e)
         {
-            auto &oneNot = vtx[*forkIdxIt];
-            auto rootIt = oneNot.second.proofRoots.find(currencyID);
-            if (rootIt != oneNot.second.proofRoots.end())
-            {
-                proofRootsUni.push_back(rootIt->second.ToUniValue());
-            }
-            else
-            {
-                proofRootsUni.push_back(CProofRoot().ToUniValue());
-            }
+            result = NullUniValue;
         }
+
+        CProofRoot lastConfirmedRoot(find_value(result, "lastconfirmedproofroot"));
+        int32_t notaryIdx = lastConfirmedRoot.IsValid() ? uni_get_int(find_value(result, "lastconfirmedindex"), -1) :
+                                                        uni_get_int(find_value(result, "bestindex"), -1);
+
+        if (result.isNull() || notaryIdx == -1)
+        {
+            LogPrint("notarization", "no-matching-notarization-found\n");
+            return -1;
+        }
+
+        // now, assuming that our notarization of the other chain is confirmed, sign the latest valid one on this chain
+        UniValue proofRootArr = find_value(result, "validindexes");
+
+        if (!proofRootArr.isArray() || !proofRootArr.size())
+        {
+            LogPrint("notarization", "no valid notarizations found\n");
+            return -1;
+        }
+        return bestFork[notaryIdx];
     }
-
-    if (!proofRootsUni.size())
-    {
-        LogPrint("notarization", "no valid prior state root found\n");
-        return -1;
-    }
-
-    UniValue firstParam(UniValue::VOBJ);
-    firstParam.push_back(Pair("proofroots", proofRootsUni));
-    firstParam.push_back(Pair("lastconfirmed", 0));
-
-    // call notary to determine the notarization that we should notarize
-    UniValue params(UniValue::VARR);
-    params.push_back(firstParam);
-
-    //printf("%s: about to getbestproofroot with:\n%s\n", __func__, params.write(1,2).c_str());
-
-    UniValue result;
-    try
-    {
-        result = find_value(RPCCallRoot("getbestproofroot", params), "result");
-    } catch (exception e)
-    {
-        result = NullUniValue;
-    }
-
-    CProofRoot lastConfirmedRoot(find_value(result, "lastconfirmedproofroot"));
-    int32_t notaryIdx = lastConfirmedRoot.IsValid() ? uni_get_int(find_value(result, "lastconfirmedindex"), -1) :
-                                                      uni_get_int(find_value(result, "bestindex"), -1);
-
-    if (result.isNull() || notaryIdx == -1)
-    {
-        LogPrint("notarization", "no-matching-notarization-found\n");
-        return -1;
-    }
-
-    // now, assuming that our notarization of the other chain is confirmed, sign the latest valid one on this chain
-    UniValue proofRootArr = find_value(result, "validindexes");
-
-    if (!proofRootArr.isArray() || !proofRootArr.size())
-    {
-        LogPrint("notarization", "no valid notarizations found\n");
-        return -1;
-    }
-    return bestFork[notaryIdx];
 }
 
 bool IsScriptTooLargeToSpend(const CScript &script)
@@ -7016,17 +7065,12 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     // define here to construct in netsted scope and then access below
     CNotaryEvidence allEvidence(CNotaryEvidence::TYPE_NOTARY_EVIDENCE, CNotaryEvidence::VERSION_CURRENT);
 
-    // first, put in a current proof root of the current chain
-    // then, using that, prove the last earned notarization that we
-    // agree with
-    std::vector<std::vector<CInputDescriptor>> spendsToClose;
-    std::vector<CInputDescriptor> extraSpends;
-    std::vector<std::vector<CNotaryEvidence>> evidenceVec;
-
-    std::pair<CInputDescriptor, CPartialTransactionProof> notarizationTxInfo;
+    uint32_t nHeight;
 
     {
         LOCK2(cs_main, mempool.cs);
+
+        nHeight = chainActive.Height();
 
         // we need to start with a confirmed notarization and one pending after that, which we agree with to move forward
         // this is to ensure that any transaction we intend to finalize has both a minimum number of mining/staking confirmations
@@ -7038,9 +7082,10 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     }
 
     // to submit a confirmed notarization to the alternate chain, we need it to be a signed, confirmed notarization,
-    // and another earned notarization that we agree with to be mined into the chain, look from the end of the vtx
-    // to find one we agree with the index returned is the one we agree with, and the one that we will use to prove
-    int startingNotarizationIdx = cnd.BestConfirmedNotarization(2);
+    // and 2 earned notarizations that agree to be mined into the chain, look from the end of the vtx
+    // to find one we agree with the index returned is the one we agree with, and the one that we will
+    // use to prove
+    int startingNotarizationIdx = cnd.BestConfirmedNotarization(externalSystem.chainDefinition, 2, nHeight, notarizationTxes);
     if (startingNotarizationIdx == -1 || cnd.vtx[cnd.lastConfirmed].second.IsBlockOneNotarization())
     {
         if (LogAcceptCategory("verbose"))
@@ -7125,7 +7170,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         LogPrint("notarization", "No confirming notarization with root for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
     }
 
-    // if the last the alternate chain has knowledge of is prelaunch,
+    // if the alternate chain has knowledge of is prelaunch,
     // we will prove the block 1 coinbase with the new confirmed notarization
     // and the confirmed notarization with the next
 
@@ -7207,7 +7252,6 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         }
     }
 
-    uint32_t nHeight;
     CPartialTransactionProof txProofEvidence(CPartialTransactionProof::VERSION_INVALID);
     CTransaction confirmedNTx;
 
@@ -7224,6 +7268,11 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     CAddressIndexDbEntry earnedNotarizationIndexEntry;
     CPBaaSNotarization crossConfirmedNotarization;
     bool isBlock1Proof = false;
+
+    std::vector<std::vector<CInputDescriptor>> spendsToClose;
+    std::vector<CInputDescriptor> extraSpends;
+    std::vector<std::vector<CNotaryEvidence>> evidenceVec;
+    std::pair<CInputDescriptor, CPartialTransactionProof> notarizationTxInfo;
 
     {
         LOCK2(cs_main, mempool.cs);
@@ -8987,7 +9036,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                                                     &entropyHash,
                                                     mostPowerfulRoot,
                                                     challengeStartRoot).IsValid() ||
-                       entropyHash != txBlockHash ||
+                       (entropyHash != txBlockHash && !IsPreTestnetFork(txBlockHash)) ||
                        CChainPower::ExpandCompactPower(mostPowerfulRoot.compactPower) >
                            CChainPower::ExpandCompactPower(normalizedNotarization.proofRoots[notaryCurrencyDef.GetID()].compactPower))))
                 {

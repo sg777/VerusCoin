@@ -478,7 +478,10 @@ public:
 
     // returns the best notarization with a minimum of minConfirms confirmations by later earned notarizations
     // without conflicts in agreement. calls out, so should not be called holding locks. returns -1 if none found.
-    int BestConfirmedNotarization(int minConfirms);
+    int BestConfirmedNotarization(const CCurrencyDefinition &notarizingSystem,
+                                  int minConfirms,
+                                  uint32_t height,
+                                  const std::vector<std::pair<CTransaction, uint256>> &txAndBlockVec) const;
 
     UniValue ToUniValue(const std::vector<std::pair<CTransaction, uint256>> &transactionsAndBlockHash=std::vector<std::pair<CTransaction, uint256>>(),
                         const std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>> &counterEvidence=
