@@ -6368,10 +6368,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
         {
             proofRootsUni.push_back(CProofRoot().ToUniValue());
         }
-        if (*forkIdxIt == confirmIfSigned)
-        {
-            break;
-        }
     }
 
     if (!proofRootsUni.size())

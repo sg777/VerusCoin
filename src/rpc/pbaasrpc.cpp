@@ -10271,6 +10271,21 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         newCurrency.systemID = newCurrency.GetID();
     }
 
+    if (newCurrency.maxPreconvert.size() && newCurrency.minPreconvert.size())
+    {
+        for (int i = 0; i < newCurrency.maxPreconvert.size(); i++)
+        {
+            if (newCurrency.minPreconvert[i] > newCurrency.maxPreconvert[i])
+            {
+                uint32_t localHeight = height <= chainActive.Height() ? height : chainActive.Height();
+                if (chainActive[localHeight]->nBits > PBAAS_TESTFORK_TIME)
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "minpreconversions cannot be greater than maxpreconversions for any currency");
+                }
+            }
+        }
+    }
+
     if (currentChainDefinition)
     {
         return newCurrency;
