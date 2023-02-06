@@ -4773,7 +4773,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
     CChainNotarizationData cnd;
     std::vector<std::pair<CTransaction, uint256>> txes;
-    std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> localCounterEvidence;
+    std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>> localCounterEvidence;
 
     {
         LOCK2(cs_main, mempool.cs);
@@ -4995,14 +4995,14 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                             bool moveToNext = false;
                             for (auto &oneChallenge : localCounterEvidence[unchallengedForks[forkToChallenge][k]])
                             {
-                                if (!std::get<0>(oneChallenge).evidence.chainObjects.size() ||
-                                    std::get<0>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
+                                if (!std::get<1>(oneChallenge).evidence.chainObjects.size() ||
+                                    std::get<1>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
                                 {
                                     continue;
                                 }
                                 // if the challenge root is the same as the root being challenged, it is a skip challenge
                                 // and would not be on-chain or in mempool if not valid. we can ignore the rest of this fork.
-                                if (((CChainObject<CProofRoot> *)std::get<0>(oneChallenge).evidence.chainObjects[0])->object ==
+                                if (((CChainObject<CProofRoot> *)std::get<1>(oneChallenge).evidence.chainObjects[0])->object ==
                                     cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID])
                                 {
                                     unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
@@ -5105,14 +5105,14 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                             bool moveToNext = false;
                             for (auto &oneChallenge : localCounterEvidence[unchallengedForks[forkToChallenge][k]])
                             {
-                                if (!std::get<0>(oneChallenge).evidence.chainObjects.size() ||
-                                    std::get<0>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
+                                if (!std::get<1>(oneChallenge).evidence.chainObjects.size() ||
+                                    std::get<1>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
                                 {
                                     continue;
                                 }
                                 // if the challenge root is the same as the root being challenged, it is a skip challenge
                                 // and would not be on-chain or in mempool if not valid. we can ignore the rest of this fork.
-                                if (((CChainObject<CProofRoot> *)std::get<0>(oneChallenge).evidence.chainObjects[0])->object ==
+                                if (((CChainObject<CProofRoot> *)std::get<1>(oneChallenge).evidence.chainObjects[0])->object ==
                                     cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID])
                                 {
                                     unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
