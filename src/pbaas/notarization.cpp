@@ -6154,8 +6154,8 @@ int CChainNotarizationData::BestConfirmedNotarization(const CCurrencyDefinition 
     uint160 notarizingSystemID = notarizingSystem.GetID();
 
     BlockMap::iterator blockIt;
-    if (!IsConfirmed() ||
-        !vtx.size() ||
+    if (!vtx.size() ||
+        (!IsConfirmed() && vtx[0].second.IsDefinitionNotarization()) ||
         forks[bestChain].size() <= minNotaryConfirms ||
         !((blockIt = mapBlockIndex.find(txAndBlockVec[forks[bestChain].back()].second)) != mapBlockIndex.end() &&
           (height - blockIt->second->GetHeight()) > 0 &&
@@ -7350,7 +7350,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                     return retVal;
                 }
             }
-            else if (oneProofRoot.first == systemID &&
+            else if (externalSystem.chainDefinition.IsPBaaSChain() &&
+                     oneProofRoot.first == systemID &&
                      (!cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(oneProofRoot.first) ||
                       (cnd.vtx[cnd.lastConfirmed].second.proofRoots[oneProofRoot.first].rootHeight - oneProofRoot.second.rootHeight) <
                            CPBaaSNotarization::GetAdjustedNotarizationModulo(externalSystem.chainDefinition.blockNotarizationModulo,
