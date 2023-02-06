@@ -3818,15 +3818,24 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
             // the best chain should simply be the tip with most power
             notarizationData.bestChain = 0;
             CChainPower best;
+            uint32_t bestHeight;
             for (int i = 0; i < notarizationData.forks.size(); i++)
             {
                 if (notarizationData.vtx[notarizationData.forks[i].back()].second.proofRoots.count(currencyID))
                 {
                     CChainPower curPower =
-                        CChainPower::ExpandCompactPower(notarizationData.vtx[notarizationData.forks[i].back()].second.proofRoots[currencyID].compactPower, i);
+                        CChainPower::ExpandCompactPower(notarizationData.vtx[notarizationData.forks[i].back()].second.proofRoots[currencyID].compactPower);
                     if (curPower > best)
                     {
                         best = curPower;
+                        bestHeight = notarizationData.vtx[notarizationData.forks[i].back()].second.proofRoots[currencyID].rootHeight;
+                        notarizationData.bestChain = i;
+                    }
+                    else if (curPower == best &&
+                             notarizationData.vtx[notarizationData.forks[i].back()].second.proofRoots[currencyID].rootHeight > bestHeight)
+                    {
+                        best = curPower;
+                        bestHeight = notarizationData.vtx[notarizationData.forks[i].back()].second.proofRoots[currencyID].rootHeight;
                         notarizationData.bestChain = i;
                     }
                 }
