@@ -4921,7 +4921,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         }
     }
 
-    if (!externalSystem.chainDefinition.IsPBaaSChain())
+    if (externalSystem.chainDefinition.IsPBaaSChain())
     {
         // all challenges we make will require requesting challenge data from the notary chain
         // so we batch them up for one call
