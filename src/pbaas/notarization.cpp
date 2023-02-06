@@ -4921,156 +4921,224 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         }
     }
 
-    // all challenges we make will require requesting challenge data from the notary chain
-    // so we batch them up for one call
-    UniValue validityChallenges(UniValue::VARR);
-    if (validIndexesUni.isArray() && validIndexesUni.size())
+    if (!externalSystem.chainDefinition.IsPBaaSChain())
     {
-        UniValue challengeRequests(UniValue::VARR);
-        std::vector<std::vector<int>> unchallengedForks = cnd.forks;
-        std::set<int> validIndexes;
-        for (int i = 0; i < validIndexesUni.size(); i++)
+        // all challenges we make will require requesting challenge data from the notary chain
+        // so we batch them up for one call
+        UniValue validityChallenges(UniValue::VARR);
+        if (validIndexesUni.isArray() && validIndexesUni.size())
         {
-            validIndexes.insert(uni_get_int(validIndexesUni[i], -1));
-        }
-        if (validIndexes.count(-1))
-        {
-            return state.Error("invalid-validindexes-from-getbestproofroot");
-        }
-        for (int i = 1; i < cnd.vtx.size(); i++)
-        {
-            auto proofRootIT = cnd.vtx[i].second.proofRoots.find(SystemID);
-            if (proofRootIT == cnd.vtx[i].second.proofRoots.end())
+            UniValue challengeRequests(UniValue::VARR);
+            std::vector<std::vector<int>> unchallengedForks = cnd.forks;
+            std::set<int> validIndexes;
+            for (int i = 0; i < validIndexesUni.size(); i++)
             {
-                continue;
+                validIndexes.insert(uni_get_int(validIndexesUni[i], -1));
             }
-
-            // find this entry's first location, k, in fork j
-            int j, k;
-            for (j = 0; j < unchallengedForks.size(); j++)
+            if (validIndexes.count(-1))
             {
-                for (k = 0; k < unchallengedForks[j].size(); k++)
+                return state.Error("invalid-validindexes-from-getbestproofroot");
+            }
+            for (int i = 1; i < cnd.vtx.size(); i++)
+            {
+                auto proofRootIT = cnd.vtx[i].second.proofRoots.find(SystemID);
+                if (proofRootIT == cnd.vtx[i].second.proofRoots.end())
                 {
-                    if (unchallengedForks[j][k] == i)
+                    continue;
+                }
+
+                // find this entry's first location, k, in fork j
+                int j, k;
+                for (j = 0; j < unchallengedForks.size(); j++)
+                {
+                    for (k = 0; k < unchallengedForks[j].size(); k++)
+                    {
+                        if (unchallengedForks[j][k] == i)
+                        {
+                            break;
+                        }
+                    }
+                    if (k < unchallengedForks[j].size())
                     {
                         break;
                     }
                 }
-                if (k < unchallengedForks[j].size())
+
+                // if we didn't find this entry in the pruned forks, nothing to do
+                if (j >= unchallengedForks.size())
                 {
-                    break;
+                    continue;
                 }
-            }
 
-            // if we didn't find this entry in the pruned forks, nothing to do
-            if (j >= unchallengedForks.size())
-            {
-                continue;
-            }
-
-            // if valid, use it to eliminate remaining forks and collect remaining challenges
-            if (validIndexes.count(i))
-            {
-                // we found the first valid fork with this entry
-                // all forks that do not have the same value in the k'th entry
-                // should be challenged, either because we don't agree,
-                // or because they skipped this valid one and did not reference it
-                // if their entry is not the same, but valid, they are provably
-                // rejectable, otherwise just to be challenged
-                for (int forkToChallenge = 0; forkToChallenge < unchallengedForks.size(); forkToChallenge++)
+                // if valid, use it to eliminate remaining forks and collect remaining challenges
+                if (validIndexes.count(i))
                 {
-                    if (forkToChallenge == j)
+                    // we found the first valid fork with this entry
+                    // all forks that do not have the same value in the k'th entry
+                    // should be challenged, either because we don't agree,
+                    // or because they skipped this valid one and did not reference it
+                    // if their entry is not the same, but valid, they are provably
+                    // rejectable, otherwise just to be challenged
+                    for (int forkToChallenge = 0; forkToChallenge < unchallengedForks.size(); forkToChallenge++)
                     {
-                        continue;
-                    }
-                    if (unchallengedForks[forkToChallenge].size() > k &&
-                        unchallengedForks[forkToChallenge][k] != unchallengedForks[j][k])
-                    {
-                        for (int challengeNum = k; challengeNum < unchallengedForks[forkToChallenge].size(); challengeNum++)
+                        if (forkToChallenge == j)
                         {
-                            // is there already counter evidence for this entry?
-                            // 1) if there is a fraud proof, prune and move on
-                            // 2) if there is a validity challenge, only add one if we intend to
-                            //    expand its range
-                            bool moveToNext = false;
-                            for (auto &oneChallenge : localCounterEvidence[unchallengedForks[forkToChallenge][k]])
+                            continue;
+                        }
+                        if (unchallengedForks[forkToChallenge].size() > k &&
+                            unchallengedForks[forkToChallenge][k] != unchallengedForks[j][k])
+                        {
+                            for (int challengeNum = k; challengeNum < unchallengedForks[forkToChallenge].size(); challengeNum++)
                             {
-                                if (!std::get<1>(oneChallenge).evidence.chainObjects.size() ||
-                                    std::get<1>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
+                                // is there already counter evidence for this entry?
+                                // 1) if there is a fraud proof, prune and move on
+                                // 2) if there is a validity challenge, only add one if we intend to
+                                //    expand its range
+                                bool moveToNext = false;
+                                for (auto &oneChallenge : localCounterEvidence[unchallengedForks[forkToChallenge][k]])
+                                {
+                                    if (!std::get<1>(oneChallenge).evidence.chainObjects.size() ||
+                                        std::get<1>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
+                                    {
+                                        continue;
+                                    }
+                                    // if the challenge root is the same as the root being challenged, it is a skip challenge
+                                    // and would not be on-chain or in mempool if not valid. we can ignore the rest of this fork.
+                                    if (((CChainObject<CProofRoot> *)std::get<1>(oneChallenge).evidence.chainObjects[0])->object ==
+                                        cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID])
+                                    {
+                                        unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
+                                        continue;
+                                    }
+                                    // TODO: POST HARDENING - right now, we actually don't break down ranges to a lower level of
+                                    // granularity, based on checkpoints, so until we do, just consider this one covered and move
+                                    // on to the next
+                                    moveToNext = true;
+                                    break;
+                                }
+                                if (moveToNext)
                                 {
                                     continue;
                                 }
-                                // if the challenge root is the same as the root being challenged, it is a skip challenge
-                                // and would not be on-chain or in mempool if not valid. we can ignore the rest of this fork.
-                                if (((CChainObject<CProofRoot> *)std::get<1>(oneChallenge).evidence.chainObjects[0])->object ==
-                                    cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID])
+
+                                // if it's valid, then it skipped a valid notarization and can be proven false
+                                if (validIndexes.count(unchallengedForks[forkToChallenge][k]))
                                 {
+                                    // prove the root on the j fork with this root and submit the proof along with a rejection
+                                    // finalization
+                                    CNotaryEvidence fraudProof;
+                                    fraudProof.output = cnd.vtx[unchallengedForks[forkToChallenge][k]].first;
+                                    fraudProof.state = CNotaryEvidence::STATE_REJECTED;
+
+                                    // create evidence in this order
+                                    // EXPECT_ALTERNATE_PROOF_ROOT  // give it the same root as it has, indicating fraud proof
+                                    fraudProof.evidence << cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID];
+
+                                    // EXPECT_SKIPPED_NOTARIZATION_REF - this is the notarization it should not have skipped
+                                    fraudProof.evidence << CEvidenceData(CVDXF_Data::UTXORefKey(), ::AsVector(cnd.vtx[unchallengedForks[j][k]].first));
+
+                                    // TODO: HARDENING - confirm that in precheck notarization, if a notarization has the same proofroot as
+                                    // any prior notarization, whether it refers to it or not, it cannot pass precheck. that is easy to check,
+                                    // may already be checked as of this note, and eliminates the need for an equality proof.
+
+                                    int64_t proveHeight = std::min(cnd.vtx[unchallengedForks[j][k]].second.proofRoots[SystemID].rootHeight,
+                                                                    cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight);
+
+                                    int64_t atHeight = std::max(cnd.vtx[unchallengedForks[j][k]].second.proofRoots[SystemID].rootHeight,
+                                                                    cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight);
+
+                                    UniValue challengeRequest(UniValue::VOBJ);
+                                    challengeRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::SkipChallengeKey())));
+                                    challengeRequest.pushKV("evidence", fraudProof.ToUniValue());
+                                    challengeRequest.pushKV("proveheight", proveHeight);
+                                    challengeRequest.pushKV("atheight", atHeight);
+                                    challengeRequest.pushKV("entropyhash", txes[unchallengedForks[forkToChallenge][k]].second.GetHex());
+                                    challengeRequests.push_back(challengeRequest);
+
+                                    // once we've created an invalidation proof, which a skipped proof is,
+                                    // the entire fork will be automatically invalidated
                                     unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
+                                }
+                                else
+                                {
+                                    // we need to get the challenge from the notary chain, and it should only need
+                                    // to challenge and prove from the last agreed entry forward, using entropy hash
+                                    // of the block of the notarization that we are challenging
+
+                                    CNotaryEvidence challengeEvidence;
+                                    challengeEvidence.output = cnd.vtx[i].first;
+                                    challengeEvidence.state = CNotaryEvidence::STATE_REJECTED;
+
+                                    // create evidence to either use when notarizing, or for a challenge
+                                    int64_t fromHeight = cnd.vtx[unchallengedForks[j][k - 1]].second.IsBlockOneNotarization() ?
+                                                            1 :
+                                                            cnd.vtx[unchallengedForks[j][k - 1]].second.proofRoots[SystemID].rootHeight;
+
+                                    int64_t toHeight = cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight;
+
+                                    UniValue challengeRequest(UniValue::VOBJ);
+                                    challengeRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::ValidityChallengeKey())));
+                                    challengeRequest.pushKV("evidence", challengeEvidence.ToUniValue());
+                                    challengeRequest.pushKV("fromheight", fromHeight);
+                                    challengeRequest.pushKV("toheight", toHeight);
+                                    challengeRequest.pushKV("challengedroot", cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].ToUniValue());
+                                    challengeRequest.pushKV("confirmroot", cnd.vtx[unchallengedForks[j][k - 1]].second.proofRoots[SystemID].ToUniValue());
+                                    challengeRequest.pushKV("entropyhash", txes[unchallengedForks[forkToChallenge][k]].second.GetHex());
+                                    challengeRequests.push_back(challengeRequest);
+                                }
+                            }
+                            unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + k, unchallengedForks[forkToChallenge].end());
+                        }
+                    }
+                }
+                else
+                {
+                    // all descendents of this entry are invalid according to our perspective
+                    // look for the first fork that agrees and create challenges until the end
+                    // then look for the next
+                    int invalidIndex = unchallengedForks[j][k];
+                    for (int forkToChallenge = 0; forkToChallenge < unchallengedForks.size(); forkToChallenge++)
+                    {
+                        if (unchallengedForks[forkToChallenge].size() > k &&
+                            unchallengedForks[forkToChallenge][k] == invalidIndex)
+                        {
+                            for (int challengeNum = k; challengeNum < unchallengedForks[forkToChallenge].size(); challengeNum++)
+                            {
+                                bool moveToNext = false;
+                                for (auto &oneChallenge : localCounterEvidence[unchallengedForks[forkToChallenge][k]])
+                                {
+                                    if (!std::get<1>(oneChallenge).evidence.chainObjects.size() ||
+                                        std::get<1>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
+                                    {
+                                        continue;
+                                    }
+                                    // if the challenge root is the same as the root being challenged, it is a skip challenge
+                                    // and would not be on-chain or in mempool if not valid. we can ignore the rest of this fork.
+                                    if (((CChainObject<CProofRoot> *)std::get<1>(oneChallenge).evidence.chainObjects[0])->object ==
+                                        cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID])
+                                    {
+                                        unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
+                                        continue;
+                                    }
+                                    // TODO: POST HARDENING - right now, we actually don't break down ranges to a lower level of
+                                    // granularity, based on checkpoints, so until we do, just consider this one covered and move
+                                    // on to the next
+                                    moveToNext = true;
+                                    break;
+                                }
+                                if (moveToNext)
+                                {
                                     continue;
                                 }
-                                // TODO: POST HARDENING - right now, we actually don't break down ranges to a lower level of
-                                // granularity, based on checkpoints, so until we do, just consider this one covered and move
-                                // on to the next
-                                moveToNext = true;
-                                break;
-                            }
-                            if (moveToNext)
-                            {
-                                continue;
-                            }
-
-                            // if it's valid, then it skipped a valid notarization and can be proven false
-                            if (validIndexes.count(unchallengedForks[forkToChallenge][k]))
-                            {
-                                // prove the root on the j fork with this root and submit the proof along with a rejection
-                                // finalization
-                                CNotaryEvidence fraudProof;
-                                fraudProof.output = cnd.vtx[unchallengedForks[forkToChallenge][k]].first;
-                                fraudProof.state = CNotaryEvidence::STATE_REJECTED;
-
-                                // create evidence in this order
-                                // EXPECT_ALTERNATE_PROOF_ROOT  // give it the same root as it has, indicating fraud proof
-                                fraudProof.evidence << cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID];
-
-                                // EXPECT_SKIPPED_NOTARIZATION_REF - this is the notarization it should not have skipped
-                                fraudProof.evidence << CEvidenceData(CVDXF_Data::UTXORefKey(), ::AsVector(cnd.vtx[unchallengedForks[j][k]].first));
-
-                                // TODO: HARDENING - confirm that in precheck notarization, if a notarization has the same proofroot as
-                                // any prior notarization, whether it refers to it or not, it cannot pass precheck. that is easy to check,
-                                // may already be checked as of this note, and eliminates the need for an equality proof.
-
-                                int64_t proveHeight = std::min(cnd.vtx[unchallengedForks[j][k]].second.proofRoots[SystemID].rootHeight,
-                                                                cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight);
-
-                                int64_t atHeight = std::max(cnd.vtx[unchallengedForks[j][k]].second.proofRoots[SystemID].rootHeight,
-                                                                cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight);
-
-                                UniValue challengeRequest(UniValue::VOBJ);
-                                challengeRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::SkipChallengeKey())));
-                                challengeRequest.pushKV("evidence", fraudProof.ToUniValue());
-                                challengeRequest.pushKV("proveheight", proveHeight);
-                                challengeRequest.pushKV("atheight", atHeight);
-                                challengeRequest.pushKV("entropyhash", txes[unchallengedForks[forkToChallenge][k]].second.GetHex());
-                                challengeRequests.push_back(challengeRequest);
-
-                                // once we've created an invalidation proof, which a skipped proof is,
-                                // the entire fork will be automatically invalidated
-                                unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
-                            }
-                            else
-                            {
-                                // we need to get the challenge from the notary chain, and it should only need
-                                // to challenge and prove from the last agreed entry forward, using entropy hash
-                                // of the block of the notarization that we are challenging
 
                                 CNotaryEvidence challengeEvidence;
                                 challengeEvidence.output = cnd.vtx[i].first;
                                 challengeEvidence.state = CNotaryEvidence::STATE_REJECTED;
 
                                 // create evidence to either use when notarizing, or for a challenge
-                                int64_t fromHeight = cnd.vtx[unchallengedForks[j][k - 1]].second.IsBlockOneNotarization() ?
+                                int64_t fromHeight = cnd.vtx[cnd.lastConfirmed].second.IsBlockOneNotarization() ?
                                                         1 :
-                                                        cnd.vtx[unchallengedForks[j][k - 1]].second.proofRoots[SystemID].rootHeight;
+                                                        cnd.vtx[cnd.lastConfirmed].second.proofRoots[SystemID].rootHeight;
 
                                 int64_t toHeight = cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight;
 
@@ -5080,291 +5148,291 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                                 challengeRequest.pushKV("fromheight", fromHeight);
                                 challengeRequest.pushKV("toheight", toHeight);
                                 challengeRequest.pushKV("challengedroot", cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].ToUniValue());
-                                challengeRequest.pushKV("confirmroot", cnd.vtx[unchallengedForks[j][k - 1]].second.proofRoots[SystemID].ToUniValue());
+                                challengeRequest.pushKV("confirmroot", cnd.vtx[cnd.lastConfirmed].second.proofRoots[SystemID].ToUniValue());
                                 challengeRequest.pushKV("entropyhash", txes[unchallengedForks[forkToChallenge][k]].second.GetHex());
                                 challengeRequests.push_back(challengeRequest);
                             }
+                            unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + k, unchallengedForks[forkToChallenge].end());
                         }
-                        unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + k, unchallengedForks[forkToChallenge].end());
                     }
                 }
             }
-            else
+            // if we have challenge requests, get them to either submit rejections or add to our notarization, if it challenges
+            // a pre-existing notarization. we decide which later on
+            if (challengeRequests.size())
             {
-                // all descendents of this entry are invalid according to our perspective
-                // look for the first fork that agrees and create challenges until the end
-                // then look for the next
-                int invalidIndex = unchallengedForks[j][k];
-                for (int forkToChallenge = 0; forkToChallenge < unchallengedForks.size(); forkToChallenge++)
-                {
-                    if (unchallengedForks[forkToChallenge].size() > k &&
-                        unchallengedForks[forkToChallenge][k] == invalidIndex)
-                    {
-                        for (int challengeNum = k; challengeNum < unchallengedForks[forkToChallenge].size(); challengeNum++)
-                        {
-                            bool moveToNext = false;
-                            for (auto &oneChallenge : localCounterEvidence[unchallengedForks[forkToChallenge][k]])
-                            {
-                                if (!std::get<1>(oneChallenge).evidence.chainObjects.size() ||
-                                    std::get<1>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
-                                {
-                                    continue;
-                                }
-                                // if the challenge root is the same as the root being challenged, it is a skip challenge
-                                // and would not be on-chain or in mempool if not valid. we can ignore the rest of this fork.
-                                if (((CChainObject<CProofRoot> *)std::get<1>(oneChallenge).evidence.chainObjects[0])->object ==
-                                    cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID])
-                                {
-                                    unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
-                                    continue;
-                                }
-                                // TODO: POST HARDENING - right now, we actually don't break down ranges to a lower level of
-                                // granularity, based on checkpoints, so until we do, just consider this one covered and move
-                                // on to the next
-                                moveToNext = true;
-                                break;
-                            }
-                            if (moveToNext)
-                            {
-                                continue;
-                            }
-
-                            CNotaryEvidence challengeEvidence;
-                            challengeEvidence.output = cnd.vtx[i].first;
-                            challengeEvidence.state = CNotaryEvidence::STATE_REJECTED;
-
-                            // create evidence to either use when notarizing, or for a challenge
-                            int64_t fromHeight = cnd.vtx[cnd.lastConfirmed].second.IsBlockOneNotarization() ?
-                                                    1 :
-                                                    cnd.vtx[cnd.lastConfirmed].second.proofRoots[SystemID].rootHeight;
-
-                            int64_t toHeight = cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight;
-
-                            UniValue challengeRequest(UniValue::VOBJ);
-                            challengeRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::ValidityChallengeKey())));
-                            challengeRequest.pushKV("evidence", challengeEvidence.ToUniValue());
-                            challengeRequest.pushKV("fromheight", fromHeight);
-                            challengeRequest.pushKV("toheight", toHeight);
-                            challengeRequest.pushKV("challengedroot", cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].ToUniValue());
-                            challengeRequest.pushKV("confirmroot", cnd.vtx[cnd.lastConfirmed].second.proofRoots[SystemID].ToUniValue());
-                            challengeRequest.pushKV("entropyhash", txes[unchallengedForks[forkToChallenge][k]].second.GetHex());
-                            challengeRequests.push_back(challengeRequest);
-                        }
-                        unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + k, unchallengedForks[forkToChallenge].end());
-                    }
-                }
-            }
-        }
-        // if we have challenge requests, get them to either submit rejections or add to our notarization, if it challenges
-        // a pre-existing notarization. we decide which later on
-        if (challengeRequests.size())
-        {
-            LogPrint("notarization", "Getting challenge proofs %s", challengeRequests.write(1,2).c_str());
-            params = UniValue(UniValue::VARR);
-            params.push_back(challengeRequests);
-            try
-            {
-                challengeRequests = find_value(RPCCallRoot("getchallengeproofs", params), "result");
-            } catch (exception e)
-            {
-                challengeRequests = NullUniValue;
-            }
-            LogPrint("notarization", "Challenge proofs returned %s", challengeRequests.write(1,2).c_str());
-
-            // separate out skip challenges and submit those now to ensure they just get removed from the equation
-            UniValue skipChallenges(UniValue::VARR);
-            for (int j = 0; j < challengeRequests.size(); j++)
-            {
-                UniValue oneChallengeUni;
-                if (find_value(challengeRequests[j], "error").isNull() &&
-                    (oneChallengeUni = find_value(challengeRequests[j], "result")).isObject())
-                {
-                    if (ParseVDXFKey(uni_get_str(find_value(oneChallengeUni, "type"))) == CNotaryEvidence::SkipChallengeKey())
-                    {
-                        skipChallenges.push_back(oneChallengeUni);
-                    }
-                    else
-                    {
-                        // validity challenges will hang off of our notarization
-                        validityChallenges.push_back(oneChallengeUni);
-                    }
-                }
-            }
-
-            if (skipChallenges.size())
-            {
-                LogPrint("notarization", "Submitting skip challenges to local chain %s", skipChallenges.write(1,2).c_str());
+                LogPrint("notarization", "Getting challenge proofs %s", challengeRequests.write(1,2).c_str());
                 params = UniValue(UniValue::VARR);
-                params.push_back(skipChallenges);
+                params.push_back(challengeRequests);
                 try
                 {
-                    UniValue submitchallenges(const UniValue& params, bool fHelp);
-                    skipChallenges = submitchallenges(params, false);
+                    challengeRequests = find_value(RPCCallRoot("getchallengeproofs", params), "result");
                 } catch (exception e)
                 {
-                    skipChallenges = NullUniValue;
+                    challengeRequests = NullUniValue;
                 }
-                LogPrint("notarization", "Results of submissions returned from local chain %s", skipChallenges.write(1,2).c_str());
-            }
-        }
-    }
+                LogPrint("notarization", "Challenge proofs returned %s", challengeRequests.write(1,2).c_str());
 
-    // we challenge any notarizations about a chain that is not us
-    // we also challenge and finalize as rejected notarizations that skip over a prior notarization
-    // which they actually should agree with
-    UniValue challenges(UniValue::VARR);
-    {
-        LOCK2(cs_main, mempool.cs);
-
-        std::vector<std::vector<int>> unchallengedForks = crosschainCND.forks;
-        std::set<int> validIndexes;
-        for (int i = 0; i < crosschainCND.vtx.size(); i++)
-        {
-            auto proofRootIT = crosschainCND.vtx[i].second.proofRoots.find(ASSETCHAINS_CHAINID);
-            if (proofRootIT == crosschainCND.vtx[i].second.proofRoots.end())
-            {
-                continue;
-            }
-
-            if (proofRootIT->second == CProofRoot::GetProofRoot(proofRootIT->second.rootHeight))
-            {
-                validIndexes.insert(i);
-            }
-        }
-        for (int i = 1; i < crosschainCND.vtx.size(); i++)
-        {
-            auto proofRootIT = crosschainCND.vtx[i].second.proofRoots.find(SystemID);
-            if (proofRootIT == crosschainCND.vtx[i].second.proofRoots.end())
-            {
-                continue;
-            }
-
-            // find this entry's first location, k, in fork j
-            int j, k;
-            for (j = 0; j < unchallengedForks.size(); j++)
-            {
-                for (k = 0; k < unchallengedForks[j].size(); k++)
+                // separate out skip challenges and submit those now to ensure they just get removed from the equation
+                UniValue skipChallenges(UniValue::VARR);
+                for (int j = 0; j < challengeRequests.size(); j++)
                 {
-                    if (unchallengedForks[j][k] == i)
+                    UniValue oneChallengeUni;
+                    if (find_value(challengeRequests[j], "error").isNull() &&
+                        (oneChallengeUni = find_value(challengeRequests[j], "result")).isObject())
+                    {
+                        if (ParseVDXFKey(uni_get_str(find_value(oneChallengeUni, "type"))) == CNotaryEvidence::SkipChallengeKey())
+                        {
+                            skipChallenges.push_back(oneChallengeUni);
+                        }
+                        else
+                        {
+                            // validity challenges will hang off of our notarization
+                            validityChallenges.push_back(oneChallengeUni);
+                        }
+                    }
+                }
+
+                if (skipChallenges.size())
+                {
+                    LogPrint("notarization", "Submitting skip challenges to local chain %s", skipChallenges.write(1,2).c_str());
+                    params = UniValue(UniValue::VARR);
+                    params.push_back(skipChallenges);
+                    try
+                    {
+                        UniValue submitchallenges(const UniValue& params, bool fHelp);
+                        skipChallenges = submitchallenges(params, false);
+                    } catch (exception e)
+                    {
+                        skipChallenges = NullUniValue;
+                    }
+                    LogPrint("notarization", "Results of submissions returned from local chain %s", skipChallenges.write(1,2).c_str());
+                }
+            }
+        }
+
+        // we challenge any notarizations about a chain that is not us
+        // we also challenge and finalize as rejected notarizations that skip over a prior notarization
+        // which they actually should agree with
+        UniValue challenges(UniValue::VARR);
+        {
+            LOCK2(cs_main, mempool.cs);
+
+            std::vector<std::vector<int>> unchallengedForks = crosschainCND.forks;
+            std::set<int> validIndexes;
+            for (int i = 0; i < crosschainCND.vtx.size(); i++)
+            {
+                auto proofRootIT = crosschainCND.vtx[i].second.proofRoots.find(ASSETCHAINS_CHAINID);
+                if (proofRootIT == crosschainCND.vtx[i].second.proofRoots.end())
+                {
+                    continue;
+                }
+
+                if (proofRootIT->second == CProofRoot::GetProofRoot(proofRootIT->second.rootHeight))
+                {
+                    validIndexes.insert(i);
+                }
+            }
+            for (int i = 1; i < crosschainCND.vtx.size(); i++)
+            {
+                auto proofRootIT = crosschainCND.vtx[i].second.proofRoots.find(SystemID);
+                if (proofRootIT == crosschainCND.vtx[i].second.proofRoots.end())
+                {
+                    continue;
+                }
+
+                // find this entry's first location, k, in fork j
+                int j, k;
+                for (j = 0; j < unchallengedForks.size(); j++)
+                {
+                    for (k = 0; k < unchallengedForks[j].size(); k++)
+                    {
+                        if (unchallengedForks[j][k] == i)
+                        {
+                            break;
+                        }
+                    }
+                    if (k < unchallengedForks[j].size())
                     {
                         break;
                     }
                 }
-                if (k < unchallengedForks[j].size())
+
+                // if we didn't find this entry in the pruned forks, nothing to do
+                if (j >= unchallengedForks.size())
                 {
-                    break;
+                    continue;
                 }
-            }
 
-            // if we didn't find this entry in the pruned forks, nothing to do
-            if (j >= unchallengedForks.size())
-            {
-                continue;
-            }
-
-            // if valid, use it to eliminate remaining forks and collect remaining challenges
-            if (validIndexes.count(i))
-            {
-                // we found the first valid fork with this entry
-                // all forks that do not have the same value in the k'th entry
-                // should be challenged, either because we don't agree,
-                // or because they skipped this valid one and did not reference it
-                // if their entry is not the same, but valid, they are provably
-                // rejectable, otherwise just to be challenged
-                for (int forkToChallenge = 0; forkToChallenge < unchallengedForks.size(); forkToChallenge++)
+                // if valid, use it to eliminate remaining forks and collect remaining challenges
+                if (validIndexes.count(i))
                 {
-                    if (forkToChallenge == j)
+                    // we found the first valid fork with this entry
+                    // all forks that do not have the same value in the k'th entry
+                    // should be challenged, either because we don't agree,
+                    // or because they skipped this valid one and did not reference it
+                    // if their entry is not the same, but valid, they are provably
+                    // rejectable, otherwise just to be challenged
+                    for (int forkToChallenge = 0; forkToChallenge < unchallengedForks.size(); forkToChallenge++)
                     {
-                        continue;
-                    }
-                    if (unchallengedForks[forkToChallenge].size() > k &&
-                        unchallengedForks[forkToChallenge][k] != unchallengedForks[j][k])
-                    {
-                        for (int challengeNum = k; challengeNum < unchallengedForks[forkToChallenge].size(); challengeNum++)
+                        if (forkToChallenge == j)
                         {
-                            // is there already counter evidence for this entry?
-                            // 1) if there is a fraud proof, prune and move on
-                            // 2) if there is a validity challenge, only add one if we intend to
-                            //    expand its range
-                            bool moveToNext = false;
-                            for (auto &oneChallenge : crossChainCounterEvidence[unchallengedForks[forkToChallenge][k]])
+                            continue;
+                        }
+                        if (unchallengedForks[forkToChallenge].size() > k &&
+                            unchallengedForks[forkToChallenge][k] != unchallengedForks[j][k])
+                        {
+                            for (int challengeNum = k; challengeNum < unchallengedForks[forkToChallenge].size(); challengeNum++)
                             {
-                                if (!std::get<0>(oneChallenge).evidence.chainObjects.size() ||
-                                    std::get<0>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
+                                // is there already counter evidence for this entry?
+                                // 1) if there is a fraud proof, prune and move on
+                                // 2) if there is a validity challenge, only add one if we intend to
+                                //    expand its range
+                                bool moveToNext = false;
+                                for (auto &oneChallenge : crossChainCounterEvidence[unchallengedForks[forkToChallenge][k]])
+                                {
+                                    if (!std::get<0>(oneChallenge).evidence.chainObjects.size() ||
+                                        std::get<0>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
+                                    {
+                                        continue;
+                                    }
+                                    // if the challenge root is the same as the root being challenged, it is a skip challenge
+                                    // and would not be on-chain or in mempool if not valid. we can ignore the rest of this fork.
+                                    if (((CChainObject<CProofRoot> *)std::get<0>(oneChallenge).evidence.chainObjects[0])->object ==
+                                        crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID])
+                                    {
+                                        unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
+                                        continue;
+                                    }
+                                    // TODO: POST HARDENING - right now, we actually don't break down ranges to a lower level of
+                                    // granularity, based on checkpoints, so until we do, just consider this one covered and move
+                                    // on to the next
+                                    moveToNext = true;
+                                    break;
+                                }
+                                if (moveToNext)
                                 {
                                     continue;
                                 }
-                                // if the challenge root is the same as the root being challenged, it is a skip challenge
-                                // and would not be on-chain or in mempool if not valid. we can ignore the rest of this fork.
-                                if (((CChainObject<CProofRoot> *)std::get<0>(oneChallenge).evidence.chainObjects[0])->object ==
-                                    crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID])
+
+                                // if it's valid, then it skipped a valid notarization and can be proven false
+                                if (validIndexes.count(unchallengedForks[forkToChallenge][k]))
                                 {
+                                    // prove the root on the j fork with this root and submit the proof along with a rejection
+                                    // finalization
+                                    CNotaryEvidence fraudProof;
+                                    fraudProof.output = crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].first;
+                                    fraudProof.state = CNotaryEvidence::STATE_REJECTED;
+
+                                    // create evidence in this order
+                                    // EXPECT_ALTERNATE_PROOF_ROOT  // give it the same root as it has, indicating fraud proof
+                                    fraudProof.evidence << crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID];
+
+                                    // EXPECT_SKIPPED_NOTARIZATION_REF - this is the notarization it should not have skipped
+                                    fraudProof.evidence << CEvidenceData(CVDXF_Data::UTXORefKey(), ::AsVector(crosschainCND.vtx[unchallengedForks[j][k]].first));
+
+                                    // TODO: HARDENING - confirm that in precheck notarization, if a notarization has the same proofroot as
+                                    // any prior notarization, whether it refers to it or not, it cannot pass precheck. that is easy to check,
+                                    // may already be checked as of this note, and eliminates the need for an equality proof.
+
+                                    int64_t proveHeight = std::min(crosschainCND.vtx[unchallengedForks[j][k]].second.proofRoots[SystemID].rootHeight,
+                                                                    crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight);
+
+                                    int64_t atHeight = std::max(crosschainCND.vtx[unchallengedForks[j][k]].second.proofRoots[SystemID].rootHeight,
+                                                                    crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight);
+
+                                    UniValue challengeRequest(UniValue::VOBJ);
+                                    challengeRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::SkipChallengeKey())));
+                                    challengeRequest.pushKV("evidence", fraudProof.ToUniValue());
+                                    challengeRequest.pushKV("proveheight", proveHeight);
+                                    challengeRequest.pushKV("atheight", atHeight);
+                                    challengeRequest.pushKV("entropyhash", blockHashes[unchallengedForks[forkToChallenge][k]].GetHex());
+                                    challenges.push_back(challengeRequest);
+
+                                    // once we've created an invalidation proof, which a skipped proof is,
+                                    // the entire fork will be automatically invalidated
                                     unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
+                                }
+                                else
+                                {
+                                    // we need to get the challenge from the notary chain, and it should only need
+                                    // to challenge and prove from the last agreed entry forward, using entropy hash
+                                    // of the block of the notarization that we are challenging
+
+                                    CNotaryEvidence challengeEvidence;
+                                    challengeEvidence.output = crosschainCND.vtx[i].first;
+                                    challengeEvidence.state = CNotaryEvidence::STATE_REJECTED;
+
+                                    // create evidence to either use when notarizing, or for a challenge
+                                    int64_t fromHeight = crosschainCND.vtx[unchallengedForks[j][k - 1]].second.IsBlockOneNotarization() ?
+                                                            1 :
+                                                            crosschainCND.vtx[unchallengedForks[j][k - 1]].second.proofRoots[SystemID].rootHeight;
+
+                                    int64_t toHeight = crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight;
+
+                                    UniValue challengeRequest(UniValue::VOBJ);
+                                    challengeRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::ValidityChallengeKey())));
+                                    challengeRequest.pushKV("evidence", challengeEvidence.ToUniValue());
+                                    challengeRequest.pushKV("fromheight", fromHeight);
+                                    challengeRequest.pushKV("toheight", toHeight);
+                                    challengeRequest.pushKV("challengedroot", crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].ToUniValue());
+                                    challengeRequest.pushKV("confirmroot", crosschainCND.vtx[unchallengedForks[j][k - 1]].second.proofRoots[SystemID].ToUniValue());
+                                    challengeRequest.pushKV("entropyhash", blockHashes[unchallengedForks[forkToChallenge][k]].GetHex());
+                                    challenges.push_back(challengeRequest);
+                                }
+                            }
+                            unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + k, unchallengedForks[forkToChallenge].end());
+                        }
+                    }
+                }
+                else
+                {
+                    // all descendents of this entry are invalid according to our perspective
+                    // look for the first fork that agrees and create challenges until the end
+                    // then look for the next
+                    int invalidIndex = unchallengedForks[j][k];
+                    for (int forkToChallenge = 0; forkToChallenge < unchallengedForks.size(); forkToChallenge++)
+                    {
+                        if (unchallengedForks[forkToChallenge].size() > k &&
+                            unchallengedForks[forkToChallenge][k] == invalidIndex)
+                        {
+                            for (int challengeNum = k; challengeNum < unchallengedForks[forkToChallenge].size(); challengeNum++)
+                            {
+                                bool moveToNext = false;
+                                for (auto &oneChallenge : crossChainCounterEvidence[unchallengedForks[forkToChallenge][k]])
+                                {
+                                    if (!std::get<0>(oneChallenge).evidence.chainObjects.size() ||
+                                        std::get<0>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
+                                    {
+                                        continue;
+                                    }
+                                    // if the challenge root is the same as the root being challenged, it is a skip challenge
+                                    // and would not be on-chain or in mempool if not valid. we can ignore the rest of this fork.
+                                    if (((CChainObject<CProofRoot> *)std::get<0>(oneChallenge).evidence.chainObjects[0])->object ==
+                                        crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID])
+                                    {
+                                        unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
+                                        continue;
+                                    }
+                                    // TODO: POST HARDENING - right now, we actually don't break down ranges to a lower level of
+                                    // granularity, based on checkpoints, so until we do, just consider this one covered and move
+                                    // on to the next
+                                    moveToNext = true;
+                                    break;
+                                }
+                                if (moveToNext)
+                                {
                                     continue;
                                 }
-                                // TODO: POST HARDENING - right now, we actually don't break down ranges to a lower level of
-                                // granularity, based on checkpoints, so until we do, just consider this one covered and move
-                                // on to the next
-                                moveToNext = true;
-                                break;
-                            }
-                            if (moveToNext)
-                            {
-                                continue;
-                            }
-
-                            // if it's valid, then it skipped a valid notarization and can be proven false
-                            if (validIndexes.count(unchallengedForks[forkToChallenge][k]))
-                            {
-                                // prove the root on the j fork with this root and submit the proof along with a rejection
-                                // finalization
-                                CNotaryEvidence fraudProof;
-                                fraudProof.output = crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].first;
-                                fraudProof.state = CNotaryEvidence::STATE_REJECTED;
-
-                                // create evidence in this order
-                                // EXPECT_ALTERNATE_PROOF_ROOT  // give it the same root as it has, indicating fraud proof
-                                fraudProof.evidence << crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID];
-
-                                // EXPECT_SKIPPED_NOTARIZATION_REF - this is the notarization it should not have skipped
-                                fraudProof.evidence << CEvidenceData(CVDXF_Data::UTXORefKey(), ::AsVector(crosschainCND.vtx[unchallengedForks[j][k]].first));
-
-                                // TODO: HARDENING - confirm that in precheck notarization, if a notarization has the same proofroot as
-                                // any prior notarization, whether it refers to it or not, it cannot pass precheck. that is easy to check,
-                                // may already be checked as of this note, and eliminates the need for an equality proof.
-
-                                int64_t proveHeight = std::min(crosschainCND.vtx[unchallengedForks[j][k]].second.proofRoots[SystemID].rootHeight,
-                                                                crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight);
-
-                                int64_t atHeight = std::max(crosschainCND.vtx[unchallengedForks[j][k]].second.proofRoots[SystemID].rootHeight,
-                                                                crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight);
-
-                                UniValue challengeRequest(UniValue::VOBJ);
-                                challengeRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::SkipChallengeKey())));
-                                challengeRequest.pushKV("evidence", fraudProof.ToUniValue());
-                                challengeRequest.pushKV("proveheight", proveHeight);
-                                challengeRequest.pushKV("atheight", atHeight);
-                                challengeRequest.pushKV("entropyhash", blockHashes[unchallengedForks[forkToChallenge][k]].GetHex());
-                                challenges.push_back(challengeRequest);
-
-                                // once we've created an invalidation proof, which a skipped proof is,
-                                // the entire fork will be automatically invalidated
-                                unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
-                            }
-                            else
-                            {
-                                // we need to get the challenge from the notary chain, and it should only need
-                                // to challenge and prove from the last agreed entry forward, using entropy hash
-                                // of the block of the notarization that we are challenging
 
                                 CNotaryEvidence challengeEvidence;
                                 challengeEvidence.output = crosschainCND.vtx[i].first;
                                 challengeEvidence.state = CNotaryEvidence::STATE_REJECTED;
 
                                 // create evidence to either use when notarizing, or for a challenge
-                                int64_t fromHeight = crosschainCND.vtx[unchallengedForks[j][k - 1]].second.IsBlockOneNotarization() ?
+                                int64_t fromHeight = crosschainCND.vtx[cnd.lastConfirmed].second.IsPreLaunch() ?
                                                         1 :
-                                                        crosschainCND.vtx[unchallengedForks[j][k - 1]].second.proofRoots[SystemID].rootHeight;
+                                                        crosschainCND.vtx[cnd.lastConfirmed].second.proofRoots[SystemID].rootHeight;
 
                                 int64_t toHeight = crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight;
 
@@ -5374,127 +5442,62 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                                 challengeRequest.pushKV("fromheight", fromHeight);
                                 challengeRequest.pushKV("toheight", toHeight);
                                 challengeRequest.pushKV("challengedroot", crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].ToUniValue());
-                                challengeRequest.pushKV("confirmroot", crosschainCND.vtx[unchallengedForks[j][k - 1]].second.proofRoots[SystemID].ToUniValue());
+                                challengeRequest.pushKV("confirmnotarization", crosschainCND.vtx[cnd.lastConfirmed].second.ToUniValue());
                                 challengeRequest.pushKV("entropyhash", blockHashes[unchallengedForks[forkToChallenge][k]].GetHex());
                                 challenges.push_back(challengeRequest);
                             }
+                            unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + k, unchallengedForks[forkToChallenge].end());
                         }
-                        unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + k, unchallengedForks[forkToChallenge].end());
                     }
                 }
             }
-            else
+
+            // if we have challenge requests, get them to either submit rejections or add to our notarization, if it challenges
+            // a pre-existing notarization. we decide which later on
+            if (challenges.size())
             {
-                // all descendents of this entry are invalid according to our perspective
-                // look for the first fork that agrees and create challenges until the end
-                // then look for the next
-                int invalidIndex = unchallengedForks[j][k];
-                for (int forkToChallenge = 0; forkToChallenge < unchallengedForks.size(); forkToChallenge++)
+                LogPrint("notarization", "Getting challenge proofs from local chain %s", challenges.write(1,2).c_str());
+                params = UniValue(UniValue::VARR);
+                params.push_back(challenges);
+                try
                 {
-                    if (unchallengedForks[forkToChallenge].size() > k &&
-                        unchallengedForks[forkToChallenge][k] == invalidIndex)
+                    UniValue getchallengeproofs(const UniValue& params, bool fHelp);
+                    challenges = getchallengeproofs(params, false);
+                } catch (exception e)
+                {
+                    challenges = NullUniValue;
+                }
+                LogPrint("notarization", "Challenge proofs returned from local chain %s", challenges.write(1,2).c_str());
+            }
+
+            // if we have challenges, submit them
+            if (challenges.size())
+            {
+                UniValue submitParams(UniValue::VARR);
+                for (int i = 0; i < challenges.size(); i++)
+                {
+                    if (find_value(challenges[i], "error").isNull())
                     {
-                        for (int challengeNum = k; challengeNum < unchallengedForks[forkToChallenge].size(); challengeNum++)
+                        UniValue resultUni = find_value(challenges[i], "result");
+                        if (resultUni.isObject())
                         {
-                            bool moveToNext = false;
-                            for (auto &oneChallenge : crossChainCounterEvidence[unchallengedForks[forkToChallenge][k]])
-                            {
-                                if (!std::get<0>(oneChallenge).evidence.chainObjects.size() ||
-                                    std::get<0>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
-                                {
-                                    continue;
-                                }
-                                // if the challenge root is the same as the root being challenged, it is a skip challenge
-                                // and would not be on-chain or in mempool if not valid. we can ignore the rest of this fork.
-                                if (((CChainObject<CProofRoot> *)std::get<0>(oneChallenge).evidence.chainObjects[0])->object ==
-                                    crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID])
-                                {
-                                    unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + challengeNum, unchallengedForks[forkToChallenge].end());
-                                    continue;
-                                }
-                                // TODO: POST HARDENING - right now, we actually don't break down ranges to a lower level of
-                                // granularity, based on checkpoints, so until we do, just consider this one covered and move
-                                // on to the next
-                                moveToNext = true;
-                                break;
-                            }
-                            if (moveToNext)
-                            {
-                                continue;
-                            }
-
-                            CNotaryEvidence challengeEvidence;
-                            challengeEvidence.output = crosschainCND.vtx[i].first;
-                            challengeEvidence.state = CNotaryEvidence::STATE_REJECTED;
-
-                            // create evidence to either use when notarizing, or for a challenge
-                            int64_t fromHeight = crosschainCND.vtx[cnd.lastConfirmed].second.IsPreLaunch() ?
-                                                    1 :
-                                                    crosschainCND.vtx[cnd.lastConfirmed].second.proofRoots[SystemID].rootHeight;
-
-                            int64_t toHeight = crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight;
-
-                            UniValue challengeRequest(UniValue::VOBJ);
-                            challengeRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::ValidityChallengeKey())));
-                            challengeRequest.pushKV("evidence", challengeEvidence.ToUniValue());
-                            challengeRequest.pushKV("fromheight", fromHeight);
-                            challengeRequest.pushKV("toheight", toHeight);
-                            challengeRequest.pushKV("challengedroot", crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].ToUniValue());
-                            challengeRequest.pushKV("confirmnotarization", crosschainCND.vtx[cnd.lastConfirmed].second.ToUniValue());
-                            challengeRequest.pushKV("entropyhash", blockHashes[unchallengedForks[forkToChallenge][k]].GetHex());
-                            challenges.push_back(challengeRequest);
+                            submitParams.push_back(resultUni);
                         }
-                        unchallengedForks[forkToChallenge].erase(unchallengedForks[forkToChallenge].begin() + k, unchallengedForks[forkToChallenge].end());
                     }
                 }
-            }
-        }
-
-        // if we have challenge requests, get them to either submit rejections or add to our notarization, if it challenges
-        // a pre-existing notarization. we decide which later on
-        if (challenges.size())
-        {
-            LogPrint("notarization", "Getting challenge proofs from local chain %s", challenges.write(1,2).c_str());
-            params = UniValue(UniValue::VARR);
-            params.push_back(challenges);
-            try
-            {
-                UniValue getchallengeproofs(const UniValue& params, bool fHelp);
-                challenges = getchallengeproofs(params, false);
-            } catch (exception e)
-            {
-                challenges = NullUniValue;
-            }
-            LogPrint("notarization", "Challenge proofs returned from local chain %s", challenges.write(1,2).c_str());
-        }
-
-        // if we have challenges, submit them
-        if (challenges.size())
-        {
-            UniValue submitParams(UniValue::VARR);
-            for (int i = 0; i < challenges.size(); i++)
-            {
-                if (find_value(challenges[i], "error").isNull())
+                LogPrint("notarization", "Submitting challenges %s", submitParams.write(1,2).c_str());
+                UniValue challengeResult;
+                params = UniValue(UniValue::VARR);
+                params.push_back(submitParams);
+                try
                 {
-                    UniValue resultUni = find_value(challenges[i], "result");
-                    if (resultUni.isObject())
-                    {
-                        submitParams.push_back(resultUni);
-                    }
+                    challengeResult = find_value(RPCCallRoot("submitchallenges", params), "result");
+                } catch (exception e)
+                {
+                    challengeResult = NullUniValue;
                 }
+                LogPrint("notarization", "Response from challenges %s", challengeResult.write(1,2).c_str());
             }
-            LogPrint("notarization", "Submitting challenges %s", submitParams.write(1,2).c_str());
-            UniValue challengeResult;
-            params = UniValue(UniValue::VARR);
-            params.push_back(submitParams);
-            try
-            {
-                challengeResult = find_value(RPCCallRoot("submitchallenges", params), "result");
-            } catch (exception e)
-            {
-                challengeResult = NullUniValue;
-            }
-            LogPrint("notarization", "Response from challenges %s", challengeResult.write(1,2).c_str());
         }
     }
 
