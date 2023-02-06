@@ -5531,6 +5531,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             {
                 if (it->second.rootHeight < lastStableProofRoot.rootHeight)
                 {
+                    notaryIdx = i;
                     break;
                 }
                 else if (it->second.rootHeight == lastStableProofRoot.rootHeight &&
