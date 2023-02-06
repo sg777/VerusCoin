@@ -6155,7 +6155,7 @@ int CChainNotarizationData::BestConfirmedNotarization(const CCurrencyDefinition 
 
     BlockMap::iterator blockIt;
     if (!vtx.size() ||
-        (!IsConfirmed() && vtx[0].second.IsDefinitionNotarization()) ||
+        (!IsConfirmed() && !vtx[0].second.IsDefinitionNotarization()) ||
         forks[bestChain].size() <= minNotaryConfirms ||
         !((blockIt = mapBlockIndex.find(txAndBlockVec[forks[bestChain].back()].second)) != mapBlockIndex.end() &&
           (height - blockIt->second->GetHeight()) > 0 &&
