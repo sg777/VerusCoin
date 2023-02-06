@@ -4773,6 +4773,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
     CChainNotarizationData cnd;
     std::vector<std::pair<CTransaction, uint256>> txes;
+    std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> localCounterEvidence;
 
     {
         LOCK2(cs_main, mempool.cs);
@@ -4786,7 +4787,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             return state.Error("no-notary");
         }
 
-        if (!GetNotarizationData(SystemID, cnd, &txes) || !cnd.IsConfirmed())
+        if (!GetNotarizationData(SystemID, cnd, &txes, &localCounterEvidence) || !cnd.IsConfirmed())
         {
             return state.Error(errorPrefix + "no prior confirmed notarization found");
         }
@@ -4865,10 +4866,10 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
     CChainNotarizationData crosschainCND;
     std::vector<uint256> blockHashes;
-    std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> counterEvidence;
+    std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> crossChainCounterEvidence;
 
     if (notarizationResult.isNull() ||
-        !(crosschainCND = CChainNotarizationData(notarizationResult, true, &blockHashes, &counterEvidence)).IsValid() ||
+        !(crosschainCND = CChainNotarizationData(notarizationResult, true, &blockHashes, &crossChainCounterEvidence)).IsValid() ||
         (!externalSystem.chainDefinition.IsGateway() && !crosschainCND.IsConfirmed()))
     {
         LogPrint("notarization", "Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(externalSystem.GetID())).c_str());
@@ -4992,7 +4993,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                             // 2) if there is a validity challenge, only add one if we intend to
                             //    expand its range
                             bool moveToNext = false;
-                            for (auto &oneChallenge : counterEvidence[unchallengedForks[forkToChallenge][k]])
+                            for (auto &oneChallenge : localCounterEvidence[unchallengedForks[forkToChallenge][k]])
                             {
                                 if (!std::get<0>(oneChallenge).evidence.chainObjects.size() ||
                                     std::get<0>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
@@ -5102,7 +5103,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                         for (int challengeNum = k; challengeNum < unchallengedForks[forkToChallenge].size(); challengeNum++)
                         {
                             bool moveToNext = false;
-                            for (auto &oneChallenge : counterEvidence[unchallengedForks[forkToChallenge][k]])
+                            for (auto &oneChallenge : localCounterEvidence[unchallengedForks[forkToChallenge][k]])
                             {
                                 if (!std::get<0>(oneChallenge).evidence.chainObjects.size() ||
                                     std::get<0>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
@@ -5286,7 +5287,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                             // 2) if there is a validity challenge, only add one if we intend to
                             //    expand its range
                             bool moveToNext = false;
-                            for (auto &oneChallenge : counterEvidence[unchallengedForks[forkToChallenge][k]])
+                            for (auto &oneChallenge : crossChainCounterEvidence[unchallengedForks[forkToChallenge][k]])
                             {
                                 if (!std::get<0>(oneChallenge).evidence.chainObjects.size() ||
                                     std::get<0>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
@@ -5396,7 +5397,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                         for (int challengeNum = k; challengeNum < unchallengedForks[forkToChallenge].size(); challengeNum++)
                         {
                             bool moveToNext = false;
-                            for (auto &oneChallenge : counterEvidence[unchallengedForks[forkToChallenge][k]])
+                            for (auto &oneChallenge : crossChainCounterEvidence[unchallengedForks[forkToChallenge][k]])
                             {
                                 if (!std::get<0>(oneChallenge).evidence.chainObjects.size() ||
                                     std::get<0>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
