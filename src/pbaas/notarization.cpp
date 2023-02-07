@@ -6566,7 +6566,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     // a verified challenge showing a more powerful chain than the range confirming.
 
     int verifiedSize;
-    if (isFirstConfirmedCND && verifiedSize == 0)
+    if (isFirstConfirmedCND &&
+        proofRootArr.size() &&
+        bestFork.size() > 1 &&
+        uni_get_int(proofRootArr[0]) != bestFork[1])
     {
         UniValue newProofRootArr(UniValue::VARR);
         newProofRootArr.push_back((int)0);
