@@ -6569,7 +6569,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     if (isFirstConfirmedCND &&
         proofRootArr.size() &&
         bestFork.size() > 1 &&
-        uni_get_int(proofRootArr[0]) == bestFork[1])
+        uni_get_int(proofRootArr[0]) == 1)
     {
         UniValue newProofRootArr(UniValue::VARR);
         newProofRootArr.push_back((int)0);
