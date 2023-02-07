@@ -4902,6 +4902,11 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     //
 
     UniValue validIndexesUni = find_value(bestProofRootResult, "validindexes");
+    if (LogAcceptCategory("earnednotarizations") &&
+        validIndexesUni.size() != proofRootsUni.size())
+    {
+        LogPrintf("%s: not all indexes are valid\n", __func__);
+    }
 
     // now, we have the index for the transaction and notarization we agree with, a list of those we consider invalid,
     // and the most recent notarization to use when creating the new one
@@ -4923,6 +4928,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         }
     }
 
+    std::set<int> challengedIndexes;
     if (externalSystem.chainDefinition.IsPBaaSChain())
     {
         // all challenges we make will require requesting challenge data from the notary chain
@@ -4992,6 +4998,8 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                         {
                             for (int challengeNum = k; challengeNum < unchallengedForks[forkToChallenge].size(); challengeNum++)
                             {
+                                challengedIndexes.insert(i);
+
                                 // is there already counter evidence for this entry?
                                 // 1) if there is a fraud proof, prune and move on
                                 // 2) if there is a validity challenge, only add one if we intend to
@@ -5098,6 +5106,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                     // all descendents of this entry are invalid according to our perspective
                     // look for the first fork that agrees and create challenges until the end
                     // then look for the next
+                    challengedIndexes.insert(i);
                     int invalidIndex = unchallengedForks[j][k];
                     for (int forkToChallenge = 0; forkToChallenge < unchallengedForks.size(); forkToChallenge++)
                     {
@@ -5531,13 +5540,14 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             auto it = cnd.vtx[i].second.proofRoots.find(SystemID);
             if (it != cnd.vtx[i].second.proofRoots.end())
             {
-                if (it->second.rootHeight < lastStableProofRoot.rootHeight)
+                if (it->second.rootHeight < lastStableProofRoot.rootHeight && !challengedIndexes.count(notaryIdx))
                 {
                     notaryIdx = i;
                     break;
                 }
                 else if (it->second.rootHeight == lastStableProofRoot.rootHeight &&
-                        it->second == lastStableProofRoot && notaryIdx != i)
+                        it->second == lastStableProofRoot && notaryIdx != i &&
+                        !challengedIndexes.count(notaryIdx))
                 {
                     LogPrintf("%s: notarization was rejected with identical proof root to last stable: %s\n", __func__, cnd.vtx[i].second.ToUniValue().write(1,2).c_str());
                     notaryIdx = i;
@@ -5545,6 +5555,31 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             }
         }
     }
+
+
+
+
+    // if the notarization we are planning to confirm has counter evidence, then
+    // we will post primary evidence to prove our version of the chain
+    for (auto &oneChallenge : localCounterEvidence[notaryIdx])
+    {
+        if (!std::get<1>(oneChallenge).evidence.chainObjects.size() ||
+            std::get<1>(oneChallenge).evidence.chainObjects[0]->objectType != CHAINOBJ_PROOF_ROOT)
+        {
+            continue;
+        }
+        // if the challenge root is the same as the root being challenged, it is a skip challenge
+        // and would not be on-chain or in mempool if not valid. we cannot confirm this notarization
+        if (((CChainObject<CProofRoot> *)std::get<1>(oneChallenge).evidence.chainObjects[0])->object ==
+            cnd.vtx[notaryIdx].second.proofRoots[SystemID])
+        {
+            continue;
+        }
+        break;
+    }
+
+
+
 
     {
         // take the lock again, now that we're back from calling out
@@ -5555,6 +5590,12 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         {
             return state.Error("stale-block");
         }
+
+
+
+
+
+
 
         const CTransaction &priorNotarizationTx = txes[notaryIdx].first;
         uint256 priorBlkHash = txes[notaryIdx].second;
@@ -5685,6 +5726,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 }
             }
             if (prevNotarizationIdx >= 0 &&
+                lastPBN.IsValid() &&
                 lastPBN.SetMirror(false) &&
                 !lastPBN.IsMirror())
             {

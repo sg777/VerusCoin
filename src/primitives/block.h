@@ -554,7 +554,7 @@ class CBlockHeaderProof
 {
 public:
     enum {
-        VERSION_INVALID = 0,
+        VERSION_INVALID = INT32_MAX,
         VERSION_CURRENT = 0,
         VERSION_FIRST = 0,
         VERSION_LAST = 0,
@@ -2319,7 +2319,17 @@ public:
         return challengeKey;
     }
 
+    static std::string PrimaryProofKeyName()
+    {
+        return "vrsc::evidence.primaryproof";
+    }
 
+    static uint160 PrimaryProofKey()
+    {
+        static uint160 nameSpace;
+        static uint160 proofKey = CVDXF::GetDataKey(PrimaryProofKeyName(), nameSpace);
+        return proofKey;
+    }
 
     CIdentitySignature::ESignatureVerification SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType);
     CIdentitySignature::ESignatureVerification SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType);
