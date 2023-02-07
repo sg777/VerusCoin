@@ -6583,7 +6583,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     {
         if (verifiedSize >= bestFork.size() ||
             (!(isFirstConfirmedCND && verifiedSize == 0) &&
-              uni_get_int(proofRootArr[verifiedSize]) != bestFork[verifiedSize]))
+              uni_get_int(proofRootArr[verifiedSize]) != verifiedSize))
         {
             break;
         }
