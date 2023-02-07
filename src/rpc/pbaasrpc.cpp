@@ -3825,17 +3825,18 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                 {
                     CChainPower curPower =
                         CChainPower::ExpandCompactPower(notarizationData.vtx[notarizationData.forks[i].back()].second.proofRoots[currencyID].compactPower);
-                    if (curPower > best)
+                    if (chainDef.proofProtocol == chainDef.PROOF_PBAASMMR && curPower > best)
                     {
                         best = curPower;
-                        bestHeight = notarizationData.vtx[notarizationData.forks[i].back()].second.proofRoots[currencyID].rootHeight;
+                        bestHeight = mapBlockIndex[(*optionalTxOut)[notarizationData.forks[i].back()].second]->GetHeight();
                         notarizationData.bestChain = i;
                     }
-                    else if (curPower == best &&
-                             notarizationData.vtx[notarizationData.forks[i].back()].second.proofRoots[currencyID].rootHeight > bestHeight)
+                    else if (chainDef.proofProtocol != chainDef.PROOF_PBAASMMR &&
+                             mapBlockIndex.count((*optionalTxOut)[notarizationData.forks[i].back()].second) &&
+                             mapBlockIndex[(*optionalTxOut)[notarizationData.forks[i].back()].second]->GetHeight() > bestHeight)
                     {
                         best = curPower;
-                        bestHeight = notarizationData.vtx[notarizationData.forks[i].back()].second.proofRoots[currencyID].rootHeight;
+                        bestHeight = mapBlockIndex[(*optionalTxOut)[notarizationData.forks[i].back()].second]->GetHeight();
                         notarizationData.bestChain = i;
                     }
                 }
