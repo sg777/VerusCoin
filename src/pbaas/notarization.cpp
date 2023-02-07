@@ -3662,7 +3662,9 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                            ((checkP.evalCode == EVAL_EARNEDNOTARIZATION || checkP.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
                             (foundNotarization = CPBaaSNotarization(checkP.vData[0])).IsValid() &&
                             foundNotarization.currencyID == curID &&
-                            (foundNotarization.IsBlockOneNotarization() || foundNotarization.IsPreLaunch()))))))
+                            (foundNotarization.IsBlockOneNotarization() ||
+                             foundNotarization.IsPreLaunch() ||
+                             foundNotarization.IsDefinitionNotarization()))))))
                     {
                         found = true;
                         firstUnspentFinalization.second = CInputDescriptor(inTx.vout[oneIn.prevout.n].scriptPubKey,
@@ -9051,12 +9053,6 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             // need 2 or more consecutive agreements and quorum of notary signatures.
             //
 
-            auto lastConfirmedNotarizationInfo = GetLastConfirmedNotarization(normalizedNotarization.currencyID, height - 1);
-            if (!std::get<0>(lastConfirmedNotarizationInfo))
-            {
-                return haveFullChain ? state.Error("Cannot locate prior confirmed notarization") : true;
-            }
-
             // Check the evidence for the prior notarization that we indend to confirm,
             // if there is valid counter-evidence, do not confirm. Instead, reject and replace it with the new pending.
             std::vector<CProofRoot> validCounterRoots;
@@ -9064,7 +9060,24 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             CProofRoot challengeStartRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
 
             bool primaryValidated = false;
-            if (!confirmNeedsProof || pNotaryCurrency->notarizationProtocol == pNotaryCurrency->NOTARIZATION_NOTARY_CHAINID)
+
+            auto lastConfirmedNotarizationInfo = GetLastConfirmedNotarization(normalizedNotarization.currencyID, height - 1);
+            if (!std::get<0>(lastConfirmedNotarizationInfo))
+            {
+                if (pNotaryCurrency->IsGateway())
+                {
+                    printf("%s: TODO: HARDENING - remove this, exception for gateway should not be needed with new GetLastConfirmedNotarization\n", __func__);
+                    primaryValidated = true;
+                }
+                else
+                {
+                    return haveFullChain ? state.Error("Cannot locate prior confirmed notarization") : true;
+                }
+            }
+
+            if (primaryValidated ||
+                !confirmNeedsProof ||
+                pNotaryCurrency->notarizationProtocol == pNotaryCurrency->NOTARIZATION_NOTARY_CHAINID)
             {
                 primaryValidated = true;
             }
