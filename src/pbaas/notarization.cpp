@@ -6017,28 +6017,50 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
         // make the earned notarization output
         cp = CCinit(&CC, EVAL_EARNEDNOTARIZATION);
-
-        if (systemDef.notarizationProtocol == systemDef.NOTARIZATION_NOTARY_CHAINID)
-        {
-            dests = std::vector<CTxDestination>({CIdentityID(systemDef.GetID())});
-        }
-        else
-        {
-            dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-        }
+        dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
         txOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &notarization))));
 
+        std::vector<int32_t> evidenceOuts;
         if (notarizationEvidence.IsValid())
         {
 
+            // now add the notary evidence and finalization that uses it to assert validity
+            // make the evidence notarization output
+            cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
+            dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
+            COptCCParams chkP;
+            CScript evidenceOutScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &notarizationEvidence));
+            if (!evidenceOutScript.IsPayToCryptoCondition(chkP))
+            {
+                LogPrintf("%s: failed to package evidence script from system %s\n", __func__, EncodeDestination(CIdentityID(SystemID)).c_str());
+                return false;
+            }
 
-            // TODO: HARDENING separate out the challenge specifics and prepare both a challenge evidence out and
-            // finalization
-
-
-
+            // the value should be considered for reduction
+            if (evidenceOutScript.size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
+            {
+                CNotaryEvidence emptyEvidence;
+                int baseOverhead = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &emptyEvidence)).size() + 128;
+                auto evidenceVec = notarizationEvidence.BreakApart(CScript::MAX_SCRIPT_ELEMENT_SIZE - baseOverhead);
+                if (!evidenceVec.size())
+                {
+                    LogPrintf("%s: failed to package evidence from system %s\n", __func__, EncodeDestination(CIdentityID(SystemID)).c_str());
+                    return false;
+                }
+                for (auto &oneProof : evidenceVec)
+                {
+                    dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+                    evidenceOuts.push_back(txOutputs.size());
+                    txOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &oneProof))));
+                }
+            }
+            else
+            {
+                evidenceOuts.push_back(txOutputs.size());
+                txOutputs.push_back(CTxOut(0, evidenceOutScript));
+            }
         }
 
         // make the finalization output(s)
@@ -6050,7 +6072,12 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
         // we need to store the input that we confirmed if we spent finalization outputs
-        CObjectFinalization of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION, notarization.currencyID, uint256(), txOutputs.size() - 1, height + 15);
+        CObjectFinalization of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION,
+                                                     notarization.currencyID,
+                                                     uint256(),
+                                                     txOutputs.size() - 1,
+                                                     height + 1);
+        of.evidenceOutputs = evidenceOuts;
         txOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &of))));
     }
     return true;
