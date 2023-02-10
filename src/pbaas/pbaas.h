@@ -230,7 +230,7 @@ public:
         MAX_NODES = 2,                                  // only provide 2 nodes per notarization
         MIN_NOTARIZATION_OUTPUT = 0,                    // minimum amount for notarization output
 
-        EXPECT_MIN_HEADER_PROOFS = 3,                   // if header proofs are needed, we need this many or number of blocks
+        EXPECT_MIN_HEADER_PROOFS = 1,                   // if header proofs are needed, we need this many or number of blocks
         MIN_EARNED_FOR_SIGNED = 2,                      // minimum earned notarizations to notarize with witnesses
         MIN_EARNED_FOR_AUTO = 4,                        // minimum earned notarizations to auto-notarize at any modulo
         NUM_BLOCKS_BEFORE_EXTENSION = 150,              // if we haven't confirmed a notarization in this long, modulo gets multiplied
@@ -261,6 +261,11 @@ public:
     inline static int32_t MinBlocksToStartNotarization(uint32_t notarizationBlockModulo)
     {
         return CCurrencyDefinition::MinBlocksToStartNotarization(notarizationBlockModulo);
+    }
+
+    inline static int32_t BlocksBeforeAlternateStakeEnforcement()
+    {
+        return 300;
     }
 
     inline static int32_t GetBlocksBeforeModuloExtension(uint32_t notarizationBlockModulo)

@@ -1693,6 +1693,7 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "getbestproofroot", 0},
     { "submitacceptednotarization", 0},
     { "submitchallenges", 0},
+    { "getnotarizationproofs", 0},
     { "submitimports", 0},
     { "height_MoM", 1},
     { "calc_MoM", 2},

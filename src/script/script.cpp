@@ -1140,9 +1140,13 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                         destinations.insert(CIndexID(
                             CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::EarnedNotarizationKey(), objHash)
                         ));
-                        destinations.insert(CIndexID(
-                            CCrossChainRPCData::GetConditionID(CPBaaSNotarization::PriorNotarizationKey(), notarization.prevNotarization.hash, notarization.prevNotarization.n)
-                        ));
+                        // index forward links for earned notarizations only
+                        if (evalCode == EVAL_EARNEDNOTARIZATION)
+                        {
+                            destinations.insert(CIndexID(
+                                CCrossChainRPCData::GetConditionID(CPBaaSNotarization::PriorNotarizationKey(), notarization.prevNotarization.hash, notarization.prevNotarization.n)
+                            ));
+                        }
                     }
                 }
 
