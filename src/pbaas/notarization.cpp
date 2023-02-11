@@ -3953,8 +3953,26 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
 
     if (unspentFinalizations.size())
     {
-        std::pair<uint32_t, CInputDescriptor> firstUnspentFinalization = unspentFinalizations.back();
+        std::pair<uint32_t, CInputDescriptor> firstUnspentFinalization;
         bool error = false;
+        // make sure we can retrieve it
+        for (auto &oneFinalization : unspentFinalizations)
+        {
+            CTransaction checkTx;
+            COptCCParams checkP;
+            CObjectFinalization checkOf;
+            uint256 checkBlockHash;
+            if (myGetTransaction(oneFinalization.second.txIn.prevout.hash, checkTx, checkBlockHash) &&
+                checkTx.vout.size() > oneFinalization.second.txIn.prevout.n &&
+                checkTx.vout[oneFinalization.second.txIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(checkP) &&
+                checkP.IsValid())
+            {
+                firstUnspentFinalization = oneFinalization;
+                error = false;
+                break;
+            }
+            error = true;
+        }
 
         CObjectFinalization priorOf;
 
