@@ -5962,15 +5962,16 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 std::map<uint160, CProofRoot>::iterator pIT = lastPBN.proofRoots.find(ASSETCHAINS_CHAINID);
                 if (pIT != lastPBN.proofRoots.end() &&
                     (!priorNotarization.proofRoots.count(ASSETCHAINS_CHAINID) ||
-                    pIT->second.rootHeight <= priorNotarization.proofRoots.find(ASSETCHAINS_CHAINID)->second.rootHeight) &&
-                    CProofRoot::GetProofRoot(pIT->second.rootHeight) == pIT->second)
+                     pIT->second.rootHeight <= priorNotarization.proofRoots.find(ASSETCHAINS_CHAINID)->second.rootHeight) &&
+                     CProofRoot::GetProofRoot(pIT->second.rootHeight) == pIT->second)
                 {
                     break;
                 }
-                else if (pIT == crosschainCND.vtx[prevNotarizationIdx].second.proofRoots.end() &&
-                        !prevNotarizationIdx &&
-                        (crosschainCND.vtx[prevNotarizationIdx].second.IsDefinitionNotarization() ||
-                         (crosschainCND.vtx[prevNotarizationIdx].second.IsPreLaunch() && crosschainCND.vtx[prevNotarizationIdx].second.IsLaunchConfirmed())))
+                else if ((pIT == lastPBN.proofRoots.end() || !priorNotarization.proofRoots.count(ASSETCHAINS_CHAINID)) &&
+                          !prevNotarizationIdx &&
+                          (crosschainCND.vtx[prevNotarizationIdx].second.IsDefinitionNotarization() ||
+                           (crosschainCND.vtx[prevNotarizationIdx].second.IsPreLaunch() &&
+                            crosschainCND.vtx[prevNotarizationIdx].second.IsLaunchConfirmed())))
                 {
                     // use the 0th element if no proof root and it is definition or start, since it has no proof root to be wrong
                     break;
@@ -5994,7 +5995,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             }
             else
             {
-                notarization.hashPrevCrossNotarization.SetNull();
+                return state.Error(errorPrefix + "cannot get a valid cross chain prior confirmed notarization to create earned notarization");
             }
         }
 
