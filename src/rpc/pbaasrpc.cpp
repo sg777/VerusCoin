@@ -3581,6 +3581,10 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
     if (!cacheFound && !notarizationData.IsValid())
     {
         notarizationData = CChainNotarizationData(CChainNotarizationData::CURRENT_VERSION);
+        if (chainActive.Height() == 0)
+        {
+            return false;
+        }
         std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> lastFinalized = GetLastConfirmedNotarization(currencyID, chainActive.Height());
         if (std::get<0>(lastFinalized) == 0)
         {
