@@ -4632,7 +4632,8 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
 
                     if ((priorNotarizationRef.hash.IsNull() && !priorRoot.IsValid()) || !confirmRoot.IsValid())
                     {
-                        oneRetObj.pushKV("error", "Invalid notarization reference or missing/invalid proof root");
+                        oneRetObj.pushKV("error", "Invalid notarization reference or missing/invalid proof root\npriorroot: " +
+                                                   priorRoot.ToUniValue().write(1,2) + "\nconfirmroot: " + priorRoot.ToUniValue().write(1,2));
                         break;
                     }
                     if (priorRoot.IsValid() && (priorRoot.rootHeight <= 0 || priorRoot.rootHeight >= confirmRoot.rootHeight))

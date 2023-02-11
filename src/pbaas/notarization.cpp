@@ -5776,7 +5776,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             notarizationEvidence.output = cnd.vtx[notaryIdx].first;
 
             newProofRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::PrimaryProofKey())));
-            newProofRequest.pushKV("priorroot", crosschainCND.vtx[notaryIdx].first.ToUniValue());
+            newProofRequest.pushKV("priorroot", crosschainCND.vtx[notaryIdx].second.proofRoots[SystemID].ToUniValue());
             if (challengeRoots.size())
             {
                 newProofRequest.pushKV("challengeroots", challengeRoots);
