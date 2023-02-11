@@ -4760,8 +4760,6 @@ bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<std
     std::vector<CAddressUnspentDbEntry> confirmedUTXOs;
     std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> unconfirmedUTXOs;
 
-    CCoins coin;
-
     if (!GetAddressUnspent(indexID, CScript::P2IDX, confirmedUTXOs) ||
         !mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexID, CScript::P2IDX}}), unconfirmedUTXOs))
     {

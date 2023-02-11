@@ -623,6 +623,9 @@ public:
                                          CPBaaSNotarization &notarization);
 
     bool FindEarnedNotarization(CObjectFinalization &finalization, CAddressIndexDbEntry *pEarnedNotarizationIndex=nullptr) const;
+    static bool FindFinalizedIndexByVDXFKey(const uint160 &notarizationIdxKey,
+                                            CObjectFinalization &confirmedFinalization,
+                                            CAddressIndexDbEntry &earnedNotarizationIndex);
 
     // accepts enough information to build a local accepted notarization transaction
     // miner fees are deferred until an import that uses this notarization, in which case

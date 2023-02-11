@@ -403,6 +403,58 @@ public:
     UniValue ToUniValue() const;
 };
 
+class CPrimaryProofDescriptor
+{
+public:
+    enum {
+        VERSION_INVALID = 0,
+        VERSION_FIRST = 1,
+        VERSION_LAST = 1,
+        VERSION_CURRENT = VERSION_LAST
+    };
+
+    uint32_t version;
+    std::vector<CUTXORef> challengeOutputs;
+
+    CPrimaryProofDescriptor(uint32_t Version=VERSION_INVALID) : version(Version) {}
+
+    CPrimaryProofDescriptor(const std::vector<CUTXORef> &ChallengeOutputs,
+                            uint32_t Version=VERSION_CURRENT) :
+                            version(Version), challengeOutputs(ChallengeOutputs) {}
+
+    CPrimaryProofDescriptor(std::vector<unsigned char> vch)
+    {
+        ::FromVector(vch, *this);
+    }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action) {
+        READWRITE(version);
+        int vecSize = challengeOutputs.size();
+        READWRITE(VARINT(vecSize));
+        if (challengeOutputs.size() != vecSize)
+        {
+            challengeOutputs.resize(vecSize);
+        }
+        for (auto &oneElem : challengeOutputs)
+        {
+            READWRITE(oneElem);
+        }
+    }
+
+    std::vector<unsigned char> AsVector()
+    {
+        return ::AsVector(*this);
+    }
+
+    bool IsValid() const
+    {
+        return version >= VERSION_FIRST && version <= VERSION_LAST;
+    }
+};
+
 class CChainNotarizationData
 {
 public:

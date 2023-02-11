@@ -886,6 +886,12 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             newNotarization.prevNotarization = CUTXORef();
             newNotarization.prevHeight = 0;
 
+            tempLastNotarization = lastNotarization;
+            tempLastNotarization.SetMirror(false);
+            CNativeHashWriter hw;
+            hw << tempLastNotarization;
+            newNotarization.hashPrevCrossNotarization = hw.GetHash();
+
             // create an import based on launch conditions that covers all pre-allocations and uses the initial notarization.
             // generate outputs, then fill in numOutputs
             CCrossChainImport cci = CCrossChainImport(newCurrency.launchSystemID,
@@ -2289,9 +2295,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                 int32_t confirmedInput = -1;
                 CValidationState state;
                 CPBaaSNotarization earnedNotarization;
-
-                // TODO: HARDENING - get this chain and cross chain notarizations from CreateEarnedNotarization
-                // or use an LRU cache and add age
 
                 int numOuts = coinbaseTx.vout.size();
                 if (CPBaaSNotarization::CreateEarnedNotarization(ConnectedChains.FirstNotaryChain(),

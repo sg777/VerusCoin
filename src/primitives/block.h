@@ -2331,6 +2331,18 @@ public:
         return proofKey;
     }
 
+    static std::string NotarizationTipKeyName()
+    {
+        return "vrsc::evidence.notarizationtip";
+    }
+
+    static uint160 NotarizationTipKey()
+    {
+        static uint160 nameSpace;
+        static uint160 proofKey = CVDXF::GetDataKey(NotarizationTipKeyName(), nameSpace);
+        return proofKey;
+    }
+
     CIdentitySignature::ESignatureVerification SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType);
     CIdentitySignature::ESignatureVerification SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType);
 

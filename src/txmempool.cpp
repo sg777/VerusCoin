@@ -267,7 +267,6 @@ std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> CTxMemPool
         if (oneOut.first.spending)
         {
             CTransaction priorOutTx;
-            uint256 blockHash;
             CTransaction curTx;
 
             if (mempool.lookup(oneOut.first.txhash, curTx) &&

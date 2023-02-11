@@ -4256,7 +4256,6 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
 
             uint160 challengeTypeKey = ParseVDXFKey(uni_get_str(find_value(params[0][i], "type")));
             EChallengeTypes challengeType = challengeTypeKey == CNotaryEvidence::SkipChallengeKey() ? SKIP_CHALLENGE :
-                                            challengeTypeKey == CNotaryEvidence::ValidityChallengeKey() ? VALIDITY_CHALLENGE :
                                             challengeTypeKey == CNotaryEvidence::PrimaryProofKey() ? PRIMARY_PROOF :
                                             INVALID_CHALLENGE;
 
@@ -4690,13 +4689,13 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                     CCrossChainProof challengeProof(CCrossChainProof::VERSION_INVALID);
                     if (challengeRoots.size())
                     {
+                        CPrimaryProofDescriptor proofDescr(CPrimaryProofDescriptor::VERSION_CURRENT);
                         challengeProof.version = CCrossChainProof::VERSION_CURRENT;
-                        std::vector<CUTXORef> challengeRefs;
                         for (auto &oneTxRef : challengeRoots)
                         {
-                            challengeRefs.push_back(std::get<0>(oneTxRef));
+                            proofDescr.challengeOutputs.push_back(std::get<0>(oneTxRef));
                         }
-                        challengeProof << CEvidenceData(CNotaryEvidence::PrimaryProofKey(), ::AsVector(challengeRefs));
+                        challengeProof << CEvidenceData(CNotaryEvidence::PrimaryProofKey(), ::AsVector(proofDescr));
                         for (auto &oneChallengeProof : challengeRoots)
                         {
                             challengeProof << std::get<1>(oneChallengeProof);
