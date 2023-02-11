@@ -2380,8 +2380,7 @@ public:
         return version >= VERSION_FIRST &&
                version <= VERSION_LAST &&
                !systemID.IsNull() &&
-               output.IsValid() &&
-               !evidence.Empty();
+               output.IsValid();
     }
 };
 
