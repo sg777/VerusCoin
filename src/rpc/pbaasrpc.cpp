@@ -3588,8 +3588,8 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> lastFinalized = GetLastConfirmedNotarization(currencyID, chainActive.Height());
         if (std::get<0>(lastFinalized) == 0)
         {
-            LogPrintf("No confirmed notarization for %s, may need to reindex\n", EncodeDestination(CIdentityID(currencyID)).c_str());
-            printf("No confirmed notarization for %s, may need to reindex\n", EncodeDestination(CIdentityID(currencyID)).c_str());
+            LogPrintf("No confirmed notarization for %s, if this is not transient, node may need to reindex\n", EncodeDestination(CIdentityID(currencyID)).c_str());
+            printf("No confirmed notarization for %s, if this is not transient, node may need to reindex\n", EncodeDestination(CIdentityID(currencyID)).c_str());
             return false;
         }
         CTransaction oneNTx;
