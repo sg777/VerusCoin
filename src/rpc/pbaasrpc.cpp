@@ -3554,6 +3554,10 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         notarizationData.lastConfirmed = 0;
         notarizationData.forks.push_back(std::vector<int>({0}));
         notarizationData.bestChain = 0;
+        if (pCounterEvidence)
+        {
+            pCounterEvidence->resize(notarizationData.vtx.size());
+        }
         return true;
     }
     else if (!chainDef.IsToken() && height > 0)
@@ -3780,55 +3784,56 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
 
     // if we have unconfirmed notarizations and have been asked for
     // counter evidence, get any that may be available
-    if (pCounterEvidence &&
-        notarizationData.vtx.size() > 1)
+    if (pCounterEvidence)
     {
-        std::map<CUTXORef, int> vtxMap;
-        auto proofRootIt = notarizationData.vtx[0].second.proofRoots.find(ASSETCHAINS_CHAINID);
-        uint32_t startHeight = 0;
-        if (proofRootIt != notarizationData.vtx[0].second.proofRoots.end())
-        {
-            // get block
-            auto it = mapBlockIndex.find((*optionalTxOut)[0].second);
-            startHeight = it == mapBlockIndex.end() ? 0 : it->second->GetHeight();
-        }
-
         pCounterEvidence->resize(notarizationData.vtx.size());
-
-        for (int i = 1; i < notarizationData.vtx.size(); i++)
+        if (notarizationData.vtx.size() > 1)
         {
-            // look for counter-evidence
-            std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>>
-                finalizations =
-                    CObjectFinalization::GetFinalizations(notarizationData.vtx[i].first,
-                                                          CObjectFinalization::FinalizationIsChallengeKey(),
-                                                          startHeight,
-                                                          0);
-
-            CValidationState state;
-            for (auto &oneChallenge : finalizations)
+            std::map<CUTXORef, int> vtxMap;
+            auto proofRootIt = notarizationData.vtx[0].second.proofRoots.find(ASSETCHAINS_CHAINID);
+            uint32_t startHeight = 0;
+            if (proofRootIt != notarizationData.vtx[0].second.proofRoots.end())
             {
-                auto evidenceChunks =
-                    std::get<3>(oneChallenge).GetFinalizationEvidence(std::get<2>(oneChallenge), std::get<1>(oneChallenge).n, state);
-                for (auto &oneEItem : evidenceChunks)
+                // get block
+                auto it = mapBlockIndex.find((*optionalTxOut)[0].second);
+                startHeight = it == mapBlockIndex.end() ? 0 : it->second->GetHeight();
+            }
+
+            for (int i = 1; i < notarizationData.vtx.size(); i++)
+            {
+                // look for counter-evidence
+                std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>>
+                    finalizations =
+                        CObjectFinalization::GetFinalizations(notarizationData.vtx[i].first,
+                                                            CObjectFinalization::FinalizationIsChallengeKey(),
+                                                            startHeight,
+                                                            0);
+
+                CValidationState state;
+                for (auto &oneChallenge : finalizations)
                 {
-                    // if we find a rejection, check it
-                    if (oneEItem.second.IsRejected())
+                    auto evidenceChunks =
+                        std::get<3>(oneChallenge).GetFinalizationEvidence(std::get<2>(oneChallenge), std::get<1>(oneChallenge).n, state);
+                    for (auto &oneEItem : evidenceChunks)
                     {
-                        CProofRoot entropyRoot;
-                        CProofRoot challengeStartRoot;
-                        bool invalidates;
-                        CProofRoot alternateRoot =
-                            IsValidChallengeEvidence(chainDef,
-                                                     notarizationData.vtx[i].second.proofRoots[currencyID],
-                                                     oneEItem.second,
-                                                     (*optionalTxOut)[i].second,
-                                                     invalidates,
-                                                     challengeStartRoot,
-                                                     std::get<0>(oneChallenge) - 1);
-                        if (alternateRoot.IsValid())
+                        // if we find a rejection, check it
+                        if (oneEItem.second.IsRejected())
                         {
-                            (*pCounterEvidence)[i].push_back(std::make_tuple(oneEItem.first, oneEItem.second, alternateRoot, challengeStartRoot));
+                            CProofRoot entropyRoot;
+                            CProofRoot challengeStartRoot;
+                            bool invalidates;
+                            CProofRoot alternateRoot =
+                                IsValidChallengeEvidence(chainDef,
+                                                        notarizationData.vtx[i].second.proofRoots[currencyID],
+                                                        oneEItem.second,
+                                                        (*optionalTxOut)[i].second,
+                                                        invalidates,
+                                                        challengeStartRoot,
+                                                        std::get<0>(oneChallenge) - 1);
+                            if (alternateRoot.IsValid())
+                            {
+                                (*pCounterEvidence)[i].push_back(std::make_tuple(oneEItem.first, oneEItem.second, alternateRoot, challengeStartRoot));
+                            }
                         }
                     }
                 }
