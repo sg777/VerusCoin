@@ -5949,7 +5949,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
         if (!systemDef.IsGateway() && !(currencyStatesUni.isArray() && currencyStatesUni.size()))
         {
-            return state.Error(errorPrefix + "invalid or missing currency state data from notary");
+            return state.Error(errorPrefix + "invalid or missing currency state data from notary chain");
         }
 
         if (crosschainCND.vtx.size())
@@ -5959,7 +5959,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             for (prevNotarizationIdx = crosschainCND.vtx.size() - 1; prevNotarizationIdx >= 0; prevNotarizationIdx--)
             {
                 lastPBN = crosschainCND.vtx[prevNotarizationIdx].second;
-
                 std::map<uint160, CProofRoot>::iterator pIT = lastPBN.proofRoots.find(ASSETCHAINS_CHAINID);
                 if (pIT != lastPBN.proofRoots.end() &&
                     (!priorNotarization.proofRoots.count(ASSETCHAINS_CHAINID) ||
@@ -5970,7 +5969,8 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 }
                 else if (pIT == crosschainCND.vtx[prevNotarizationIdx].second.proofRoots.end() &&
                         !prevNotarizationIdx &&
-                        (crosschainCND.vtx[prevNotarizationIdx].second.IsDefinitionNotarization() || crosschainCND.vtx[prevNotarizationIdx].second.IsLaunchCleared()))
+                        (crosschainCND.vtx[prevNotarizationIdx].second.IsDefinitionNotarization() ||
+                         (crosschainCND.vtx[prevNotarizationIdx].second.IsPreLaunch() && crosschainCND.vtx[prevNotarizationIdx].second.IsLaunchConfirmed())))
                 {
                     // use the 0th element if no proof root and it is definition or start, since it has no proof root to be wrong
                     break;
