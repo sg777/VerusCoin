@@ -5647,7 +5647,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             // a pre-existing notarization. we decide which later on
             if (challenges.size())
             {
-                LogPrint("notarization", "Getting challenge proofs from local chain %s", challenges.write(1,2).c_str());
+                LogPrint("notarization", "Getting challenge proofs from local chain %s\n", challenges.write(1,2).c_str());
                 params = UniValue(UniValue::VARR);
                 params.push_back(challenges);
                 try
@@ -5657,7 +5657,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 {
                     challenges = NullUniValue;
                 }
-                LogPrint("notarization", "Challenge proofs returned from local chain %s", challenges.write(1,2).c_str());
+                LogPrint("notarization", "Challenge proofs returned from local chain %s\n", challenges.write(1,2).c_str());
             }
 
             // if we have challenges, submit them
@@ -5675,7 +5675,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                         }
                     }
                 }
-                LogPrint("notarization", "Submitting challenges %s", submitParams.write(1,2).c_str());
+                LogPrint("notarization", "Submitting challenges %s\n", submitParams.write(1,2).c_str());
                 UniValue challengeResult;
                 params = UniValue(UniValue::VARR);
                 params.push_back(submitParams);
@@ -5686,7 +5686,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 {
                     challengeResult = NullUniValue;
                 }
-                LogPrint("notarization", "Response from challenges %s", challengeResult.write(1,2).c_str());
+                LogPrint("notarization", "Response from challenges %s\n", challengeResult.write(1,2).c_str());
             }
         }
     }
@@ -5789,7 +5789,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             challengeRequests.push_back(newProofRequest);
         }
 
-        LogPrint("notarization", "Getting challenge proofs %s", challengeRequests.write(1,2).c_str());
+        LogPrint("notarization", "Getting challenge proofs %s\n", challengeRequests.write(1,2).c_str());
         params = UniValue(UniValue::VARR);
         params.push_back(challengeRequests);
         try
@@ -5799,7 +5799,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         {
             challengeRequests = NullUniValue;
         }
-        LogPrint("notarization", "Challenge proofs returned %s", challengeRequests.write(1,2).c_str());
+        LogPrint("notarization", "Challenge proofs returned %s\n", challengeRequests.write(1,2).c_str());
 
         // separate out skip challenges and submit those now to ensure they just get removed from the equation
         UniValue skipChallenges(UniValue::VARR);
@@ -5827,7 +5827,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
         if (skipChallenges.size())
         {
-            LogPrint("notarization", "Submitting skip challenges to local chain %s", skipChallenges.write(1,2).c_str());
+            LogPrint("notarization", "Submitting skip challenges to local chain %s\n", skipChallenges.write(1,2).c_str());
             params = UniValue(UniValue::VARR);
             params.push_back(skipChallenges);
             try
@@ -5838,7 +5838,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             {
                 skipChallenges = NullUniValue;
             }
-            LogPrint("notarization", "Results of submissions returned from local chain %s", skipChallenges.write(1,2).c_str());
+            LogPrint("notarization", "Results of submissions returned from local chain %s\n", skipChallenges.write(1,2).c_str());
         }
     }
 
