@@ -2124,7 +2124,11 @@ public:
     uint8_t state;                          // confirmed or rejected if signed
     CCrossChainProof evidence;              // evidence in the form of signatures, cross chain proofs of transactions, block hashes, and power
 
-    CNotaryEvidence(uint8_t EvidenceType=TYPE_NOTARY_EVIDENCE, uint8_t nVersion=VERSION_CURRENT, uint8_t State=STATE_CONFIRMED,const uint160 &System=ASSETCHAINS_CHAINID) : version(nVersion), type(EvidenceType), state(State) {}
+    CNotaryEvidence(uint8_t EvidenceType=TYPE_NOTARY_EVIDENCE,
+                    uint8_t nVersion=VERSION_CURRENT,
+                    uint8_t State=STATE_CONFIRMED,
+                    const uint160 &System=ASSETCHAINS_CHAINID) :
+                    version(nVersion), type(EvidenceType), state(State), systemID(System) {}
     CNotaryEvidence(const uint160 &sysID,
                     const CUTXORef &finalRef,
                     uint8_t State=STATE_CONFIRMED,
