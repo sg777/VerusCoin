@@ -1995,6 +1995,17 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
 
     for (auto oneConfirmed : CObjectFinalization::GetUnspentConfirmedFinalizations(currencyID))
     {
+        std::pair<uint32_t, CInputDescriptor> firstUnspentFinalization;
+        bool error = false;
+        // make sure we can retrieve it
+
+        CTransaction checkTx;
+        uint256 checkBlockHash;
+        if (!myGetTransaction(oneConfirmed.second.txIn.prevout.hash, checkTx, checkBlockHash))
+        {
+            continue;
+        }
+
         // since we are creating a new, confirmed finalization, spend old one here
         // determine the notarization output that this is referring to
         COptCCParams p;
