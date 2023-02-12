@@ -1552,7 +1552,7 @@ public:
                     return false;
             }
         }
-        return (version >= VERSION_FIRST || version <= VERSION_LAST);
+        return (version >= VERSION_FIRST && version <= VERSION_LAST);
     }
 
     bool Empty() const

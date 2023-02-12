@@ -5789,17 +5789,20 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             challengeRequests.push_back(newProofRequest);
         }
 
-        LogPrint("notarization", "Getting challenge proofs %s\n", challengeRequests.write(1,2).c_str());
-        params = UniValue(UniValue::VARR);
-        params.push_back(challengeRequests);
-        try
+        if (challengeRequests.size())
         {
-            challengeRequests = find_value(RPCCallRoot("getnotarizationproofs", params), "result");
-        } catch (exception e)
-        {
-            challengeRequests = NullUniValue;
+            LogPrint("notarization", "Getting challenge proofs %s\n", challengeRequests.write(1,2).c_str());
+            params = UniValue(UniValue::VARR);
+            params.push_back(challengeRequests);
+            try
+            {
+                challengeRequests = find_value(RPCCallRoot("getnotarizationproofs", params), "result");
+            } catch (exception e)
+            {
+                challengeRequests = NullUniValue;
+            }
+            LogPrint("notarization", "Challenge proofs returned %s\n", challengeRequests.write(1,2).c_str());
         }
-        LogPrint("notarization", "Challenge proofs returned %s\n", challengeRequests.write(1,2).c_str());
 
         // separate out skip challenges and submit those now to ensure they just get removed from the equation
         UniValue skipChallenges(UniValue::VARR);
