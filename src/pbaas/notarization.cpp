@@ -5691,11 +5691,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         }
     }
 
-    // if we have enough notarizations in a row with the ones we agree with and
-    // have no more powerful alternatives, we can finalize the notarization if this is auto-notarization.
-    //
-    // CPBaaSNotarization::MinBlocksToAutoNotarization(ConnectedChains.ThisChain().blockNotarizationModulo)
-
+    // get our best index to update next notarization's proof root
     int32_t notaryIdx = isGatewayFirstContact ? 0 : uni_get_int(find_value(bestProofRootResult, "bestindex"), -1);
 
     UniValue lastConfirmedUni = find_value(bestProofRootResult, "lastconfirmedproofroot");
@@ -5725,8 +5721,8 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                     break;
                 }
                 else if (it->second.rootHeight == lastStableProofRoot.rootHeight &&
-                        it->second == lastStableProofRoot && notaryIdx != i &&
-                        !challengedIndexes.count(notaryIdx))
+                         it->second == lastStableProofRoot && notaryIdx != i &&
+                         !challengedIndexes.count(notaryIdx))
                 {
                     LogPrintf("%s: notarization was rejected with identical proof root to last stable: %s\n", __func__, cnd.vtx[i].second.ToUniValue().write(1,2).c_str());
                     notaryIdx = i;
@@ -5763,7 +5759,14 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     CProofRoot latestProofRoot = lastConfirmedProofRoot.IsValid() ? lastConfirmedProofRoot : lastStableProofRoot;
     if (externalSystem.chainDefinition.IsPBaaSChain() && cnd.vtx[notaryIdx].second.proofRoots.count(SystemID))
     {
-        if (latestProofRoot.IsValid())
+        auto lastConfirmedRootIt = cnd.vtx[cnd.lastConfirmed].second.proofRoots.find(SystemID);
+        if (lastConfirmedRootIt != cnd.vtx[cnd.lastConfirmed].second.proofRoots.end() &&
+            latestProofRoot.rootHeight <= lastConfirmedRootIt->second.rootHeight)
+        {
+            // if there is no change in proof root, we need no evidence to support a new notarization
+            latestProofRoot = lastConfirmedRootIt->second;
+        }
+        else if (latestProofRoot.IsValid())
         {
             // if we have challenge roots them to our
             // request for proof along with challenges
@@ -5791,7 +5794,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
         if (challengeRequests.size())
         {
-            LogPrint("notarization", "Getting challenge proofs %s\n", challengeRequests.write(1,2).c_str());
+            LogPrint("notarization", "Getting notarization proofs %s\n", challengeRequests.write(1,2).c_str());
             params = UniValue(UniValue::VARR);
             params.push_back(challengeRequests);
             try
@@ -5801,7 +5804,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             {
                 challengeRequests = NullUniValue;
             }
-            LogPrint("notarization", "Challenge proofs returned %s\n", challengeRequests.write(1,2).c_str());
+            LogPrint("notarization", "Challenge notarization returned %s\n", challengeRequests.write(1,2).c_str());
         }
 
         // separate out skip challenges and submit those now to ensure they just get removed from the equation
@@ -5845,9 +5848,9 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         }
     }
 
-    if (!latestProofRoot.IsValid() || notarization.proofRoots[latestProofRoot.systemID].rootHeight >= latestProofRoot.rootHeight)
+    if (!latestProofRoot.IsValid() || notarization.proofRoots[latestProofRoot.systemID].rootHeight > latestProofRoot.rootHeight)
     {
-        return state.Error("no-new-stable-proof-root");
+        return state.Error("cannot-regress-stable-proof-root");
     }
 
     {
@@ -6003,10 +6006,21 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         }
 
         notarization.currencyStates.clear();
+        bool useLastCurrencyState = priorNotarization.proofRoots.count(SystemID) &&
+                                        latestProofRoot.rootHeight == priorNotarization.proofRoots.find(SystemID)->second.rootHeight ?
+                                    true : false;
         for (int i = 0; i < currencyStatesUni.size(); i++)
         {
             CCoinbaseCurrencyState oneCurState(currencyStatesUni[i]);
             CCurrencyDefinition oneCurDef;
+
+            if (useLastCurrencyState &&
+                priorNotarization.currencyID != oneCurState.GetID() &&
+                !priorNotarization.currencyStates.count(oneCurState.GetID()))
+            {
+                // don't include new currency states if nothing should change
+                continue;
+            }
             if (!oneCurState.IsValid())
             {
                 return state.Error(errorPrefix + "invalid or missing currency state data from notary");
@@ -6025,11 +6039,13 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 uint160 oneCurDefID = oneCurDef.GetID();
                 if (notarization.currencyID == oneCurDefID)
                 {
-                    notarization.currencyState = oneCurState;
+                    notarization.currencyState = useLastCurrencyState ? priorNotarization.currencyState : oneCurState;
                 }
                 else
                 {
-                    notarization.currencyStates[oneCurDefID] = oneCurState;
+                    notarization.currencyStates[oneCurDefID] = useLastCurrencyState ?
+                        priorNotarization.currencyStates.find(oneCurDefID)->second :
+                        oneCurState;
                 }
             }
         }
@@ -6079,6 +6095,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
         txOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &notarization))));
+        int notarizationOutNum = txOutputs.size() - 1;
 
         std::vector<int32_t> evidenceOuts;
         if (notarizationEvidence.IsValid())
@@ -6134,7 +6151,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         CObjectFinalization of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION,
                                                      notarization.currencyID,
                                                      uint256(),
-                                                     txOutputs.size() - 1,
+                                                     notarizationOutNum,
                                                      height + 1);
         of.evidenceOutputs = evidenceOuts;
         txOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &of))));
@@ -8611,25 +8628,49 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                         CNotaryEvidence evidence(tx, outNum + 1, afterEvidence);
                         if (additionalEvidenceRequired)
                         {
-                            if (!evidence.IsValid())
+                            // if the alternate chain information has not progressed at all, we do not
+                            // need to verify further evidence
+                            if (priorNotarization.proofRoots.count(currentNotarization.currencyID) &&
+                                priorNotarization.proofRoots[currentNotarization.currencyID].rootHeight ==
+                                    currentNotarization.proofRoots[currentNotarization.currencyID].rootHeight)
                             {
-                                return state.Error("Invalid notary evidence for earned notarization");
+                                if (::AsVector(priorNotarization.currencyState) != ::AsVector(currentNotarization.currencyState))
+                                {
+                                    return state.Error("Currency state changed without proofroot change");
+                                }
+                                // verify that currency states have also not changed
+                                for (auto &oneState : priorNotarization.currencyStates)
+                                {
+                                    CCurrencyDefinition checkStateDef = ConnectedChains.GetCachedCurrency(oneState.second.GetID());
+                                    if (checkStateDef.systemID == currentNotarization.currencyID &&
+                                        ::AsVector(priorNotarization.currencyState) != ::AsVector(currentNotarization.currencyState))
+                                    {
+                                        return state.Error("Currency state changed without proofroot change 1");
+                                    }
+                                }
                             }
-
-                            // check proof
-                            uint256 entropyHash;
-                            if (!IsValidPrimaryChainEvidence(curDef,
-                                                             evidence,
-                                                             currentNotarization,
-                                                             std::get<0>(lastConfirmedNotarization),
-                                                             height - 1,
-                                                             &entropyHash,
-                                                             challengingRoots.size() ? challengingRoots[0] : CProofRoot(CProofRoot::TYPE_PBAAS,
-                                                                                                                        CProofRoot::VERSION_INVALID),
-                                                             priorNotarization.proofRoots[currentNotarization.currencyID]).IsValid())
+                            else
                             {
-                                return state.Error(std::string("Insufficient notary evidence for ") +
-                                                   (challengingRoots.size() ? "challenged" : "unchallenged") + " earned notarization");
+                                if (!evidence.IsValid())
+                                {
+                                    return state.Error("Invalid notary evidence for earned notarization");
+                                }
+
+                                // check proof
+                                uint256 entropyHash;
+                                if (!IsValidPrimaryChainEvidence(curDef,
+                                                                evidence,
+                                                                currentNotarization,
+                                                                std::get<0>(lastConfirmedNotarization),
+                                                                height - 1,
+                                                                &entropyHash,
+                                                                challengingRoots.size() ? challengingRoots[0] : CProofRoot(CProofRoot::TYPE_PBAAS,
+                                                                                                                            CProofRoot::VERSION_INVALID),
+                                                                priorNotarization.proofRoots[currentNotarization.currencyID]).IsValid())
+                                {
+                                    return state.Error(std::string("Insufficient notary evidence for ") +
+                                                    (challengingRoots.size() ? "challenged" : "unchallenged") + " earned notarization");
+                                }
                             }
                         }
                     }
