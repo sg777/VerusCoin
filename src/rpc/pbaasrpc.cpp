@@ -13865,6 +13865,7 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     if (identity.IsValid() && identity.name == CleanName(identity.name, parent, true))
     {
         ret.push_back(Pair("identity", identity.ToUniValue()));
+        ret.pushKV("fullyqualifiedname", ConnectedChains.GetFriendlyIdentityName(identity));
         ret.push_back(Pair("status", identity.IsRevoked() ? "revoked" : "active"));
         ret.push_back(Pair("canspendfor", canSpend));
         ret.push_back(Pair("cansignfor", canSign));
