@@ -4917,7 +4917,7 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                         }
                         evidence.evidence << CHashCommitments(blockCommitmentsSmall);
 
-                        int loopNum = std::min(std::max(rangeLen / NUM_HEADER_PROOF_RANGE_DIVISOR,
+                        int loopNum = std::min(std::max(rangeLen /CPBaaSNotarization::NUM_HEADER_PROOF_RANGE_DIVISOR,
                                                     (int)CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS),
                                                 (int)CPBaaSNotarization::MAX_HEADER_PROOFS_PER_PROOF);
 
@@ -13757,6 +13757,159 @@ UniValue recoveridentity(const UniValue& params, bool fHelp)
         newParams.push_back(params[i]);
     }
     return updateidentity(newParams, false);
+}
+
+UniValue getidentityrange(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 5)
+    {
+        throw runtime_error(
+            "getidentityrange \"name@ || iid\" (heightfrom) (heightto) (txproof) (txproofheight)\n"
+            "\n\n"
+
+            "\nArguments\n"
+            "    \"name@ || iid\"                       (string, required) name followed by \"@\" or i-address of an identity\n"
+            "    \"height\"                             (number, optional) default=current height, return identity as of this height, if -1 include mempool\n"
+            "    \"txproof\"                            (bool, optional) default=false, if true, returns proof of ID\n"
+            "    \"txproofheight\"                      (number, optional) default=\"height\", height from which to generate a proof\n"
+
+            "\nResult:\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getidentityrange", "\"name@\"")
+            + HelpExampleRpc("getidentityrange", "\"name@\"")
+        );
+    }
+
+    CheckIdentityAPIsValid();
+
+    CTxDestination idID = DecodeDestination(uni_get_str(params[0]));
+    if (idID.which() != COptCCParams::ADDRTYPE_ID)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity parameter must be valid friendly name or identity address: \"" + uni_get_str(params[0]) + "\"");
+    }
+
+    LOCK(cs_main);
+
+    uint32_t lteHeight = chainActive.Height();
+    bool useMempool = false;
+    if (params.size() > 1)
+    {
+        uint32_t tmpHeight = uni_get_int64(params[1]);
+        if (tmpHeight > 0 && lteHeight > tmpHeight)
+        {
+            lteHeight = tmpHeight;
+        }
+        else if (tmpHeight == -1)
+        {
+            lteHeight = chainActive.Height() + 1;
+            useMempool = true;
+        }
+    }
+
+    bool txProof = params.size() > 2 ? uni_get_bool(params[2]) : false;
+    uint32_t txProofHeight = params.size() > 3 ? uni_get_int64(params[1]) : 0;
+    if (txProofHeight < lteHeight)
+    {
+        txProofHeight = lteHeight;
+    }
+    if (useMempool)
+    {
+        txProof = false;
+    }
+
+    CTxIn idTxIn;
+    uint32_t height;
+
+    CIdentity identity;
+    bool canSign = false, canSpend = false;
+
+    if (pwalletMain)
+    {
+        LOCK(pwalletMain->cs_wallet);
+        uint256 txID;
+        std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+        if (pwalletMain->GetIdentity(GetDestinationID(idID), keyAndIdentity, lteHeight))
+        {
+            canSign = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SIGN;
+            canSpend = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SPEND;
+            identity = static_cast<CIdentity>(keyAndIdentity.second);
+        }
+    }
+
+    uint160 identityID = GetDestinationID(idID);
+    identity = CIdentity::LookupIdentity(CIdentityID(identityID), lteHeight, &height, &idTxIn, useMempool);
+
+    if (!identity.IsValid() && identityID == VERUS_CHAINID)
+    {
+        std::vector<CTxDestination> primary({CTxDestination(CKeyID(uint160()))});
+        std::vector<std::pair<uint160, uint256>> contentmap;
+        std::multimap<uint160, std::vector<unsigned char>> contentmultimap;
+
+        identity = CIdentity(CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS ? CIdentity::VERSION_PBAAS : CIdentity::VERSION_VAULT,
+                             CIdentity::FLAG_ACTIVECURRENCY,
+                             primary,
+                             1,
+                             ConnectedChains.ThisChain().parent,
+                             VERUS_CHAINNAME,
+                             contentmap,
+                             contentmultimap,
+                             ConnectedChains.ThisChain().GetID(),
+                             ConnectedChains.ThisChain().GetID(),
+                             std::vector<libzcash::SaplingPaymentAddress>());
+    }
+
+    UniValue ret(UniValue::VOBJ);
+
+    uint160 parent;
+    if (identity.IsValid() && identity.name == CleanName(identity.name, parent, true))
+    {
+        ret.push_back(Pair("identity", identity.ToUniValue()));
+        ret.pushKV("fullyqualifiedname", ConnectedChains.GetFriendlyIdentityName(identity));
+        ret.push_back(Pair("status", identity.IsRevoked() ? "revoked" : "active"));
+        ret.push_back(Pair("canspendfor", canSpend));
+        ret.push_back(Pair("cansignfor", canSign));
+        ret.push_back(Pair("blockheight", (int64_t)height));
+        ret.push_back(Pair("txid", idTxIn.prevout.hash.GetHex()));
+        ret.push_back(Pair("vout", (int32_t)idTxIn.prevout.n));
+
+        if (txProof &&
+            !idTxIn.prevout.hash.IsNull() &&
+            height > 0 &&
+            height <= chainActive.Height())
+        {
+            CTransaction idTx;
+            uint256 blkHash;
+            CBlockIndex *pIndex;
+            LOCK(mempool.cs);
+            if (!myGetTransaction(idTxIn.prevout.hash, idTx, blkHash) ||
+                blkHash.IsNull())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMS, "Identity transacton not found or not indexed / committed");
+            }
+            auto blkMapIt = mapBlockIndex.find(blkHash);
+            if (blkMapIt == mapBlockIndex.end()  ||
+                !chainActive.Contains(pIndex = blkMapIt->second))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMS, "Identity transacton not indexed / committed");
+            }
+            CPartialTransactionProof idProof = CPartialTransactionProof(idTx,
+                                                                        std::vector<int>(),
+                                                                        std::vector<int>({(int)idTxIn.prevout.n}),
+                                                                        pIndex,
+                                                                        txProofHeight);
+            if (idProof.IsValid())
+            {
+                ret.push_back(Pair("proof", idProof.ToUniValue()));
+            }
+        }
+
+        return ret;
+    }
+    else
+    {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Identity not found");
+    }
 }
 
 UniValue getidentity(const UniValue& params, bool fHelp)
