@@ -4917,7 +4917,7 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                         }
                         evidence.evidence << CHashCommitments(blockCommitmentsSmall);
 
-                        int loopNum = std::min(std::max(rangeLen /CPBaaSNotarization::NUM_HEADER_PROOF_RANGE_DIVISOR,
+                        int loopNum = std::min(std::max(rangeLen / CPBaaSNotarization::NUM_HEADER_PROOF_RANGE_DIVISOR,
                                                     (int)CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS),
                                                 (int)CPBaaSNotarization::MAX_HEADER_PROOFS_PER_PROOF);
 
@@ -14017,8 +14017,8 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     uint160 parent;
     if (identity.IsValid() && identity.name == CleanName(identity.name, parent, true))
     {
-        ret.push_back(Pair("identity", identity.ToUniValue()));
         ret.pushKV("fullyqualifiedname", ConnectedChains.GetFriendlyIdentityName(identity));
+        ret.push_back(Pair("identity", identity.ToUniValue()));
         ret.push_back(Pair("status", identity.IsRevoked() ? "revoked" : "active"));
         ret.push_back(Pair("canspendfor", canSpend));
         ret.push_back(Pair("cansignfor", canSign));
