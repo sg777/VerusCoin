@@ -4721,6 +4721,8 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                     auto curMMV = chainActive.GetMMV();
                     curMMV.resize(confirmRoot.rootHeight + 1);
 
+                    bool proveFullEvidence = (challengeRootsUni.isArray() && challengeRootsUni.size());
+
                     if (challengeRootsUni.isArray() && challengeRootsUni.size())
                     {
                         bool doBreak = false;
@@ -4739,9 +4741,8 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                                 }
                                 else if (CProofRoot::GetProofRoot(oneChallengeRoot.rootHeight) == oneChallengeRoot)
                                 {
-                                    // TODO: POST HARDENING the only way we can create counter evidence for this proof root which we agree with
-                                    // is if it's a skip challenge
-                                    // for now, ignore this request
+                                    // the only way we can create counter evidence for this proof root which we agree with
+                                    // is if it's a skip challenge for now, ignore matching requests
                                     continue;
                                 }
                                 CMMRProof blockHeaderProof;
@@ -4888,7 +4889,7 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                                                 priorNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight :
                                                 1;
 
-                    uint32_t heightChange = confirmRoot.rootHeight - startHeight;
+                    uint32_t heightChange = futureRoot.rootHeight - startHeight;
 
                     int blocksPerCheckpoint = CPBaaSNotarization::GetBlocksPerCheckpoint(heightChange);
 
@@ -4906,9 +4907,9 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                     if (provideFullEvidence)
                     {
                         uint32_t rangeStart = fromHeight;
-                        int32_t rangeLen = confirmRoot.rootHeight - rangeStart;
+                        int32_t rangeLen = futureRoot.rootHeight - rangeStart;
 
-                        std::vector<__uint128_t> blockCommitmentsSmall = GetBlockCommitments(rangeStart, confirmRoot.rootHeight, entropyHash);
+                        std::vector<__uint128_t> blockCommitmentsSmall = GetBlockCommitments(rangeStart, futureRoot.rootHeight, entropyHash);
                         if (!blockCommitmentsSmall.size())
                         {
                             oneRetObj.pushKV("error", "Cannot get block commitments for challenge");
@@ -4916,7 +4917,8 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                         }
                         evidence.evidence << CHashCommitments(blockCommitmentsSmall);
 
-                        int loopNum = std::min(std::max(rangeLen / 10, (int)CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS),
+                        int loopNum = std::min(std::max(rangeLen / NUM_HEADER_PROOF_RANGE_DIVISOR,
+                                                    (int)CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS),
                                                 (int)CPBaaSNotarization::MAX_HEADER_PROOFS_PER_PROOF);
 
                         uint256 headerSelectionHash = entropyHash;

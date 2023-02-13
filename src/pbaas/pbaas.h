@@ -243,7 +243,7 @@ public:
         MAX_BLOCK_RANGES_PER_PROOF = 5,                 // no more than 5 randomly selected ranges to cover any gap length
         NUM_COMMITMENT_BLOCKS_START_OFFSET = 100,       // commitment blocks start this far before the actual start or at 1
         NUM_BLOCKS_PER_PROOF_RANGE = 100,               // number of blocks in an ideal proof range
-        NUM_HEADER_REFS_PER_PROOF_RANGE = 10,           // target to prove at least this many randomly selected headers OR REFs per proof range
+        NUM_HEADER_PROOF_RANGE_DIVISOR = 10,            // divide proof range length by this to determine required header proofs
         MIN_BLOCKS_PER_CHECKPOINT = 256,                // blocks before we need another checkpoint
         MAX_PROOF_CHECKPOINTS = 100,                    // we do not add more than 100, after that, they are spaced further apart
         BLOCKS_TO_STABLE_PBAAS_ROOT = 5,                // PBaaS tip ahead of considered a "laststableroot", must be proven on challenge

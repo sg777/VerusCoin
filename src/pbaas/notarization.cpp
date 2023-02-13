@@ -2694,7 +2694,7 @@ CProofRoot IsValidChallengeEvidence(const CCurrencyDefinition &externalSystem,
 
                     int startingHeight = challengeStartRoot.rootHeight;
                     int endHeight = lastNotarization.proofRoots[lastNotarization.currencyID].rootHeight;
-                    rangeLen = endHeight - startingHeight++;
+                    rangeLen = endHeight - startingHeight;
 
                     std::vector<std::pair<uint32_t, uint32_t>> commitmentRanges =
                         CPBaaSNotarization::GetBlockCommitmentRanges(startingHeight, endHeight, entropyHash);
@@ -2745,7 +2745,7 @@ CProofRoot IsValidChallengeEvidence(const CCurrencyDefinition &externalSystem,
                     numHeaderProofs < expectNumHeaderProofs)
                 {
                     int rangeStart = lastNotarization.proofRoots[lastNotarization.currencyID].rootHeight;
-                    int rangeLen = counterEvidenceRoot.rootHeight - rangeStart++;
+                    int rangeLen = counterEvidenceRoot.rootHeight - rangeStart;
 
                     int indexToProve = (UintToArith256(evolvingEntropyHash).GetLow64() % rangeLen);
                     evolvingEntropyHash = ::GetHash(evolvingEntropyHash);
@@ -3541,7 +3541,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                 if (proofState != EXPECT_NOTHING)
                 {
                     // if we are spanning more than the min blocks per checkpoint, expect checkpoint(s)
-                    int heightChange = provenNotarization.proofRoots[lastNotarization.currencyID].rootHeight -
+                    int heightChange = futureProofRoot.rootHeight -
                                         lastNotarization.proofRoots[lastNotarization.currencyID].rootHeight;
                     numExpectedCheckpoints = CPBaaSNotarization::GetNumCheckpoints(heightChange);
                     if (numExpectedCheckpoints &&
@@ -3631,8 +3631,9 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                     startingHeight = std::get<3>(priorReferencedNotarization).proofRoots.count(expectedNotarization.currencyID) ?
                         std::get<3>(priorReferencedNotarization).proofRoots[expectedNotarization.currencyID].rootHeight :
                         1;
+
                     int endHeight = lastNotarization.proofRoots[expectedNotarization.currencyID].rootHeight;
-                    rangeLen = endHeight - startingHeight++;
+                    rangeLen = endHeight - startingHeight;
 
                     commitmentRanges = CPBaaSNotarization::GetBlockCommitmentRanges(startingHeight, endHeight, entropyHash);
 
