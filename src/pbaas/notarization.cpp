@@ -8508,9 +8508,9 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                         CObjectFinalization priorLastConfirmedF;
                         CAddressIndexDbEntry priorLastConfirmedAddressIndexKey;
 
-                        // if we can't find the prev cross on this chain, it means that when this was made, we were
-                        // not notarized on the notary chain yet. That means our latest known last confirmed as of this
-                        // notarization was the block 1 notarization
+
+
+
                         bool foundPriorLocalCrossConfirmed =
                             CPBaaSNotarization::FindFinalizedIndexByVDXFKey(notarizationIdxKey, priorLastConfirmedF, priorLastConfirmedAddressIndexKey);
 

@@ -4165,7 +4165,9 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
     }
     else
     {
-        retVal.pushKV("laststableproofroot", CProofRoot::GetProofRoot((nHeight - COINBASE_MATURITY) > 0 ? (nHeight - COINBASE_MATURITY) : 1).ToUniValue());
+        retVal.pushKV("laststableproofroot", CProofRoot::GetProofRoot((nHeight - CPBaaSNotarization::BLOCKS_TO_STABLE_NOTARY_ROOT) > 0 ?
+                                             (nHeight - CPBaaSNotarization::BLOCKS_TO_STABLE_NOTARY_ROOT) :
+                                             1).ToUniValue());
     }
 
     std::set<uint160> currenciesSet({ASSETCHAINS_CHAINID});
@@ -4267,7 +4269,7 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
             INVALID_CHALLENGE = 0,
             SKIP_CHALLENGE = 1,
             VALIDITY_CHALLENGE = 2,
-            PRIMARY_PROOF = 3
+            PRIMARY_PROOF = 3,
         };
 
         uint32_t nHeight = chainActive.Height();
@@ -4609,11 +4611,45 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                     CTransaction notarizationTxToProve;
                     uint256 notarizationBlockHash;
 
-                    // in case we have a reorg, the stability of this future root cannot matter much
-                    CProofRoot futureRoot = CProofRoot::GetProofRoot(chainActive.Height());
-                    CPartialTransactionProof notarizationTxProof;
+                    // in case we have a reorg, the stability of this future root cannot matter too much,
+                    // we'll have to prove up to this root if we are challenged, and it is already ahead of
+                    // the root in our notarization by quite some ways, however far this chain is in front of
+                    // it's confirm root or confirm notarization
+                    // depending on if we have a notary chain and are notarized, we have two options:
+                    //
+                    // 1) select any root more than CPBaaSNotarization::BLOCKS_TO_STABLE_PBAAS_ROOT after the last
+                    //    confirmed notarization on our notary chain.
+                    //
+                    // 2) use a root that is CPBaaSNotarization::BLOCKS_ENFORCED_TO_STABLE_NOTARY_ROOT in front of
+                    //    the root or transaction we are proving, which may also need proving if challenged.
+                    //
 
-                    if (!confirmNotarizationRef.hash.IsNull() && confirmNotarizationRef.n >= 0)
+                    CProofRoot lastConfirmedRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
+                    std::vector<std::pair<CTransaction, uint256>> notaryTxVec;
+                    CChainNotarizationData notaryCND;
+                    if (ConnectedChains.FirstNotaryChain().IsValid())
+                    {
+                        if (GetNotarizationData(ConnectedChains.FirstNotaryChain().GetID(), notaryCND, &notaryTxVec) &&
+                            notaryCND.IsConfirmed() &&
+                            notaryCND.vtx[notaryCND.lastConfirmed].second.proofRoots.count(ASSETCHAINS_CHAINID))
+                        {
+                            lastConfirmedRoot = notaryCND.vtx[notaryCND.lastConfirmed].second.proofRoots[ASSETCHAINS_CHAINID];
+                        }
+                        else
+                        {
+                            // if we have a valid first notary, then we should have a valid confirmed notarization, or something is wrong
+                            oneRetObj.pushKV("error", "Invalid notarization for confirmed proof of current chain");
+                            break;
+                        }
+                    }
+
+
+
+
+                    CPartialTransactionProof notarizationTxProof;
+                    BlockMap::iterator blockIt = mapBlockIndex.end();
+                    bool isConfirmNotarization = !confirmNotarizationRef.hash.IsNull() && confirmNotarizationRef.n >= 0;
+                    if (isConfirmNotarization)
                     {
                         if (!confirmNotarizationRef.GetOutputTransaction(notarizationTxToProve, notarizationBlockHash) ||
                             notarizationBlockHash.IsNull() ||
@@ -4623,7 +4659,7 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                             break;
                         }
 
-                        auto blockIt = mapBlockIndex.find(notarizationBlockHash);
+                        blockIt = mapBlockIndex.find(notarizationBlockHash);
                         if (blockIt == mapBlockIndex.end() ||
                             !chainActive.Contains(blockIt->second))
                         {
@@ -4631,16 +4667,35 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                             break;
                         }
 
-                        notarizationTxProof = CPartialTransactionProof(notarizationTxToProve,
-                                                                       std::vector<int>(),
-                                                                       std::vector<int>({(int)confirmNotarizationRef.n}),
-                                                                       blockIt->second,
-                                                                       futureRoot.rootHeight);
                     }
 
                     if (confirmNotarization.IsValid() && confirmNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
                     {
                         confirmRoot = confirmNotarization.proofRoots[ASSETCHAINS_CHAINID];
+                    }
+
+                    CProofRoot futureRoot;
+                    futureRoot.rootHeight = lastConfirmedRoot.IsValid() ? lastConfirmedRoot.rootHeight + 5 :
+                                                                          std::min(nHeight - CPBaaSNotarization::MIN_BLOCKS_FOR_SEMISTABLE_TIP,
+                                                                                   confirmRoot.rootHeight + CPBaaSNotarization::BLOCKS_ENFORCED_TO_STABLE_NOTARY_ROOT);
+
+                    uint32_t blocksBetween = futureRoot.rootHeight - confirmRoot.rootHeight;
+                    if (futureRoot.rootHeight > nHeight ||
+                        (!lastConfirmedRoot.IsValid() &&
+                         blocksBetween < CPBaaSNotarization::BLOCKS_ENFORCED_TO_STABLE_NOTARY_ROOT))
+                    {
+                        oneRetObj.pushKV("error", "Too early for stable proof, have blocks to tip " + std::to_string(blocksBetween) +
+                                                  ", need " + std::to_string(CPBaaSNotarization::BLOCKS_ENFORCED_TO_STABLE_NOTARY_ROOT));
+                        break;
+                    }
+
+                    if (isConfirmNotarization)
+                    {
+                        notarizationTxProof = CPartialTransactionProof(notarizationTxToProve,
+                                                                       std::vector<int>(),
+                                                                       std::vector<int>({(int)confirmNotarizationRef.n}),
+                                                                       blockIt->second,
+                                                                       futureRoot.rootHeight);
                     }
 
                     if ((priorNotarizationRef.hash.IsNull() && !priorRoot.IsValid()) || !confirmRoot.IsValid())

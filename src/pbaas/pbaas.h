@@ -246,6 +246,10 @@ public:
         NUM_HEADER_REFS_PER_PROOF_RANGE = 10,           // target to prove at least this many randomly selected headers OR REFs per proof range
         MIN_BLOCKS_PER_CHECKPOINT = 256,                // blocks before we need another checkpoint
         MAX_PROOF_CHECKPOINTS = 100,                    // we do not add more than 100, after that, they are spaced further apart
+        BLOCKS_TO_STABLE_PBAAS_ROOT = 5,                // PBaaS tip ahead of considered a "laststableroot", must be proven on challenge
+        BLOCKS_ENFORCED_TO_STABLE_NOTARY_ROOT = 100,    // unnotarized notary chain tip blocks ahead of "laststableroot", must be proven on challenge
+        BLOCKS_TO_STABLE_NOTARY_ROOT = 102,             // used as last stable root to ensure we can prove statistically almost all the time
+        MIN_BLOCKS_FOR_SEMISTABLE_TIP = 2,              // leeway to ensure sticky notarizations
     };
 
     inline static int32_t MinBlocksToAutoNotarization(uint32_t notarizationBlockModulo)
