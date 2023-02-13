@@ -3754,7 +3754,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                         bestHeight = mapBlockIndex[(*optionalTxOut)[notarizationData.forks[i].back()].second]->GetHeight();
                         notarizationData.bestChain = i;
                     }
-                    else if (chainDef.proofProtocol != chainDef.PROOF_PBAASMMR &&
+                    else if ((curPower == best || chainDef.proofProtocol != chainDef.PROOF_PBAASMMR) &&
                              mapBlockIndex.count((*optionalTxOut)[notarizationData.forks[i].back()].second) &&
                              mapBlockIndex[(*optionalTxOut)[notarizationData.forks[i].back()].second]->GetHeight() > bestHeight)
                     {
