@@ -7632,9 +7632,6 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     // if the alternate chain has knowledge of is prelaunch,
     // we will prove the block 1 coinbase with the new confirmed notarization
     // and the confirmed notarization with the next
-
-    uint32_t firstProofHeight = cnd.vtx[cnd.forks[cnd.bestChain][1]].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
-    CPBaaSNotarization firstProofNotarization = cnd.vtx[cnd.forks[cnd.bestChain][1]].second;
     auto pfirstProofIdxIt = mapBlockIndex.find(notarizationTxes[cnd.lastConfirmed].second);
     if (pfirstProofIdxIt == mapBlockIndex.end())
     {
