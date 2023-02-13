@@ -4680,7 +4680,7 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                                                                                    confirmRoot.rootHeight + CPBaaSNotarization::BLOCKS_ENFORCED_TO_STABLE_NOTARY_ROOT);
 
                     uint32_t blocksBetween = futureRoot.rootHeight - confirmRoot.rootHeight;
-                    if (futureRoot.rootHeight > nHeight ||
+                    if (futureRoot.rootHeight >= nHeight ||
                         (!lastConfirmedRoot.IsValid() &&
                          blocksBetween < CPBaaSNotarization::BLOCKS_ENFORCED_TO_STABLE_NOTARY_ROOT))
                     {
