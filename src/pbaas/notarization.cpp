@@ -7396,7 +7396,10 @@ bool CPBaaSNotarization::FindFinalizedIndexByVDXFKey(const uint160 &notarization
     std::vector<CAddressIndexDbEntry> addressIndex;
     if (!GetAddressIndex(notarizationIdxKey, CScript::P2IDX, addressIndex) || !addressIndex.size())
     {
-        LogPrint("notarization", "Unable to confirm transaction data for index key\n");
+        if (LogAcceptCategory("verbose"))
+        {
+            LogPrint("notarization", "No transaction data for index key - not necessarily an error\n");
+        }
         return retVal;
     }
 
@@ -8455,7 +8458,6 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                         // and the proof root should match the evidence notarization reference used to prove the
                         // import.
                         if (currentNotarization.prevNotarization.IsNull() ||
-                            currentNotarization.hashPrevCrossNotarization.IsNull() ||
                             !myGetTransaction(currentNotarization.prevNotarization.hash, priorNotTx, hashBlock) ||
                             hashBlock.IsNull() ||
                             !mapBlockIndex.count(hashBlock) ||
@@ -8466,8 +8468,9 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                             priorP.vData.size() < 1 ||
                             !(priorNotarization = CPBaaSNotarization(priorP.vData[0])).IsValid() ||
                             (priorP.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
-                            !priorNotarization.IsBlockOneNotarization() &&
-                            !priorNotarization.IsDefinitionNotarization()))
+                             !priorNotarization.IsBlockOneNotarization() &&
+                             !priorNotarization.IsDefinitionNotarization()) ||
+                            (currentNotarization.hashPrevCrossNotarization.IsNull() && !curDef.IsGateway()))
                         {
                             return state.Error("Invalid prior for earned notarization");
                         }
