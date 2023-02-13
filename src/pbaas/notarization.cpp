@@ -5163,7 +5163,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     //
     // we need to potentially make transactions for the challenges or add them to notarizations
     //
-    UniValue validIndexes = find_value(bestProofRootResult, "validindexes");
+
     if (!isGatewayFirstContact && (!validIndexesUni.isArray() || !validIndexesUni.size()))
     {
         return state.Error("no-valid-proofroots");
@@ -5171,7 +5171,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     std::set<int> validIndexSet;
     for (int i = 0; i < validIndexesUni.size(); i++)
     {
-        validIndexSet.insert(uni_get_int(validIndexesUni[0], INT32_MAX));
+        validIndexSet.insert(uni_get_int(validIndexesUni[i], INT32_MAX));
         if (!(cnd.vtx.size() > *validIndexSet.rbegin() && *validIndexSet.rbegin() >= 0))
         {
             return state.Error("invalid-validindex-returned");
@@ -5189,15 +5189,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         if (validIndexesUni.isArray() && validIndexesUni.size())
         {
             std::vector<std::vector<int>> unchallengedForks = cnd.forks;
-            std::set<int> validIndexes;
-            for (int i = 0; i < validIndexesUni.size(); i++)
-            {
-                validIndexes.insert(uni_get_int(validIndexesUni[i], -1));
-            }
-            if (validIndexes.count(-1))
-            {
-                return state.Error("invalid-validindexes-from-getbestproofroot");
-            }
             for (int i = 1; i < cnd.vtx.size(); i++)
             {
                 auto proofRootIT = cnd.vtx[i].second.proofRoots.find(SystemID);
@@ -5230,7 +5221,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 }
 
                 // if valid, use it to eliminate remaining forks and collect remaining challenges
-                if (validIndexes.count(i))
+                if (validIndexSet.count(i))
                 {
                     // we found the first valid fork with this entry
                     // all forks that do not have the same value in the k'th entry
@@ -5283,7 +5274,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                                 }
 
                                 // if it's valid, then it skipped a valid notarization and can be proven false
-                                if (validIndexes.count(unchallengedForks[forkToChallenge][k]))
+                                if (validIndexSet.count(unchallengedForks[forkToChallenge][k]))
                                 {
                                     // prove the root on the j fork with this root and submit the proof along with a rejection
                                     // finalization
@@ -5779,7 +5770,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             notarizationEvidence.output = cnd.vtx[notaryIdx].first;
 
             newProofRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::PrimaryProofKey())));
-            newProofRequest.pushKV("priorroot", crosschainCND.vtx[notaryIdx].second.proofRoots[SystemID].ToUniValue());
+            newProofRequest.pushKV("priorroot", crosschainCND.vtx[0].second.proofRoots[SystemID].ToUniValue());
             if (challengeRoots.size())
             {
                 newProofRequest.pushKV("challengeroots", challengeRoots);
@@ -5991,8 +5982,8 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
                 {
                     std::vector<unsigned char> checkHex = ::AsVector(lastPBN);
-                    LogPrintf("%s: hex of notarization: %s\nnotarization: %s\n", __func__, HexBytes(&(checkHex[0]), checkHex.size()).c_str(), lastPBN.ToUniValue().write(1,2).c_str());
-                    printf("%s: notarization: %s\n", __func__, lastPBN.ToUniValue().write(1,2).c_str());
+                    LogPrintf("%s: hex of prior notarization: %s\nnotarization: %s\n", __func__, HexBytes(&(checkHex[0]), checkHex.size()).c_str(), lastPBN.ToUniValue().write(1,2).c_str());
+                    printf("%s: prior notarization: %s\n", __func__, lastPBN.ToUniValue().write(1,2).c_str());
                 }
 
                 CNativeHashWriter hw;
@@ -9371,15 +9362,6 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         }
         return state.Error("Invalid notarization output for finalization");
     }
-    auto idxIt = mapBlockIndex.find(txBlockHash);
-    if (idxIt == mapBlockIndex.end())
-    {
-        return state.Error("Notarization without block cannot be finalized");
-    }
-    if (!chainActive.Contains(idxIt->second))
-    {
-        return state.Error("Block notarization not in active chain cannot be finalized");
-    }
 
     if (p.evalCode == EVAL_EARNEDNOTARIZATION &&
         !ConnectedChains.notarySystems.count(notarization.currencyID))
@@ -9437,7 +9419,22 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         return !haveFullChain;
     }
 
-    bool confirmNeedsEvidence = (IsVerusMainnetActive() || idxIt->second->nBits > PBAAS_TESTFORK_TIME) &&
+    if (txBlockHash.IsNull() && !haveFullChain)
+    {
+        return true;
+    }
+    auto pCurNotarizationBlkIndex = txBlockHash.IsNull() ? chainActive[height - 1] :
+                                                           mapBlockIndex.count(txBlockHash) ? mapBlockIndex.find(txBlockHash)->second : nullptr;
+    if (!pCurNotarizationBlkIndex)
+    {
+        return state.Error("Notarization from invalid block cannot be finalized");
+    }
+    if (!chainActive.Contains(pCurNotarizationBlkIndex))
+    {
+        return state.Error("Block notarization not in active chain cannot be finalized");
+    }
+
+    bool confirmNeedsEvidence = (IsVerusMainnetActive() || pCurNotarizationBlkIndex->nBits > PBAAS_TESTFORK_TIME) &&
                                 !(notarization.IsPreLaunch() ||
                                   notarization.IsBlockOneNotarization() ||
                                   notarization.IsDefinitionNotarization()) &&
@@ -9493,7 +9490,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         // if this is already finalized, we can't do it again
         auto priorFinalizations = CObjectFinalization::GetFinalizations(finalizationOutput,
                                                                         CObjectFinalization::ObjectFinalizationFinalizedKey(),
-                                                                        idxIt->second->GetHeight(),
+                                                                        pCurNotarizationBlkIndex->GetHeight(),
                                                                         height - 1);
         if (priorFinalizations.size())
         {
@@ -9527,8 +9524,8 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         // for the rest
         for (auto &oneFinalization : CObjectFinalization::GetFinalizations(curID,
                                                                            CObjectFinalization::ObjectFinalizationPendingKey(),
-                                                                           idxIt->second->GetHeight(),
-                                                                           idxIt->second->GetHeight()))
+                                                                           pCurNotarizationBlkIndex->GetHeight(),
+                                                                           pCurNotarizationBlkIndex->GetHeight()))
         {
             if (std::get<1>(oneFinalization) == finalizationOutput)
             {
@@ -9537,7 +9534,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         }
         auto insertVec = CObjectFinalization::GetFinalizations(curID,
                                                                CObjectFinalization::ObjectFinalizationPendingKey(),
-                                                               idxIt->second->GetHeight(),
+                                                               pCurNotarizationBlkIndex->GetHeight(),
                                                                height - 1);
         pendingFinalizations.insert(pendingFinalizations.end(), insertVec.begin(), insertVec.end());
         std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>> &ofsToCheck = pendingFinalizations;
@@ -9622,7 +9619,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     tipBlockHash.IsNull() ||
                     (tipTxBlockIt = mapBlockIndex.find(tipBlockHash)) == mapBlockIndex.end() ||
                     tipTxBlockIt->second->GetHeight() > (height - 1) ||
-                    tipTxBlockIt->second->GetHeight() < idxIt->second->GetHeight() ||
+                    tipTxBlockIt->second->GetHeight() < pCurNotarizationBlkIndex->GetHeight() ||
                     tipTx.vout.size() <= proofDescr.challengeOutputs[0].n ||
                     !(tipNotarization = CPBaaSNotarization(tipTx.vout[proofDescr.challengeOutputs[0].n].scriptPubKey)).IsValid())
                 {
@@ -9639,7 +9636,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                 // and possibly auto-blacklist broken currencies/chains
                 while (std::get<0>(priorTipNotarizationInfo) &&
                        std::get<2>(priorTipNotarizationInfo) != finalizationOutput &&
-                       std::get<0>(priorTipNotarizationInfo) > idxIt->second->GetHeight())
+                       std::get<0>(priorTipNotarizationInfo) > pCurNotarizationBlkIndex->GetHeight())
                 {
                     numNotaryConfirms++;
                     priorTipNotarizationInfo =
@@ -9712,7 +9709,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                       numNotaryConfirms >= numSignedNeeded) ||
                      (signatureState != CNotaryEvidence::STATE_CONFIRMED &&
                       numNotaryConfirms >= numAutoNeeded &&
-                      (height - idxIt->second->GetHeight()) >= numBlocksAutoNeeded)))
+                      (height - pCurNotarizationBlkIndex->GetHeight()) >= numBlocksAutoNeeded)))
                 {
                     return state.Error("Insufficient notary confirms and/or blocks to confirm notarization with given evidence");
                 }
@@ -9767,7 +9764,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                       numNotaryConfirms >= numSignedNeeded) ||
                      (signatureState != CNotaryEvidence::STATE_CONFIRMED &&
                       numNotaryConfirms >= numAutoNeeded &&
-                      (height - idxIt->second->GetHeight()) >= numBlocksAutoNeeded)))
+                      (height - pCurNotarizationBlkIndex->GetHeight()) >= numBlocksAutoNeeded)))
                 {
                     return state.Error("Insufficient notary confirms and/or blocks to confirm accepted notarization with given evidence");
                 }

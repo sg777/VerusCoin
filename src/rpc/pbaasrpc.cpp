@@ -4050,7 +4050,7 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid lastconfirmed");
     }
 
-    std::map<uint32_t, std::pair<int32_t, CProofRoot>> proofRootMap;
+    std::multimap<uint32_t, std::pair<int32_t, CProofRoot>> proofRootMap;
     UniValue uniProofRoots = find_value(params[0], "proofroots");
     if (!uniProofRoots.isArray())
     {
@@ -4071,6 +4071,10 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
     // no notarization can be considered confirmed by another chain or system, if it has not already been first confirmed
     // by the first notary of this one. any confirmed proof root must map to a confirmed notarization on this chain that is
     // correct and at least before the last confirmed one on this chain
+    //
+    // it is the responsibility of the calling system or chain to determine the difference between a valid root and a root
+    // confirmed, old enough, or stable enough to be relied upon.
+    //
     std::vector<std::pair<CTransaction, uint256>> notaryTxVec;
     CChainNotarizationData notaryCND;
     if (ConnectedChains.FirstNotaryChain().IsValid())
@@ -4105,15 +4109,10 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
 
     uint32_t nHeight = chainActive.Height();
 
-    std::map<uint32_t, int32_t> validRoots;             // height, index (only return the first valid at each height)
+    std::multimap<uint32_t, int32_t> validRoots;             // height, index (only return the first valid at each height)
 
     for (auto it = proofRootMap.rbegin(); it != proofRootMap.rend(); it ++)
     {
-        // ignore potential dups
-        if (validRoots.count(it->second.second.rootHeight))
-        {
-            continue;
-        }
         if (it->second.second == it->second.second.GetProofRoot(it->second.second.rootHeight))
         {
             validRoots.insert(std::make_pair(it->second.second.rootHeight, it->second.first));
@@ -4122,7 +4121,7 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
 
     if (lastConfirmedRoot.IsValid() &&
         lastConfirmedRootClaim.IsValid() &&
-        (!validRoots.count(lastConfirmedRootClaim.rootHeight) || lastConfirmedRootClaim.rootHeight > lastConfirmedRoot.rootHeight))
+        !validRoots.count(lastConfirmedRootClaim.rootHeight))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("incorrect claim of confirmed proof root for height %u, %s", lastConfirmedRoot.rootHeight, EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
     }
@@ -4130,12 +4129,17 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
     if (validRoots.size())
     {
         UniValue validArr(UniValue::VARR);
+        std::set<int> indexSort;
         for (auto &oneRoot : validRoots)
         {
-            validArr.push_back(oneRoot.second);
+            indexSort.insert(oneRoot.second);
+        }
+        for (auto &oneIndex : indexSort)
+        {
+            validArr.push_back(oneIndex);
         }
         retVal.pushKV("validindexes", validArr);
-        retVal.pushKV("bestindex", validRoots.rbegin()->second);
+        retVal.pushKV("bestindex", validArr[validArr.size() - 1]);
     }
 
     // get the latest proof root and currency states
@@ -4144,7 +4148,16 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
     {
         retVal.pushKV("lastconfirmedproofroot", lastConfirmedRoot.ToUniValue());
         retVal.pushKV("laststableproofroot", lastConfirmedRoot.ToUniValue());
-        retVal.pushKV("lastconfirmedindex", validRoots[lastConfirmedRoot.rootHeight]);
+        auto itPair = validRoots.equal_range(lastConfirmedRoot.rootHeight);
+        int lastConfirmedIndex = itPair.first == validRoots.end() ? -1 : itPair.first->second;
+        for (auto it = itPair.first; it != itPair.second; it++)
+        {
+            if (it->second > lastConfirmedIndex)
+            {
+                lastConfirmedIndex = it->second;
+            }
+        }
+        retVal.pushKV("lastconfirmedindex", lastConfirmedIndex);
     }
     else if (lastConfirmedRoot.IsValid())
     {
