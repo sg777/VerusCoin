@@ -7679,22 +7679,31 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     for (confirmingIdx = crosschainCND.vtx.size() - 1; confirmingIdx >= 0; confirmingIdx--)
     {
         auto &oneNotarization = crosschainCND.vtx[confirmingIdx];
-        if (oneNotarization.second.IsMirror() &&
-            !oneNotarization.second.SetMirror(false))
-        {
-            LogPrintf("CROSS-CHAIN ERROR: Failure to unmirror notarization from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-            printf("CROSS-CHAIN ERROR: Failure to unmirror notarization from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-            return retVal;
-        }
-        if (searchVec == ::AsVector(oneNotarization.second))
-        {
-            LogPrint("notarization", "No new confirmed notarizations for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-            return retVal;
-        }
 
         // all core proof roots that are in a prior, agreed notarization, must be present in the new one,
         // and we must have moved far enough forward from any there that we agree with, or early out
         bool agreed = false;
+
+        if (oneNotarization.second.IsSameChain() && oneNotarization.second.IsDefinitionNotarization())
+        {
+            agreed = true;
+        }
+        else
+        {
+            if (oneNotarization.second.IsMirror() &&
+                !oneNotarization.second.SetMirror(false))
+            {
+                LogPrintf("CROSS-CHAIN ERROR: Failure to unmirror notarization from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                printf("CROSS-CHAIN ERROR: Failure to unmirror notarization from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                return retVal;
+            }
+            if (searchVec == ::AsVector(oneNotarization.second))
+            {
+                LogPrint("notarization", "No new confirmed notarizations for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                return retVal;
+            }
+        }
+
         for (auto &oneProofRoot : oneNotarization.second.proofRoots)
         {
             if (oneProofRoot.first == ASSETCHAINS_CHAINID)
