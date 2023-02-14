@@ -5905,7 +5905,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         if (blockPeriodNumber <= priorBlockPeriod ||
             (height > CPBaaSNotarization::BlocksBeforeAlternateStakeEnforcement() &&
              (ConnectedChains.ThisChain().notarizationProtocol == CCurrencyDefinition::NOTARIZATION_AUTO &&
-             ((!isStake && mapBlockIt->second->IsVerusPOSBlock()) || (isStake && !mapBlockIt->second->IsVerusPOSBlock())))))
+             ((isStake && mapBlockIt->second->IsVerusPOSBlock()) || (!isStake && !mapBlockIt->second->IsVerusPOSBlock())))))
         {
             if (LogAcceptCategory("notarization"))
             {
