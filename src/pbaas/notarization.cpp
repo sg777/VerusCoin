@@ -7942,7 +7942,9 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
     uint32_t blocksBeforeModuloExtension = CPBaaSNotarization::GetBlocksBeforeModuloExtension(externalSystem.chainDefinition.blockNotarizationModulo);
     bool submit = GetBoolArg("-alwayssubmitnotarizations", false) ||
-                  !crosschainCND.IsConfirmed() ||
+                  (!crosschainCND.IsConfirmed() ||
+                   (crosschainCND.vtx[crosschainCND.lastConfirmed].second.IsDefinitionNotarization() &&
+                    crosschainCND.vtx[crosschainCND.lastConfirmed].second.IsSameChain())) ||
                   (!GetBoolArg("-allowdelayednotarizations", false) &&
                    (newConfirmedNotarization.proofRoots[systemID].rootHeight - lastConfirmedNotarization.proofRoots[systemID].rootHeight) >
                    (blocksBeforeModuloExtension - (blocksBeforeModuloExtension >> 2)));
