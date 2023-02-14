@@ -4041,24 +4041,23 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                             firstUnspentFinalization.second = CInputDescriptor(inTx.vout[oneIn.prevout.n].scriptPubKey,
                                                                                 inTx.vout[oneIn.prevout.n].nValue,
                                                                                 oneIn);
-                        }
-
-                        if (inBlockHash.IsNull())
-                        {
-                            firstUnspentFinalization.first = 0;
-                        }
-                        else
-                        {
-                            auto blockIt = mapBlockIndex.find(inBlockHash);
-                            if (blockIt == mapBlockIndex.end() ||
-                                !chainActive.Contains(blockIt->second))
+                            if (inBlockHash.IsNull())
                             {
-                                error = true;
+                                firstUnspentFinalization.first = 0;
                             }
-                            firstUnspentFinalization.first = blockIt->second->GetHeight();
-                            if (firstUnspentFinalization.first > height)
+                            else
                             {
-                                foundNotarization = CPBaaSNotarization();
+                                auto blockIt = mapBlockIndex.find(inBlockHash);
+                                if (blockIt == mapBlockIndex.end() ||
+                                    !chainActive.Contains(blockIt->second))
+                                {
+                                    error = true;
+                                }
+                                firstUnspentFinalization.first = blockIt->second->GetHeight();
+                                if (firstUnspentFinalization.first > height)
+                                {
+                                    foundNotarization = CPBaaSNotarization();
+                                }
                             }
                         }
                         break;
@@ -4117,6 +4116,25 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                         firstUnspentFinalization.second = CInputDescriptor(finalTx.vout[priorOf.output.n].scriptPubKey,
                                                                             finalTx.vout[priorOf.output.n].nValue,
                                                                             CTxIn(priorOf.output));
+                    }
+                    if (finalBlockHash.IsNull())
+                    {
+                        firstUnspentFinalization.first = 0;
+                    }
+                    else
+                    {
+                        auto blockIt = mapBlockIndex.find(finalBlockHash);
+                        if (blockIt == mapBlockIndex.end() ||
+                            !chainActive.Contains(blockIt->second))
+                        {
+                            error = true;
+                        }
+                        firstUnspentFinalization.first = blockIt->second->GetHeight();
+                        if (firstUnspentFinalization.first > height)
+                        {
+                            firstUnspentFinalization.first = 0;
+                            foundNotarization = CPBaaSNotarization();
+                        }
                     }
                 }
             }
@@ -8234,7 +8252,7 @@ bool IsNotarizationDescendent(const CPBaaSNotarization &checkNotarization,
     }
     if (!isDescendent)
     {
-        return state.Error("Invalid accepted notarization does not descend from last confirmed");
+        return state.Error("Invalid accepted notarization does not derive from last confirmed");
     }
     return true;
 }
