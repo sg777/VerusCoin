@@ -8586,16 +8586,19 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                             // ensure that we alternate between stake and work notarizations
                             // since this is a coinbase, check to see if we have funds protected by stakeguard outputs
                             bool isStake = false;
-                            for (auto &oneOutput : tx.vout)
+                            for (int oneOutnum = 0; oneOutnum < tx.vout.size(); oneOutnum++)
                             {
+                                auto &oneOutput = tx.vout[oneOutnum];
                                 COptCCParams stakeP;
                                 if (oneOutput.scriptPubKey.IsPayToCryptoCondition(stakeP) &&
                                     stakeP.IsValid() &&
                                     stakeP.evalCode == EVAL_STAKEGUARD &&
-                                    stakeP.vData.size() &&
-                                    CStakeInfo(stakeP.vData[0]).height == height)
+                                    oneOutput.nValue &&
+                                    RawPrecheckStakeGuardOutput(tx, oneOutnum, state) &&
+                                    oneOutput.nValue)
                                 {
                                     isStake = true;
+                                    break;
                                 }
                             }
 
