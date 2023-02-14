@@ -4112,9 +4112,12 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                      foundP.vData.size()))
                 {
                     foundNotarization = CPBaaSNotarization(foundP.vData[0]);
-                    firstUnspentFinalization.second = CInputDescriptor(finalTx.vout[priorOf.output.n].scriptPubKey,
-                                                                        finalTx.vout[priorOf.output.n].nValue,
-                                                                        CTxIn(priorOf.output));
+                    if (priorOf.IsValid())
+                    {
+                        firstUnspentFinalization.second = CInputDescriptor(finalTx.vout[priorOf.output.n].scriptPubKey,
+                                                                            finalTx.vout[priorOf.output.n].nValue,
+                                                                            CTxIn(priorOf.output));
+                    }
                 }
             }
             if (foundNotarization.IsValid())
