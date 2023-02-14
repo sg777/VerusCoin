@@ -4036,34 +4036,31 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                              foundNotarization.IsDefinitionNotarization()))))))
                     {
                         found = true;
-                        if (checkP.evalCode != EVAL_FINALIZE_NOTARIZATION)
+                        firstUnspentFinalization.second = CInputDescriptor(inTx.vout[oneIn.prevout.n].scriptPubKey,
+                                                                            inTx.vout[oneIn.prevout.n].nValue,
+                                                                            oneIn);
+                        if (inBlockHash.IsNull())
                         {
-                            firstUnspentFinalization.second = CInputDescriptor(inTx.vout[oneIn.prevout.n].scriptPubKey,
-                                                                                inTx.vout[oneIn.prevout.n].nValue,
-                                                                                oneIn);
-                            if (inBlockHash.IsNull())
+                            firstUnspentFinalization.first = 0;
+                        }
+                        else
+                        {
+                            auto blockIt = mapBlockIndex.find(inBlockHash);
+                            if (blockIt == mapBlockIndex.end() ||
+                                !chainActive.Contains(blockIt->second))
                             {
-                                firstUnspentFinalization.first = 0;
+                                error = true;
                             }
-                            else
+                            firstUnspentFinalization.first = blockIt->second->GetHeight();
+                            if (firstUnspentFinalization.first > height)
                             {
-                                auto blockIt = mapBlockIndex.find(inBlockHash);
-                                if (blockIt == mapBlockIndex.end() ||
-                                    !chainActive.Contains(blockIt->second))
-                                {
-                                    error = true;
-                                }
-                                firstUnspentFinalization.first = blockIt->second->GetHeight();
-                                if (firstUnspentFinalization.first > height)
-                                {
-                                    foundNotarization = CPBaaSNotarization();
-                                }
+                                foundNotarization = CPBaaSNotarization();
                             }
                         }
                         break;
                     }
                 }
-                if (!found)
+                if (!found || error)
                 {
                     error = true;
                     foundNotarization = CPBaaSNotarization();
