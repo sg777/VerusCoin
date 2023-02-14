@@ -6133,8 +6133,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
         // make the finalization output(s)
         //
-        // if the notarization we agree with has an unanswered challenge, provide that evidence with our notarization
-        // to enable ours to pass
         cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
 
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
@@ -9914,7 +9912,47 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         // no pending notarization may be made for a notarization that is not still a descendent of the last
         // confirmed notarization. if the hash is null, it references the same transaction, and if there is a
         // notarization on that transaction, it is also checked, so we are fine to skip
-        if (!currentFinalization.output.hash.IsNull())
+        if (currentFinalization.output.hash.IsNull())
+        {
+            // it must be a reference to a valid notarization on this transaction
+            COptCCParams outP;
+            CPBaaSNotarization nextPBN;
+            if (tx.vout.size() > currentFinalization.output.n &&
+                tx.vout[currentFinalization.output.n].scriptPubKey.IsPayToCryptoCondition(outP) &&
+                outP.IsValid() &&
+                (outP.evalCode == EVAL_EARNEDNOTARIZATION || outP.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
+                outP.vData.size() &&
+                (nextPBN = CPBaaSNotarization(outP.vData[0])).IsValid() &&
+                nextPBN.currencyID == currentFinalization.currencyID)
+            {
+                // we can only have one such pending finalization on this transaction, so look through the rest of the outputs
+                for (int oneOutNum = 0; oneOutNum < tx.vout.size(); oneOutNum++)
+                {
+                    if (oneOutNum == currentFinalization.output.n || oneOutNum == outNum)
+                    {
+                        continue;
+                    }
+                    CTransaction outTx;
+                    uint256 blockHash;
+                    CObjectFinalization outOF;
+                    if (tx.vout[oneOutNum].scriptPubKey.IsPayToCryptoCondition(outP) &&
+                        outP.IsValid() &&
+                        outP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                        outP.vData.size() &&
+                        (outOF = CObjectFinalization(outP.vData[0])).IsValid() &&
+                        (outOF.output == currentFinalization.output))
+                    {
+                        return state.Error("Only one pending finalization allowed for each finalizing output");
+                    }
+                }
+                return true;
+            }
+        }
+        if (currentFinalization.output.hash.IsNull())
+        {
+            return state.Error("Invalid pending finalization on output " + std::to_string(outNum));
+        }
+        else
         {
             std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> priorNotarizationInfo =
                 GetPriorReferencedNotarization(finalizedTx, currentFinalization.output.n, notarization, height - 1);
@@ -9947,6 +9985,47 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         }
         if (evidenceVec.size() && !hasSignature)
         {
+            // if this notarization refers to a pending notarization that we spend on the input, which refers to this same
+            // notarization or a pending finalization of it as evidence, we can spend it
+            if (currentFinalization.evidenceInputs.size())
+            {
+                for (auto oneInIdx : currentFinalization.evidenceInputs)
+                {
+                    if (oneInIdx >= tx.vin.size())
+                    {
+                        return state.Error("invalid evidence inputs");
+                    }
+                    auto &oneIn = tx.vin[oneInIdx];
+                    CUTXORef inputRef(oneIn.prevout);
+                    if (inputRef == currentFinalization.output)
+                    {
+                        return true;
+                    }
+                    CTransaction outTx;
+                    uint256 blockHash;
+                    COptCCParams outP;
+                    CObjectFinalization outOF;
+                    if (inputRef.GetOutputTransaction(outTx, blockHash) &&
+                        outTx.vout.size() > inputRef.n &&
+                        outTx.vout[inputRef.n].scriptPubKey.IsPayToCryptoCondition(outP) &&
+                        outP.IsValid() &&
+                        outP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                        outP.vData.size() &&
+                        (outOF = CObjectFinalization(outP.vData[0])).IsValid() &&
+                        ((outOF.output.hash.IsNull() &&
+                        outTx.GetHash() == currentFinalization.output.hash &&
+                        outOF.output.n == currentFinalization.output.n) ||
+                        (outOF.output == currentFinalization.output)) &&
+                        outOF.IsPending())
+                    {
+                        return true;
+                    }
+                }
+            }
+            if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
+            {
+                LogPrintf("%s: invalid pending finalization on transaction: %s\n");
+            }
             return state.Error("insufficient evidence to create new pending finalization for notarization");
         }
     }
