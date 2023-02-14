@@ -4036,9 +4036,12 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                              foundNotarization.IsDefinitionNotarization()))))))
                     {
                         found = true;
-                        firstUnspentFinalization.second = CInputDescriptor(inTx.vout[oneIn.prevout.n].scriptPubKey,
-                                                                           inTx.vout[oneIn.prevout.n].nValue,
-                                                                           oneIn);
+                        if (checkP.evalCode != EVAL_FINALIZE_NOTARIZATION)
+                        {
+                            firstUnspentFinalization.second = CInputDescriptor(inTx.vout[oneIn.prevout.n].scriptPubKey,
+                                                                                inTx.vout[oneIn.prevout.n].nValue,
+                                                                                oneIn);
+                        }
 
                         if (inBlockHash.IsNull())
                         {
@@ -4109,6 +4112,9 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                      foundP.vData.size()))
                 {
                     foundNotarization = CPBaaSNotarization(foundP.vData[0]);
+                    firstUnspentFinalization.second = CInputDescriptor(finalTx.vout[priorOf.output.n].scriptPubKey,
+                                                                        finalTx.vout[priorOf.output.n].nValue,
+                                                                        CTxIn(priorOf.output));
                 }
             }
             if (foundNotarization.IsValid())
@@ -7157,10 +7163,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                 {
                     mergedEvidence.MergeEvidence(ne, true, true);
 
-                    retVal = true;
                     CScript evidenceScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &mergedEvidence));
                     of.evidenceOutputs.push_back(txBuilder.mtx.vout.size());
                     txBuilder.AddTransparentOutput(evidenceScript, CNotaryEvidence::DEFAULT_OUTPUT_VALUE);
+                    retVal = true;
                 }
             }
 
@@ -9601,29 +9607,35 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             uint256 tipBlockHash;
             CPBaaSNotarization tipNotarization;
             int numNotaryConfirms = 0;
+            bool tipFound = true;
 
-            if (confirmNeedsEvidence)
+            if (combinedEvidence.evidence.chainObjects.size() < 1 ||
+                combinedEvidence.evidence.chainObjects[0]->objectType != CHAINOBJ_CROSSCHAINPROOF ||
+                !((CChainObject<CCrossChainProof> *)(combinedEvidence.evidence.chainObjects[0]))->object.chainObjects.size() ||
+                ((CChainObject<CCrossChainProof> *)(combinedEvidence.evidence.chainObjects[0]))->object.chainObjects[0]->objectType != CHAINOBJ_EVIDENCEDATA ||
+                ((CChainObject<CEvidenceData> *)
+                    (((CChainObject<CCrossChainProof> *)(combinedEvidence.evidence.chainObjects[0]))->object.chainObjects[0]))->object.vdxfd !=
+                        CNotaryEvidence::NotarizationTipKey() ||
+                !(proofDescr = CPrimaryProofDescriptor(((CChainObject<CEvidenceData> *)
+                    (((CChainObject<CCrossChainProof> *)(combinedEvidence.evidence.chainObjects[0]))->object.chainObjects[0]))->object.dataVec)).IsValid() ||
+                !proofDescr.challengeOutputs.size() ||
+                !proofDescr.challengeOutputs[0].GetOutputTransaction(tipTx, tipBlockHash) ||
+                tipBlockHash.IsNull() ||
+                (tipTxBlockIt = mapBlockIndex.find(tipBlockHash)) == mapBlockIndex.end() ||
+                tipTxBlockIt->second->GetHeight() > (height - 1) ||
+                tipTxBlockIt->second->GetHeight() < pCurNotarizationBlkIndex->GetHeight() ||
+                tipTx.vout.size() <= proofDescr.challengeOutputs[0].n ||
+                !(tipNotarization = CPBaaSNotarization(tipTx.vout[proofDescr.challengeOutputs[0].n].scriptPubKey)).IsValid())
             {
-                if (combinedEvidence.evidence.chainObjects.size() < 1 ||
-                    combinedEvidence.evidence.chainObjects[0]->objectType != CHAINOBJ_CROSSCHAINPROOF ||
-                    !((CChainObject<CCrossChainProof> *)(combinedEvidence.evidence.chainObjects[0]))->object.chainObjects.size() ||
-                    ((CChainObject<CCrossChainProof> *)(combinedEvidence.evidence.chainObjects[0]))->object.chainObjects[0]->objectType != CHAINOBJ_EVIDENCEDATA ||
-                    ((CChainObject<CEvidenceData> *)
-                        (((CChainObject<CCrossChainProof> *)(combinedEvidence.evidence.chainObjects[0]))->object.chainObjects[0]))->object.vdxfd !=
-                            CNotaryEvidence::NotarizationTipKey() ||
-                    !(proofDescr = CPrimaryProofDescriptor(((CChainObject<CEvidenceData> *)
-                        (((CChainObject<CCrossChainProof> *)(combinedEvidence.evidence.chainObjects[0]))->object.chainObjects[0]))->object.dataVec)).IsValid() ||
-                    !proofDescr.challengeOutputs.size() ||
-                    !proofDescr.challengeOutputs[0].GetOutputTransaction(tipTx, tipBlockHash) ||
-                    tipBlockHash.IsNull() ||
-                    (tipTxBlockIt = mapBlockIndex.find(tipBlockHash)) == mapBlockIndex.end() ||
-                    tipTxBlockIt->second->GetHeight() > (height - 1) ||
-                    tipTxBlockIt->second->GetHeight() < pCurNotarizationBlkIndex->GetHeight() ||
-                    tipTx.vout.size() <= proofDescr.challengeOutputs[0].n ||
-                    !(tipNotarization = CPBaaSNotarization(tipTx.vout[proofDescr.challengeOutputs[0].n].scriptPubKey)).IsValid())
+                if (confirmNeedsEvidence)
                 {
                     return state.Error("Invalid confirmation evidence 1");
                 }
+                tipFound = false;
+            }
+
+            if (tipFound)
+            {
                 CUTXORef &tipTxOutput = proofDescr.challengeOutputs[0];
 
                 std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> priorTipNotarizationInfo =
@@ -9634,38 +9646,42 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                 // so we should ensure that we lengthen blocknotarizationmodulo appropriately
                 // and possibly auto-blacklist broken currencies/chains
                 while (std::get<0>(priorTipNotarizationInfo) &&
-                       std::get<2>(priorTipNotarizationInfo) != finalizationOutput &&
-                       std::get<0>(priorTipNotarizationInfo) > pCurNotarizationBlkIndex->GetHeight())
+                        std::get<2>(priorTipNotarizationInfo) != finalizationOutput &&
+                        std::get<0>(priorTipNotarizationInfo) > pCurNotarizationBlkIndex->GetHeight())
                 {
                     numNotaryConfirms++;
                     priorTipNotarizationInfo =
                         GetPriorReferencedNotarization(std::get<1>(priorTipNotarizationInfo),
-                                                       std::get<2>(priorTipNotarizationInfo).n,
-                                                       std::get<3>(priorTipNotarizationInfo),
-                                                       std::get<0>(priorTipNotarizationInfo) - 1);
+                                                        std::get<2>(priorTipNotarizationInfo).n,
+                                                        std::get<3>(priorTipNotarizationInfo),
+                                                        std::get<0>(priorTipNotarizationInfo) - 1);
                 }
 
                 if (!std::get<0>(priorTipNotarizationInfo))
                 {
                     return state.Error("Invalid confirmation evidence 2");
                 }
-            }
 
-            // if we are on a transaction that also has a confirming notarization, add one to our confirmations
-            // that will not be the case unless we are confirming an accepted notarization
-            if (p.evalCode == EVAL_ACCEPTEDNOTARIZATION)
-            {
-                CPBaaSNotarization freshNotarization;
-                for (auto &oneOut : tx.vout)
+                // if we are on a transaction that also has a confirming notarization, add one to our confirmations
+                // that will not be the case unless we are confirming an accepted notarization
+                if (p.evalCode == EVAL_ACCEPTEDNOTARIZATION)
                 {
-                    if ((freshNotarization = CPBaaSNotarization(oneOut.scriptPubKey)).IsValid() &&
-                        freshNotarization.currencyID == curID &&
-                        freshNotarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
-                        freshNotarization.proofRoots.count(curID))
+                    CPBaaSNotarization freshNotarization;
+                    for (auto &oneOut : tx.vout)
                     {
-                        numNotaryConfirms++;
+                        if ((freshNotarization = CPBaaSNotarization(oneOut.scriptPubKey)).IsValid() &&
+                            freshNotarization.currencyID == curID &&
+                            freshNotarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                            freshNotarization.proofRoots.count(curID))
+                        {
+                            numNotaryConfirms++;
+                        }
                     }
                 }
+            }
+            else
+            {
+                numNotaryConfirms = numSignedNeeded;
             }
 
             if (p.evalCode == EVAL_EARNEDNOTARIZATION)

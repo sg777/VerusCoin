@@ -3601,7 +3601,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
             if (!thisNotarization.IsValid())
             {
                 LogPrintf("Invalid notarization on transaction %s, may need to reindex\n", std::get<1>(lastFinalized).ToUniValue().write().c_str());
-                printf("Invalid finalization on transaction %s, may need to reindex\n", std::get<1>(lastFinalized).ToUniValue().write().c_str());
+                printf("Invalid notarization on transaction %s, may need to reindex\n", std::get<1>(lastFinalized).ToUniValue().write().c_str());
                 return false;
             }
             notarizationData.vtx.push_back(std::make_pair(std::get<1>(lastFinalized), thisNotarization));

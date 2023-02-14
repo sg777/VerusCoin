@@ -632,6 +632,7 @@ bool CScript::IsInstantSpend() const
     {
         // instant spends can be spent from a coinbase before block maturity, but cannot carry any currency value
         if (p.evalCode == EVAL_EARNEDNOTARIZATION ||
+            p.evalCode == EVAL_NOTARY_EVIDENCE ||
             p.evalCode == EVAL_FINALIZE_NOTARIZATION ||
             p.evalCode == EVAL_FINALIZE_EXPORT ||
             p.evalCode == EVAL_CROSSCHAIN_IMPORT ||
