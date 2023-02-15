@@ -2215,7 +2215,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                                     }
                                     if (!relayTx)
                                     {
-                                        if (LogAcceptCategory("notarizationverbose"))
+                                        if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
                                         {
                                             UniValue jsonNTx(UniValue::VOBJ);
                                             TxToUniv(notarizationTx, uint256(), jsonNTx);

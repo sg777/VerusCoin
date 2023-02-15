@@ -521,6 +521,9 @@ public:
         return lastConfirmed != -1;
     }
 
+    void SetBestChain(const CCurrencyDefinition &fromChainDef,
+                      const std::vector<std::pair<CTransaction, uint256>> &txesAndBlocks);
+
     bool CorrelatedFinalizationSpends(const std::vector<std::pair<CTransaction, uint256>> &txes,
                                       std::vector<std::vector<CInputDescriptor>> &spendsToClose,
                                       std::vector<CInputDescriptor> &extraSpends,

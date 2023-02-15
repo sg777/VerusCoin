@@ -5193,7 +5193,9 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     {
         return state.Error("no-valid-proofroots");
     }
+
     std::set<int> validIndexSet;
+    std::set<int> invalidIndexSet;
     for (int i = 0; i < validIndexesUni.size(); i++)
     {
         validIndexSet.insert(uni_get_int(validIndexesUni[i], INT32_MAX));
@@ -5202,6 +5204,10 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             return state.Error("invalid-validindex-returned");
         }
     }
+
+    // as we identify notarizations to challenge, we will prune the chain notarization data that we use
+    // to determine best chain of any provably invalid forks
+    CChainNotarizationData prunedCND = cnd;
 
     std::set<int> challengedIndexes;
     UniValue challengeRequests(UniValue::VARR);
@@ -5226,7 +5232,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 int j, k;
                 for (j = 0; j < unchallengedForks.size(); j++)
                 {
-                    for (k = 0; k < unchallengedForks[j].size(); k++)
+                    for (k = 1; k < unchallengedForks[j].size(); k++)
                     {
                         if (unchallengedForks[j][k] == i)
                         {
@@ -5243,6 +5249,29 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 if (j >= unchallengedForks.size())
                 {
                     continue;
+                }
+
+                // now, ensure that it follows all notarizationmodulo and alternate stake/work rules,
+                // or remove it from the valid set before testing
+                CBlockIndex *pCurNotarizationIndex = mapBlockIndex[txes[unchallengedForks[j][k]].second];
+                CBlockIndex *pPriorNotarizationIndex = mapBlockIndex[txes[unchallengedForks[j][k - 1]].second];
+                if (pCurNotarizationIndex->GetHeight() > CPBaaSNotarization::BlocksBeforeAlternateStakeEnforcement() &&
+                    pCurNotarizationIndex->IsVerusPOSBlock() == pPriorNotarizationIndex->IsVerusPOSBlock())
+                {
+                    validIndexSet.erase(unchallengedForks[j][k]);
+                    invalidIndexSet.insert(unchallengedForks[j][k]);    // these are provably invalidated
+                }
+
+                CBlockIndex *pConfirmedNotarizationIndex = mapBlockIndex[txes[0].second];
+                uint32_t adjustedNotarizationModulo = CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
+                                                                                                        pCurNotarizationIndex->GetHeight() -
+                                                                                                            pConfirmedNotarizationIndex->GetHeight());
+                int blockPeriodNumber = pCurNotarizationIndex->GetHeight() / adjustedNotarizationModulo;
+                int priorBlockPeriod = pPriorNotarizationIndex->GetHeight() / adjustedNotarizationModulo;
+                if (priorBlockPeriod >= blockPeriodNumber)
+                {
+                    validIndexSet.erase(unchallengedForks[j][k]);
+                    invalidIndexSet.insert(unchallengedForks[j][k]);    // these are provably invalidated
                 }
 
                 // if valid, use it to eliminate remaining forks and collect remaining challenges
@@ -5403,6 +5432,8 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                     }
                 }
             }
+            prunedCND.forks = unchallengedForks;
+            prunedCND.SetBestChain(systemDef, txes);
         }
 
         // we challenge any notarizations about a chain that is not us
@@ -5708,7 +5739,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     }
 
     // get our best index to update next notarization's proof root
-    int32_t notaryIdx = isGatewayFirstContact ? 0 : uni_get_int(find_value(bestProofRootResult, "bestindex"), -1);
+    int32_t notaryIdx = prunedCND.forks[prunedCND.bestChain].back();
 
     UniValue lastConfirmedUni = find_value(bestProofRootResult, "lastconfirmedproofroot");
     CProofRoot lastConfirmedProofRoot;
@@ -5724,31 +5755,27 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
     CProofRoot lastStableProofRoot(find_value(bestProofRootResult, "laststableproofroot"));
 
-    if (!lastConfirmedProofRoot.IsValid() && lastStableProofRoot.IsValid())
+    // if last confirmed is valid, we can't select a later height for our notaryIdx than that or last stable
+    uint32_t earliestHeight = lastConfirmedProofRoot.IsValid() ? lastConfirmedProofRoot.rootHeight : lastStableProofRoot.rootHeight;
+    if (lastConfirmedProofRoot.IsValid() &&
+        prunedCND.vtx[notaryIdx].second.proofRoots[SystemID].rootHeight > earliestHeight)
     {
-        for (int i = cnd.vtx.size() - 1; i >= 0; i--)
+        // we need to go backwards in the best chain fork to a height as early or earlier
+        int i;
+        for (i = prunedCND.forks[prunedCND.bestChain].size() - 2; i > 0; i--)
         {
-            auto it = cnd.vtx[i].second.proofRoots.find(SystemID);
-            if (it != cnd.vtx[i].second.proofRoots.end())
+            auto rootIt = prunedCND.vtx[prunedCND.forks[prunedCND.bestChain][i]].second.proofRoots.find(SystemID);
+            if (rootIt != prunedCND.vtx[prunedCND.forks[prunedCND.bestChain][i]].second.proofRoots.end() &&
+                rootIt->second.rootHeight <= earliestHeight)
             {
-                if (it->second.rootHeight < lastStableProofRoot.rootHeight && !challengedIndexes.count(notaryIdx))
-                {
-                    notaryIdx = i;
-                    break;
-                }
-                else if (it->second.rootHeight == lastStableProofRoot.rootHeight &&
-                         it->second == lastStableProofRoot && notaryIdx != i &&
-                         !challengedIndexes.count(notaryIdx))
-                {
-                    LogPrintf("%s: notarization was rejected with identical proof root to last stable: %s\n", __func__, cnd.vtx[i].second.ToUniValue().write(1,2).c_str());
-                    notaryIdx = i;
-                }
+                break;
             }
         }
+        notaryIdx = prunedCND.forks[prunedCND.bestChain][i];
     }
 
     // if the notarization we are planning to confirm has counter evidence, then
-    // we will post primary evidence to prove our version of the chain
+    // don't try if hopeless
     for (auto &oneChallenge : localCounterEvidence[notaryIdx])
     {
         if (!std::get<1>(oneChallenge).evidence.chainObjects.size() ||
@@ -6116,7 +6143,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         std::vector<int32_t> evidenceOuts;
         if (notarizationEvidence.IsValid())
         {
-
+            notarizationEvidence.output = CUTXORef(uint256(), notarizationOutNum);
             // now add the notary evidence and finalization that uses it to assert validity
             // make the evidence notarization output
             cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);

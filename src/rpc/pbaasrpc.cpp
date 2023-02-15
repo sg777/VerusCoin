@@ -3504,6 +3504,59 @@ bool GetUnspentChainTransfers(std::multimap<uint160, ChainTransferData> &inputDe
     }
 }
 
+void CChainNotarizationData::SetBestChain(const CCurrencyDefinition &fromChainDef,
+                                          const std::vector<std::pair<CTransaction, uint256>> &txesAndBlocks)
+{
+    // now, we should have all forks in vectors
+    // they should all have roots that point to the same confirmed or initial notarization, which should be enforced by chain rules
+    // the best chain should simply be the tip with most power
+
+    uint160 currencyID = fromChainDef.GetID();
+
+    bestChain = 0;
+    CChainPower best;
+    uint32_t bestHeight = 0;
+    for (int i = 0; i < forks.size(); i++)
+    {
+        if (vtx[forks[i].back()].second.proofRoots.count(currencyID))
+        {
+            CChainPower curPower =
+                CChainPower::ExpandCompactPower(vtx[forks[i].back()].second.proofRoots[currencyID].compactPower);
+            if (fromChainDef.proofProtocol == fromChainDef.PROOF_PBAASMMR && curPower > best)
+            {
+                best = curPower;
+                bestHeight = mapBlockIndex[txesAndBlocks[forks[i].back()].second]->GetHeight();
+                bestChain = i;
+            }
+            else if ((curPower == best || fromChainDef.proofProtocol != fromChainDef.PROOF_PBAASMMR) &&
+                        mapBlockIndex.count(txesAndBlocks[forks[i].back()].second) &&
+                        mapBlockIndex[txesAndBlocks[forks[i].back()].second]->GetHeight() > bestHeight)
+            {
+                best = curPower;
+                bestHeight = mapBlockIndex[txesAndBlocks[forks[i].back()].second]->GetHeight();
+                bestChain = i;
+            }
+        }
+        else if (vtx[forks[i].back()].second.IsLaunchCleared() &&
+                vtx[forks[i].back()].second.IsPreLaunch() &&
+                vtx[forks[i].back()].second.IsLaunchConfirmed())
+        {
+            bestChain = i;
+        }
+        else
+        {
+            printf("%s: invalid notarization expecting proofroot for %s:\n%s\n",
+                __func__,
+                EncodeDestination(CIdentityID(currencyID)).c_str(),
+                vtx[forks[i].back()].second.ToUniValue().write(1,2).c_str());
+            LogPrintf("%s: invalid notarization on transaction %s, output %u\n", __func__,
+                    vtx[forks[i].back()].first.hash.GetHex().c_str(),
+                    vtx[forks[i].back()].first.n);
+            //assert(false);
+        }
+    }
+}
+
 // since same chain notarizations are always up to date, we only need to cache cross-chain notarizations that require analysis
 LRUCache<std::pair<uint160, uint256>, std::pair<CChainNotarizationData, std::vector<std::pair<CTransaction, uint256>>>> crossChainNotarizationDataCache(100, 0.3);
 
@@ -3739,48 +3792,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
             // now, we should have all forks in vectors
             // they should all have roots that point to the same confirmed or initial notarization, which should be enforced by chain rules
             // the best chain should simply be the tip with most power
-            notarizationData.bestChain = 0;
-            CChainPower best;
-            uint32_t bestHeight = 0;
-            for (int i = 0; i < notarizationData.forks.size(); i++)
-            {
-                if (notarizationData.vtx[notarizationData.forks[i].back()].second.proofRoots.count(currencyID))
-                {
-                    CChainPower curPower =
-                        CChainPower::ExpandCompactPower(notarizationData.vtx[notarizationData.forks[i].back()].second.proofRoots[currencyID].compactPower);
-                    if (chainDef.proofProtocol == chainDef.PROOF_PBAASMMR && curPower > best)
-                    {
-                        best = curPower;
-                        bestHeight = mapBlockIndex[(*optionalTxOut)[notarizationData.forks[i].back()].second]->GetHeight();
-                        notarizationData.bestChain = i;
-                    }
-                    else if ((curPower == best || chainDef.proofProtocol != chainDef.PROOF_PBAASMMR) &&
-                             mapBlockIndex.count((*optionalTxOut)[notarizationData.forks[i].back()].second) &&
-                             mapBlockIndex[(*optionalTxOut)[notarizationData.forks[i].back()].second]->GetHeight() > bestHeight)
-                    {
-                        best = curPower;
-                        bestHeight = mapBlockIndex[(*optionalTxOut)[notarizationData.forks[i].back()].second]->GetHeight();
-                        notarizationData.bestChain = i;
-                    }
-                }
-                else if (notarizationData.vtx[notarizationData.forks[i].back()].second.IsLaunchCleared() &&
-                        notarizationData.vtx[notarizationData.forks[i].back()].second.IsPreLaunch() &&
-                        notarizationData.vtx[notarizationData.forks[i].back()].second.IsLaunchConfirmed())
-                {
-                    notarizationData.bestChain = i;
-                }
-                else
-                {
-                    printf("%s: invalid notarization expecting proofroot for %s:\n%s\n",
-                        __func__,
-                        EncodeDestination(CIdentityID(currencyID)).c_str(),
-                        notarizationData.vtx[notarizationData.forks[i].back()].second.ToUniValue().write(1,2).c_str());
-                    LogPrintf("%s: invalid notarization on transaction %s, output %u\n", __func__,
-                            notarizationData.vtx[notarizationData.forks[i].back()].first.hash.GetHex().c_str(),
-                            notarizationData.vtx[notarizationData.forks[i].back()].first.n);
-                    //assert(false);
-                }
-            }
+            notarizationData.SetBestChain(chainDef, *optionalTxOut);
         }
 
         crossChainNotarizationDataCache.Put(std::make_pair(currencyID, chainActive.LastTip()->GetBlockHash()), std::make_pair(notarizationData, *optionalTxOut));
