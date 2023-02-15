@@ -1380,11 +1380,99 @@ bool PreCheckFinalizeExport(const CTransaction &tx, int32_t outNum, CValidationS
     return true;
 }
 
+std::tuple<bool, uint32_t, CTransaction, COptCCParams> GetPriorOutputTx(const CTransaction &spendingTx, uint32_t nIn)
+{
+    std::tuple<bool, uint32_t, CTransaction, COptCCParams> retVal({false, 0, CTransaction(), COptCCParams()});
+
+    // if not fulfilled, ensure that no part of the primary identity is modified
+    COptCCParams p;
+    uint256 blkHash;
+    if (myGetTransaction(spendingTx.vin[nIn].prevout.hash, std::get<2>(retVal), blkHash))
+    {
+        auto bIt = mapBlockIndex.find(blkHash);
+        if (bIt == mapBlockIndex.end() || !bIt->second)
+        {
+            std::get<1>(retVal) = 0;
+        }
+        else
+        {
+            std::get<1>(retVal) = bIt->second->GetHeight();
+        }
+        if (std::get<2>(retVal).vout[spendingTx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid())
+        {
+            std::get<3>(retVal) = p;
+        }
+    }
+    return retVal;
+}
+
 // Validate notary evidence
 bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
-    return true;
+    std::tuple<bool, uint32_t, CTransaction, COptCCParams> sourceTx({false, 0, CTransaction(), COptCCParams()});
+    std::multimap<CUTXORef, CObjectFinalization> finalizeSpends;
+    CNotaryEvidence thisEvidence;
+    for (int i = 0; i < tx.vin.size(); i++)
+    {
+        COptCCParams p;
+        auto &oneIn = tx.vin[i];
+        if (oneIn.prevout.hash != tx.GetHash())
+        {
+            continue;
+        }
+        if (oneIn.prevout.n == nIn)
+        {
+            if (!std::get<0>(sourceTx))
+            {
+                sourceTx = GetPriorOutputTx(tx, i);
+                if (!std::get<0>(sourceTx))
+                {
+                    return eval->state.Error("Cannot retrieve prior output transaction");
+                }
+            }
+            if (std::get<2>(sourceTx).vout.size() > oneIn.prevout.n &&
+                std::get<2>(sourceTx).vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_NOTARY_EVIDENCE &&
+                p.vData.size() &&
+                (thisEvidence = CNotaryEvidence(p.vData[0])).IsValid())
+            {
+                if (thisEvidence.output.hash.IsNull())
+                {
+                    thisEvidence.output.hash = oneIn.prevout.hash;
+                }
+                continue;
+            }
+            return eval->state.Error("Invalid prior output transaction");
+        }
+        if (!std::get<0>(sourceTx))
+        {
+            sourceTx = GetPriorOutputTx(tx, i);
+            if (!std::get<0>(sourceTx))
+            {
+                return eval->state.Error("Unable to get prior output transaction");
+            }
+        }
+        CObjectFinalization of;
+        if (std::get<2>(sourceTx).vout.size() > oneIn.prevout.n &&
+            std::get<2>(sourceTx).vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
+            p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+            p.vData.size() &&
+            (of = CObjectFinalization(p.vData[0])).IsValid())
+        {
+            if (thisEvidence.output.hash.IsNull())
+            {
+                thisEvidence.output.hash = oneIn.prevout.hash;
+            }
+            finalizeSpends.insert(std::make_pair(CUTXORef(oneIn.prevout), of));
+        }
+    }
+    bool retVal = chainActive.LastTip()->nBits <= PBAAS_TESTFORK_TIME ? true : finalizeSpends.count(thisEvidence.output) == 1;
+    return retVal ? true : eval->state.Error("Must spend exactly one matching finalization to spend notary evidence output");
 }
+
 bool IsNotaryEvidenceInput(const CScript &scriptSig)
 {
     return true;

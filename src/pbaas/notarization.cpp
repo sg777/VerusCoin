@@ -7711,7 +7711,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         // and we must have moved far enough forward from any there that we agree with, or early out
         bool agreed = false;
 
-        if (oneNotarization.second.IsSameChain() && oneNotarization.second.IsDefinitionNotarization())
+        if ((oneNotarization.second.IsSameChain() && oneNotarization.second.IsDefinitionNotarization()) ||
+             oneNotarization.second.IsPreLaunch())
         {
             agreed = true;
         }
@@ -7927,6 +7928,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             {
                 proofRequest.pushKV("challengeroots", challengeRoots);
             }
+            allEvidence.output = cnd.vtx[cnd.lastConfirmed].first;
             proofRequest.pushKV("evidence", allEvidence.ToUniValue());
             proofRequest.pushKV("confirmnotarization", cnd.vtx[cnd.lastConfirmed].second.ToUniValue());
             proofRequest.pushKV("entropyhash", blockHashes[confirmingIdx].GetHex());
@@ -7960,7 +7962,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 !preparedEvidence.IsValid())
             {
                 // add valid evidence to submission
-                LogPrint("notarization", "Unable to get evidence to submit notarization %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                LogPrint("notarization", "Unable to get valid evidence to submit notarization, proofresult: %s\nevidence: %s\n", proofResult.write().c_str(), preparedEvidence.ToUniValue().write(1,2).c_str());
                 return retVal;
             }
             allEvidence.MergeEvidence(preparedEvidence);
@@ -10418,150 +10420,3 @@ CNotaryEvidence CObjectFinalization::SignRejected(const std::set<uint160> &notar
     }
     return retVal;
 }
-
-// this ensures that the signature is, in fact, both authorized to sign, and also a
-// valid signature of the specified output object. if so, this is accepted and
-// results in a valid index entry as a confirmation of the notary signature
-// all signatures must be from a valid notary, or this returns false and should be
-// considered invalid.
-// returns the number of valid, unique notary signatures, enabling a single output
-// to be sufficient to authorize.
-bool ValidateNotarizationEvidence(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height, int &confirmedCount, bool &provenFalse)
-{
-    // we MUST know that the cs_main lock is held. since it can be held on the validation thread while smart transactions
-    // execute, we cannot take it or assert here
-    return true;
-    /*
-    CNotaryEvidence notarySig;
-    COptCCParams p;
-    CCurrencyDefinition curDef;
-
-    confirmedCount = 0;         // if a unit of evidence, whether signature or otherwise, is validated as confirming
-    provenFalse = false;        // if the notarization is proven false
-
-    if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
-        p.IsValid() &&
-        p.version >= p.VERSION_V3 &&
-        p.vData.size() &&
-        (notarySig = CNotaryEvidence(p.vData[0])).IsValid() &&
-        (curDef = ConnectedChains.GetCachedCurrency(notarySig.systemID)).IsValid())
-    {
-        // now, get the output to check and ensure the signature is good
-        CObjectFinalization of;
-        CPBaaSNotarization notarization;
-        uint256 notarizationTxId;
-        CTransaction nTx;
-        uint256 blkHash;
-        if (notarySig.output.hash.IsNull() ? (nTx = tx), true : myGetTransaction(notarySig.output.hash, nTx, blkHash) &&
-            nTx.vout.size() > notarySig.output.n &&
-            nTx.vout[notarySig.output.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-            p.IsValid() &&
-            (p.evalCode == EVAL_FINALIZE_NOTARIZATION) &&
-            p.vData.size() &&
-            (of = CObjectFinalization(p.vData[0])).IsValid() &&
-            of.IsNotarizationFinalization() &&
-            of.output.hash.IsNull() ? (nTx = tx), true : myGetTransaction(of.output.hash, nTx, blkHash) &&
-            !(notarizationTxId = nTx.GetHash()).IsNull() &&
-            nTx.vout.size() > of.output.n &&
-            nTx.vout[of.output.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-            p.IsValid() &&
-            (p.evalCode == EVAL_EARNEDNOTARIZATION || p.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
-            p.vData.size() &&
-            (notarization = CPBaaSNotarization(p.vData[0])).IsValid() &&
-            notarization.proofRoots.count(notarySig.systemID))
-        {
-            // signature is relative only to the notarization, not the finalization
-            // that way, the information we put into the vdxfCodes have some meaning beyond
-            // the blockchain on which it was signed, and we do not have to carry the
-            // finalization mechanism cross-chain.
-            std::vector<uint160> vdxfCodes = {CCrossChainRPCData::GetConditionID(notarySig.systemID,
-                                                                                 CNotaryEvidence::NotarySignatureKey(),
-                                                                                 notarizationTxId,
-                                                                                 of.output.n)};
-            std::vector<uint256> statements;
-
-            // check that signature is of the hashed vData[0] data
-            CNativeHashWriter hw;
-            hw.write((const char *)&(p.vData[0][0]), p.vData[0].size());
-            uint256 msgHash = hw.GetHash();
-
-            for (auto &authorizedNotary : curDef.notaries)
-            {
-                std::map<CIdentityID, CIdentitySignature>::iterator sigIt = notarySig.signatures.find(authorizedNotary);
-                if (sigIt != notarySig.signatures.end())
-                {
-                    // get identity used to sign
-                    CIdentity signer = CIdentity::LookupIdentity(authorizedNotary, height);
-                    uint256 sigHash = sigIt->second.IdentitySignatureHash(vdxfCodes, vdxfCodeNames, statements, of.currencyID, height, authorizedNotary, "", msgHash);
-
-                    if (signer.IsValid())
-                    {
-                        std::set<uint160> idAddresses;
-                        std::set<uint160> verifiedSignatures;
-
-                        for (const CTxDestination &oneAddress : signer.primaryAddresses)
-                        {
-                            if (oneAddress.which() != COptCCParams::ADDRTYPE_PK || oneAddress.which() != COptCCParams::ADDRTYPE_PKH)
-                            {
-                                // currently, can only check secp256k1 signatures
-                                return state.Error("Unsupported signature type");
-                            }
-                            idAddresses.insert(GetDestinationID(oneAddress));
-                        }
-
-                        for (auto &oneSig : notarySig.signatures[authorizedNotary].signatures)
-                        {
-                            CPubKey pubKey;
-                            pubKey.RecoverCompact(sigHash, oneSig);
-                            uint160 pkID = pubKey.GetID();
-                            if (!idAddresses.count(pkID))
-                            {
-                                return state.Error("Mismatched pubkey and ID in signature");
-                            }
-                            if (verifiedSignatures.count(pkID))
-                            {
-                                return state.Error("Duplicate key use in ID signature");
-                            }
-                            verifiedSignatures.insert(pkID);
-                        }
-                        if (verifiedSignatures.size() >= signer.minSigs)
-                        {
-                            confirmedCount++;
-                        }
-                        else
-                        {
-                            return state.Error("Insufficient signatures on behalf of ID: " + signer.name);
-                        }
-                    }
-                    else
-                    {
-                        return state.Error("Invalid notary identity or corrupt local state");
-                    }
-                }
-                else
-                {
-                    return state.Error("Unauthorized notary");
-                }
-            }
-        }
-        else
-        {
-            return state.Error("Invalid notarization reference");
-        }
-    }
-    else
-    {
-        return state.Error("Invalid or non-evidence output");
-    }
-
-    if (!confirmedCount)
-    {
-        return state.Error("No evidence present");
-    }
-    else
-    {
-        return true;
-    }
-    */
-}
-

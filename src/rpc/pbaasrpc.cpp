@@ -4655,9 +4655,6 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                         }
                     }
 
-
-
-
                     CPartialTransactionProof notarizationTxProof;
                     BlockMap::iterator blockIt = mapBlockIndex.end();
                     bool isConfirmNotarization = !confirmNotarizationRef.hash.IsNull() && confirmNotarizationRef.n >= 0;
@@ -4701,6 +4698,8 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                         break;
                     }
 
+                    futureRoot = CProofRoot::GetProofRoot(futureRoot.rootHeight);
+
                     if (isConfirmNotarization)
                     {
                         notarizationTxProof = CPartialTransactionProof(notarizationTxToProve,
@@ -4723,8 +4722,7 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                     }
 
                     if (confirmRoot.rootHeight <= 0 ||
-                        confirmRoot.rootHeight >= futureRoot.rootHeight ||
-                        toHeight > confirmRoot.rootHeight)
+                        confirmRoot.rootHeight >= futureRoot.rootHeight)
                     {
                         oneRetObj.pushKV("error", "Invalid root or root height in: " + confirmRoot.ToUniValue().write());
                         break;

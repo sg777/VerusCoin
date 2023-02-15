@@ -1520,7 +1520,7 @@ public:
     uint256 compactPower;                   // compact power (or external proxy) of the block height notarization to compare
     int64_t gasPrice;                       // Ethereum protocol gas price
 
-    CProofRoot(int Type=TYPE_PBAAS, int Version=VERSION_CURRENT) : type(Type), version(Version), rootHeight(0) {}
+    CProofRoot(int Type=TYPE_PBAAS, int Version=VERSION_INVALID) : type(Type), version(Version), rootHeight(0) {}
     CProofRoot(const UniValue &uni);
     CProofRoot(const uint160 &sysID,
                 uint32_t nHeight,
