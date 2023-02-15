@@ -7930,7 +7930,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             }
             allEvidence.output = cnd.vtx[cnd.lastConfirmed].first;
             proofRequest.pushKV("evidence", allEvidence.ToUniValue());
-            proofRequest.pushKV("confirmnotarization", cnd.vtx[cnd.lastConfirmed].second.ToUniValue());
+            proofRequest.pushKV("confirmnotarizationref", cnd.vtx[cnd.lastConfirmed].first.ToUniValue());
             proofRequest.pushKV("entropyhash", blockHashes[confirmingIdx].GetHex());
             int64_t fromHeight = crosschainCND.vtx[confirmingIdx ? confirmingIdx - 1 : 0].second.proofRoots.count(ASSETCHAINS_CHAINID) ?
                                     crosschainCND.vtx[confirmingIdx ? confirmingIdx - 1 : 0].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight :
@@ -7962,7 +7962,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 !preparedEvidence.IsValid())
             {
                 // add valid evidence to submission
-                LogPrint("notarization", "Unable to get valid evidence to submit notarization, proofresult: %s\nevidence: %s\n", proofResult.write().c_str(), preparedEvidence.ToUniValue().write(1,2).c_str());
+                LogPrint("notarization", "Unable to get valid evidence to submit notarization: %s\n", proofRequest[0].write().c_str());
                 return retVal;
             }
             allEvidence.MergeEvidence(preparedEvidence);
