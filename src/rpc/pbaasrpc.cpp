@@ -4619,7 +4619,6 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                     UniValue challengeRootsUni(find_value(params[0][i], "challengeroots"));
                     std::vector<std::tuple<CUTXORef, CProofRoot, CBlockHeaderProof>> challengeRoots;
 
-                    CPBaaSNotarization confirmNotarization;
                     CTransaction notarizationTxToProve;
                     uint256 notarizationBlockHash;
 
@@ -4655,6 +4654,7 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                         }
                     }
 
+                    CPBaaSNotarization confirmNotarization;
                     CPartialTransactionProof notarizationTxProof;
                     BlockMap::iterator blockIt = mapBlockIndex.end();
                     bool isConfirmNotarization = !confirmNotarizationRef.hash.IsNull() && confirmNotarizationRef.n >= 0;
@@ -4662,7 +4662,8 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                     {
                         if (!confirmNotarizationRef.GetOutputTransaction(notarizationTxToProve, notarizationBlockHash) ||
                             notarizationBlockHash.IsNull() ||
-                            notarizationTxToProve.vout.size() <= confirmNotarizationRef.n)
+                            notarizationTxToProve.vout.size() <= confirmNotarizationRef.n ||
+                            !(confirmNotarization = CPBaaSNotarization(notarizationTxToProve.vout[confirmNotarizationRef.n].scriptPubKey)).IsValid())
                         {
                             oneRetObj.pushKV("error", "Cannot retrieve cross-confirmed transaction, POSSIBLY DUE TO LOCAL CHAIN STATE CORRUPTION");
                             break;
@@ -5380,7 +5381,6 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
         }
 
         if (!(evidence = CNotaryEvidence(params[1])).IsValid() ||
-            !evidence.GetNotarySignatures().size() ||
             evidence.systemID != pbn.currencyID)
         {
             if (LogAcceptCategory("notarization"))
