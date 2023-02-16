@@ -6355,9 +6355,9 @@ CObjectFinalization::GetFinalizations(const uint160 &currencyID,
 
 std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>>
 CObjectFinalization::GetFinalizations(const CUTXORef &outputRef,
-                 const uint160 &finalizationTypeKey,
-                 uint32_t startHeight,
-                 uint32_t endHeight)
+                                      const uint160 &finalizationTypeKey,
+                                      uint32_t startHeight,
+                                      uint32_t endHeight)
 {
     // if we don't have an endHeight, we also check the mempool
     bool checkMempool = false;
@@ -6421,6 +6421,43 @@ CObjectFinalization::GetFinalizations(const CUTXORef &outputRef,
                                                   oneTx,
                                                   CObjectFinalization(oneTx.vout[mempoolFinalizations[i].first.index].scriptPubKey)));
             }
+        }
+    }
+
+    // look for a finalization on the original notarization transaction to add
+    CObjectFinalization oneOF;
+    CTransaction notarizationTx;
+    uint256 blockHash;
+    BlockMap::iterator blockIt;
+    if (outputRef.GetOutputTransaction(notarizationTx, blockHash) &&
+        (blockIt = mapBlockIndex.find(blockHash)) != mapBlockIndex.end() &&
+        chainActive.Contains(blockIt->second))
+    {
+        int i;
+        for (i = outputRef.n + 1; i < notarizationTx.vout.size(); i++)
+        {
+            COptCCParams p;
+            if (notarizationTx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                (oneOF = CObjectFinalization(p.vData[0])).IsValid() &&
+                oneOF.output.hash.IsNull() &&
+                oneOF.output.n == outputRef.n)
+            {
+                break;
+            }
+        }
+        if (i < notarizationTx.vout.size() &&
+            ((oneOF.IsPending() && finalizationTypeKey == oneOF.ObjectFinalizationPendingKey()) ||
+             (oneOF.IsConfirmed() && (finalizationTypeKey == oneOF.ObjectFinalizationFinalizedKey() ||
+                                      finalizationTypeKey == oneOF.ObjectFinalizationConfirmedKey())) ||
+             (oneOF.IsRejected() && (finalizationTypeKey == oneOF.ObjectFinalizationFinalizedKey() ||
+                                      finalizationTypeKey == oneOF.ObjectFinalizationRejectedKey()))))
+        {
+            retVal.push_back(std::make_tuple(blockIt->second->GetHeight(),
+                                             outputRef,
+                                             notarizationTx,
+                                             CObjectFinalization(notarizationTx.vout[i].scriptPubKey)));
         }
     }
     return retVal;
@@ -9603,25 +9640,12 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                         true;
         }
 
-        std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>> pendingFinalizations;
+        std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>> pendingFinalizations =
+            CObjectFinalization::GetFinalizations(currentFinalization.output,
+                                                  CObjectFinalization::ObjectFinalizationPendingKey(),
+                                                  pCurNotarizationBlkIndex->GetHeight(),
+                                                  height - 1);
 
-        // get one pending key that may be on the same block as the notarization, then we can use a more targeted indexing
-        // for the rest
-        for (auto &oneFinalization : CObjectFinalization::GetFinalizations(curID,
-                                                                           CObjectFinalization::ObjectFinalizationPendingKey(),
-                                                                           pCurNotarizationBlkIndex->GetHeight(),
-                                                                           pCurNotarizationBlkIndex->GetHeight()))
-        {
-            if (std::get<1>(oneFinalization) == finalizationOutput)
-            {
-                pendingFinalizations.push_back(oneFinalization);
-            }
-        }
-        auto insertVec = CObjectFinalization::GetFinalizations(curID,
-                                                               CObjectFinalization::ObjectFinalizationPendingKey(),
-                                                               pCurNotarizationBlkIndex->GetHeight(),
-                                                               height - 1);
-        pendingFinalizations.insert(pendingFinalizations.end(), insertVec.begin(), insertVec.end());
         std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>> &ofsToCheck = pendingFinalizations;
 
         // in order to confirm the indicated notarization, it must be a descendent of the last confirmed notarization,
@@ -9824,71 +9848,76 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     return state.Error("insufficient local evidence for finalization");
                 }
 
-                if (notaryCurrencyDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID &&
-                    (notaryCurrencyDef.IsPBaaSChain() || notaryCurrencyDef.IsGateway()) &&
-                    !normalizedNotarization.IsPreLaunch() &&
-                    (notaryCurrencyDef.launchSystemID != ASSETCHAINS_CHAINID ||
-                    !evidenceMap.size()))
+                if (!(notarization.IsPreLaunch() &&
+                      notarization.IsSameChain() &&
+                      notaryCurrencyDef.launchSystemID == ASSETCHAINS_CHAINID))
                 {
-                    if (LogAcceptCategory("notarization"))
+                   if (notaryCurrencyDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID &&
+                        (notaryCurrencyDef.IsPBaaSChain() || notaryCurrencyDef.IsGateway()) &&
+                        !normalizedNotarization.IsPreLaunch() &&
+                        (notaryCurrencyDef.launchSystemID != ASSETCHAINS_CHAINID ||
+                        !evidenceMap.size()))
                     {
-                        LogPrintf("insufficient evidence to finalize: %s\n",
-                                    evidenceMap.begin()->second[0].second.ToUniValue().write(1,2).c_str());
-                    }
-
-                    // check for sufficient autonotarization evidence
-                    if (pNotaryCurrency->notarizationProtocol != pNotaryCurrency->NOTARIZATION_NOTARY_CHAINID &&
-                        pNotaryCurrency->notarizationProtocol != pNotaryCurrency->NOTARIZATION_NOTARY_CONFIRM)
-                    {
-
-                    }
-                    return state.Error("insufficient evidence from notary system to accept finalization");
-                }
-
-                CNotaryEvidence::EStates signatureState = CNotaryEvidence::EStates::STATE_CONFIRMING;
-                for (auto &oneEvidenceVec : evidenceMap)
-                {
-                    for (auto &oneEvidence : oneEvidenceVec.second)
-                    {
-                        if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
+                        if (LogAcceptCategory("notarization"))
                         {
-                            LogPrintf("oneEvidence from system %s in map: %s\n", ConnectedChains.GetFriendlyCurrencyName(oneEvidenceVec.first).c_str(),
-                                                                                oneEvidence.second.ToUniValue().write(1,2).c_str());
+                            LogPrintf("insufficient evidence to finalize: %s\n",
+                                        evidenceMap.begin()->second[0].second.ToUniValue().write(1,2).c_str());
                         }
-                        signatureState =
-                            oneEvidence.second.CheckSignatureConfirmation(objHash,
-                                                                            notarySet,
-                                                                            pNotaryCurrency->minNotariesConfirm,
-                                                                            height - 1);
+
+                        // check for sufficient autonotarization evidence
+                        if (pNotaryCurrency->notarizationProtocol != pNotaryCurrency->NOTARIZATION_NOTARY_CHAINID &&
+                            pNotaryCurrency->notarizationProtocol != pNotaryCurrency->NOTARIZATION_NOTARY_CONFIRM)
+                        {
+
+                        }
+                        return state.Error("insufficient evidence from notary system to accept finalization");
+                    }
+
+                    CNotaryEvidence::EStates signatureState = CNotaryEvidence::EStates::STATE_CONFIRMING;
+                    for (auto &oneEvidenceVec : evidenceMap)
+                    {
+                        for (auto &oneEvidence : oneEvidenceVec.second)
+                        {
+                            if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
+                            {
+                                LogPrintf("oneEvidence from system %s in map: %s\n", ConnectedChains.GetFriendlyCurrencyName(oneEvidenceVec.first).c_str(),
+                                                                                    oneEvidence.second.ToUniValue().write(1,2).c_str());
+                            }
+                            signatureState =
+                                oneEvidence.second.CheckSignatureConfirmation(objHash,
+                                                                                notarySet,
+                                                                                pNotaryCurrency->minNotariesConfirm,
+                                                                                height - 1);
+                            if (signatureState == CNotaryEvidence::STATE_CONFIRMED || signatureState == CNotaryEvidence::STATE_REJECTED)
+                            {
+                                break;
+                            }
+                        }
                         if (signatureState == CNotaryEvidence::STATE_CONFIRMED || signatureState == CNotaryEvidence::STATE_REJECTED)
                         {
                             break;
                         }
                     }
-                    if (signatureState == CNotaryEvidence::STATE_CONFIRMED || signatureState == CNotaryEvidence::STATE_REJECTED)
+
+                    if (signatureState != CNotaryEvidence::STATE_CONFIRMED &&
+                            (!confirmNeedsEvidence ||
+                            pNotaryCurrency->proofProtocol != pNotaryCurrency->PROOF_PBAASMMR ||
+                            pNotaryCurrency->notarizationProtocol != pNotaryCurrency->NOTARIZATION_AUTO))
                     {
-                        break;
+                        return state.Error("Insufficient notary witnesses to confirm accepted notarization");
+                    }
+
+                    // if we have enough confirmations and enough blocks, we can confirm
+                    if (!((signatureState == CNotaryEvidence::STATE_CONFIRMED &&
+                        numNotaryConfirms >= numSignedNeeded) ||
+                        (signatureState != CNotaryEvidence::STATE_CONFIRMED &&
+                        numNotaryConfirms >= numAutoNeeded &&
+                        (height - pCurNotarizationBlkIndex->GetHeight()) >= numBlocksAutoNeeded)))
+                    {
+                        return state.Error("Insufficient notary confirms and/or blocks to confirm accepted notarization with given evidence");
                     }
                 }
-
-                if (signatureState != CNotaryEvidence::STATE_CONFIRMED &&
-                        (!confirmNeedsEvidence ||
-                         pNotaryCurrency->proofProtocol != pNotaryCurrency->PROOF_PBAASMMR ||
-                         pNotaryCurrency->notarizationProtocol != pNotaryCurrency->NOTARIZATION_AUTO))
-                {
-                    return state.Error("Insufficient notary witnesses to confirm accepted notarization");
-                }
-
-                // if we have enough confirmations and enough blocks, we can confirm
-                if (!((signatureState == CNotaryEvidence::STATE_CONFIRMED &&
-                      numNotaryConfirms >= numSignedNeeded) ||
-                     (signatureState != CNotaryEvidence::STATE_CONFIRMED &&
-                      numNotaryConfirms >= numAutoNeeded &&
-                      (height - pCurNotarizationBlkIndex->GetHeight()) >= numBlocksAutoNeeded)))
-                {
-                    return state.Error("Insufficient notary confirms and/or blocks to confirm accepted notarization with given evidence");
-                }
-            }
+             }
         }
         else
         {
@@ -9910,7 +9939,10 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                 }
 
                 // confirm that we are descended from the last confirmed notarization
-                if (!IsNotarizationDescendent(notarization, priorNotarizationInfo, lastConfirmedNotarizationInfo, state))
+                if (!IsNotarizationDescendent(notarization, priorNotarizationInfo, lastConfirmedNotarizationInfo, state) &&
+                    !(std::get<2>(lastConfirmedNotarizationInfo).IsValid() &&
+                      (std::get<2>(lastConfirmedNotarizationInfo).IsPreLaunch() ||
+                       std::get<2>(lastConfirmedNotarizationInfo).IsDefinitionNotarization())))
                 {
                     // always OK to reject a notarization that is no longer in the notarization lineage
                     return true;
@@ -10105,9 +10137,12 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             }
 
             // confirm that we are descended from the last confirmed notarization
-            if (!IsNotarizationDescendent(notarization, priorNotarizationInfo, lastConfirmedNotarizationInfo, state))
+            if (!IsNotarizationDescendent(notarization, priorNotarizationInfo, lastConfirmedNotarizationInfo, state) &&
+                !(std::get<2>(lastConfirmedNotarizationInfo).IsValid() &&
+                  (std::get<2>(lastConfirmedNotarizationInfo).IsPreLaunch() ||
+                   std::get<2>(lastConfirmedNotarizationInfo).IsDefinitionNotarization())))
             {
-                return false;
+                return state.Error("Notarization is not a descendent of confirmed notarization");
             }
         }
 
