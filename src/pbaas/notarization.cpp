@@ -1307,6 +1307,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                             return false;
                         }
                         newNotarization.proofRoots[ASSETCHAINS_CHAINID] = curProofRoot;
+                        newNotarization.currencyStates[ASSETCHAINS_CHAINID] = ConnectedChains.GetCurrencyState(destCurrency.startBlock - 1);
                     }
                 }
             }
@@ -3974,7 +3975,6 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
         {
             CTransaction checkTx;
             COptCCParams checkP;
-            CObjectFinalization checkOf;
             uint256 checkBlockHash;
             if (myGetTransaction(oneFinalization.second.txIn.prevout.hash, checkTx, checkBlockHash) &&
                 checkTx.vout.size() > oneFinalization.second.txIn.prevout.n &&
@@ -4263,20 +4263,26 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
 
     CObjectFinalization foundOf;
     CAddressIndexDbEntry foundOutput;
-    for (auto &oneOut : outTx.vout)
+    for (int i = 0; i < outTx.vout.size(); i++)
     {
+        auto &oneOut = outTx.vout[i];
         if (oneOut.nValue >= 0 &&
             (priorAgreedNotarization = CPBaaSNotarization(oneOut.scriptPubKey)).IsValid() &&
             priorAgreedNotarization.currencyID == ASSETCHAINS_CHAINID &&
-            (priorAgreedNotarization.FindEarnedNotarization(foundOf, &foundOutput) &&
+            ((priorAgreedNotarization.FindEarnedNotarization(foundOf, &foundOutput) &&
              !priorAgreedNotarization.IsBlockOneNotarization()) ||
              (cnd.vtx[cnd.lastConfirmed].second.IsPreLaunch() &&
-              priorAgreedNotarization.IsBlockOneNotarization()))
+              priorAgreedNotarization.IsBlockOneNotarization())))
         {
             if (priorAgreedNotarization.IsBlockOneNotarization())
             {
                 foundNotarization = cnd.vtx[cnd.lastConfirmed].second;
                 priorNotarizationIdx = cnd.lastConfirmed;
+            }
+            else
+            {
+                foundNotarization = priorAgreedNotarization;
+                priorNotarizationIdx = i;
             }
             break;
         }

@@ -1133,8 +1133,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                      (notarization.proofRoots.count(notarization.currencyID) ||
                       (notarization.IsPreLaunch() &&
                        notarization.IsLaunchConfirmed() &&
-                       notarization.currencyState.IsLaunchClear() &&
-                       notarization.currencyStates.count(ASSETCHAINS_CHAINID)))))
+                       notarization.currencyState.IsLaunchClear()))))
                 {
                     // TODO: POST HARDENING confirm that the final prelaunch notarization is coming through here to index the block one
                     // notarization of a PBaaS chain

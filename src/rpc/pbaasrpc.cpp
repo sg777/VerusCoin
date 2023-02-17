@@ -4825,22 +4825,19 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
 
                         std::vector<int> txInsToProve;
                         std::vector<int> txOutsToProve;
-                        if (blockIt->second->GetHeight() == 1)
+                        if (priorNotarization.IsBlockOneNotarization())
                         {
-                            if (priorNotarization.IsBlockOneNotarization())
+                            // get entire coinbase proof
+                            txInsToProve.push_back(0);
+                            txOutsToProve.resize(priorNotarizationTx.vout.size());
+                            for (int outNum = 0; outNum < txOutsToProve.size(); outNum++)
                             {
-                                // get entire coinbase proof
-                                txInsToProve.push_back(0);
-                                txOutsToProve.resize(priorNotarizationTx.vout.size());
-                                for (int outNum = 0; outNum < txOutsToProve.size(); outNum++)
-                                {
-                                    txOutsToProve[outNum] = outNum;
-                                }
+                                txOutsToProve[outNum] = outNum;
                             }
-                            else
-                            {
-                                txOutsToProve.push_back((int)priorNotarizationRef.n);
-                            }
+                        }
+                        else
+                        {
+                            txOutsToProve.push_back((int)priorNotarizationRef.n);
                         }
 
                         CPartialTransactionProof oneTxProof(priorNotarizationTx,
