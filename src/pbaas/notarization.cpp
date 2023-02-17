@@ -4269,7 +4269,10 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         if (oneOut.nValue >= 0 &&
             (priorAgreedNotarization = CPBaaSNotarization(oneOut.scriptPubKey)).IsValid() &&
             priorAgreedNotarization.currencyID == ASSETCHAINS_CHAINID &&
+            priorAgreedNotarization.SetMirror(true) &&
+            priorAgreedNotarization.currencyID != ASSETCHAINS_CHAINID &&
             ((priorAgreedNotarization.FindEarnedNotarization(foundOf, &foundOutput) &&
+             priorAgreedNotarization.SetMirror(false) &&
              !priorAgreedNotarization.IsBlockOneNotarization()) ||
              (cnd.vtx[cnd.lastConfirmed].second.IsPreLaunch() &&
               priorAgreedNotarization.IsBlockOneNotarization())))
@@ -7593,7 +7596,7 @@ bool CPBaaSNotarization::FindEarnedNotarization(CObjectFinalization &confirmedFi
     CNativeHashWriter hw;
     hw << checkNotarization;
     uint256 objHash = hw.GetHash();
-    uint160 notarizationIdxKey = CCrossChainRPCData::GetConditionID(checkNotarization.currencyID, CPBaaSNotarization::EarnedNotarizationKey(), objHash);
+    uint160 notarizationIdxKey = CCrossChainRPCData::GetConditionID(currencyID, CPBaaSNotarization::EarnedNotarizationKey(), objHash);
     return FindFinalizedIndexByVDXFKey(notarizationIdxKey, confirmedFinalization, earnedNotarizationIndex);
 }
 
