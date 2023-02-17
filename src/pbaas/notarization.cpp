@@ -4061,6 +4061,7 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                         }
                         break;
                     }
+                    foundNotarization = CPBaaSNotarization();
                 }
                 if (!found || error)
                 {
@@ -9671,6 +9672,10 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
 
             if (!std::get<0>(priorNotarizationInfo))
             {
+                if (chainActive.LastTip()->nBits < PBAAS_TESTFORK_TIME)
+                {
+                    return true;
+                }
                 return state.Error("Invalid prior notarization 2");
             }
 
