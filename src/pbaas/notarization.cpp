@@ -9683,11 +9683,13 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             }
 
             // confirm that we are descended from the last confirmed notarization
-            if (!IsNotarizationDescendent(notarization, priorNotarizationInfo, lastConfirmedNotarizationInfo, state) &&
+            CValidationState tempState;
+            if (!IsNotarizationDescendent(notarization, priorNotarizationInfo, lastConfirmedNotarizationInfo, tempState) &&
                 !(std::get<2>(lastConfirmedNotarizationInfo).IsValid() &&
                   (std::get<2>(lastConfirmedNotarizationInfo).IsPreLaunch() ||
                    std::get<2>(lastConfirmedNotarizationInfo).IsDefinitionNotarization())))
             {
+                state = tempState;
                 return false;
             }
 
@@ -9857,11 +9859,6 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             }
             else
             {
-                if (!evidenceMap.size())
-                {
-                    return state.Error("insufficient local evidence for finalization");
-                }
-
                 if (!(notarization.IsPreLaunch() &&
                       notarization.IsSameChain() &&
                       notaryCurrencyDef.launchSystemID == ASSETCHAINS_CHAINID))
@@ -9953,7 +9950,8 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                 }
 
                 // confirm that we are descended from the last confirmed notarization
-                if (!IsNotarizationDescendent(notarization, priorNotarizationInfo, lastConfirmedNotarizationInfo, state) &&
+                CValidationState tempState;
+                if (!IsNotarizationDescendent(notarization, priorNotarizationInfo, lastConfirmedNotarizationInfo, tempState) &&
                     !(std::get<2>(lastConfirmedNotarizationInfo).IsValid() &&
                       (std::get<2>(lastConfirmedNotarizationInfo).IsPreLaunch() ||
                        std::get<2>(lastConfirmedNotarizationInfo).IsDefinitionNotarization())))
@@ -10151,11 +10149,13 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             }
 
             // confirm that we are descended from the last confirmed notarization
-            if (!IsNotarizationDescendent(notarization, priorNotarizationInfo, lastConfirmedNotarizationInfo, state) &&
+            CValidationState tempState;
+            if (!IsNotarizationDescendent(notarization, priorNotarizationInfo, lastConfirmedNotarizationInfo, tempState) &&
                 !(std::get<2>(lastConfirmedNotarizationInfo).IsValid() &&
                   (std::get<2>(lastConfirmedNotarizationInfo).IsPreLaunch() ||
                    std::get<2>(lastConfirmedNotarizationInfo).IsDefinitionNotarization())))
             {
+                state = tempState;
                 return state.Error("Notarization is not a descendent of confirmed notarization");
             }
         }
