@@ -4301,7 +4301,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
             else
             {
                 foundNotarization = priorAgreedNotarization;
-                priorNotarizationIdx = i;
+                priorNotarizationIdx = foundOutput.first.index;
             }
             break;
         }
