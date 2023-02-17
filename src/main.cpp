@@ -868,9 +868,9 @@ bool IsExpiredTx(const CTransaction &tx, int nBlockHeight)
     return static_cast<uint32_t>(nBlockHeight) > tx.nExpiryHeight;
 }
 
-bool IsExpiringSoonTx(const CTransaction &tx, int nNextBlockHeight)
+bool IsExpiringSoonTx(const CTransaction &tx, int nNextBlockHeight, int expiryThreshold)
 {
-    return IsExpiredTx(tx, nNextBlockHeight + TX_EXPIRING_SOON_THRESHOLD);
+    return IsExpiredTx(tx, nNextBlockHeight + expiryThreshold);
 }
 
 bool CheckFinalTx(const CTransaction &tx, int flags)
@@ -1777,7 +1777,7 @@ bool AcceptToMemoryPool(CTxMemPool& pool, CValidationState &state, const CTransa
     return AcceptToMemoryPoolInt(pool, state, tx, fLimitFree, pfMissingInputs, fRejectAbsurdFee, dosLevel);
 }
 
-bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTransaction &tx, bool fLimitFree,bool* pfMissingInputs, bool fRejectAbsurdFee, int dosLevel, int32_t simHeight)
+bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTransaction &tx, bool fLimitFree, bool* pfMissingInputs, bool fRejectAbsurdFee, int dosLevel, int32_t simHeight, int expireThreshold)
 {
     AssertLockHeld(cs_main);
     if (pfMissingInputs)
@@ -1838,7 +1838,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
     // DoS mitigation: reject transactions expiring soon
     // Note that if a valid transaction belonging to the wallet is in the mempool and the node is shutdown,
     // upon restart, CWalletTx::AcceptToMemoryPool() will be invoked which might result in rejection.
-    if (IsExpiringSoonTx(tx, nextBlockHeight)) {
+    if (IsExpiringSoonTx(tx, nextBlockHeight, expireThreshold)) {
         return state.DoS(0, error("AcceptToMemoryPool(): transaction is expiring soon"), REJECT_INVALID, "tx-expiring-soon");
     }
 
@@ -3893,8 +3893,17 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 return state.DoS(100, error("ConnectBlock(): too many sigops"),
                                 REJECT_INVALID, "bad-blk-sigops");
 
-            // Check transaction contextually against consensus rules at block height
-            if (!ContextualCheckTransaction(tx, state, chainparams, nHeight, 10)) {
+            // ensure transaction can clear conflicts and get into mempool
+            std::list<CTransaction> removed;
+            mempool.removeConflicts(tx, removed);
+            bool missingInputs = false;
+            bool isPosTx = block.IsVerusPOSBlock() && (i + 1) == block.vtx.size();
+            if (((tx.IsCoinBase() || isPosTx) &&
+                 !ContextualCheckTransaction(tx, state, chainparams, nHeight, 10)) ||
+                (!(tx.IsCoinBase() || isPosTx) &&
+                 !AcceptToMemoryPoolInt(mempool, state, tx, false, &missingInputs, false, 10, nHeight, 0) &&
+                 !(state.GetRejectReason() == "already in mempool" || state.GetRejectReason() == "already have coins")))
+            {
                 return false; // Failure reason has been set in validation state object
             }
 
@@ -6103,6 +6112,8 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
     CTransaction sTx;
     CTransaction *ptx = NULL;
     bool success = true;
+
+    /*
     if ( ASSETCHAINS_CC != 0 ) // CC contracts might refer to transactions in the current block, from a CC spend within the same block and out of order
     {
         int32_t i,j,rejects=0,lastrejects=0;
@@ -6189,6 +6200,7 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
         }
         //fprintf(stderr,"done putting block's tx into mempool\n");
     }
+    */
 
     if (success)
     {
