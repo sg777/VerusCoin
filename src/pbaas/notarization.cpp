@@ -2275,16 +2275,31 @@ std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> GetPriorReferen
     // it will return nothing
     if (notarization.IsMirror())
     {
-        CNotaryEvidence evidence;
-        int32_t afterEvidence;
-        if (tx.vout.size() > (notarizationOut + 1) ||
-            !(evidence = CNotaryEvidence(tx, notarizationOut + 1, afterEvidence)).IsValid() ||
-            !evidence.output.hash.IsNull() ||
-            evidence.output.n != notarizationOut)
+        CObjectFinalization initialOF;
+        int finalOutNum;
+        for (finalOutNum = notarizationOut + 1; finalOutNum < tx.vout.size(); finalOutNum++)
         {
+            if ((initialOF = CObjectFinalization(tx.vout[finalOutNum].scriptPubKey)).IsValid() &&
+                initialOF.output.hash.IsNull() &&
+                initialOF.output.n == notarizationOut)
+            {
+                break;
+            }
+        }
+        if (finalOutNum >= tx.vout.size())
+        {
+            LogPrint("notarization", "%s: pending finalization for mirrored notarization (%s) not found\n", __func__, CUTXORef(tx.GetHash(), notarizationOut).ToString().c_str());
             return retVal;
         }
-
+        CValidationState state;
+        auto evidenceVec = initialOF.GetFinalizationEvidence(tx, finalOutNum, state);
+        if (!evidenceVec.size())
+        {
+            LogPrint("notarization", "%s: evidence for mirrored notarization (%s) not found\n", __func__, CUTXORef(tx.GetHash(), notarizationOut).ToString().c_str());
+            return retVal;
+        }
+        CNotaryEvidence &evidence = evidenceVec[0].second;
+        int32_t afterEvidence;
         std::set<int> evidenceTypes;
 
         // proof of the last confirmed notarization matching the one on this chain or block 1 coinbase
