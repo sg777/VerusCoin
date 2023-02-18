@@ -651,7 +651,9 @@ bool CScript::IsInstantSpendOrUnspendable() const
     if (IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
     {
         if (p.evalCode == EVAL_EARNEDNOTARIZATION ||
+            p.evalCode == EVAL_NOTARY_EVIDENCE ||
             p.evalCode == EVAL_FINALIZE_NOTARIZATION ||
+            p.evalCode == EVAL_FINALIZE_EXPORT ||
             p.evalCode == EVAL_CROSSCHAIN_IMPORT ||
             p.evalCode == EVAL_CROSSCHAIN_EXPORT ||
             p.evalCode == EVAL_FEE_POOL)

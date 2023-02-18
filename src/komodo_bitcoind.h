@@ -1748,7 +1748,9 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                                                         outVal.valueMap[ASSETCHAINS_CHAINID] += oneOut.nValue;
                                                         cbOutputs[p.vKeys[0]] += outVal;
                                                     }
-                                                    else if (!oneOut.scriptPubKey.IsInstantSpendOrUnspendable())
+                                                    else if (!oneOut.scriptPubKey.IsInstantSpendOrUnspendable() ||
+                                                             oneOut.nValue ||
+                                                             oneOut.ReserveOutValue() > CCurrencyValueMap())
                                                     {
                                                         printf("%s: ERROR: in staking block %s - invalid coinbase output type\n", __func__, blkHash.ToString().c_str());
                                                         LogPrintf("%s: ERROR: in staking block %s - invalid coinbase output type\n", __func__, blkHash.ToString().c_str());
