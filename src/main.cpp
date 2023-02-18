@@ -3913,7 +3913,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                  !ContextualCheckTransaction(tx, state, chainparams, nHeight, 10)) ||
                 (!(tx.IsCoinBase() || isPosTx) &&
                  !AcceptToMemoryPoolInt(mempool, state, tx, false, &missingInputs, false, 10, nHeight, 0) &&
-                 !(state.GetRejectReason() == "already in mempool" || state.GetRejectReason() == "already have coins")))
+                 !(state.GetRejectReason() == "already in mempool" ||
+                   state.GetRejectReason() == "already have coins") &&
+                 !(state.GetRejectReason() == "staking" &&
+                   IsVerusMainnetActive() &&
+                   nHeight < 1800000)))
             {
                 return false; // Failure reason has been set in validation state object
             }

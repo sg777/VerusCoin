@@ -22,13 +22,12 @@ extern uint32_t KOMODO_STOPAT;
 
 bool IsVerusActive()
 {
-    std::string normalName = boost::to_lower_copy(std::string(ASSETCHAINS_SYMBOL));
-    return normalName == "vrsc" || normalName == "vrsctest";
+    return ASSETCHAINS_CHAINID == VERUS_CHAINID;
 }
 
 bool IsVerusMainnetActive()
 {
-    return (strcmp(ASSETCHAINS_SYMBOL, "VRSC") == 0);
+    return IsVerusActive() && (strcmp(ASSETCHAINS_SYMBOL, "VRSC") == 0);
 }
 
 // this adds an opret to a mutable transaction and returns the voutnum if it could be added
