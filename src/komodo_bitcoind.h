@@ -1548,7 +1548,9 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                         for (int i = 0; validHash && i < pblock->vtx[0].vout.size(); i++)
                         {
                             validHash = false;
-                            if (pblock->vtx[0].vout[i].scriptPubKey.IsInstantSpendOrUnspendable() || ValidateMatchingStake(pblock->vtx[0], i, pblock->vtx[txn_count-1], validHash, slowflag) && !validHash)
+                            if (pblock->vtx[0].vout[i].scriptPubKey.IsInstantSpendOrUnspendable() ||
+                                (!pblock->vtx[0].vout[i].nValue && pblock->vtx[0].vout[i].ReserveOutValue() == CCurrencyValueMap()) ||
+                                ValidateMatchingStake(pblock->vtx[0], i, pblock->vtx[txn_count-1], validHash, slowflag) && !validHash)
                             {
                                 if ((p.prevHash == pblock->hashPrevBlock) && (int32_t)p.blkHeight == height)
                                 {
