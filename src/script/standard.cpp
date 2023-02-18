@@ -308,7 +308,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                 {
                     if (cp.evalCode != EVAL_STAKEGUARD)
                     {
-                        LogPrintf("unrecognized smart transaction script type\n");
+                        LogPrint("precheck", "unrecognized smart transaction script type\n");
                         return false;
                     }
                     for (auto k : cp.vKeys)
@@ -317,7 +317,7 @@ bool Solver(const CScript& scriptPubKey, txnouttype& typeRet, vector<vector<unsi
                     }
                 }
 
-                uint160 scrHash; 
+                uint160 scrHash;
                 scrHash = Hash160(ccSubScript);
                 vSolutionsRet.push_back(std::vector<unsigned char>(scrHash.begin(), scrHash.end()));
                 return true;
@@ -542,7 +542,7 @@ bool ExtractDestination(const CScript& _scriptPubKey, CTxDestination& addressRet
         addressRet = CScriptID(uint160(vSolutions[0]));
         return true;
     }
-    
+
     else if (IsCryptoConditionsEnabled() != 0 && whichType == TX_CRYPTOCONDITION)
     {
         COptCCParams p;
@@ -556,12 +556,12 @@ bool ExtractDestination(const CScript& _scriptPubKey, CTxDestination& addressRet
     return false;
 }
 
-bool ExtractDestinations(const CScript& scriptPubKey, 
-                         txnouttype& typeRet, 
-                         std::vector<CTxDestination>& addressRet, 
-                         int &nRequiredRet, 
-                         const CKeyStore *pKeyStore, 
-                         bool *pCanSign, 
+bool ExtractDestinations(const CScript& scriptPubKey,
+                         txnouttype& typeRet,
+                         std::vector<CTxDestination>& addressRet,
+                         int &nRequiredRet,
+                         const CKeyStore *pKeyStore,
+                         bool *pCanSign,
                          bool *pCanSpend,
                          uint32_t nHeight,
                          std::map<uint160, CKey> *pPrivKeys)
@@ -601,8 +601,8 @@ bool ExtractDestinations(const CScript& scriptPubKey,
     {
         std::set<CScriptID> idSet;
 
-        if (p.IsValid() && 
-            p.n >= 1 && 
+        if (p.IsValid() &&
+            p.n >= 1 &&
             p.vKeys.size() >= p.n)
         {
             typeRet = TX_CRYPTOCONDITION;
@@ -878,7 +878,7 @@ bool ExtractDestinations(const CScript& scriptPubKey,
             }
         }
     }
-    
+
     return true;
 }
 

@@ -803,6 +803,17 @@ bool IsStandardTx(const CTransaction& tx, string& reason, const CChainParams& ch
             ::IsStandard(txout.scriptPubKey, whichType);
             reason = "scriptpubkey";
             //fprintf(stderr,">>>>>>>>>>>>>>> vout.%d nDataout.%d\n",v,nDataOut);
+            // if we are on Verus mainnet, there were a few transactions that got into the blocks
+            // earlier that are no longer allowed. exempt them.
+            COptCCParams p;
+            if (IsVerusMainnetActive() &&
+                txout.scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.version < 3 &&
+                nHeight < 1800000)
+            {
+                reason = "invalidsmarttx";
+                return true;
+            }
             return false;
         }
 
@@ -6109,127 +6120,23 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
                              REJECT_INVALID, "bad-cb-multiple");
 
     // Check transactions
-    CTransaction sTx;
-    CTransaction *ptx = NULL;
     bool success = true;
+    unsigned int nSigOps = 0;
 
-    /*
-    if ( ASSETCHAINS_CC != 0 ) // CC contracts might refer to transactions in the current block, from a CC spend within the same block and out of order
+    for (uint32_t i = 0; i < block.vtx.size(); i++)
     {
-        int32_t i,j,rejects=0,lastrejects=0;
-
-        // we need this lock to prevent accepting transactions we shouldn't
-        LOCK(cs_main);
-        LOCK2(smartTransactionCS, mempool.cs);
-
-        SetMaxScriptElementSize(height);
-
-        //printf("checking block %d\n", height);
-        while ( 1 )
+        nSigOps += GetLegacySigOpCount(block.vtx[i]);
+        if (!CheckTransaction(block.vtx[i], state, verifier))
         {
-            for (i = block.hashPrevBlock.IsNull() ? 1 : 0; i < block.vtx.size(); i++)
-            {
-                CValidationState state;
-                CTransaction Tx;
-                const CTransaction &tx = (CTransaction)block.vtx[i];
-                if (((i == (block.vtx.size() - 1)) && (ASSETCHAINS_STAKED && komodo_isPoS((CBlock *)&block) != 0)))
-                    continue;
-                Tx = tx;
-
-                bool missinginputs = false;
-
-                if (Tx.vout.size() == 0)
-                {
-                    if (!Tx.IsCoinBase())
-                    {
-                        for (int j = 0; j < Tx.vin.size(); j++)
-                        {
-                            if (Tx.vin[j].prevout.hash.IsNull())
-                            {
-                                success = false;
-                            }
-                        }
-                    }
-                }
-
-                if (!tx.IsCoinBase() && myAddtomempool(Tx, &state, height, false, &missinginputs) == false ) // happens with out of order tx in block on resync
-                {
-                    //LogPrintf("%s: Rejected by mempool, reason: .%s.\n", __func__, state.GetRejectReason().c_str());
-                    //printf("%s: Rejected by mempool, reason: .%s.\n", __func__, state.GetRejectReason().c_str());
-
-                    uint32_t ecode;
-                    // take advantage of other checks, but if we were only rejected because it is present or a valid staking
-                    // transaction, sync with wallets and don't mark as a reject
-                    if (i == (block.vtx.size() - 1) && ASSETCHAINS_LWMAPOS && block.IsVerusPOSBlock() && state.GetRejectReason() == "staking")
-                    {
-                        sTx = Tx;
-                        ptx = &sTx;
-                    }
-                    else
-                    if (state.GetRejectReason() != "already have coins" &&
-                          !((missinginputs || state.GetRejectCode() == REJECT_DUPLICATE) && (!fCheckTxInputs || chainActive.Height() < height - 1)))
-                    {
-                        if (LogAcceptCategory("checkblock"))
-                        {
-                            LogPrint("checkblock", "Rejected transaction for %s, reject code %d\nchainActive.Height(): %d, height: %d\n", state.GetRejectReason().c_str(), state.GetRejectCode(), chainActive.Height(), height);
-                            for (auto input : Tx.vin)
-                            {
-                                LogPrint("checkblock", "input n: %d, hash: %s\n", input.prevout.n, input.prevout.hash.GetHex().c_str());
-                            }
-                        }
-                        rejects++;
-                    }
-                    else if (state.GetRejectReason() == "bad-txns-invalid-reserve")
-                    {
-                        // there is no way this will be ok
-                        success = false;
-                    }
-                }
-            }
-            if ( rejects == 0 || rejects == lastrejects )
-            {
-                if ( lastrejects != 0 )
-                {
-                    LogPrintf("lastrejects.%d -> all tx in mempool\n", lastrejects);
-                }
-                break;
-            }
-            //fprintf(stderr,"addtomempool ht.%d for CC checking: n.%d rejects.%d last.%d\n",height,(int32_t)block.vtx.size(),rejects,lastrejects);
-            lastrejects = rejects;
-            rejects = 0;
+            success = error("CheckBlock: CheckTransaction failed");
+            break;
         }
-        //fprintf(stderr,"done putting block's tx into mempool\n");
     }
-    */
-
-    if (success)
+    if (success &&
+        nSigOps > MAX_BLOCK_SIGOPS)
     {
-        for (uint32_t i = 0; i < block.vtx.size(); i++)
-        {
-            const CTransaction& tx = block.vtx[i];
-            if ( komodo_validate_interest(tx,height == 0 ? komodo_block2height((CBlock *)&block) : height,block.nTime,0) < 0 )
-            {
-                success = error("CheckBlock: komodo_validate_interest failed");
-            }
-            if (success && !CheckTransaction(tx, state, verifier))
-                success = error("CheckBlock: CheckTransaction failed");
-        }
-        if (success)
-        {
-            unsigned int nSigOps = 0;
-            BOOST_FOREACH(const CTransaction& tx, block.vtx)
-            {
-                nSigOps += GetLegacySigOpCount(tx);
-            }
-            if (nSigOps > MAX_BLOCK_SIGOPS)
-                success = state.DoS(100, error("CheckBlock: out-of-bounds SigOpCount"),
-                                REJECT_INVALID, "bad-blk-sigops", true);
-            if ( success && komodo_check_deposit(height,block,(pindex==0||pindex->pprev==0)?0:pindex->pprev->nTime) < 0 )
-            {
-                LogPrintf("CheckBlock: komodo_check_deposit error");
-                success = error("CheckBlock: komodo_check_deposit error");
-            }
-        }
+        success = state.DoS(100, error("CheckBlock: out-of-bounds SigOpCount"),
+                        REJECT_INVALID, "bad-blk-sigops", true);
     }
     return success;
 }
