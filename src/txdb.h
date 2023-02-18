@@ -132,17 +132,4 @@ public:
     UniValue Snapshot(int top);
 };
 
-class CAddressIndexDBEntryCompare
-{
-public:
-    CAddressIndexDBEntryCompare() { }
-
-    bool operator()(const CAddressIndexDbEntry &a, const CAddressIndexDbEntry &b)
-    {
-        int64_t aheight = (a.first.blockHeight ? (int64_t)a.first.blockHeight : (int64_t)UINT32_MAX) << 31 | (a.first.txindex & 0x7fffffff);
-        int64_t bheight = (b.first.blockHeight ? (int64_t)b.first.blockHeight : (int64_t)UINT32_MAX) << 31 | (b.first.txindex & 0x7fffffff);
-        return aheight < bheight;
-    }
-};
-
 #endif // BITCOIN_TXDB_H

@@ -3684,8 +3684,10 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         {
             // all pending finalizations must be later than the last confirmed transaction and
             // refer to a previous valid / confirmable, not necessarily confirmed, notarization
-            multimap<uint32_t, std::pair<CUTXORef, CPBaaSNotarization>> sorted;
-            multimap<uint32_t, std::pair<CTransaction, uint256>> sortedTxs;
+            // sort the finalizations
+            CAddressIndexDBEntryCompare indexComparer;
+            std::make_heap(pendingFinalizations.begin(), pendingFinalizations.end(), indexComparer);
+
             std::multimap<CUTXORef, std::pair<CUTXORef, CPBaaSNotarization>> notarizationReferences;
             std::map<CUTXORef, std::pair<CTransaction, uint256>> referencedTxes;
 
