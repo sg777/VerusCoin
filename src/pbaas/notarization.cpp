@@ -4657,8 +4657,8 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     std::set<int> confirmedOutputNums;
     std::set<int> invalidatedOutputNums;
 
-    // if we expect to confirm an index, prepare for spends
-    if (notarizationIdxToConfirm > -1)
+    // if we expect to confirm a new notarization, prepare for spends
+    if (notarizationIdxToConfirm > 0)
     {
         std::vector<std::vector<CNotaryEvidence>> evidenceVec;
         if (!cnd.CorrelatedFinalizationSpends(txes, spendsToClose, extraSpends, &evidenceVec))
@@ -4752,102 +4752,50 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     of.evidenceOutputs = evidenceOuts;
     txBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &of)), 0);
 
-    if (notarizationIdxToConfirm >= 0)
+    // if we have nothing or agree with 0, which is always already confirmed for accepted notarizations,
+    // we do not need to spend evidence or finalizations, nor do we need to make new finalization outputs
+    if (notarizationIdxToConfirm > 0)
     {
         // if there are outputs to close for this entry, it will first be
         // a finalization, then evidence
         COptCCParams fP;
         of = CObjectFinalization();
-        bool isFinalized = false;
 
         for (auto &oneInput : spendsToClose[notarizationIdxToConfirm])
         {
             CObjectFinalization tmpOf;
-            if (oneInput.scriptPubKey.IsPayToCryptoCondition(fP) &&
-                fP.IsValid() &&
-                fP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
-                fP.vData.size() &&
-                (tmpOf = CObjectFinalization(fP.vData[0])).IsValid())
+            if (!(oneInput.scriptPubKey.IsPayToCryptoCondition(fP) &&
+                    fP.IsValid() &&
+                    fP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                    fP.vData.size() &&
+                    (tmpOf = CObjectFinalization(fP.vData[0])).IsValid()))
             {
-                if (!isFinalized && (tmpOf.IsConfirmed() || tmpOf.IsRejected()))
-                {
-                    of = tmpOf;
-                    if (of.output.hash.IsNull())
-                    {
-                        of.output.hash = oneInput.txIn.prevout.hash;
-                    }
-                    of.evidenceInputs.clear();
-                    of.evidenceOutputs.clear();
-                    of.minFinalizationHeight = height;
-                    isFinalized = true;
-                }
-                else
-                {
-                    txBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
-                    if (!of.IsValid())
-                    {
-                        of = tmpOf;
-                        if (of.output.hash.IsNull())
-                        {
-                            of.output.hash = oneInput.txIn.prevout.hash;
-                        }
-                        of.evidenceInputs.clear();
-                        of.evidenceOutputs.clear();
-                        of.minFinalizationHeight = height;
-                    }
-                    // inputs will be finalization with its evidence
-                    // outputs are open to carry it forward, as they are on inputs
-                    of.evidenceInputs.push_back((int)txBuilder.mtx.vin.size() - 1);
-                }
+                txBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
             }
         }
 
-        // add extra spends
-        if (of.IsValid())
-        {
-            for (auto &oneInput : spendsToClose[notarizationIdxToConfirm])
-            {
-                CObjectFinalization tmpOf;
-                if (!(oneInput.scriptPubKey.IsPayToCryptoCondition(fP) &&
-                      fP.IsValid() &&
-                      fP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
-                      fP.vData.size() &&
-                      (tmpOf = CObjectFinalization(fP.vData[0])).IsValid()))
-                {
-                    txBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
-                }
-            }
-        }
-        else
-        {
-            // we have no valid finalization to close for this list of spends
-            // spend whatever we have and make an output finalization
-            of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION,
-                                        newNotarization.currencyID,
-                                        cnd.vtx[notarizationIdxToConfirm].first.hash,
-                                        cnd.vtx[notarizationIdxToConfirm].first.n,
-                                        height);
-        }
+        // we have no valid finalization to close for this list of spends
+        // spend whatever we have and make an output finalization
+        of = CObjectFinalization(CObjectFinalization::FINALIZE_NOTARIZATION + CObjectFinalization::FINALIZE_CONFIRMED,
+                                    newNotarization.currencyID,
+                                    cnd.vtx[notarizationIdxToConfirm].first.hash,
+                                    cnd.vtx[notarizationIdxToConfirm].first.n,
+                                    height);
 
-        if (!isFinalized)
-        {
-            cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
-            dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+        cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
+        dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
-            CNotaryEvidence ne(ASSETCHAINS_CHAINID, of.output, CNotaryEvidence::STATE_CONFIRMING);
-            CCrossChainProof challengeProof(CCrossChainProof::VERSION_CURRENT);
-            challengeProof << CEvidenceData(CNotaryEvidence::NotarizationTipKey(),
-                                            ::AsVector(CPrimaryProofDescriptor(std::vector<CUTXORef>({cnd.vtx[priorNotarizationIdx].first}))));
-            ne.evidence << challengeProof;
-            of.evidenceOutputs.push_back(txBuilder.mtx.vout.size());
-            txBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &ne)), 0);
+        CNotaryEvidence ne(ASSETCHAINS_CHAINID, of.output, CNotaryEvidence::STATE_CONFIRMING);
+        CCrossChainProof tipProof(CCrossChainProof::VERSION_CURRENT);
+        tipProof << CEvidenceData(CNotaryEvidence::NotarizationTipKey(),
+                                        ::AsVector(CPrimaryProofDescriptor(std::vector<CUTXORef>({cnd.vtx[priorNotarizationIdx].first}))));
+        ne.evidence << tipProof;
+        of.evidenceOutputs.push_back(txBuilder.mtx.vout.size());
+        txBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &ne)), 0);
 
-            of.SetConfirmed();
-
-            cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
-            dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-            txBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &of)), 0);
-        }
+        cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
+        dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+        txBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &of)), 0);
     }
 
     /* UniValue univTx(UniValue::VOBJ);
