@@ -4301,7 +4301,16 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
             else
             {
                 foundNotarization = priorAgreedNotarization;
-                priorNotarizationIdx = foundOutput.first.index;
+                CUTXORef foundOut(foundOutput.first.txhash, foundOutput.first.index);
+                int j;
+                for (j = 0; j < cnd.vtx.size(); j++)
+                {
+                    if (cnd.vtx[j].first == foundOut)
+                    {
+                        break;
+                    }
+                }
+                priorNotarizationIdx = j < cnd.vtx.size() ? j : 0;
             }
             break;
         }
