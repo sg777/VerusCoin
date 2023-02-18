@@ -2321,29 +2321,6 @@ std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> GetPriorReferen
         uint256 txMMRRoot = ((CChainObject<CPartialTransactionProof> *)autoProof.chainObjects[0])->object.CheckPartialTransaction(outTx, &isPartial);
         uint256 txHash = ((CChainObject<CPartialTransactionProof> *)autoProof.chainObjects[0])->object.TransactionHash();
 
-        if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
-        {
-            LogPrint("notarization", "Last notarization proof expected\n");
-
-            UniValue jsonTx(UniValue::VOBJ);
-            uint256 blockHash;
-            TxToUniv(outTx, blockHash, jsonTx);
-            printf("%s: proof for transaction %s\nwith txid: %s\nproof: %s\nat height: %u, proofheight: %u\n",
-                    __func__,
-                    jsonTx.write(1,2).c_str(),
-                    txHash.GetHex().c_str(),
-                    ((CChainObject<CPartialTransactionProof> *)autoProof.chainObjects[0])->object.ToUniValue().write(1,2).c_str(),
-                    ((CChainObject<CPartialTransactionProof> *)autoProof.chainObjects[0])->object.GetBlockHeight(),
-                    ((CChainObject<CPartialTransactionProof> *)autoProof.chainObjects[0])->object.GetProofHeight());
-            LogPrintf("%s: proof for transaction %s\nwith txid: %s\nproof: %s\nat height: %u, proofheight: %u\n",
-                    __func__,
-                    jsonTx.write(1,2).c_str(),
-                    txHash.GetHex().c_str(),
-                    ((CChainObject<CPartialTransactionProof> *)autoProof.chainObjects[0])->object.ToUniValue().write(1,2).c_str(),
-                    ((CChainObject<CPartialTransactionProof> *)autoProof.chainObjects[0])->object.GetBlockHeight(),
-                    ((CChainObject<CPartialTransactionProof> *)autoProof.chainObjects[0])->object.GetProofHeight());
-        }
-
         CPBaaSNotarization lastNotarization, lastLocalNotarization;
         CAddressIndexDbEntry lastNotarizationAddressEntry;
 
