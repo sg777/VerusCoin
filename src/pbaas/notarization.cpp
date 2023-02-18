@@ -18,6 +18,7 @@
 #include "transaction_builder.h"
 #include "cc/StakeGuard.h"
 
+#include <timedata.h>
 #include <assert.h>
 
 using namespace std;
@@ -6137,8 +6138,13 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         txOutputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &notarization))));
         int notarizationOutNum = txOutputs.size() - 1;
 
+        // stop skipping the addition of evidence 20 minutes before testfork time
+        bool skipEvidence = !GetBoolArg("-forcenotarizationevidence", false) &&
+                            !IsVerusMainnetActive() &&
+                            (GetAdjustedTime() + (60 * 20)) < PBAAS_TESTFORK_TIME;
+
         std::vector<int32_t> evidenceOuts;
-        if (notarizationEvidence.IsValid())
+        if (!skipEvidence && notarizationEvidence.IsValid())
         {
             notarizationEvidence.output = CUTXORef(uint256(), notarizationOutNum);
             // now add the notary evidence and finalization that uses it to assert validity
@@ -9585,6 +9591,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
     int numSignedNeeded = CPBaaSNotarization::MIN_EARNED_FOR_SIGNED;
     int numAutoNeeded = CPBaaSNotarization::MIN_EARNED_FOR_AUTO;
     int numBlocksAutoNeeded = CPBaaSNotarization::MinBlocksToAutoNotarization(ConnectedChains.ThisChain().blockNotarizationModulo);
+    int numBlocksSignedNeeded = CPBaaSNotarization::MinBlocksToSignedNotarization(ConnectedChains.ThisChain().blockNotarizationModulo);
 
     if (!haveFullChain)
     {
@@ -9791,6 +9798,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             else
             {
                 numNotaryConfirms = numSignedNeeded;
+                numBlocksAutoNeeded = INT32_MAX;
             }
 
             if (p.evalCode == EVAL_EARNEDNOTARIZATION)
@@ -9830,10 +9838,11 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
 
                 // if we have enough confirmations and enough blocks, we can confirm
                 if (!((signatureState == CNotaryEvidence::STATE_CONFIRMED &&
-                      numNotaryConfirms >= numSignedNeeded) ||
-                     (signatureState != CNotaryEvidence::STATE_CONFIRMED &&
-                      numNotaryConfirms >= numAutoNeeded &&
-                      (height - pCurNotarizationBlkIndex->GetHeight()) >= numBlocksAutoNeeded)))
+                       numNotaryConfirms >= numSignedNeeded &&
+                       (height - pCurNotarizationBlkIndex->GetHeight()) >= numBlocksSignedNeeded) ||
+                      (signatureState != CNotaryEvidence::STATE_CONFIRMED &&
+                       numNotaryConfirms >= numAutoNeeded &&
+                       (height - pCurNotarizationBlkIndex->GetHeight()) >= numBlocksAutoNeeded)))
                 {
                     return state.Error("Insufficient notary confirms and/or blocks to confirm notarization with given evidence");
                 }
@@ -9896,19 +9905,20 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     }
 
                     if (signatureState != CNotaryEvidence::STATE_CONFIRMED &&
-                            (!confirmNeedsEvidence ||
-                            pNotaryCurrency->proofProtocol != pNotaryCurrency->PROOF_PBAASMMR ||
-                            pNotaryCurrency->notarizationProtocol != pNotaryCurrency->NOTARIZATION_AUTO))
+                        (!confirmNeedsEvidence ||
+                         pNotaryCurrency->proofProtocol != pNotaryCurrency->PROOF_PBAASMMR ||
+                         pNotaryCurrency->notarizationProtocol != pNotaryCurrency->NOTARIZATION_AUTO))
                     {
                         return state.Error("Insufficient notary witnesses to confirm accepted notarization");
                     }
 
                     // if we have enough confirmations and enough blocks, we can confirm
                     if (!((signatureState == CNotaryEvidence::STATE_CONFIRMED &&
-                        numNotaryConfirms >= numSignedNeeded) ||
-                        (signatureState != CNotaryEvidence::STATE_CONFIRMED &&
-                        numNotaryConfirms >= numAutoNeeded &&
-                        (height - pCurNotarizationBlkIndex->GetHeight()) >= numBlocksAutoNeeded)))
+                           numNotaryConfirms >= numSignedNeeded &&
+                           (height - pCurNotarizationBlkIndex->GetHeight()) >= numBlocksSignedNeeded) ||
+                          (signatureState != CNotaryEvidence::STATE_CONFIRMED &&
+                           numNotaryConfirms >= numAutoNeeded &&
+                           (height - pCurNotarizationBlkIndex->GetHeight()) >= numBlocksAutoNeeded)))
                     {
                         return state.Error("Insufficient notary confirms and/or blocks to confirm accepted notarization with given evidence");
                     }
