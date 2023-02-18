@@ -4758,12 +4758,6 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     {
         // if there are outputs to close for this entry, it will first be
         // a finalization, then evidence
-        COptCCParams fP;
-
-        for (auto &oneInput : spendsToClose[notarizationIdxToConfirm])
-        {
-            txBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
-        }
 
         // we have no valid finalization to close for this list of spends
         // spend whatever we have and make an output finalization
@@ -4775,6 +4769,11 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
 
         if (!cnd.vtx[notarizationIdxToConfirm].second.IsPreLaunch())
         {
+            for (auto &oneInput : spendsToClose[notarizationIdxToConfirm])
+            {
+                txBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
+            }
+
             cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
             dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
