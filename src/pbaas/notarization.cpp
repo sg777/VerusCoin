@@ -4452,7 +4452,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
                                         cnd.BestConfirmedNotarization(*pNotaryCurrency, confirmsRequired - 1, blocksRequired, height, txes) :
                                         -1;
 
-            printf("cnd: %s\ncnd.forks[cnd.bestChain].back(): %d\n", cnd.ToUniValue().write(1,2).c_str(), cnd.forks[cnd.bestChain].back());
+
 
             if (notarizationIdxToConfirm >= 0)
             {
@@ -4467,16 +4467,6 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     }
 
     uint32_t priorNotarizationHeight = mapBlockIndex[txes[priorNotarizationIdx].second]->GetHeight();
-
-    // only accept notarizations as seldom as we enforce between our earned notarizations
-    if ((height - priorNotarizationHeight) <
-         CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
-                                                           mapBlockIndex[txes[cnd.lastConfirmed].second]->GetHeight()))
-    {
-        return state.Error(errorPrefix + "cannot create accepted notarization earlier than " +
-                                            std::to_string(ConnectedChains.ThisChain().blockNotarizationModulo) +
-                                            " blocks since the prior notarization it confirms");
-    }
 
     // all core proof roots that are in a prior, agreed notarization, must be present in the new one,
     // and we must have moved far enough forward from any there that we agree with, or early out
@@ -4607,6 +4597,21 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
 
     // add prior unspent accepted notarization as our input
     txBuilder.AddTransparentInput(CUTXORef(lastTxId, lastTxOutNum), lastTx.vout[lastTxOutNum].scriptPubKey, lastTx.vout[lastTxOutNum].nValue);
+
+    // only accept notarizations as seldom as we enforce between our earned notarizations
+    if (!(notarizationIdxToConfirm > 0 || (!notarizationIdxToConfirm && lastUnspentNotarization.IsPreLaunch())) &&
+        (height - priorNotarizationHeight) <
+         CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
+                                                           height - mapBlockIndex[txes[cnd.lastConfirmed].second]->GetHeight()))
+    {
+        LogPrint("notarization", "%s: cannot create accepted notarization earlier than %u blocks since the prior notarization it confirms\n",
+                 CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
+                                                           height - mapBlockIndex[txes[cnd.lastConfirmed].second]->GetHeight()));
+        return state.Error(errorPrefix + "cannot create accepted notarization earlier than " +
+                                            std::to_string(CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
+                                                           height - mapBlockIndex[txes[cnd.lastConfirmed].second]->GetHeight())) +
+                                            " blocks since the prior notarization it confirms");
+    }
 
     {
         LOCK(mempool.cs);
