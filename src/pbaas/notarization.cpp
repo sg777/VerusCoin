@@ -6578,11 +6578,25 @@ int CChainNotarizationData::BestConfirmedNotarization(const CCurrencyDefinition 
 
     if (notarizingSystem.IsPBaaSChain())
     {
-        // no conflict since last notarization
-        if (!(vtx.size() >= 2 && *forks[bestChain].rbegin() == (vtx.size() - 1)))
+        // no conflict from greater work chain since last notarization
+        if (!(vtx.size() >= 2 &&
+              *forks[bestChain].rbegin() == (vtx.size() - 1)))
         {
-            LogPrintf("%s: must have last period without challenge to confirm notarization for system: %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(notarizingSystemID).c_str());
-            return -1;
+            // if we do have a conflict, make sure it's not a chain with more power, and if so, can't confirm
+            int nIdx;
+            for (nIdx = *forks[bestChain].rbegin(); nIdx < vtx.size(); nIdx++)
+            {
+                if (CChainPower::ExpandCompactPower(vtx[nIdx].second.proofRoots.find(notarizingSystemID)->second.compactPower) >
+                    CChainPower::ExpandCompactPower(vtx[*forks[bestChain].rbegin()].second.proofRoots.find(notarizingSystemID)->second.compactPower))
+                {
+                    break;
+                }
+            }
+            if (nIdx < nIdx < vtx.size())
+            {
+                LogPrintf("%s: must have last period unchallenged by more powerful chain to confirm notarization for system: %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(notarizingSystemID).c_str());
+                return -1;
+            }
         }
         auto targetIt = forks[bestChain].rbegin() + minNotaryConfirms;
         for (;
