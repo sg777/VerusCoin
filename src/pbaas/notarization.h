@@ -573,8 +573,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                                                uint32_t lastConfirmedHeight,
                                                uint32_t height,
                                                uint256 *pOptEntropyHash=nullptr, // only needed when responding to a challenge
-                                               const CProofRoot &challengeProofRoot=CProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID),
-                                               const CProofRoot &challengeStartPoint=CProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID));
+                                               const CProofRoot &challengeProofRoot=CProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID));
 extern string PBAAS_HOST, PBAAS_USERPASS, ASSETCHAINS_RPCHOST, ASSETCHAINS_RPCCREDENTIALS;;
 extern int32_t PBAAS_PORT;
 

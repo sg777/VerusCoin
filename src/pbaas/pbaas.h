@@ -226,7 +226,8 @@ public:
         VERSION_LAST = 2,
         VERSION_CURRENT = 2,
         FINAL_CONFIRMATIONS = 9,
-        DEFAULT_NOTARIZATION_FEE = 10000,               // price of a notarization fee in native or launch system currency
+        DEFAULT_NOTARIZATION_FEE = 10000,               // default notarization fee when entering a signature for a notarization
+        DEFAULT_ACCEPTED_EVIDENCE_FEE = 100000,         // price of each evidence output when entering a notarization
         MAX_NODES = 2,                                  // only provide 2 nodes per notarization
         MIN_NOTARIZATION_OUTPUT = 0,                    // minimum amount for notarization output
 
@@ -274,13 +275,18 @@ public:
 
     inline static int32_t GetBlocksBeforeModuloExtension(uint32_t notarizationBlockModulo)
     {
-        uint32_t maxAutoConfirmBlocks = (notarizationBlockModulo * MODULO_EXTENSION_MULTIPLIER) * (MIN_EARNED_FOR_AUTO + 1);
+        uint32_t maxAutoConfirmBlocks = (notarizationBlockModulo * MODULO_EXTENSION_MULTIPLIER) * (MIN_EARNED_FOR_AUTO + (MIN_EARNED_FOR_AUTO >> 1));
         return std::max(maxAutoConfirmBlocks, (uint32_t)NUM_BLOCKS_BEFORE_EXTENSION);
     }
 
-    inline static int32_t GetAdjustedNotarizationModulo(uint32_t notarizationBlockModulo, uint32_t heightChange)
+    inline static int32_t NotarizationsBeforeModuloExtension()
     {
-        return heightChange <= GetBlocksBeforeModuloExtension(notarizationBlockModulo) ?
+        return MIN_EARNED_FOR_AUTO << 1 + MIN_EARNED_FOR_AUTO;
+    }
+
+    inline static int32_t GetAdjustedNotarizationModulo(uint32_t notarizationBlockModulo, uint32_t heightChange, int32_t notarizationCount=0)
+    {
+        return heightChange <= GetBlocksBeforeModuloExtension(notarizationBlockModulo) && notarizationCount <= NotarizationsBeforeModuloExtension() ?
             notarizationBlockModulo :
             notarizationBlockModulo * MODULO_EXTENSION_MULTIPLIER;
     }
@@ -645,8 +651,7 @@ public:
                                              const CRPCChainData &externalSystem,
                                              CValidationState &state,
                                              std::vector<TransactionBuilder> &txBuilders,
-                                             uint32_t nHeight,
-                                             bool &finalized);
+                                             uint32_t nHeight);
 
     static std::vector<uint256> SubmitFinalizedNotarizations(const CRPCChainData &externalSystem,
                                                              CValidationState &state);

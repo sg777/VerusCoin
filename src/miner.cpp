@@ -2064,11 +2064,10 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             CValidationState state;
             std::vector<TransactionBuilder> notarizationBuilders;
             std::vector<CTransaction> notarizations;
-            bool finalized;
             CTransaction notarizationTx;
             const CRPCChainData &notaryChain = ConnectedChains.FirstNotaryChain();
             if (notaryChain.IsValid() &&
-                CPBaaSNotarization::ConfirmOrRejectNotarizations(pwalletMain, ConnectedChains.FirstNotaryChain(), state, notarizationBuilders, Mining_height, finalized) &&
+                CPBaaSNotarization::ConfirmOrRejectNotarizations(pwalletMain, ConnectedChains.FirstNotaryChain(), state, notarizationBuilders, Mining_height) &&
                 notarizationBuilders.size())
             {
                 int txCount = 0;

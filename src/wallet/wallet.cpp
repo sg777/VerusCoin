@@ -1892,28 +1892,6 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 LOCK(cs_main);
                 CDataStream headerStream = CDataStream(SER_NETWORK, PROTOCOL_VERSION);
 
-                // TODO: HARDENING - if there is a notary chain earned and confirmed notarization that is in front of the source,
-                // use it to prove. Otherwise, move forward by (lastConfirmedHeight + (X* 100)) blocks, where X
-                // determines the number of notarization level proofs that will be required before proving the stake source.
-                // Each 100 block step must have more power than the alternative, or it would lose a challenge.
-                //
-                // Any source must be 150 blocks behind us now, so any challenged notarizations should have to prove
-                // 100 blocks at a time as well, ensuring that all PoS provenance can be proven in accordance with the last
-                // proven notarization.
-                //
-                // Reconsider what we might include in the header that could combine with the cross-chain protocol to more
-                // efficiently/easily prove a chain, even after gaps of cross-chain notarization success.
-                // For example:
-                // 1) Providing this header will be necessary to consider it valid, and that provides and anchor.
-                // 2) Assuming this header has been proven, we include the following data to use for further proofs:
-                //      a) BlockMMR of this block to enable proof of the stake transaction, including the ability to
-                //         verify its signature if the whole proof is provided.
-                //      b) Chain MMR of the block prior to this header, which we can use to prove the source,
-                //         and the two block sources of entropy. That way, if we can trust the proof of this header,
-                //         all PoS data & MMR root from here will also have been proven.
-                //
-                // THE ABOVE HARDENING IS NOT IMPLEMENTED UNTIL THIS IS REMOVED
-
                 // store:
                 // 1. PBaaS header for this block
                 // 2. source transaction
