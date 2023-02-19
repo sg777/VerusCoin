@@ -4449,7 +4449,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
             // if we are on the best fork and there are enough confirmations and blocks since any
             // unconfirmed notarization in our fork, we can confirm
             notarizationIdxToConfirm = cnd.forks[cnd.bestChain].back() == priorNotarizationIdx ?
-                                        cnd.BestConfirmedNotarization(*pNotaryCurrency, confirmsRequired, blocksRequired, height, txes) :
+                                        cnd.BestConfirmedNotarization(*pNotaryCurrency, confirmsRequired - 1, blocksRequired, height, txes) :
                                         -1;
 
             printf("cnd: %s\ncnd.forks[cnd.bestChain].back(): %d\n", cnd.ToUniValue().write(1,2).c_str(), cnd.forks[cnd.bestChain].back());
@@ -6574,7 +6574,7 @@ int CChainNotarizationData::BestConfirmedNotarization(const CCurrencyDefinition 
     if (notarizingSystem.IsPBaaSChain())
     {
         // no conflict since last notarization
-        if (!(vtx.size() >= 2 && *(forks[bestChain].rbegin() + 1) == (vtx.size() - 2)))
+        if (!(vtx.size() >= 2 && *forks[bestChain].rbegin() == (vtx.size() - 1)))
         {
             LogPrintf("%s: must have last period without challenge to confirm notarization for system: %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(notarizingSystemID).c_str());
             return -1;
@@ -6801,14 +6801,14 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
         confirmIfSigned =
             cnd.BestConfirmedNotarization(ConnectedChains.ThisChain(),
-                                          CPBaaSNotarization::MIN_EARNED_FOR_SIGNED,
+                                          CPBaaSNotarization::MIN_EARNED_FOR_SIGNED - 1,
                                           CPBaaSNotarization::MinBlocksToSignedNotarization(ConnectedChains.ThisChain().blockNotarizationModulo),
                                           nHeight,
                                           txes);
 
         confirmIfAuto =
             cnd.BestConfirmedNotarization(ConnectedChains.ThisChain(),
-                                          CPBaaSNotarization::MIN_EARNED_FOR_AUTO,
+                                          CPBaaSNotarization::MIN_EARNED_FOR_AUTO - 1,
                                           CPBaaSNotarization::MinBlocksToAutoNotarization(ConnectedChains.ThisChain().blockNotarizationModulo),
                                           nHeight,
                                           txes);
@@ -7002,14 +7002,14 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
         confirmIfSigned =
         prunedData.BestConfirmedNotarization(ConnectedChains.ThisChain(),
-                                             CPBaaSNotarization::MIN_EARNED_FOR_SIGNED,
+                                             CPBaaSNotarization::MIN_EARNED_FOR_SIGNED - 1,
                                              CPBaaSNotarization::MinBlocksToSignedNotarization(ConnectedChains.ThisChain().blockNotarizationModulo),
                                              nHeight,
                                              txes);
 
         confirmIfAuto =
         prunedData.BestConfirmedNotarization(ConnectedChains.ThisChain(),
-                                             CPBaaSNotarization::MIN_EARNED_FOR_AUTO,
+                                             CPBaaSNotarization::MIN_EARNED_FOR_AUTO - 1,
                                              CPBaaSNotarization::MinBlocksToAutoNotarization(ConnectedChains.ThisChain().blockNotarizationModulo),
                                              nHeight,
                                              txes);
