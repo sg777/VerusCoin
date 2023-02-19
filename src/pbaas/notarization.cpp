@@ -9890,10 +9890,10 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
 
                     // if we have enough confirmations and enough blocks, we can confirm
                     if (!((signatureState == CNotaryEvidence::STATE_CONFIRMED &&
-                           numNotaryConfirms >= numSignedNeeded &&
+                           numNotaryConfirms >= (numSignedNeeded - 1) &&
                            (height - pCurNotarizationBlkIndex->GetHeight()) >= numBlocksSignedNeeded) ||
                           (signatureState != CNotaryEvidence::STATE_CONFIRMED &&
-                           numNotaryConfirms >= numAutoNeeded &&
+                           numNotaryConfirms >= (numAutoNeeded - 1) &&
                            (height - pCurNotarizationBlkIndex->GetHeight()) >= numBlocksAutoNeeded)))
                     {
                         return state.Error("Insufficient notary confirms and/or blocks to confirm accepted notarization with given evidence");
