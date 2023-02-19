@@ -9682,7 +9682,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
 
             // now, as long as:
             // 1) we have no invalidating counter evidence on chain, and
-            // 2) we have no more powerful alternative notarization chains for the last two notarizations
+            // 2) we have no more powerful alternative since our first prior notarizations
             //
             // then depending only on signature status and number of confirmations/blocks to tip we can confirm
             //
@@ -9751,7 +9751,48 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                 std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> priorTipNotarizationInfo =
                     {tipTxBlockIt->second->GetHeight(), tipTx, tipTxOutput, tipNotarization};
 
-                // TODO: HARDENING - this can currently handle a long unconfirmed chain,
+                if (!std::get<3>(priorTipNotarizationInfo).IsPreLaunch())
+                {
+                    std::vector<CAddressIndexDbEntry> addresses;
+
+                    if (GetAddressIndex(
+                            CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::NotaryNotarizationKey()),
+                            CScript::P2IDX,
+                            addresses,
+                            tipTxBlockIt->second->GetHeight() + 1,
+                            height - 1) &&
+                        addresses.size())
+                    {
+                        CChainPower ourPower = CChainPower::ExpandCompactPower(notarization.proofRoots[curID].compactPower);
+
+                        // if no conflicts, we should have one transaction only, and it should be our prior
+                        // if we have more than one, we must also have full proof
+                        for (auto &oneOutput : addresses)
+                        {
+                            CTransaction oneNotarizationTx;
+                            uint256 oneBlockHash;
+                            CPBaaSNotarization oneNotarization;
+                            if (oneOutput.first.spending)
+                            {
+                                continue;
+                            }
+                            if (!myGetTransaction(oneOutput.first.txhash, oneNotarizationTx, oneBlockHash) ||
+                                oneNotarizationTx.vout.size() <= oneOutput.first.index ||
+                                !(oneNotarization = CPBaaSNotarization(oneNotarizationTx.vout[oneOutput.first.index].scriptPubKey)).IsValid() ||
+                                oneNotarization.currencyID != notarization.currencyID)
+                            {
+                                return state.Error("ERROR: corrupt local chain data - should not move forward as a node. Bootstrap or resynchonrize blockchain.");
+                            }
+                            if (CChainPower::ExpandCompactPower(oneNotarization.proofRoots[curID].compactPower) > ourPower)
+                            {
+                                return state.Error("ERROR: cannot confirm due to evidence of more powerful chain");
+                            }
+                        }
+                    }
+                }
+
+                //
+                // this can currently handle a long unconfirmed chain,
                 // but if it gets too long, it could be a source of attempted DOS attacks,
                 // so we should ensure that we lengthen blocknotarizationmodulo appropriately
                 // and possibly auto-blacklist broken currencies/chains
