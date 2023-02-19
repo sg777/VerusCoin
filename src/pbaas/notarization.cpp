@@ -4598,11 +4598,9 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     // add prior unspent accepted notarization as our input
     txBuilder.AddTransparentInput(CUTXORef(lastTxId, lastTxOutNum), lastTx.vout[lastTxOutNum].scriptPubKey, lastTx.vout[lastTxOutNum].nValue);
 
-    // only accept notarizations as seldom as we enforce between our earned notarizations
-    if (!(notarizationIdxToConfirm > 0 || (!notarizationIdxToConfirm && lastUnspentNotarization.IsPreLaunch())) &&
-        (height - priorNotarizationHeight) <
-         CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
-                                                           height - mapBlockIndex[txes[cnd.lastConfirmed].second]->GetHeight()))
+    if ((height - priorNotarizationHeight) <
+            CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
+                                                              height - mapBlockIndex[txes[cnd.lastConfirmed].second]->GetHeight()))
     {
         LogPrint("notarization", "%s: cannot create accepted notarization earlier than %u blocks since the prior notarization it confirms\n",
                  CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
