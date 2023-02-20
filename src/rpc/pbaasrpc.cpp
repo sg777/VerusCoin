@@ -5973,7 +5973,8 @@ bool find_utxos(const CTxDestination &fromtaddr_, std::vector<COutput> &t_inputs
                                        true,
                                        wildCardPKH || wildCardID ? nullptr : &fromtaddr_,
                                        nullptr,
-                                       false);
+                                       false,
+                                       true);
 
     for (COutput& out : vecOutputs)
     {
