@@ -275,7 +275,7 @@ public:
 
     inline static int32_t GetBlocksBeforeModuloExtension(uint32_t notarizationBlockModulo)
     {
-        uint32_t maxAutoConfirmBlocks = notarizationBlockModulo * MODULO_EXTENSION_MULTIPLIER * (MIN_EARNED_FOR_AUTO + 1);
+        uint32_t maxAutoConfirmBlocks = notarizationBlockModulo * MODULO_EXTENSION_MULTIPLIER * (MIN_EARNED_FOR_AUTO * 2);
         return std::max(maxAutoConfirmBlocks, (uint32_t)NUM_BLOCKS_BEFORE_EXTENSION);
     }
 

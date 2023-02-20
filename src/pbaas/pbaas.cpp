@@ -1468,7 +1468,7 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
             finalizeSpends.insert(std::make_pair(CUTXORef(oneIn.prevout), of));
         }
     }
-    bool retVal = chainActive.LastTip()->nBits <= PBAAS_TESTFORK_TIME ? true : finalizeSpends.count(thisEvidence.output) == 1;
+    bool retVal = chainActive.LastTip()->nTime <= PBAAS_TESTFORK_TIME ? true : finalizeSpends.count(thisEvidence.output) == 1;
     return retVal ? true : eval->state.Error("Must spend exactly one matching finalization to spend notary evidence output");
 }
 

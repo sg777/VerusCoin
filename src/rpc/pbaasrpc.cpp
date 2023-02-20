@@ -10739,7 +10739,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             if (newCurrency.minPreconvert[i] > newCurrency.maxPreconvert[i])
             {
                 uint32_t localHeight = height <= chainActive.Height() ? height : chainActive.Height();
-                if (chainActive[localHeight]->nBits > PBAAS_TESTFORK_TIME)
+                if (chainActive[localHeight]->nTime > PBAAS_TESTFORK_TIME)
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "minpreconversions cannot be greater than maxpreconversions for any currency");
                 }

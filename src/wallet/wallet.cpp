@@ -1828,8 +1828,8 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                             if (whichType == txnouttype::TX_CRYPTOCONDITION &&
                                 isPBaaS &&
                                 (chainActive.Height() >= (nHeight - 1) ?
-                                    chainActive[nHeight - 1]->nBits > PBAAS_TESTFORK_TIME :
-                                    chainActive.LastTip()->nBits > PBAAS_TESTFORK_TIME))
+                                    chainActive[nHeight - 1]->nTime > PBAAS_TESTFORK_TIME :
+                                    chainActive.LastTip()->nTime > PBAAS_TESTFORK_TIME))
                             {
                                 for (auto &oneDest : destinations)
                                 {
