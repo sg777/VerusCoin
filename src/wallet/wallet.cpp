@@ -1701,6 +1701,9 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
 
         int newSize = 0;
+        bool idStakingChain = ConnectedChains.ThisChain().IDStaking();
+
+        std::set<uint160> validIDs;
 
         for (int i = 0; i < vecOutputs.size(); i++)
         {
@@ -1716,10 +1719,66 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                   extendedStake &&
                   p.IsValid() &&
                   txout.tx->vout[txout.i].scriptPubKey.IsSpendableOutputType(p)) ||
-                (!p.IsValid() &&
-                 Solver(txout.tx->vout[txout.i].scriptPubKey, whichType, vSolutions) &&
-                 (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH))))
+                 (!idStakingChain &&
+                  !p.IsValid() &&
+                  Solver(txout.tx->vout[txout.i].scriptPubKey, whichType, vSolutions) &&
+                  (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH))))
             {
+                // if this is a staking chain, don't try with anything that isn't valid
+                bool invalidOutput = false;
+                if (idStakingChain)
+                {
+                    txnouttype txType;
+                    std::vector<CTxDestination> addressesRet;
+                    int nRequiredRet;
+                    bool canSpend;
+                    if (ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey,
+                                            txType,
+                                            addressesRet,
+                                            nRequiredRet,
+                                            this,
+                                            nullptr,
+                                            &canSpend) &&
+                        canSpend)
+                    {
+                        for (auto &oneAddr : addressesRet)
+                        {
+                            uint160 idID = GetDestinationID(oneAddr);
+                            if (oneAddr.which() == COptCCParams::ADDRTYPE_ID)
+                            {
+                                if (validIDs.count(idID))
+                                {
+                                    continue;
+                                }
+                                std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+                                if (!GetIdentity(idID, keyAndIdentity) ||
+                                    keyAndIdentity.second.parent != ASSETCHAINS_CHAINID)
+                                {
+                                    invalidOutput = true;
+                                    break;
+                                }
+                                validIDs.insert(idID);
+                            }
+                            else if (oneAddr.which() == COptCCParams::ADDRTYPE_PK ||
+                                    oneAddr.which() == COptCCParams::ADDRTYPE_PKH)
+                            {
+                                CCcontract_info CC;
+                                CCcontract_info *cp;
+                                cp = CCinit(&CC, p.evalCode);
+                                if (GetDestinationID(oneAddr) != GetDestinationID(DecodeDestination(CC.unspendableCCaddr)))
+                                {
+                                    invalidOutput = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (invalidOutput)
+                {
+                    continue;
+                }
+
                 totalStakingAmount += txout.tx->vout[txout.i].nValue;
                 // if all are valid, no change, else compress
                 if (newSize != i)
