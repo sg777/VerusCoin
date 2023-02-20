@@ -1668,12 +1668,6 @@ CWallet::TxItems CWallet::OrderedTxItems(std::list<CAccountingEntry>& acentries,
     return txOrdered;
 }
 
-bool CWallet::IsMineLock(const CTxDestination &destination) const
-{
-    LOCK(pwalletMain->cs_wallet);
-    return ::IsMine(*this, destination);
-}
-
 // looks through all wallet UTXOs and checks to see if any qualify to stake the block at the current height. it always returns the qualified
 // UTXO with the smallest coin age if there is more than one, as larger coin age will win more often and is worth saving
 // each attempt consists of taking a VerusHash of the following values:
@@ -3648,184 +3642,7 @@ bool CWallet::IsMine(const CTransaction& tx, uint32_t nHeight)
 // to determine ownership
 void CWallet::IsMine(const CTransaction& tx, uint32_t voutNum, isminetype &mine, uint32_t nHeight)
 {
-    vector<valtype> vSolutions;
-    txnouttype whichType;
-    CScript scriptPubKey = tx.vout[voutNum].scriptPubKey;
-
-    if (scriptPubKey.IsCheckLockTimeVerify())
-    {
-        uint8_t pushOp = scriptPubKey[0];
-        uint32_t scriptStart = pushOp + 3;
-
-        // continue with post CLTV script
-        scriptPubKey = CScript(scriptPubKey.size() > scriptStart ? scriptPubKey.begin() + scriptStart : scriptPubKey.end(), scriptPubKey.end());
-    }
-
-    COptCCParams p;
-    if (scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid())
-    {
-        std::vector<CTxDestination> dests;
-        int minSigs;
-        bool canSign = false;
-        bool canSpend = false;
-
-        if (ExtractDestinations(scriptPubKey, whichType, dests, minSigs, this, &canSign, &canSpend, nHeight))
-        {
-            if (canSpend)
-            {
-                mine = ISMINE_SPENDABLE;
-                return;
-            }
-            else if (canSign)
-            {
-                mine = ISMINE_WATCH_ONLY;
-                return;
-            }
-            else
-            {
-                mine = ISMINE_NO;
-                return;
-            }
-        }
-        else
-        {
-            mine = ISMINE_NO;
-            return;
-        }
-    }
-    else if (!Solver(scriptPubKey, whichType, vSolutions))
-    {
-        if (this->HaveWatchOnly(scriptPubKey))
-        {
-            mine = ISMINE_WATCH_ONLY;
-            return;
-        }
-        mine = ISMINE_NO;
-        return;
-    }
-
-    CKeyID keyID;
-    CScriptID scriptID;
-    CScriptExt subscript;
-    int voutNext = voutNum + 1;
-
-    switch (whichType)
-    {
-        case TX_NONSTANDARD:
-        case TX_NULL_DATA:
-            break;
-
-        case TX_CRYPTOCONDITION:
-            // for now, default is that the first value returned will be the target address, subsequent values will be
-            // pubkeys. if we have the first in our wallet, we consider it spendable for now
-            if (vSolutions[0].size() == 33)
-            {
-                keyID = CPubKey(vSolutions[0]).GetID();
-            }
-            else if (vSolutions[0].size() == 20)
-            {
-                keyID = CKeyID(uint160(vSolutions[0]));
-            }
-            if (!keyID.IsNull() && HaveKey(keyID))
-            {
-                mine = ISMINE_SPENDABLE;
-                return;
-            }
-            break;
-
-        case TX_PUBKEY:
-            keyID = CPubKey(vSolutions[0]).GetID();
-            if (this->HaveKey(keyID))
-            {
-                mine = ISMINE_SPENDABLE;
-                return;
-            }
-            break;
-
-        case TX_PUBKEYHASH:
-            keyID = CKeyID(uint160(vSolutions[0]));
-            if (this->HaveKey(keyID))
-            {
-                mine = ISMINE_SPENDABLE;
-                return;
-            }
-            break;
-
-        case TX_SCRIPTHASH:
-            scriptID = CScriptID(uint160(vSolutions[0]));
-            if (this->GetCScript(scriptID, subscript))
-            {
-                // if this is a CLTV, handle it differently
-                if (subscript.IsCheckLockTimeVerify())
-                {
-                    mine = (::IsMine(*this, subscript));
-                    return;
-                }
-                else
-                {
-                    isminetype ret = ::IsMine(*this, subscript);
-                    if (ret == ISMINE_SPENDABLE)
-                    {
-                        mine = ret;
-                        return;
-                    }
-                }
-            }
-            else if (tx.vout.size() > (voutNum + 1) &&
-                tx.vout.back().scriptPubKey.size() > 7 &&
-                tx.vout.back().scriptPubKey[0] == OP_RETURN)
-            {
-                // get the opret script from next vout, verify that the front is CLTV and hash matches
-                // if so, remove it and use the solver
-                opcodetype op;
-                std::vector<uint8_t> opretData;
-                CScript::const_iterator it = tx.vout.back().scriptPubKey.begin() + 1;
-                if (tx.vout.back().scriptPubKey.GetOp2(it, op, &opretData))
-                {
-                    if (opretData.size() > 0 && opretData[0] == OPRETTYPE_TIMELOCK)
-                    {
-                        CScript opretScript = CScript(opretData.begin() + 1, opretData.end());
-
-                        if (CScriptID(opretScript) == scriptID &&
-                            opretScript.IsCheckLockTimeVerify())
-                        {
-                            // if we find that this is ours, we need to add this script to the wallet,
-                            // and we can then recognize this transaction
-                            isminetype t = ::IsMine(*this, opretScript);
-                            if (t != ISMINE_NO)
-                            {
-                                this->AddCScript(opretScript);
-                            }
-                            mine = t;
-                            return;
-                        }
-                    }
-                }
-            }
-            break;
-
-        case TX_MULTISIG:
-            // Only consider transactions "mine" if we own ALL the
-            // keys involved. Multi-signature transactions that are
-            // partially owned (somebody else has a key that can spend
-            // them) enable spend-out-from-under-you attacks, especially
-            // in shared-wallet situations.
-            vector<valtype> keys(vSolutions.begin()+1, vSolutions.begin()+vSolutions.size()-1);
-            if (HaveKeys(keys, *this) == keys.size())
-            {
-                mine = ISMINE_SPENDABLE;
-                return;
-            }
-            break;
-    }
-
-    if (this->HaveWatchOnly(scriptPubKey))
-    {
-        mine = ISMINE_WATCH_ONLY;
-        return;
-    }
-
-    mine = ISMINE_NO;
+    mine = ::IsMine(*this, tx.vout[voutNum].scriptPubKey, nHeight);
 }
 
 bool CWallet::IsFromMe(const CTransaction& tx, uint32_t height) const
@@ -4759,7 +4576,7 @@ CCurrencyValueMap CWalletTx::GetImmatureReserveCredit(bool fUseCache) const
     return CCurrencyValueMap();
 }
 
-CAmount CWalletTx::GetAvailableCredit(bool fUseCache, bool includeIDLocked) const
+CAmount CWalletTx::GetAvailableCredit(bool fUseCache, bool includeIDLocked, const isminefilter& filter) const
 {
     if (pwallet == 0)
         return 0;
@@ -4768,7 +4585,7 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache, bool includeIDLocked) cons
     if (IsCoinBase() && GetBlocksToMaturity() > 0)
         return 0;
 
-    if (includeIDLocked && fUseCache && fAvailableCreditCached)
+    if (includeIDLocked && fUseCache && fAvailableCreditCached && filter == ISMINE_SPENDABLE)
         return nAvailableCreditCached;
 
     CAmount nCredit = 0;
@@ -4777,7 +4594,7 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache, bool includeIDLocked) cons
     {
         if (!pwallet->IsSpent(hashTx, i) && vout[i].scriptPubKey.IsSpendableOutputType())
         {
-            CAmount newCredit = pwallet->GetCredit(*this, i, ISMINE_SPENDABLE);;
+            CAmount newCredit = pwallet->GetCredit(*this, i, filter);;
             if (newCredit)
             {
                 if (!includeIDLocked)
@@ -4815,7 +4632,7 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache, bool includeIDLocked) cons
     return nCredit;
 }
 
-CCurrencyValueMap CWalletTx::GetAvailableReserveCredit(bool fUseCache, bool includeIDLocked) const
+CCurrencyValueMap CWalletTx::GetAvailableReserveCredit(bool fUseCache, bool includeIDLocked, const isminefilter& filter) const
 {
     CCurrencyValueMap retVal;
     if (pwallet == 0)
@@ -4830,7 +4647,7 @@ CCurrencyValueMap CWalletTx::GetAvailableReserveCredit(bool fUseCache, bool incl
     {
         if (!pwallet->IsSpent(hashTx, i) && vout[i].scriptPubKey.IsSpendableOutputType())
         {
-            CCurrencyValueMap newValue = pwallet->GetReserveCredit(*this, i, ISMINE_SPENDABLE);;
+            CCurrencyValueMap newValue = pwallet->GetReserveCredit(*this, i, filter);;
             if (newValue.valueMap.size())
             {
                 if (!includeIDLocked)
@@ -5065,7 +4882,39 @@ CAmount CWallet::GetBalance(bool includeIDLocked) const
     return nTotal;
 }
 
+CAmount CWallet::GetSharedBalance(bool includeIDLocked) const
+{
+    CAmount nTotal = 0;
+    {
+        LOCK2(cs_main, cs_wallet);
+        for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
+        {
+            const CWalletTx* pcoin = &(*it).second;
+            if (pcoin->IsTrusted())
+                nTotal += pcoin->GetAvailableCredit(includeIDLocked, includeIDLocked, ISMINE_SHARED);
+        }
+    }
+
+    return nTotal;
+}
+
 CCurrencyValueMap CWallet::GetReserveBalance(bool includeIDLocked) const
+{
+    CCurrencyValueMap retVal;
+    {
+        LOCK2(cs_main, cs_wallet);
+        for (map<uint256, CWalletTx>::const_iterator it = mapWallet.begin(); it != mapWallet.end(); ++it)
+        {
+            const CWalletTx* pcoin = &(*it).second;
+            if (pcoin->IsTrusted())
+                retVal += pcoin->GetAvailableReserveCredit(includeIDLocked, includeIDLocked, ISMINE_SHARED);
+        }
+    }
+
+    return retVal;
+}
+
+CCurrencyValueMap CWallet::GetSharedReserveBalance(bool includeIDLocked) const
 {
     CCurrencyValueMap retVal;
     {
@@ -5235,7 +5084,7 @@ CCurrencyValueMap CWallet::GetImmatureWatchOnlyReserveBalance() const
 uint64_t komodo_interestnew(int32_t txheight,uint64_t nValue,uint32_t nLockTime,uint32_t tiptime);
 uint64_t komodo_accrued_interest(int32_t *txheightp,uint32_t *locktimep,uint256 hash,int32_t n,int32_t checkheight,uint64_t checkvalue,int32_t tipheight);
 
-void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeZeroValue, bool fIncludeCoinBase, bool fIncludeProtectedCoinbase, bool fIncludeImmatureCoins, bool fIncludeIDLockedCoins) const
+void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeZeroValue, bool fIncludeCoinBase, bool fIncludeProtectedCoinbase, bool fIncludeImmatureCoins, bool fIncludeIDLockedCoins, bool fIncludeSharedCoins) const
 {
     uint64_t interest,*ptr;
     vCoins.clear();
@@ -5353,14 +5202,14 @@ void CWallet::AvailableCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const
                             (*ptr) = 0;
                         }
                     }
-                    vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
+                    vCoins.push_back(COutput(pcoin, i, nDepth, (mine & (fIncludeSharedCoins ? (ISMINE_SPENDABLE | ISMINE_SHARED) : ISMINE_SPENDABLE)) != ISMINE_NO));
                 }
             }
         }
     }
 }
 
-void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeCoinBase, bool fIncludeNative, const CTxDestination *pOnlyFromDest, const CCurrencyValueMap *pOnlyTheseCurrencies, bool fIncludeIDLockedCoins) const
+void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed, const CCoinControl *coinControl, bool fIncludeCoinBase, bool fIncludeNative, const CTxDestination *pOnlyFromDest, const CCurrencyValueMap *pOnlyTheseCurrencies, bool fIncludeIDLockedCoins, bool fIncludeSharedCoins) const
 {
     vCoins.clear();
 
@@ -5473,7 +5322,7 @@ void CWallet::AvailableReserveCoins(vector<COutput>& vCoins, bool fOnlyConfirmed
                         }
                     }
 
-                    vCoins.push_back(COutput(pcoin, i, nDepth, (mine & ISMINE_SPENDABLE) != ISMINE_NO));
+                    vCoins.push_back(COutput(pcoin, i, nDepth, (mine & (fIncludeSharedCoins ? (ISMINE_SPENDABLE | ISMINE_SHARED) : ISMINE_SPENDABLE)) != ISMINE_NO));
                 }
             }
         }

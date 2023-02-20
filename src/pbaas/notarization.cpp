@@ -6557,6 +6557,7 @@ int CChainNotarizationData::BestConfirmedNotarization(const CCurrencyDefinition 
                                                       uint32_t height,
                                                       const std::vector<std::pair<CTransaction, uint256>> &txAndBlockVec) const
 {
+    // TODO: HARDENING - fix maxdepth to be passed the current notarization modulo to be more accurate AND discerning
     // last notarization cannot be stale as an Earned notarization, but we give enough room to notarize if
     // extended by having issues
     int maxDepth = notarizingSystem.blockNotarizationModulo * (CPBaaSNotarization::MODULO_EXTENSION_MULTIPLIER +
