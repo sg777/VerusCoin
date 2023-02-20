@@ -7332,6 +7332,17 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
             int sigCount = 0;
 
+            cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
+            dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+
+            CNotaryEvidence ne(ASSETCHAINS_CHAINID, of.output, CNotaryEvidence::STATE_CONFIRMING);
+            CCrossChainProof tipData(CCrossChainProof::VERSION_CURRENT);
+            tipData << CEvidenceData(CNotaryEvidence::NotarizationTipKey(),
+                                            ::AsVector(CPrimaryProofDescriptor(std::vector<CUTXORef>({cnd.vtx[bestFork.back()].first}))));
+            ne.evidence << tipData;
+            of.evidenceOutputs.push_back(txBuilder.mtx.vout.size());
+            txBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &ne)), 0);
+
             of.SetConfirmed();
 
             // any fork that does not match the confirmed fork up to the same index will be
@@ -9715,18 +9726,21 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             BlockMap::iterator tipTxBlockIt;
             uint256 tipBlockHash;
             CPBaaSNotarization tipNotarization;
-            int numNotaryConfirms = 0;
+            int numNotaryConfirms = (p.evalCode == EVAL_ACCEPTEDNOTARIZATION ? 2 : 1); // starts with prior, so +1, +1 for accepted
             bool tipFound = true;
 
-            if (combinedEvidence.evidence.chainObjects.size() < 1 ||
-                combinedEvidence.evidence.chainObjects[0]->objectType != CHAINOBJ_CROSSCHAINPROOF ||
-                !((CChainObject<CCrossChainProof> *)(combinedEvidence.evidence.chainObjects[0]))->object.chainObjects.size() ||
-                ((CChainObject<CCrossChainProof> *)(combinedEvidence.evidence.chainObjects[0]))->object.chainObjects[0]->objectType != CHAINOBJ_EVIDENCEDATA ||
+            std::set<int> evidenceTypes;
+            evidenceTypes.insert(CHAINOBJ_CROSSCHAINPROOF);
+            CCrossChainProof autoProof(combinedEvidence.GetSelectEvidence(evidenceTypes));
+
+            if (autoProof.chainObjects.size() < 1 ||
+                !((CChainObject<CCrossChainProof> *)(autoProof.chainObjects[0]))->object.chainObjects.size() ||
+                ((CChainObject<CCrossChainProof> *)(autoProof.chainObjects[0]))->object.chainObjects[0]->objectType != CHAINOBJ_EVIDENCEDATA ||
                 ((CChainObject<CEvidenceData> *)
-                    (((CChainObject<CCrossChainProof> *)(combinedEvidence.evidence.chainObjects[0]))->object.chainObjects[0]))->object.vdxfd !=
+                    (((CChainObject<CCrossChainProof> *)(autoProof.chainObjects[0]))->object.chainObjects[0]))->object.vdxfd !=
                         CNotaryEvidence::NotarizationTipKey() ||
                 !(proofDescr = CPrimaryProofDescriptor(((CChainObject<CEvidenceData> *)
-                    (((CChainObject<CCrossChainProof> *)(combinedEvidence.evidence.chainObjects[0]))->object.chainObjects[0]))->object.dataVec)).IsValid() ||
+                    (((CChainObject<CCrossChainProof> *)(autoProof.chainObjects[0]))->object.chainObjects[0]))->object.dataVec)).IsValid() ||
                 !proofDescr.challengeOutputs.size() ||
                 !proofDescr.challengeOutputs[0].GetOutputTransaction(tipTx, tipBlockHash) ||
                 tipBlockHash.IsNull() ||
@@ -9844,13 +9858,30 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                 }
 
                 CNotaryEvidence::EStates signatureState = CNotaryEvidence::STATE_REJECTING;
-                if (evidenceMap[ASSETCHAINS_CHAINID].size())
+
+                for (auto &oneEvidenceVec : evidenceMap)
                 {
-                    CNotaryEvidence::EStates signatureState =
-                                                evidenceMap[ASSETCHAINS_CHAINID][0].second.CheckSignatureConfirmation(objHash,
-                                                                                                                    notarySet,
-                                                                                                                    pNotaryCurrency->minNotariesConfirm,
-                                                                                                                    height - 1);
+                    for (auto &oneEvidence : oneEvidenceVec.second)
+                    {
+                        if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
+                        {
+                            LogPrintf("oneEvidence from system %s in map: %s\n", ConnectedChains.GetFriendlyCurrencyName(oneEvidenceVec.first).c_str(),
+                                                                                oneEvidence.second.ToUniValue().write(1,2).c_str());
+                        }
+                        signatureState =
+                            oneEvidence.second.CheckSignatureConfirmation(objHash,
+                                                                            notarySet,
+                                                                            pNotaryCurrency->minNotariesConfirm,
+                                                                            height - 1);
+                        if (signatureState == CNotaryEvidence::STATE_CONFIRMED || signatureState == CNotaryEvidence::STATE_REJECTED)
+                        {
+                            break;
+                        }
+                    }
+                    if (signatureState == CNotaryEvidence::STATE_CONFIRMED || signatureState == CNotaryEvidence::STATE_REJECTED)
+                    {
+                        break;
+                    }
                 }
 
                 if (signatureState == CNotaryEvidence::STATE_REJECTED &&
