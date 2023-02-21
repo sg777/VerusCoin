@@ -4683,7 +4683,7 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache, bool includeIDLocked, cons
         }
     }
 
-    if (includeIDLocked && fUseCache)
+    if (includeIDLocked && fUseCache && filter == ISMINE_SPENDABLE)
     {
         nAvailableCreditCached = nCredit;
         fAvailableCreditCached = true;
