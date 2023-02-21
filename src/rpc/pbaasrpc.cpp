@@ -3645,6 +3645,18 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
             printf("No confirmed notarization for %s, if this is not transient, node may need to reindex\n", EncodeDestination(CIdentityID(currencyID)).c_str());
             return false;
         }
+        if (chainDef.systemID == ASSETCHAINS_CHAINID)
+        {
+            notarizationData.vtx.push_back(std::make_pair(std::get<1>(lastFinalized), std::get<2>(lastFinalized)));
+            notarizationData.lastConfirmed = 0;
+            notarizationData.forks.push_back(std::vector<int>({0}));
+            notarizationData.bestChain = 0;
+            if (pCounterEvidence)
+            {
+                pCounterEvidence->resize(notarizationData.vtx.size());
+            }
+            return true;
+        }
         CTransaction oneNTx;
         uint256 ntxBlockHash;
         if (myGetTransaction(std::get<1>(lastFinalized).hash, oneNTx, ntxBlockHash) &&
@@ -4718,7 +4730,7 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                                                    priorRoot.ToUniValue().write(1,2) + "\nconfirmroot: " + priorRoot.ToUniValue().write(1,2));
                         break;
                     }
-                    if (priorRoot.IsValid() && (priorRoot.rootHeight <= 0 || priorRoot.rootHeight >= confirmRoot.rootHeight))
+                    if (priorRoot.IsValid() && (priorRoot.rootHeight <= 0 || priorRoot.rootHeight > confirmRoot.rootHeight))
                     {
                         oneRetObj.pushKV("error", "Invalid prior proof root");
                         break;

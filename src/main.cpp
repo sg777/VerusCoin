@@ -3906,7 +3906,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
             // ensure transaction can clear conflicts and get into mempool
             std::list<CTransaction> removed;
-            mempool.removeConflicts(tx, removed);
             bool missingInputs = false;
             bool isPosTx = block.IsVerusPOSBlock() && (i + 1) == block.vtx.size();
             if (((tx.IsCoinBase() || isPosTx) &&
@@ -3919,6 +3918,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                    IsVerusMainnetActive() &&
                    nHeight < 1800000)))
             {
+                LogPrintf("%s: ERROR: %s\nBlock %s rejected\n", __func__, state.GetRejectReason().c_str(), block.GetHash().GetHex().c_str());
                 return false; // Failure reason has been set in validation state object
             }
 

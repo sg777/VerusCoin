@@ -634,9 +634,10 @@ public:
 
     uint256 GetBlockPower() const
     {
-        if (headerProof.proofSequence.size())
+        int proofIdx = headerProof.proofSequence.size() == 2 ? 1 : 0;
+        if (headerProof.proofSequence.size() && headerProof.proofSequence[proofIdx]->branchType == CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE)
         {
-            std::vector<uint256> &branch = ((CMMRPowerNodeBranch *)(headerProof.proofSequence[0]))->branch;
+            std::vector<uint256> &branch = ((CMMRPowerNodeBranch *)(headerProof.proofSequence[proofIdx]))->branch;
             if (branch.size() >= 1)
             {
                 return branch[0];
@@ -647,7 +648,7 @@ public:
 
     uint32_t GetBlockHeight() const
     {
-        if (headerProof.proofSequence.size())
+        if (headerProof.proofSequence.size() && headerProof.proofSequence[0]->branchType == CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE)
         {
             return ((CMMRPowerNodeBranch *)(headerProof.proofSequence[0]))->nIndex;
         }
@@ -661,7 +662,7 @@ public:
     {
         uint256 hash = mmrBridge.SafeCheck(checkHash);
         hash = headerProof.CheckProof(hash);
-        return blockHeight == BlockNum() ? hash : uint256();
+        return blockHeight == GetBlockHeight() ? hash : uint256();
     }
 
     uint256 ValidateBlockHash(const uint256 &checkHash, int blockHeight)
@@ -671,7 +672,7 @@ public:
         blockHashBridge.branch.push_back(preHeader.hashBlockMMRRoot.IsNull() ? preHeader.hashMerkleRoot : preHeader.hashBlockMMRRoot);
         uint256 hash = blockHashBridge.SafeCheck(checkHash);
         hash = headerProof.CheckProof(hash);
-        return blockHeight == BlockNum() ? hash : uint256();
+        return blockHeight == GetBlockHeight() ? hash : uint256();
     }
 
     UniValue ToUniValue() const
@@ -768,6 +769,30 @@ public:
         return CPBaaSPreHeader(blockHeader);
     }
 
+    uint256 GetBlockPower() const
+    {
+        int proofIdx = headerProof.proofSequence.size() == 2 ? 1 : 0;
+        if (headerProof.proofSequence.size() && headerProof.proofSequence[proofIdx]->branchType == CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE)
+        {
+            std::vector<uint256> &branch = ((CMMRPowerNodeBranch *)(headerProof.proofSequence[proofIdx]))->branch;
+            if (branch.size() >= 1)
+            {
+                return branch[0];
+            }
+        }
+        return uint256();
+    }
+
+    uint32_t GetBlockHeight() const
+    {
+        int proofIdx = headerProof.proofSequence.size() == 2 ? 1 : 0;
+        if (headerProof.proofSequence.size() && headerProof.proofSequence[proofIdx]->branchType == CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE)
+        {
+            return ((CMMRPowerNodeBranch *)(headerProof.proofSequence[proofIdx]))->nIndex;
+        }
+        return 0;
+    }
+
     // a block header proof validates the block MMR root, which is used
     // for proving down to the transaction sub-component. the first value
     // hashed against is the block hash, which enables proving the block hash as well
@@ -775,14 +800,14 @@ public:
     {
         uint256 hash = blockHeader.MMRProofBridge().SafeCheck(checkHash);
         hash = headerProof.CheckProof(hash);
-        return blockHeight == BlockNum() ? hash : uint256();
+        return blockHeight == GetBlockHeight() ? hash : uint256();
     }
 
     uint256 ValidateBlockHash(const uint256 &checkHash, int blockHeight)
     {
         uint256 hash = blockHeader.BlockProofBridge().SafeCheck(checkHash);
         hash = headerProof.CheckProof(hash);
-        return blockHeight == BlockNum() && checkHash == blockHeader.GetHash() ? hash : uint256();
+        return blockHeight == GetBlockHeight() && checkHash == blockHeader.GetHash() ? hash : uint256();
     }
 
     // simple version check

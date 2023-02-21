@@ -1386,7 +1386,7 @@ std::tuple<bool, uint32_t, CTransaction, COptCCParams> GetPriorOutputTx(const CT
     // if not fulfilled, ensure that no part of the primary identity is modified
     COptCCParams p;
     uint256 blkHash;
-    if (myGetTransaction(spendingTx.vin[nIn].prevout.hash, std::get<2>(retVal), blkHash))
+    if (std::get<0>(retVal) = myGetTransaction(spendingTx.vin[nIn].prevout.hash, std::get<2>(retVal), blkHash))
     {
         auto bIt = mapBlockIndex.find(blkHash);
         if (bIt == mapBlockIndex.end() || !bIt->second)
@@ -1412,64 +1412,100 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
     std::tuple<bool, uint32_t, CTransaction, COptCCParams> sourceTx({false, 0, CTransaction(), COptCCParams()});
     std::multimap<CUTXORef, CObjectFinalization> finalizeSpends;
     CNotaryEvidence thisEvidence;
-    for (int i = 0; i < tx.vin.size(); i++)
+
+    bool addedNotarization = false;
+
+    sourceTx = GetPriorOutputTx(tx, nIn);
+    if (!std::get<0>(sourceTx))
     {
-        COptCCParams p;
-        auto &oneIn = tx.vin[i];
-        if (oneIn.prevout.hash != tx.GetHash())
+        return eval->state.Error("Cannot retrieve prior output transaction");
+    }
+
+    COptCCParams p;
+
+    if (std::get<2>(sourceTx).vout[tx.vin[nIn].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+        p.evalCode == EVAL_NOTARY_EVIDENCE &&
+        p.vData.size() &&
+        (thisEvidence = CNotaryEvidence(p.vData[0])).IsValid())
+    {
+        if (thisEvidence.output.hash.IsNull())
         {
-            continue;
-        }
-        if (oneIn.prevout.n == nIn)
-        {
-            if (!std::get<0>(sourceTx))
-            {
-                sourceTx = GetPriorOutputTx(tx, i);
-                if (!std::get<0>(sourceTx))
-                {
-                    return eval->state.Error("Cannot retrieve prior output transaction");
-                }
-            }
-            if (std::get<2>(sourceTx).vout.size() > oneIn.prevout.n &&
-                std::get<2>(sourceTx).vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-                p.IsValid() &&
-                p.evalCode == EVAL_NOTARY_EVIDENCE &&
-                p.vData.size() &&
-                (thisEvidence = CNotaryEvidence(p.vData[0])).IsValid())
-            {
-                if (thisEvidence.output.hash.IsNull())
-                {
-                    thisEvidence.output.hash = oneIn.prevout.hash;
-                }
-                continue;
-            }
-            return eval->state.Error("Invalid prior output transaction");
-        }
-        if (!std::get<0>(sourceTx))
-        {
-            sourceTx = GetPriorOutputTx(tx, i);
-            if (!std::get<0>(sourceTx))
-            {
-                return eval->state.Error("Unable to get prior output transaction");
-            }
-        }
-        CObjectFinalization of;
-        if (std::get<2>(sourceTx).vout.size() > oneIn.prevout.n &&
-            std::get<2>(sourceTx).vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-            p.IsValid() &&
-            p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
-            p.vData.size() &&
-            (of = CObjectFinalization(p.vData[0])).IsValid())
-        {
-            if (thisEvidence.output.hash.IsNull())
-            {
-                thisEvidence.output.hash = oneIn.prevout.hash;
-            }
-            finalizeSpends.insert(std::make_pair(CUTXORef(oneIn.prevout), of));
+            thisEvidence.output.hash = tx.vin[nIn].prevout.hash;
         }
     }
-    bool retVal = chainActive.LastTip()->nTime <= PBAAS_TESTFORK_TIME ? true : finalizeSpends.count(thisEvidence.output) == 1;
-    return retVal ? true : eval->state.Error("Must spend exactly one matching finalization to spend notary evidence output");
+
+    CCrossChainImport cci, nextCCI;
+
+    // if it's an import proof, we need to be spent to the next import
+    if (thisEvidence.type == thisEvidence.TYPE_IMPORT_PROOF ||
+        thisEvidence.type == thisEvidence.TYPE_MULTIPART_DATA)
+    {
+        // TODO: HARDENING - we should actuall make these unspendable and not spend them
+        return true;
+    }
+    else
+    {
+        for (int i = 0; i < tx.vin.size(); i++)
+        {
+            if ((uint32_t)i == nIn)
+            {
+                continue;
+            }
+            auto &oneIn = tx.vin[i];
+            if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
+            {
+                printf("%s: spending %s\n", __func__, CUTXORef(oneIn.prevout).ToString().c_str());
+                LogPrintf("%s: spending %s\n", __func__, CUTXORef(oneIn.prevout).ToString().c_str());
+            }
+            if (oneIn.prevout.hash != tx.vin[nIn].prevout.hash)
+            {
+                continue;
+            }
+            if (std::get<2>(sourceTx).vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid())
+            {
+                CObjectFinalization of;
+                CPBaaSNotarization onePBN;
+                if (p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                    p.vData.size() &&
+                    (of = CObjectFinalization(p.vData[0])).IsValid())
+                {
+                    if (of.output.hash.IsNull())
+                    {
+                        of.output.hash = oneIn.prevout.hash;
+                    }
+                    if (!addedNotarization &&
+                        of.output == thisEvidence.output)
+                    {
+                        finalizeSpends.insert(std::make_pair(of.output, of));
+                    }
+                    continue;
+                }
+                else if ((p.evalCode == EVAL_EARNEDNOTARIZATION || p.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
+                            thisEvidence.output.hash == std::get<2>(sourceTx).GetHash() &&
+                            (uint32_t)i == thisEvidence.output.n &&
+                            p.vData.size() &&
+                            (onePBN = CPBaaSNotarization(p.vData[0])).IsValid() &&
+                            (p.evalCode == EVAL_EARNEDNOTARIZATION ||
+                            (p.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
+                            onePBN.IsDefinitionNotarization())))
+                {
+                    if (!finalizeSpends.count(thisEvidence.output))
+                    {
+                        addedNotarization = true;
+                        finalizeSpends.insert(std::make_pair(thisEvidence.output, of));
+                    }
+                    continue;
+                }
+            }
+            else
+            {
+                continue;
+            }
+        }
+        bool retVal = chainActive.LastTip()->nTime <= PBAAS_TESTFORK_TIME ? true : finalizeSpends.count(thisEvidence.output) == 1;
+        return retVal ? true : eval->state.Error("Must spend exactly one matching finalization to spend notary evidence output");
+    }
 }
 
 bool IsNotaryEvidenceInput(const CScript &scriptSig)
