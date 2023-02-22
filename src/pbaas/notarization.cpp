@@ -9717,7 +9717,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         if (currentFinalization.IsConfirmed())
         {
             std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> priorNotarizationInfo =
-                GetPriorReferencedNotarization(finalizedTx, currentFinalization.output.n, notarization, height - 1);
+                GetPriorReferencedNotarization(finalizedTx, currentFinalization.output.n, normalizedNotarization, height - 1);
 
             if (!std::get<0>(priorNotarizationInfo))
             {
