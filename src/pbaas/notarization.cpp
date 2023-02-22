@@ -8972,11 +8972,12 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
 
                         vector<CAddressIndexDbEntry> addresses;
                         std::vector<CProofRoot> challengingRoots;
-                        if (GetAddressIndex(
+                        if ((std::get<0>(priorNotarizationInfo) + 1) >= (height - 1) &&
+                            GetAddressIndex(
                                 CCrossChainRPCData::GetConditionID(normalizedNotarization.currencyID, CPBaaSNotarization::NotaryNotarizationKey()),
                                 CScript::P2IDX,
                                 addresses,
-                                std::get<0>(priorNotarizationInfo),
+                                std::get<0>(priorNotarizationInfo) + 1,
                                 height - 1) &&
                             addresses.size())
                         {
@@ -9021,7 +9022,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                                                              challengingRoots[0] :
                                                              CProofRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID)).IsValid())
                         {
-                            return state.Error("Unable to verify accepted notarization");
+                            return state.Error("Unable to verify " + std::string(challengingRoots.size() ? "challenged" : "unchallenged") + " accepted notarization");
                         }
                     }
                 }
