@@ -3533,7 +3533,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                 else if (proofComponent->objectType == CHAINOBJ_HEADER)
                 {
                     CBlockHeader &bh = ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.blockHeader;
-                    if (futureProofRoot.rootHeight ==
+                    if (provenNotarization.proofRoots[provenNotarization.currencyID].rootHeight ==
                             ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.GetBlockHeight() &&
                         ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.GetBlockPower() ==
                             ArithToUint256(GetCompactPower(bh.nNonce, bh.nBits, bh.nVersion)) &&

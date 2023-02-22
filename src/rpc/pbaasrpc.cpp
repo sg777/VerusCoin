@@ -5486,7 +5486,8 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
     TransactionBuilder tb(Params().GetConsensus(), nHeight, pwalletMain);
 
     {
-        LOCK2(cs_main, mempool.cs);
+        LOCK2(cs_main, pwalletMain->cs_wallet);
+        LOCK(mempool.cs);
         if (!(pbn = CPBaaSNotarization(params[0])).IsValid() ||
             !pbn.SetMirror() ||
             !GetCurrencyDefinition(pbn.currencyID, chainDef, &chainDefHeight) ||
@@ -5521,7 +5522,6 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
             //printf("%s: unable to create accepted notarization: %s\n", __func__, state.GetRejectReason().c_str());
             throw JSONRPCError(RPC_INVALID_PARAMETER, state.GetRejectReason());
         }
-        LOCK(pwalletMain->cs_wallet);
         CTxDestination fromDest(VERUS_NOTARYID);
         if (fromDest.which() == COptCCParams::ADDRTYPE_INVALID ||
             !FundTransparentTransactionBuilder(pwalletMain, tb, VERUS_NOTARYID.IsNull() ? nullptr : &fromDest))
