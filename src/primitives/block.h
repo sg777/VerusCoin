@@ -86,11 +86,11 @@ public:
     }
 
     // returns 0 if not PBaaS, 1 if PBaaS PoW, -1 if PBaaS PoS
-    int32_t IsPBaaS() const
+    int32_t IsAdvancedHeader() const
     {
         if (nVersion == VERUS_V2)
         {
-            return CConstVerusSolutionVector::IsPBaaS(nSolution);
+            return CConstVerusSolutionVector::IsAdvancedSolution(nSolution);
         }
         return 0;
     }
@@ -231,7 +231,7 @@ public:
     // this confirms that the current header's data matches what would be expected from its preheader hash in the
     // solution
     bool CheckNonCanonicalData() const;
-    bool CheckNonCanonicalData(uint160 &cID) const;
+    bool CheckNonCanonicalData(const uint160 &cID) const;
 
     uint256 GetHash() const
     {
@@ -258,6 +258,7 @@ public:
     uint256 GetVerusV2Hash() const;
     static void SetVerusV2Hash();
 
+    static uint256 GetRawVerusPOSHash(int32_t blockVersion, uint32_t solVersion, uint32_t magic, const uint256 &nonce, int32_t height, bool isVerusMainnet=true);
     bool GetRawVerusPOSHash(uint256 &ret, int32_t nHeight) const;
     bool GetVerusPOSHash(arith_uint256 &ret, int32_t nHeight, CAmount value) const; // value is amount of stake tx
     uint256 GetVerusEntropyHashComponent(int32_t nHeight) const;
@@ -466,7 +467,7 @@ public:
     // get transaction node from the block
     CDefaultMMRNode GetMMRNode(int index) const;
 
-    CPartialTransactionProof GetPartialTransactionProof(const CTransaction &tx, int txIndex, const std::vector<std::pair<int16_t, int16_t>> &partIndexes) const;
+    CPartialTransactionProof GetPartialTransactionProof(const CTransaction &tx, int txIndex, const std::vector<std::pair<int16_t, int16_t>> &partIndexes=std::vector<std::pair<int16_t, int16_t>>()) const;
     CPartialTransactionProof GetPreHeaderProof() const;
 
     std::vector<uint256> GetMerkleBranch(int nIndex) const;
@@ -553,7 +554,7 @@ class CBlockHeaderProof
 {
 public:
     enum {
-        VERSION_INVALID = 0,
+        VERSION_INVALID = INT32_MAX,
         VERSION_CURRENT = 0,
         VERSION_FIRST = 0,
         VERSION_LAST = 0,
@@ -565,7 +566,7 @@ public:
 
     CBlockHeaderProof(uint32_t nVersion=VERSION_INVALID) : version(nVersion) {}
     CBlockHeaderProof(const CBlockHeaderProof &obj) : version(obj.version), headerProof(obj.headerProof), mmrBridge(obj.mmrBridge), preHeader(obj.preHeader) {}
-    CBlockHeaderProof(const CMMRProof &powerNodeProof, const CBlockHeader &bh, uint32_t nVersion=VERSION_INVALID) :
+    CBlockHeaderProof(const CMMRProof &powerNodeProof, const CBlockHeader &bh, uint32_t nVersion=VERSION_CURRENT) :
         headerProof(powerNodeProof), mmrBridge(bh.MMRProofBridge()), preHeader(bh), version(nVersion) {}
 
     CBlockHeaderProof(const UniValue &uniObj)
@@ -633,9 +634,10 @@ public:
 
     uint256 GetBlockPower() const
     {
-        if (headerProof.proofSequence.size())
+        int proofIdx = headerProof.proofSequence.size() == 2 ? 1 : 0;
+        if (headerProof.proofSequence.size() && headerProof.proofSequence[proofIdx]->branchType == CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE)
         {
-            std::vector<uint256> &branch = ((CMMRPowerNodeBranch *)(headerProof.proofSequence[0]))->branch;
+            std::vector<uint256> &branch = ((CMMRPowerNodeBranch *)(headerProof.proofSequence[proofIdx]))->branch;
             if (branch.size() >= 1)
             {
                 return branch[0];
@@ -646,9 +648,10 @@ public:
 
     uint32_t GetBlockHeight() const
     {
-        if (headerProof.proofSequence.size())
+        int proofIdx = headerProof.proofSequence.size() == 2 ? 1 : 0;
+        if (headerProof.proofSequence.size() && headerProof.proofSequence[proofIdx]->branchType == CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE)
         {
-            return ((CMMRPowerNodeBranch *)(headerProof.proofSequence[0]))->nIndex;
+            return ((CMMRPowerNodeBranch *)(headerProof.proofSequence[proofIdx]))->nIndex;
         }
         return 0;
     }
@@ -656,22 +659,9 @@ public:
     // a block header proof validates the block MMR root, which is used
     // for proving down to the transaction sub-component. the first value
     // hashed against is the block hash, which enables proving the block hash as well
-    uint256 ValidateBlockMMRRoot(const uint256 &checkHash, int32_t blockHeight)
-    {
-        uint256 hash = mmrBridge.SafeCheck(checkHash);
-        hash = headerProof.CheckProof(hash);
-        return blockHeight == BlockNum() ? hash : uint256();
-    }
+    uint256 ValidateBlockMMRRoot(const uint256 &checkHash, int32_t blockHeight) const;
 
-    uint256 ValidateBlockHash(const uint256 &checkHash, int blockHeight)
-    {
-        CMMRNodeBranch blockHashBridge(CMMRNodeBranch::BRANCH_MMRBLAKE_NODE);
-        blockHashBridge.nIndex |= 1;
-        blockHashBridge.branch.push_back(preHeader.hashBlockMMRRoot.IsNull() ? preHeader.hashMerkleRoot : preHeader.hashBlockMMRRoot);
-        uint256 hash = blockHashBridge.SafeCheck(checkHash);
-        hash = headerProof.CheckProof(hash);
-        return blockHeight == BlockNum() ? hash : uint256();
-    }
+    uint256 ValidateBlockHash(const uint256 &checkHash, int blockHeight) const;
 
     UniValue ToUniValue() const
     {
@@ -693,20 +683,20 @@ class CBlockHeaderAndProof
 {
 public:
     enum {
-        VERSION_INVALID = 0,
         VERSION_CURRENT = 0,
         VERSION_FIRST = 0,
         VERSION_LAST = 0,
+        VERSION_INVALID = UINT32_MAX,
     };
     uint32_t version;
     CMMRProof headerProof;                                  // proof of the block power node
     CBlockHeader blockHeader;                               // full block header
 
     CBlockHeaderAndProof(uint32_t nVersion=VERSION_INVALID) : version(nVersion) {}
-    CBlockHeaderAndProof(const CMMRProof &powerNodeProof, const CBlockHeader &bh, const CPBaaSPreHeader &bph, uint32_t nVersion=VERSION_INVALID) :
+    CBlockHeaderAndProof(const CMMRProof &powerNodeProof, const CBlockHeader &bh, uint32_t nVersion=VERSION_CURRENT) :
         headerProof(powerNodeProof), blockHeader(bh), version(nVersion) {}
 
-    CBlockHeaderAndProof(const UniValue &uniObj)
+    CBlockHeaderAndProof(const UniValue &uniObj) : version(VERSION_CURRENT)
     {
         try
         {
@@ -767,22 +757,36 @@ public:
         return CPBaaSPreHeader(blockHeader);
     }
 
+    uint256 GetBlockPower() const
+    {
+        int proofIdx = headerProof.proofSequence.size() == 2 ? 1 : 0;
+        if (headerProof.proofSequence.size() && headerProof.proofSequence[proofIdx]->branchType == CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE)
+        {
+            std::vector<uint256> &branch = ((CMMRPowerNodeBranch *)(headerProof.proofSequence[proofIdx]))->branch;
+            if (branch.size() >= 1)
+            {
+                return branch[0];
+            }
+        }
+        return uint256();
+    }
+
+    uint32_t GetBlockHeight() const
+    {
+        int proofIdx = headerProof.proofSequence.size() == 2 ? 1 : 0;
+        if (headerProof.proofSequence.size() && headerProof.proofSequence[proofIdx]->branchType == CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE)
+        {
+            return ((CMMRPowerNodeBranch *)(headerProof.proofSequence[proofIdx]))->nIndex;
+        }
+        return 0;
+    }
+
     // a block header proof validates the block MMR root, which is used
     // for proving down to the transaction sub-component. the first value
     // hashed against is the block hash, which enables proving the block hash as well
-    uint256 ValidateBlockMMRRoot(const uint256 &checkHash, int32_t blockHeight)
-    {
-        uint256 hash = blockHeader.MMRProofBridge().SafeCheck(checkHash);
-        hash = headerProof.CheckProof(hash);
-        return blockHeight == BlockNum() ? hash : uint256();
-    }
-
-    uint256 ValidateBlockHash(const uint256 &checkHash, int blockHeight)
-    {
-        uint256 hash = blockHeader.BlockProofBridge().SafeCheck(checkHash);
-        hash = headerProof.CheckProof(hash);
-        return blockHeight == BlockNum() ? hash : uint256();
-    }
+    uint256 ValidateBlockMMRRoot(const uint256 &checkHash, int32_t blockHeight) const;
+    uint256 ValidateBlockHash(const uint256 &checkHash, int blockHeight) const;
+    uint256 ValidateBlockHash(const uint160 &chainID, const uint256 &checkHash, int blockHeight) const;
 
     // simple version check
     bool IsValid() const
@@ -870,18 +874,23 @@ class CHashCommitments
 {
 public:
     enum {
-        VERSION_INVALID = 0,
         VERSION_CURRENT = 0,
         VERSION_FIRST = 0,
         VERSION_LAST = 0,
+        VERSION_INVALID = INT32_MAX
     };
     uint32_t version;
     std::vector<uint256> hashCommitments;       // prior block commitments, which are node hashes that include merkle root, block hash, and compact power
     uint256 commitmentTypes;                    // context dependent flags for commitments
 
     CHashCommitments(uint32_t nVersion=VERSION_INVALID) :  version(nVersion) {}
-    CHashCommitments(const std::vector<uint256> &priors, const uint256 &pastTypes, uint32_t nVersion=VERSION_INVALID) :
+    CHashCommitments(const std::vector<uint256> &priors, const uint256 &pastTypes, uint32_t nVersion=VERSION_CURRENT) :
         hashCommitments(priors), commitmentTypes(pastTypes), version(nVersion) {}
+
+    // takes any size vector of 128 byte values with a low bool indicator, packs them in with the indicator
+    // in bits for commitment types. if there are more than 256 total when finished, the first 256 are represented
+    // in the commitmentTypes as low bit boolean indicators of PoS vs. PoW (PoS == true)
+    CHashCommitments(const std::vector<__uint128_t> &smallCommitmentsLowBool, uint32_t nVersion=VERSION_CURRENT);
 
     CHashCommitments(const UniValue &uniObj)
     {
@@ -920,6 +929,8 @@ public:
         retVal.pushKV("hex", HexBytes(&(thisVec[0]), thisVec.size()));
         return retVal;
     }
+
+    uint256 GetSmallCommitments(std::vector<__uint128_t> &smallCommitments) const;
 
     bool IsValid() const
     {
@@ -1187,15 +1198,11 @@ public:
         }
     }
 
-    CEvidenceData(uint160 vdxfKey, uint32_t EvidenceType=TYPE_DATA, uint32_t nVersion=VERSION_CURRENT) :
-        type(EvidenceType),
-        version(nVersion)
-    {
-        if (type != TYPE_MULTIPART_DATA)
-        {
-            vdxfd = vdxfKey;
-        }
-    }
+    CEvidenceData(uint160 vdxfKey, const std::vector<unsigned char> &DataVec, uint32_t nVersion=VERSION_CURRENT) :
+        type(TYPE_DATA),
+        vdxfd(vdxfKey),
+        version(nVersion),
+        dataVec(DataVec) {}
 
     CEvidenceData(const std::vector<unsigned char> &asVector)
     {
@@ -1243,7 +1250,7 @@ public:
     const CEvidenceData &mergeData(const CEvidenceData &mergeWith);
 
     // used to span multiple outputs if a cross-chain proof becomes too big for just one
-    std::vector<CEvidenceData> BreakApart(int maxChunkSize=CScript::MAX_SCRIPT_ELEMENT_SIZE) const;
+    std::vector<CEvidenceData> BreakApart(int maxChunkSize=(CScript::MAX_SCRIPT_ELEMENT_SIZE-256)) const;
     static CEvidenceData Reassemble(const std::vector<CEvidenceData> &evidenceVec);
 
     UniValue ToUniValue() const
@@ -1548,7 +1555,7 @@ public:
                     return false;
             }
         }
-        return (version >= VERSION_FIRST || version <= VERSION_LAST);
+        return (version >= VERSION_FIRST && version <= VERSION_LAST);
     }
 
     bool Empty() const
@@ -1586,15 +1593,15 @@ public:
         return *this;
     }
 
-    const CCrossChainProof &operator<<(const CBlockHeaderAndProof &headerRefProof)
+    const CCrossChainProof &operator<<(const CBlockHeaderAndProof &headerAndProof)
     {
-        chainObjects.push_back(static_cast<CBaseChainObject *>(new CChainObject<CBlockHeaderAndProof>(CHAINOBJ_HEADER_REF, headerRefProof)));
+        chainObjects.push_back(static_cast<CBaseChainObject *>(new CChainObject<CBlockHeaderAndProof>(CHAINOBJ_HEADER, headerAndProof)));
         return *this;
     }
 
-    const CCrossChainProof &operator<<(const CBlockHeaderProof &headerProof)
+    const CCrossChainProof &operator<<(const CBlockHeaderProof &headerRefProof)
     {
-        chainObjects.push_back(static_cast<CBaseChainObject *>(new CChainObject<CBlockHeaderProof>(CHAINOBJ_HEADER, headerProof)));
+        chainObjects.push_back(static_cast<CBaseChainObject *>(new CChainObject<CBlockHeaderProof>(CHAINOBJ_HEADER_REF, headerRefProof)));
         return *this;
     }
 
@@ -1640,15 +1647,15 @@ public:
         return *this;
     }
 
-    const CCrossChainProof &insert(int position, const CBlockHeaderAndProof &headerRefProof)
+    const CCrossChainProof &insert(int position, const CBlockHeaderAndProof &headerAndProof)
     {
-        chainObjects.insert(chainObjects.begin() + position, static_cast<CBaseChainObject *>(new CChainObject<CBlockHeaderAndProof>(CHAINOBJ_HEADER_REF, headerRefProof)));
+        chainObjects.insert(chainObjects.begin() + position, static_cast<CBaseChainObject *>(new CChainObject<CBlockHeaderAndProof>(CHAINOBJ_HEADER, headerAndProof)));
         return *this;
     }
 
     const CCrossChainProof &insert(int position, const CBlockHeaderProof &headerProof)
     {
-        chainObjects.insert(chainObjects.begin() + position, static_cast<CBaseChainObject *>(new CChainObject<CBlockHeaderProof>(CHAINOBJ_HEADER, headerProof)));
+        chainObjects.insert(chainObjects.begin() + position, static_cast<CBaseChainObject *>(new CChainObject<CBlockHeaderProof>(CHAINOBJ_HEADER_REF, headerProof)));
         return *this;
     }
 
@@ -2100,7 +2107,6 @@ public:
         TYPE_NOTARY_EVIDENCE = 1,           // this is notary evidence, including signatures and other types of proofs
         TYPE_MULTIPART_DATA = 2,            // this is used to combine multiple outputs that can be used to reconstruct one evidence set
         TYPE_IMPORT_PROOF = 3,              // this is notary evidence, including signatures and other types of proofs
-        TYPE_SIGNATUREHASHES = 4,           // vector of signature hash commitments for the transaction referenced in the evidence output
     };
 
     enum EStates {
@@ -2121,7 +2127,11 @@ public:
     uint8_t state;                          // confirmed or rejected if signed
     CCrossChainProof evidence;              // evidence in the form of signatures, cross chain proofs of transactions, block hashes, and power
 
-    CNotaryEvidence(uint8_t EvidenceType=TYPE_NOTARY_EVIDENCE, uint8_t nVersion=VERSION_CURRENT, uint8_t State=STATE_CONFIRMED) : version(nVersion), type(EvidenceType), state(State) {}
+    CNotaryEvidence(uint8_t EvidenceType=TYPE_NOTARY_EVIDENCE,
+                    uint8_t nVersion=VERSION_CURRENT,
+                    uint8_t State=STATE_CONFIRMED,
+                    const uint160 &System=ASSETCHAINS_CHAINID) :
+                    version(nVersion), type(EvidenceType), state(State), systemID(System) {}
     CNotaryEvidence(const uint160 &sysID,
                     const CUTXORef &finalRef,
                     uint8_t State=STATE_CONFIRMED,
@@ -2147,7 +2157,7 @@ public:
     CNotaryEvidence(const CTransaction &tx, int outputNum, int &afterEvidence, uint8_t EvidenceType=TYPE_NOTARY_EVIDENCE);
 
     // used to span multiple outputs if a cross-chain proof becomes too big for just one
-    std::vector<CNotaryEvidence> BreakApart(int maxChunkSize=CScript::MAX_SCRIPT_ELEMENT_SIZE) const;
+    std::vector<CNotaryEvidence> BreakApart(int maxChunkSize=(CScript::MAX_SCRIPT_ELEMENT_SIZE-256)) const;
 
     ADD_SERIALIZE_METHODS;
 
@@ -2206,8 +2216,8 @@ public:
 
     // merges a second CNotaryEvidence instance with this one, mutating the "this" instance
     CNotaryEvidence &MergeEvidence(const CNotaryEvidence &mergeWith,
-                                   const std::set<uint160> &notarySet,
-                                   bool aggregateSignatures=true);
+                                   bool aggregateSignatures=true,
+                                   bool onlySignatures=false);
 
     CNotaryEvidence &AddToSignatures(const std::set<uint160> &notarySet,
                                      const CIdentityID &signingID,
@@ -2220,7 +2230,7 @@ public:
         CCrossChainProof sigProof;
         sigProof << newSignature;
         CNotaryEvidence newEvidence(systemID, output, thisState, sigProof);
-        MergeEvidence(newEvidence, notarySet, true);
+        MergeEvidence(newEvidence, true);
         return *this;
     }
 
@@ -2230,7 +2240,9 @@ public:
                                        uint32_t checkHeight=0,
                                        uint32_t *pDecisionHeight=nullptr,
                                        std::map<CIdentityID, CIdentitySignature> *pConfirmedAtHeight=nullptr,
-                                       std::map<CIdentityID, CIdentitySignature> *pRejectedAtHeight=nullptr) const;
+                                       std::map<CIdentityID, CIdentitySignature> *pRejectedAtHeight=nullptr,
+                                       std::map<CIdentityID, std::set<std::vector<unsigned char>>> *pNotarySetRejects=nullptr,
+                                       std::map<CIdentityID, std::set<std::vector<unsigned char>>> *pNotarySetConfirms=nullptr) const;
 
     static std::string NotarySignatureKeyName()
     {
@@ -2290,6 +2302,54 @@ public:
         return signatureKey;
     }
 
+    static std::string SkipChallengeKeyName()
+    {
+        return "vrsc::evidence.skipchallenge";
+    }
+
+    static uint160 SkipChallengeKey()
+    {
+        static uint160 nameSpace;
+        static uint160 challengeKey = CVDXF::GetDataKey(SkipChallengeKeyName(), nameSpace);
+        return challengeKey;
+    }
+
+    static std::string ValidityChallengeKeyName()
+    {
+        return "vrsc::evidence.validitychallenge";
+    }
+
+    static uint160 ValidityChallengeKey()
+    {
+        static uint160 nameSpace;
+        static uint160 challengeKey = CVDXF::GetDataKey(ValidityChallengeKeyName(), nameSpace);
+        return challengeKey;
+    }
+
+    static std::string PrimaryProofKeyName()
+    {
+        return "vrsc::evidence.primaryproof";
+    }
+
+    static uint160 PrimaryProofKey()
+    {
+        static uint160 nameSpace;
+        static uint160 proofKey = CVDXF::GetDataKey(PrimaryProofKeyName(), nameSpace);
+        return proofKey;
+    }
+
+    static std::string NotarizationTipKeyName()
+    {
+        return "vrsc::evidence.notarizationtip";
+    }
+
+    static uint160 NotarizationTipKey()
+    {
+        static uint160 nameSpace;
+        static uint160 proofKey = CVDXF::GetDataKey(NotarizationTipKeyName(), nameSpace);
+        return proofKey;
+    }
+
     CIdentitySignature::ESignatureVerification SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType);
     CIdentitySignature::ESignatureVerification SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType);
 
@@ -2327,8 +2387,7 @@ public:
         return version >= VERSION_FIRST &&
                version <= VERSION_LAST &&
                !systemID.IsNull() &&
-               output.IsValid() &&
-               !evidence.Empty();
+               output.IsValid();
     }
 };
 

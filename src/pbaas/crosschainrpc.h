@@ -28,6 +28,9 @@ static const int DEFAULT_RPC_TIMEOUT=900;
 static const uint32_t PBAAS_VERSION = 1;
 static const uint32_t PBAAS_VERSION_INVALID = 0;
 
+static const uint32_t PBAAS_TESTFORK_TIME = 1604216000;
+//static const uint32_t PBAAS_TESTFORK_TIME = 1676920000;
+
 class CTransaction;
 class CScript;
 class CIdentity;
@@ -474,8 +477,15 @@ public:
         MIN_BLOCK_NOTARIZATION_BLOCKS = 2,          // minimum target blocks for notarization period
         MAX_NOTARIZATION_CONVERSION_PRICING_INTERVAL = 100,  // there must be a notarization with conversion at least 100 blocks before reserve transfer
         DEFAULT_BLOCKTIME_TARGET = 60,              // default block time target for difficulty adjustment, in seconds
+        MIN_BLOCKTIME_TARGET = 10,                  // min 10 seconds in first version of PBaaS
+        MAX_BLOCKTIME_TARGET = 120,                 // max 2 minutes in first version of PBaaS
         DEFAULT_AVERAGING_WINDOW = 45,              // default target spacing (blocks) for difficulty adjustment
-        BLOCK_NOTARIZATION_MODULO = (DEFAULT_BLOCK_NOTARIZATION_TIME / DEFAULT_BLOCKTIME_TARGET) // default min notarization spacing (10 minutes)
+        MIN_AVERAGING_WINDOW = 20,                  // min averaging window
+        MAX_AVERAGING_WINDOW = 200,                 // max averaging window
+        BLOCK_NOTARIZATION_MODULO = (DEFAULT_BLOCK_NOTARIZATION_TIME / DEFAULT_BLOCKTIME_TARGET), // default min notarization spacing (10 minutes)
+        MIN_EARNED_FOR_AUTO = 4,
+        MIN_BLOCKS_TO_SIGNCONFIRM = 15,
+        MIN_BLOCKS_TO_AUTOCONFIRM = 200,
     };
 
     enum ECurrencyOptions
@@ -811,6 +821,8 @@ public:
         return GetID(Name, Parent);
     }
 
+    uint32_t MagicNumber() const;
+
     std::set<uint160> GetNotarySet() const
     {
         std::set<uint160> notarySet;
@@ -840,10 +852,37 @@ public:
         }
     }
 
-    // minimum blocks to notarize 1.5 x notarization period
-    int32_t GetMinBlocksToNotarize() const
+    inline static int32_t MinBlocksToAutoNotarization(uint32_t notarizationBlockModulo)
     {
-        return blockNotarizationModulo + (blockNotarizationModulo >> 1);
+        return std::max((uint32_t)(notarizationBlockModulo * MIN_EARNED_FOR_AUTO), (uint32_t)MIN_BLOCKS_TO_AUTOCONFIRM);
+    }
+
+    inline static int32_t MinBlocksToSignedNotarization(uint32_t notarizationBlockModulo)
+    {
+        return std::max(notarizationBlockModulo + (notarizationBlockModulo >> 1), (uint32_t)MIN_BLOCKS_TO_SIGNCONFIRM);
+    }
+
+    inline static int32_t MinBlocksToStartNotarization(uint32_t notarizationBlockModulo)
+    {
+        return ((MinBlocksToSignedNotarization(notarizationBlockModulo) << 1) + 1);
+    }
+
+    // we may sign and confirm a notarization this many blocks after it has been posted
+    // if when confirming it, it has passed all necessary challenges and is signed by
+    // required notary witnesses
+    int32_t GetMinBlocksToSignNotarize() const
+    {
+        return MinBlocksToSignedNotarization(blockNotarizationModulo);
+    }
+
+    int32_t GetMinBlocksToAutoNotarize() const
+    {
+        return MinBlocksToAutoNotarization(blockNotarizationModulo);
+    }
+
+    int32_t GetMinBlocksToStartNotarization() const
+    {
+        return MinBlocksToStartNotarization(blockNotarizationModulo);
     }
 
     uint160 GatewayConverterID() const
@@ -1481,7 +1520,7 @@ public:
     uint256 compactPower;                   // compact power (or external proxy) of the block height notarization to compare
     int64_t gasPrice;                       // Ethereum protocol gas price
 
-    CProofRoot(int Type=TYPE_PBAAS, int Version=VERSION_CURRENT) : type(Type), version(Version), rootHeight(0) {}
+    CProofRoot(int Type=TYPE_PBAAS, int Version=VERSION_INVALID) : type(Type), version(Version), rootHeight(0) {}
     CProofRoot(const UniValue &uni);
     CProofRoot(const uint160 &sysID,
                 uint32_t nHeight,
@@ -1524,6 +1563,7 @@ public:
 
     friend bool operator==(const CProofRoot &op1, const CProofRoot &op2);
     friend bool operator!=(const CProofRoot &op1, const CProofRoot &op2);
+    friend bool operator<(const CProofRoot &op1, const CProofRoot &op2);
 
     UniValue ToUniValue() const;
 };

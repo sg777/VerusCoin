@@ -149,7 +149,7 @@ private:
     std::map<uint256, CReserveTransactionDescriptor> mapReserveTransactions;    // all reserve transactions in the mempool go here
 
     void checkNullifiers(ShieldedType type) const;
-    
+
 public:
     typedef boost::multi_index_container<
         CTxMemPoolEntry,
@@ -191,6 +191,7 @@ public:
     bool addUnchecked(const uint256& hash, const CTxMemPoolEntry &entry, bool fCurrentEstimate = true);
     void addAddressIndex(const CTxMemPoolEntry &entry, const CCoinsViewCache &view);
     bool getAddressIndex(const std::vector<std::pair<uint160, int> > &addresses, std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta> > &results);
+    static std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> FilterUnspent(const std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> &memPoolOutputs);
     bool removeAddressIndex(const uint256 txhash);
 
     void addSpentIndex(const CTxMemPoolEntry &entry, const CCoinsViewCache &view);
@@ -253,7 +254,7 @@ public:
 
     /** Estimate priority needed to get into the next nBlocks */
     double estimatePriority(int nBlocks) const;
-    
+
     /** Write/Read estimates to disk */
     bool WriteFeeEstimates(CAutoFile& fileout) const;
     bool ReadFeeEstimates(CAutoFile& filein);
@@ -266,7 +267,7 @@ public:
     }
 };
 
-/** 
+/**
  * CCoinsView that brings transactions from a memorypool into view.
  * It does not check for spendings by memory pool transactions.
  */

@@ -110,9 +110,15 @@ UniValue getinfo(const UniValue& params, bool fHelp)
     //fprintf(stderr,"after notarized_height %u\n",(uint32_t)time(NULL));
 
     UniValue obj(UniValue::VOBJ);
+    obj.push_back(Pair("VRSCversion", VERUS_VERSION));
     obj.push_back(Pair("version", CLIENT_VERSION));
     obj.push_back(Pair("protocolversion", PROTOCOL_VERSION));
-    obj.push_back(Pair("VRSCversion", VERUS_VERSION));
+    obj.push_back(Pair("chainid", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
+    if (ConnectedChains.FirstNotaryChain().IsValid())
+    {
+        obj.push_back(Pair("notarychainid", EncodeDestination(CIdentityID(ConnectedChains.FirstNotaryChain().GetID()))));
+    }
+    obj.push_back(Pair("name", ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID)));
     obj.push_back(Pair("notarized", notarized_height));
     obj.push_back(Pair("prevMoMheight", prevMoMheight));
     obj.push_back(Pair("notarizedhash", notarized_hash.ToString()));
@@ -183,13 +189,16 @@ UniValue getinfo(const UniValue& params, bool fHelp)
     }
     if ( ASSETCHAINS_CC != 0 )
         obj.push_back(Pair("CCid",        (int)ASSETCHAINS_CC));
-    obj.push_back(Pair("name",        ASSETCHAINS_SYMBOL[0] == 0 ? "KMD" : ASSETCHAINS_SYMBOL));
     if ( ASSETCHAINS_SYMBOL[0] != 0 )
     {
         //obj.push_back(Pair("name",        ASSETCHAINS_SYMBOL));
         obj.push_back(Pair("p2pport",        ASSETCHAINS_P2PPORT));
         obj.push_back(Pair("rpcport",        ASSETCHAINS_RPCPORT));
-        obj.push_back(Pair("magic",        (int)ASSETCHAINS_MAGIC));
+        obj.push_back(Pair("magic",          (int)ASSETCHAINS_MAGIC));
+        if (LogAcceptCategory("magicnumber"))
+        {
+            obj.push_back(Pair("calculatedmagic",(int)ConnectedChains.ThisChain().MagicNumber()));
+        }
 
         obj.push_back(Pair("premine",        ASSETCHAINS_SUPPLY));
 
@@ -495,6 +504,7 @@ UniValue validateaddress(const UniValue& params, bool fHelp)
 #ifdef ENABLE_WALLET
         isminetype mine = pwalletMain ? IsMine(*pwalletMain, dest) : ISMINE_NO;
         ret.push_back(Pair("ismine", (mine & ISMINE_SPENDABLE) ? true : false));
+        ret.push_back(Pair("issharedownership", (mine & ISMINE_SHARED) ? true : false));
         ret.push_back(Pair("iswatchonly", (mine & ISMINE_WATCH_ONLY) ? true: false));
         UniValue detail = boost::apply_visitor(DescribeAddressVisitor(), dest);
         ret.pushKVs(detail);
