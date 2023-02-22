@@ -3411,11 +3411,14 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                             // this will prove our last notarization's proof root for the alternate chain as a header reference
                             // to confirm it, we need to get the last notarization and compare
                             // std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization>
-                            priorReferencedNotarization = GetPriorReferencedNotarization(lastNotarizationTx,
+                            priorReferencedNotarization = lastNotarization.IsBlockOneNotarization() ?
+                                                          std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization>(
+                                                            {(uint32_t)0, CTransaction(), CUTXORef(), CPBaaSNotarization()}) :
+                                                          GetPriorReferencedNotarization(lastNotarizationTx,
                                                                                         expectedNotarization.prevNotarization.n,
                                                                                         lastNotarization,
                                                                                         mapBlockIndex[lastNotarizationBlockHash]->GetHeight());
-                            if (std::get<0>(priorReferencedNotarization))
+                            if (lastNotarization.IsBlockOneNotarization() || std::get<0>(priorReferencedNotarization))
                             {
                                 proofState = EXPECT_FUTURE_PROOF_ROOT;
                                 break;
