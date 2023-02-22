@@ -4714,6 +4714,11 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                     }
 
                     futureRoot = CProofRoot::GetProofRoot(futureRoot.rootHeight);
+                    if (LogAcceptCategory("notarization")) //  && LogAcceptCategory("verbose")
+                    {
+                        printf("%s: futureRoot: %s\n", __func__, futureRoot.ToUniValue().write(1,2).c_str());
+                        LogPrintf("%s: futureRoot: %s\n", __func__, futureRoot.ToUniValue().write(1,2).c_str());
+                    }
 
                     if (isConfirmNotarization)
                     {
@@ -4874,8 +4879,16 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                             oneRetObj.pushKV("error", "Cannot prove evidence");
                             break;
                         }
-                        CBlockHeaderAndProof blockHeaderProof(headerProof, chainActive[priorRoot.rootHeight]->GetBlockHeader());
+                        CBlockHeader bh = chainActive[priorRoot.rootHeight]->GetBlockHeader();
+                        CBlockHeaderAndProof blockHeaderProof(headerProof, bh);
                         evidence.evidence << blockHeaderProof;
+
+                        futureRoot = CProofRoot::GetProofRoot(futureRoot.rootHeight);
+                        if (LogAcceptCategory("notarization")) //  && LogAcceptCategory("verbose")
+                        {
+                            //printf("%s: priorRoot: %s\ncompactPower: %s\nblockHeaderProof: %s\n", __func__, priorRoot.ToUniValue().write(1,2).c_str(), GetCompactPower(bh.nNonce, bh.nBits, bh.nVersion).GetHex().c_str(), blockHeaderProof.ToUniValue().write(1,2).c_str());
+                            LogPrintf("%s: confirmRoot: %s\npriorRoot: %s\npriorCompactPower: %s\npriorBlockHeaderProof: %s\n", __func__, priorRoot.ToUniValue().write(1,2).c_str(), GetCompactPower(bh.nNonce, bh.nBits, bh.nVersion).GetHex().c_str(), blockHeaderProof.ToUniValue().write(1,2).c_str());
+                        }
                     }
 
                     // EXPECT_FUTURE_PROOF_ROOT - future root to prove this notarization

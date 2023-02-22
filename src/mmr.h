@@ -705,6 +705,7 @@ public:
     }
 
     void DeleteProofSequence();
+    void DeleteProofSequenceEntry(int index);
 
     ADD_SERIALIZE_METHODS;
     

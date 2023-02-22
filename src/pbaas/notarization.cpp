@@ -3389,6 +3389,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                     }
                     case CHAINOBJ_HEADER:
                     {
+                        CBlockHeader &bh = ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.blockHeader;
                         if (expectedNotarization.prevNotarization.GetOutputTransaction(lastNotarizationTx, lastNotarizationBlockHash) &&
                             mapBlockIndex.count(lastNotarizationBlockHash) &&
                             lastNotarizationTx.vout.size() > expectedNotarization.prevNotarization.n &&
@@ -3397,7 +3398,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                             lastNotarization.proofRoots[lastNotarization.currencyID].rootHeight ==
                                 ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.GetBlockHeight() &&
                             ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.GetBlockPower() ==
-                                lastNotarization.proofRoots[lastNotarization.currencyID].compactPower &&
+                                ArithToUint256(GetCompactPower(bh.nNonce, bh.nBits, bh.nVersion)) &&
                             ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.ValidateBlockHash(
                                     lastNotarization.proofRoots[lastNotarization.currencyID].blockHash,
                                     ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.GetBlockHeight()) ==
@@ -3413,6 +3414,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                             if (std::get<0>(priorReferencedNotarization))
                             {
                                 proofState = EXPECT_FUTURE_PROOF_ROOT;
+                                break;
                             }
                             else
                             {
@@ -3424,6 +3426,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                         {
                             if (LogAcceptCategory("notarization"))
                             {
+                                CBlockHeader &bh = ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.blockHeader;
                                 printf("%s: lastNotarization: %s, txHeight: %u, proofHeight: %u\nblockpower: %s, proofpower: %s\n",
                                        __func__,
                                        lastNotarization.ToUniValue().write(1,2).c_str(),
@@ -3431,7 +3434,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                                             mapBlockIndex[lastNotarizationBlockHash]->GetHeight() :
                                             UINT32_MAX,
                                        ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.GetBlockHeight(),
-                                       lastNotarization.proofRoots[lastNotarization.currencyID].compactPower.GetHex().c_str(),
+                                       GetCompactPower(bh.nNonce, bh.nBits, bh.nVersion).GetHex().c_str(),
                                        ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.GetBlockPower().GetHex().c_str());
                             }
                             proofState = EXPECT_NOTHING;
@@ -3529,10 +3532,11 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                 }
                 else if (proofComponent->objectType == CHAINOBJ_HEADER)
                 {
+                    CBlockHeader &bh = ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.blockHeader;
                     if (futureProofRoot.rootHeight ==
                             ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.GetBlockHeight() &&
                         ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.GetBlockPower() ==
-                            provenNotarization.proofRoots[provenNotarization.currencyID].compactPower &&
+                            ArithToUint256(GetCompactPower(bh.nNonce, bh.nBits, bh.nVersion)) &&
                         ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.ValidateBlockHash(
                                 provenNotarization.proofRoots[provenNotarization.currencyID].blockHash,
                                 ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.GetBlockHeight()) ==
@@ -5838,7 +5842,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 newProofRequest.pushKV("challengeroots", challengeRoots);
             }
             newProofRequest.pushKV("evidence", notarizationEvidence.ToUniValue());
-            newProofRequest.pushKV("confirmroot", cnd.vtx[notaryIdx].second.proofRoots[SystemID].ToUniValue());
+            newProofRequest.pushKV("confirmroot", latestProofRoot.ToUniValue());
             newProofRequest.pushKV("entropyhash", txes[notaryIdx].second.GetHex());
             newProofRequest.pushKV("fromheight", (int64_t)cnd.vtx[cnd.lastConfirmed].second.proofRoots[SystemID].rootHeight);
             newProofRequest.pushKV("toheight", (int64_t)latestProofRoot.rootHeight);

@@ -231,7 +231,7 @@ public:
     // this confirms that the current header's data matches what would be expected from its preheader hash in the
     // solution
     bool CheckNonCanonicalData() const;
-    bool CheckNonCanonicalData(uint160 &cID) const;
+    bool CheckNonCanonicalData(const uint160 &cID) const;
 
     uint256 GetHash() const
     {
@@ -648,9 +648,10 @@ public:
 
     uint32_t GetBlockHeight() const
     {
-        if (headerProof.proofSequence.size() && headerProof.proofSequence[0]->branchType == CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE)
+        int proofIdx = headerProof.proofSequence.size() == 2 ? 1 : 0;
+        if (headerProof.proofSequence.size() && headerProof.proofSequence[proofIdx]->branchType == CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE)
         {
-            return ((CMMRPowerNodeBranch *)(headerProof.proofSequence[0]))->nIndex;
+            return ((CMMRPowerNodeBranch *)(headerProof.proofSequence[proofIdx]))->nIndex;
         }
         return 0;
     }
@@ -658,22 +659,9 @@ public:
     // a block header proof validates the block MMR root, which is used
     // for proving down to the transaction sub-component. the first value
     // hashed against is the block hash, which enables proving the block hash as well
-    uint256 ValidateBlockMMRRoot(const uint256 &checkHash, int32_t blockHeight)
-    {
-        uint256 hash = mmrBridge.SafeCheck(checkHash);
-        hash = headerProof.CheckProof(hash);
-        return blockHeight == GetBlockHeight() ? hash : uint256();
-    }
+    uint256 ValidateBlockMMRRoot(const uint256 &checkHash, int32_t blockHeight) const;
 
-    uint256 ValidateBlockHash(const uint256 &checkHash, int blockHeight)
-    {
-        CMMRNodeBranch blockHashBridge(CMMRNodeBranch::BRANCH_MMRBLAKE_NODE);
-        blockHashBridge.nIndex |= 1;
-        blockHashBridge.branch.push_back(preHeader.hashBlockMMRRoot.IsNull() ? preHeader.hashMerkleRoot : preHeader.hashBlockMMRRoot);
-        uint256 hash = blockHashBridge.SafeCheck(checkHash);
-        hash = headerProof.CheckProof(hash);
-        return blockHeight == GetBlockHeight() ? hash : uint256();
-    }
+    uint256 ValidateBlockHash(const uint256 &checkHash, int blockHeight) const;
 
     UniValue ToUniValue() const
     {
@@ -796,19 +784,9 @@ public:
     // a block header proof validates the block MMR root, which is used
     // for proving down to the transaction sub-component. the first value
     // hashed against is the block hash, which enables proving the block hash as well
-    uint256 ValidateBlockMMRRoot(const uint256 &checkHash, int32_t blockHeight)
-    {
-        uint256 hash = blockHeader.MMRProofBridge().SafeCheck(checkHash);
-        hash = headerProof.CheckProof(hash);
-        return blockHeight == GetBlockHeight() ? hash : uint256();
-    }
-
-    uint256 ValidateBlockHash(const uint256 &checkHash, int blockHeight)
-    {
-        uint256 hash = blockHeader.BlockProofBridge().SafeCheck(checkHash);
-        hash = headerProof.CheckProof(hash);
-        return blockHeight == GetBlockHeight() && checkHash == blockHeader.GetHash() ? hash : uint256();
-    }
+    uint256 ValidateBlockMMRRoot(const uint256 &checkHash, int32_t blockHeight) const;
+    uint256 ValidateBlockHash(const uint256 &checkHash, int blockHeight) const;
+    uint256 ValidateBlockHash(const uint160 &chainID, const uint256 &checkHash, int blockHeight) const;
 
     // simple version check
     bool IsValid() const

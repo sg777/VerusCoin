@@ -64,6 +64,49 @@ std::vector<CMMRProof> CMultiPartProof::BreakToChunks(int maxSize) const
     return retVal;
 }
 
+void CMMRProof::DeleteProofSequenceEntry(int index)
+{
+    if (index >= 0 && index < proofSequence.size())
+    {
+        CMerkleBranchBase *pProof = proofSequence[index];
+        switch(pProof->branchType)
+        {
+            case CMerkleBranchBase::BRANCH_BTC:
+            {
+                delete (CBTCMerkleBranch *)pProof;
+                break;
+            }
+            case CMerkleBranchBase::BRANCH_MMRBLAKE_NODE:
+            {
+                delete (CMMRNodeBranch *)pProof;
+                break;
+            }
+            case CMerkleBranchBase::BRANCH_MMRBLAKE_POWERNODE:
+            {
+                delete (CMMRPowerNodeBranch *)pProof;
+                break;
+            }
+            case CMerkleBranchBase::BRANCH_ETH:
+            {
+                delete (CETHPATRICIABranch *)pProof;
+                break;
+            }
+            case CMerkleBranchBase::BRANCH_MULTIPART:
+            {
+                delete (CMultiPartProof *)pProof;
+                break;
+            }
+            default:
+            {
+                ErrorAndBP("ERROR: likely double-free or memory corruption, unrecognized object in proof sequence");
+                // this is likely a memory error
+                // delete pProof;
+            }
+        }
+        proofSequence.erase(proofSequence.begin() + index);
+    }
+}
+
 void CMMRProof::DeleteProofSequence()
 {
     // delete any objects that may be present

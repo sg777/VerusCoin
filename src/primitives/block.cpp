@@ -131,12 +131,12 @@ void CBlockHeader::SetBlockMMRRoot(const uint256 &transactionMMRRoot)
 
 // checks that the solution stored data for this header matches what is expected, ensuring that the
 // values in the header match the hash of the pre-header.
-bool CBlockHeader::CheckNonCanonicalData() const
+bool CBlockHeader::CheckNonCanonicalData(const uint160 &cID) const
 {
     CPBaaSPreHeader pbph(*this);
-    CPBaaSBlockHeader pbbh1 = CPBaaSBlockHeader(ASSETCHAINS_CHAINID, pbph);
+    CPBaaSBlockHeader pbbh1 = CPBaaSBlockHeader(cID, pbph);
     CPBaaSBlockHeader pbbh2;
-    int32_t idx = GetPBaaSHeader(pbbh2, ASSETCHAINS_CHAINID);
+    int32_t idx = GetPBaaSHeader(pbbh2, cID);
     if (idx != -1)
     {
         if (pbbh1.hashPreHeader == pbbh2.hashPreHeader)
@@ -149,17 +149,36 @@ bool CBlockHeader::CheckNonCanonicalData() const
 
 // checks that the solution stored data for this header matches what is expected, ensuring that the
 // values in the header match the hash of the pre-header.
-bool CBlockHeader::CheckNonCanonicalData(uint160 &cID) const
+bool CBlockHeader::CheckNonCanonicalData() const
 {
-    CPBaaSPreHeader pbph(*this);
-    CPBaaSBlockHeader pbbh1 = CPBaaSBlockHeader(cID, pbph);
-    CPBaaSBlockHeader pbbh2;
-    int32_t idx = GetPBaaSHeader(pbbh2, cID);
-    if (idx != -1)
+    // true this chain first for speed
+    if (CheckNonCanonicalData(ASSETCHAINS_CHAINID))
     {
-        if (pbbh1.hashPreHeader == pbbh2.hashPreHeader)
+        return true;
+    }
+    else
+    {
+        CPBaaSSolutionDescriptor d = CVerusSolutionVector::solutionTools.GetDescriptor(nSolution);
+        if (CVerusSolutionVector::solutionTools.HasPBaaSHeader(nSolution) != 0)
         {
-            return true;
+            int32_t len = CVerusSolutionVector::solutionTools.ExtraDataLen(nSolution, true);
+            int32_t numHeaders = d.numPBaaSHeaders;
+            if (numHeaders * sizeof(CPBaaSBlockHeader) > len)
+            {
+                numHeaders = len / sizeof(CPBaaSBlockHeader);
+            }
+            const CPBaaSBlockHeader *ppbbh = CVerusSolutionVector::solutionTools.GetFirstPBaaSHeader(nSolution);
+            for (int32_t i = 0; i < numHeaders; i++)
+            {
+                if ((ppbbh + i)->chainID == ASSETCHAINS_CHAINID)
+                {
+                    continue;
+                }
+                if (CheckNonCanonicalData((ppbbh + i)->chainID))
+                {
+                    return true;
+                }
+            }
         }
     }
     return false;
@@ -661,6 +680,102 @@ std::string CBlock::ToString() const
         s << " " << vMerkleTree[i].ToString();
     s << "\n";
     return s.str();
+}
+
+// a block header proof validates the block MMR root, which is used
+// for proving down to the transaction sub-component. the first value
+// hashed against is the block hash, which enables proving the block hash as well
+uint256 CBlockHeaderProof::ValidateBlockMMRRoot(const uint256 &checkHash, int32_t blockHeight) const
+{
+    CBlockHeaderProof bhp = *this;
+    // if this proof has a blockproofbridge, replace it with an MMR proof bridge
+    if (bhp.headerProof.proofSequence.size() > 1)
+    {
+        bhp.headerProof.DeleteProofSequenceEntry(0);
+    }
+    uint256 hash = mmrBridge.SafeCheck(checkHash);
+    hash = bhp.headerProof.CheckProof(hash);
+    return blockHeight == GetBlockHeight() ? hash : uint256();
+}
+
+uint256 CBlockHeaderProof::ValidateBlockHash(const uint256 &checkHash, int blockHeight) const
+{
+    uint256 hash = headerProof.CheckProof(checkHash);
+    return blockHeight == GetBlockHeight() ? hash : uint256();
+}
+
+// a block header proof validates the block MMR root, which is used
+// for proving down to the transaction sub-component. the first value
+// hashed against is the block hash, which enables proving the block hash as well
+uint256 CBlockHeaderAndProof::ValidateBlockMMRRoot(const uint256 &checkHash, int32_t blockHeight) const
+{
+    CBlockHeaderAndProof bhp = *this;
+    // if this proof has a blockproofbridge, replace it with an MMR proof bridge
+    if (bhp.headerProof.proofSequence.size() > 1)
+    {
+        bhp.headerProof.DeleteProofSequenceEntry(0);
+    }
+    uint256 hash = blockHeader.MMRProofBridge().SafeCheck(checkHash);
+    hash = bhp.headerProof.CheckProof(hash);
+    return blockHeight == GetBlockHeight() ? hash : uint256();
+}
+
+UniValue BlockHeaderToUni(const CBlockHeader &block)
+{
+    UniValue result(UniValue::VOBJ);
+    result.push_back(Pair("hash", block.GetHash().GetHex()));
+
+    if (block.IsVerusPOSBlock())
+    {
+        result.push_back(Pair("validationtype", "stake"));
+        arith_uint256 posTarget;
+        posTarget.SetCompact(block.GetVerusPOSTarget());
+        result.push_back(Pair("postarget", ArithToUint256(posTarget).GetHex()));
+        CPOSNonce scratchNonce(block.nNonce);
+    }
+    else
+    {
+        result.push_back(Pair("validationtype", "work"));
+    }
+
+    // Only report confirmations if the block is on the main chain
+    result.push_back(Pair("version", block.nVersion));
+    result.push_back(Pair("merkleroot", block.hashMerkleRoot.GetHex()));
+    result.push_back(Pair("finalsaplingroot", block.hashFinalSaplingRoot.GetHex()));
+    result.push_back(Pair("time", (int64_t)block.nTime));
+    result.push_back(Pair("nonce", block.nNonce.GetHex()));
+    result.push_back(Pair("solution", HexStr(block.nSolution)));
+    result.push_back(Pair("bits", strprintf("%08x", block.nBits)));
+    if (block.nVersion >= block.VERUS_V2)
+    {
+        auto vch = block.nSolution;
+        CPBaaSSolutionDescriptor solDescr = CVerusSolutionVector(vch).Descriptor();
+        result.push_back(Pair("previousstateroot", solDescr.hashPrevMMRRoot.GetHex()));
+        result.push_back(Pair("blockmmrroot", solDescr.hashBlockMMRRoot.GetHex()));
+    }
+    result.push_back(Pair("previousblockhash", block.hashPrevBlock.GetHex()));
+    std::vector<unsigned char> hexBytes = ::AsVector(block);
+    result.push_back(Pair("hex", HexBytes(&(hexBytes[0]), hexBytes.size())));
+    return result;
+}
+
+uint256 CBlockHeaderAndProof::ValidateBlockHash(const uint256 &checkHash, int blockHeight) const
+{
+    uint256 hash = headerProof.CheckProof(checkHash);
+
+    if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
+    {
+        UniValue blockHeaderJSON = BlockHeaderToUni(blockHeader);
+        printf("%s: blockHeight: %u, GetBlockHeight(): %u, checkHash: %s, blockHeader: %s\n, blockHeader.GetHash(): %s, returning: %s\n",
+            __func__,
+            blockHeight,
+            GetBlockHeight(),
+            checkHash.GetHex().c_str(),
+            blockHeaderJSON.write(1,2).c_str(),
+            blockHeader.GetHash().GetHex().c_str(),
+            (blockHeight == GetBlockHeight() && checkHash == blockHeader.GetHash() ? hash : uint256()).GetHex().c_str());
+    }
+    return blockHeight == GetBlockHeight() && checkHash == blockHeader.GetHash() ? hash : uint256();
 }
 
 // used to span multiple outputs if a cross-chain proof becomes too big for just one
