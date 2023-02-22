@@ -3281,17 +3281,18 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                                     lastNotaP.vData.size() &&
                                     (lastNotarization = CPBaaSNotarization(lastNotaP.vData[0])).IsValid() &&
                                     (lastNotarization.IsPreLaunch() ||
-                                    lastNotarization.IsBlockOneNotarization() ||
-                                    lastNotarization.SetMirror(expectedNotarization.IsMirror())) &&
+                                     lastNotarization.IsBlockOneNotarization() ||
+                                     lastNotarization.SetMirror(expectedNotarization.IsMirror())) &&
                                     lastNotarization.currencyID == expectedNotarization.currencyID)
                                 {
                                     uint32_t checkHeight = provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
                                     if (checkHeight <= chainActive.Height() &&
-                                        (checkHeight - lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight) >=
+                                        (lastNotarization.IsBlockOneNotarization() ||
+                                         (checkHeight - lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight) >=
                                                 (chainActive[checkHeight]->nTime <= PBAAS_TESTFORK_TIME ?
                                                     1 :
                                                     CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
-                                                                                                    height - lastConfirmedHeight)))
+                                                                                                    height - lastConfirmedHeight))))
                                     {
                                         break;
                                     }
@@ -3306,13 +3307,14 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                                 if (lastNotarization.proofRoots.count(lastNotarization.currencyID) &&
                                     lastNotarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
                                     checkHeight <= chainActive.Height() &&
-                                    (provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight -
+                                    (lastNotarization.IsBlockOneNotarization() ||
+                                     (provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight -
                                             lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight) >=
                                                 (chainActive[provenNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight]->nBits >=
                                                 PBAAS_TESTFORK_TIME ?
                                                     1 :
                                                     CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
-                                                                                                    height - lastConfirmedHeight)))
+                                                                                                    height - lastConfirmedHeight))))
                                 {
                                     // evidence from the last notarization, unless it is prelaunch, includes
                                     // proof of a prior notarization that is also on this chain (after PBAAS_TESTFORK_TIME)
@@ -3370,7 +3372,9 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                         }
                         proofState = lastNotarization.IsValid() ? EXPECT_FUTURE_PROOF_ROOT : EXPECT_NOTHING;
                         if (proofState == EXPECT_FUTURE_PROOF_ROOT &&
-                            myGetTransaction(lastNotarizationAddressEntry.first.txhash, lastNotarizationTx, lastNotarizationBlockHash))
+                            myGetTransaction(lastNotarizationAddressEntry.first.txhash, lastNotarizationTx, lastNotarizationBlockHash) &&
+                            !lastNotarization.IsBlockOneNotarization() &&
+                            !lastNotarization.IsPreLaunch())
                         {
                             // this will prove our last notarization's proof root for the alternate chain as a header reference
                             // to confirm it, we need to get the last notarization and compare
@@ -8954,14 +8958,14 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                         }
 
                         std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> priorNotarizationInfo =
-                            GetPriorReferencedNotarization(tx, outNum, currentNotarization, height - 1);
+                            GetPriorReferencedNotarization(tx, outNum, normalizedNotarization, height - 1);
 
                         if (!std::get<0>(priorNotarizationInfo))
                         {
                             return state.Error("Invalid prior notarization 2");
                         }
 
-                        if (!IsNotarizationDescendent(currentNotarization, priorNotarizationInfo, lastConfirmedNotarizationInfo, state))
+                        if (!IsNotarizationDescendent(normalizedNotarization, priorNotarizationInfo, lastConfirmedNotarizationInfo, state))
                         {
                             return false;
                         }
@@ -8969,7 +8973,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                         vector<CAddressIndexDbEntry> addresses;
                         std::vector<CProofRoot> challengingRoots;
                         if (GetAddressIndex(
-                                CCrossChainRPCData::GetConditionID(currentNotarization.currencyID, CPBaaSNotarization::NotaryNotarizationKey()),
+                                CCrossChainRPCData::GetConditionID(normalizedNotarization.currencyID, CPBaaSNotarization::NotaryNotarizationKey()),
                                 CScript::P2IDX,
                                 addresses,
                                 std::get<0>(priorNotarizationInfo),
@@ -8984,19 +8988,19 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                                 uint256 oneBlockHash;
                                 CPBaaSNotarization oneNotarization;
                                 if (oneOutput.first.spending ||
-                                    (oneOutput.first.txhash == currentNotarization.prevNotarization.hash &&
-                                     oneOutput.first.index == currentNotarization.prevNotarization.n))
+                                    (oneOutput.first.txhash == normalizedNotarization.prevNotarization.hash &&
+                                     oneOutput.first.index == normalizedNotarization.prevNotarization.n))
                                 {
                                     continue;
                                 }
                                 if (!myGetTransaction(oneOutput.first.txhash, oneNotarizationTx, oneBlockHash) ||
                                     oneNotarizationTx.vout.size() <= oneOutput.first.index ||
                                     !(oneNotarization = CPBaaSNotarization(oneNotarizationTx.vout[oneOutput.first.index].scriptPubKey)).IsValid() ||
-                                    oneNotarization.currencyID != currentNotarization.currencyID)
+                                    oneNotarization.currencyID != normalizedNotarization.currencyID)
                                 {
                                     return state.Error("ERROR: corrupt local chain data - should not move forward as a node. Bootstrap or resynchonrize blockchain.");
                                 }
-                                challengingRoots.push_back(oneNotarization.proofRoots[currentNotarization.currencyID]);
+                                challengingRoots.push_back(oneNotarization.proofRoots[normalizedNotarization.currencyID]);
                             }
                         }
 
