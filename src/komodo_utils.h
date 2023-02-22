@@ -1822,13 +1822,11 @@ void komodo_args(char *argv0)
         name = "VRSC";
     }
 
-    /*
     if (name != "VRSC")
     {
         printf("ERROR: Only mainnet is supported in this version of Verus");
         exit(1);
     }
-    */
 
     mapArgs["-ac_name"] = name;
     memset(ASSETCHAINS_SYMBOL, 0, sizeof(ASSETCHAINS_SYMBOL));
