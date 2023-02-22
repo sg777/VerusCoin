@@ -3923,6 +3923,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 LogPrintf("%s: ERROR: %s\nBlock %s rejected\n", __func__, state.GetRejectReason().c_str(), block.GetHash().GetHex().c_str());
                 return false; // Failure reason has been set in validation state object
             }
+            state = CValidationState();
 
             CReserveTransactionDescriptor rtxd(tx, view, nHeight);
             if (rtxd.IsReject())
