@@ -3908,9 +3908,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             std::list<CTransaction> removed;
             bool missingInputs = false;
             bool isPosTx = block.IsVerusPOSBlock() && (i + 1) == block.vtx.size();
-            if (((tx.IsCoinBase() || isPosTx) &&
+            if (((tx.IsCoinBase() ||
+                  isPosTx ||
+                  chainActive.Height() >= pindex->GetHeight()) &&
                  !ContextualCheckTransaction(tx, state, chainparams, nHeight, 10)) ||
-                (!(tx.IsCoinBase() || isPosTx) &&
+                (!(tx.IsCoinBase() || isPosTx || chainActive.Height() >= pindex->GetHeight()) &&
                  !AcceptToMemoryPoolInt(mempool, state, tx, false, &missingInputs, false, 10, nHeight, 0) &&
                  !(state.GetRejectReason() == "already in mempool" ||
                    state.GetRejectReason() == "already have coins") &&
