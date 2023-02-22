@@ -255,6 +255,42 @@ bool CTxMemPool::getAddressIndex(const std::vector<std::pair<uint160, int> > &ad
     return true;
 }
 
+std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> CTxMemPool::FilterUnspent(const std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> &memPoolOutputs)
+{
+    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> retVal;
+    std::set<COutPoint> spentTxOuts;
+    std::set<COutPoint> txOuts;
+
+    for (const auto &oneOut : memPoolOutputs)
+    {
+        // get last one in spending list
+        if (oneOut.first.spending)
+        {
+            CTransaction priorOutTx;
+            CTransaction curTx;
+
+            if (mempool.lookup(oneOut.first.txhash, curTx) &&
+                curTx.vin.size() > oneOut.first.index)
+            {
+                spentTxOuts.insert(curTx.vin[oneOut.first.index].prevout);
+            }
+            else
+            {
+                LogPrint("crosschainimports","Unable to retrieve data for prior import\n");
+                return retVal;
+            }
+        }
+    }
+    for (auto &oneOut : memPoolOutputs)
+    {
+        if (!oneOut.first.spending && !spentTxOuts.count(COutPoint(oneOut.first.txhash, oneOut.first.index)))
+        {
+            retVal.push_back(oneOut);
+        }
+    }
+    return retVal;
+}
+
 bool CTxMemPool::removeAddressIndex(const uint256 txhash)
 {
     LOCK(cs);

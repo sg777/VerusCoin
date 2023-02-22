@@ -632,6 +632,7 @@ bool CScript::IsInstantSpend() const
     {
         // instant spends can be spent from a coinbase before block maturity, but cannot carry any currency value
         if (p.evalCode == EVAL_EARNEDNOTARIZATION ||
+            p.evalCode == EVAL_NOTARY_EVIDENCE ||
             p.evalCode == EVAL_FINALIZE_NOTARIZATION ||
             p.evalCode == EVAL_FINALIZE_EXPORT ||
             p.evalCode == EVAL_CROSSCHAIN_IMPORT ||
@@ -650,7 +651,9 @@ bool CScript::IsInstantSpendOrUnspendable() const
     if (IsPayToCryptoCondition(p) && p.IsValid() && p.version >= p.VERSION_V3)
     {
         if (p.evalCode == EVAL_EARNEDNOTARIZATION ||
+            p.evalCode == EVAL_NOTARY_EVIDENCE ||
             p.evalCode == EVAL_FINALIZE_NOTARIZATION ||
+            p.evalCode == EVAL_FINALIZE_EXPORT ||
             p.evalCode == EVAL_CROSSCHAIN_IMPORT ||
             p.evalCode == EVAL_CROSSCHAIN_EXPORT ||
             p.evalCode == EVAL_FEE_POOL)
@@ -1126,22 +1129,33 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             {
                 // always index a notarization, without regard to its status
                 destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::NotaryNotarizationKey())));
-                if (evalCode == EVAL_EARNEDNOTARIZATION)
+                if (evalCode == EVAL_EARNEDNOTARIZATION ||
+                    (notarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
+                     notarization.currencyID != ASSETCHAINS_CHAINID &&
+                     (notarization.proofRoots.count(notarization.currencyID) ||
+                      (notarization.IsPreLaunch() &&
+                       notarization.IsLaunchConfirmed() &&
+                       notarization.currencyState.IsLaunchClear()))))
                 {
+                    // TODO: POST HARDENING confirm that the final prelaunch notarization is coming through here to index the block one
+                    // notarization of a PBaaS chain
+
                     CPBaaSNotarization checkNotarization = notarization;
-                    if (checkNotarization.IsMirror())
+                    if (checkNotarization.SetMirror(false))
                     {
-                        checkNotarization.SetMirror(false);
-                    }
-                    if (!checkNotarization.IsMirror())
-                    {
-                        // TODO: POST HARDENING consider whether this can use the native hash writer with an alternate hash
                         CNativeHashWriter hw;
                         hw << checkNotarization;
                         uint256 objHash = hw.GetHash();
                         destinations.insert(CIndexID(
                             CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::EarnedNotarizationKey(), objHash)
                         ));
+                        // index forward links for earned notarizations only
+                        if (evalCode == EVAL_EARNEDNOTARIZATION)
+                        {
+                            destinations.insert(CIndexID(
+                                CCrossChainRPCData::GetConditionID(CPBaaSNotarization::PriorNotarizationKey(), notarization.prevNotarization.hash, notarization.prevNotarization.n)
+                            ));
+                        }
                     }
                 }
 
@@ -1169,7 +1183,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                         }
                     }
                 }
-                else if (notarization.IsBlockOneNotarization() && notarization.currencyState.IsLaunchClear())
+                else if (notarization.IsBlockOneNotarization() && (notarization.currencyState.IsLaunchClear() || notarization.IsLaunchConfirmed()))
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::LaunchNotarizationKey())));
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchConfirmKey())));
@@ -1220,6 +1234,22 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
             {
                 uint160 finalizationNotarizationID = CCrossChainRPCData::GetConditionID(finalization.currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey());
                 // we care about confirmed and pending. no index for rejected
+
+                // if this is a more powerful challenge than the confirmation
+                // figuring this out quickly enables efficient decision to not confirm
+                if (finalization.IsChallenge())
+                {
+                    destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CObjectFinalization::FinalizationIsChallengeKey(), finalization.output.hash, finalization.output.n)));
+                    if (finalization.IsMorePowerful())
+                    {
+                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CObjectFinalization::FinalizationMorePowerfulKey(), finalization.output.hash, finalization.output.n)));
+                    }
+                    if (finalization.Invalidates())
+                    {
+                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CObjectFinalization::FinalizationInvalidatesKey(), finalization.output.hash, finalization.output.n)));
+                    }
+                }
+
                 if (finalization.IsConfirmed())
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizationNotarizationID, CObjectFinalization::ObjectFinalizationConfirmedKey())));
@@ -1228,6 +1258,10 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 else if (finalization.IsPending())
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(finalizationNotarizationID, CObjectFinalization::ObjectFinalizationPendingKey())));
+                    if (!finalization.output.hash.IsNull())
+                    {
+                        destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(CObjectFinalization::ObjectFinalizationPendingKey(), finalization.output.hash, finalization.output.n)));
+                    }
                 }
                 else if (finalization.IsRejected())
                 {

@@ -14,6 +14,7 @@
 #include "main.h"
 #include "hash.h"
 #include "key_io.h"
+#include "pbaas/pbaas.h"
 
 #include <vector>
 #include <map>
@@ -145,7 +146,7 @@ bool GetStakeParams(const CTransaction &stakeTx, CStakeParams &stakeParams)
 // the only time it matters is to validate a properly formed stake transaction for either pre-check before PoS validity check,
 // or to validate the stake transaction on a fork that will be used to spend a winning stake that cheated by being posted
 // on two fork chains
-bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakeParams, bool slowValidation)
+bool ValidateStakeTransaction(const CCurrencyDefinition &sourceChain, const CTransaction &stakeTx, CStakeParams &stakeParams, bool slowValidation)
 {
     std::vector<std::vector<unsigned char>> vData = std::vector<std::vector<unsigned char>>();
 
@@ -165,6 +166,62 @@ bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakePa
         }
         else if (myGetTransaction(stakeTx.vin[0].prevout.hash, srcTx, blkHash))
         {
+            // see if we should only allow staking with funds held under IDs native to this chain
+            // if so, only outputs specifically to a valid ID and no other destination can stake
+            if (sourceChain.IDStaking() && sourceChain.GetID() == ASSETCHAINS_CHAINID)
+            {
+                txnouttype txType;
+                std::vector<CTxDestination> addressesRet;
+                int nRequiredRet;
+                bool canSpend;
+                extern CWallet *pwalletMain;
+                if (ExtractDestinations(srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey,
+                                        txType,
+                                        addressesRet,
+                                        nRequiredRet,
+                                        pwalletMain,
+                                        nullptr,
+                                        &canSpend) &&
+                    canSpend)
+                {
+                    bool invalidOutput = false;
+                    for (auto &oneAddr : addressesRet)
+                    {
+                        if (oneAddr.which() == COptCCParams::ADDRTYPE_ID)
+                        {
+                            CIdentity stakingIdentity = CIdentity::LookupIdentity(GetDestinationID(oneAddr));
+                            if (stakingIdentity.parent != ASSETCHAINS_CHAINID)
+                            {
+                                invalidOutput = true;
+                            }
+                        }
+                        else if (oneAddr.which() == COptCCParams::ADDRTYPE_PK ||
+                                 oneAddr.which() == COptCCParams::ADDRTYPE_PKH)
+                        {
+                            // check for known, standard eval output
+                            COptCCParams p;
+                            if (!srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey.IsPayToCryptoCondition(p))
+                            {
+                                LogPrint("staking", "%s: internal error - this should never happen\n");
+                                return false;
+                            }
+                            CCcontract_info CC;
+                            CCcontract_info *cp;
+                            cp = CCinit(&CC, p.evalCode);
+                            if (GetDestinationID(oneAddr) != GetDestinationID(DecodeDestination(CC.unspendableCCaddr)))
+                            {
+                                invalidOutput = true;
+                            }
+                        }
+                        if (invalidOutput)
+                        {
+                            LogPrint("staking", "%s: Invalid stake for OPTION_IDSTAKING -- only outputs spendable to native ID of chain may stake\n");
+                            return false;
+                        }
+                    }
+                }
+            }
+
             BlockMap::const_iterator it = mapBlockIndex.find(blkHash);
             if (it != mapBlockIndex.end() && (pindex = it->second) != NULL && chainActive.Contains(pindex))
             {
@@ -173,7 +230,7 @@ bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakePa
                 COptCCParams p;
 
                 if (stakeParams.srcHeight == pindex->GetHeight() &&
-                    (stakeParams.blkHeight - stakeParams.srcHeight >= VERUS_MIN_STAKEAGE) &&
+                    ((stakeParams.blkHeight - stakeParams.srcHeight) >= VERUS_MIN_STAKEAGE) &&
                     ((srcTx.vout[stakeTx.vin[0].prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
                       extendedStake &&
                       p.IsValid() &&
@@ -208,6 +265,11 @@ bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakePa
         }
     }
     return false;
+}
+
+bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakeParams, bool slowValidation)
+{
+    return ValidateStakeTransaction(ConnectedChains.ThisChain(), stakeTx, stakeParams, slowValidation);
 }
 
 bool MakeGuardedOutput(CAmount value, CTxDestination &dest, CTransaction &stakeTx, CTxOut &vout)
@@ -386,16 +448,9 @@ bool MakeCheatEvidence(CMutableTransaction &mtx, const CTransaction &ccTx, uint3
 // a version 3 guard output should be a 1 of 2 meta condition, with both of the
 // conditions being stakeguard only and one of the conditions being sent to the public
 // stakeguard destination. Only for smart transaction V3 and beyond.
-bool PrecheckStakeGuardOutput(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+bool RawPrecheckStakeGuardOutput(const CTransaction &tx, int32_t outNum, CValidationState &state)
 {
-    if (CConstVerusSolutionVector::GetVersionByHeight(height) < CActivationHeight::ACTIVATE_EXTENDEDSTAKE)
-    {
-        return true;
-    }
-
-    // ensure that we have all required spend conditions for primary, revocation, and recovery
-    // if there are additional spend conditions, their addition or removal is checked for validity
-    // depending on which of the mandatory spend conditions is authorized.
+    // ensure that we have all required spend conditions
     COptCCParams p, master, secondary;
 
     CCcontract_info *cp, C;
@@ -421,6 +476,15 @@ bool PrecheckStakeGuardOutput(const CTransaction &tx, int32_t outNum, CValidatio
         return true;
     }
     return false;
+}
+
+bool PrecheckStakeGuardOutput(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    if (CConstVerusSolutionVector::GetVersionByHeight(height) < CActivationHeight::ACTIVATE_EXTENDEDSTAKE)
+    {
+        return true;
+    }
+    return RawPrecheckStakeGuardOutput(tx, outNum, state);
 }
 
 typedef struct ccFulfillmentCheck {

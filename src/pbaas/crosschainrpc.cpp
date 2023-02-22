@@ -473,6 +473,7 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(co
         idKeys.insert(GetDestinationID(oneKey));
     }
     uint256 signatureHash = IdentitySignatureHash(vdxfCodes, vdxfCodeNames, statements, systemID, blockHeight, signingID.GetID(), prefixString, msgHash);
+
     for (auto &oneSig : signatures)
     {
         if (oneSig.size() != ECDSA_RECOVERABLE_SIZE)
@@ -487,6 +488,45 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(co
 
         if (!idKeys.count(checkKeyID))
         {
+            if (LogAcceptCategory("notarysignatures"))
+            {
+                printf("Invalid signature - recovered %s\nfrom signature %s\nfor hash %s\nexpected: %s\nidentity: %s\n", EncodeDestination(CKeyID(checkKeyID)).c_str(), EncodeBase64(std::string(oneSig.begin(), oneSig.end())).c_str(), signatureHash.GetHex().c_str(), idKeys.begin() == idKeys.end() ? "empty" : EncodeDestination(CKeyID(*idKeys.begin())).c_str(), signingID.ToUniValue().write(1,2).c_str());
+                LogPrintf("Invalid signature - recovered %s\nfrom signature %s\nfor hash %s\nexpected: %s\nidentity: %s\n", EncodeDestination(CKeyID(checkKeyID)).c_str(), EncodeBase64(std::string(oneSig.begin(), oneSig.end())).c_str(), signatureHash.GetHex().c_str(), idKeys.begin() == idKeys.end() ? "empty" : EncodeDestination(CKeyID(*idKeys.begin())).c_str(), signingID.ToUniValue().write(1,2).c_str());
+
+                UniValue vdxfCodesUni(UniValue::VARR);
+                UniValue vdxfCodeNamesUni(UniValue::VARR);
+                UniValue statementsUni(UniValue::VARR);
+                for (auto &oneItem : vdxfCodes)
+                {
+                    vdxfCodesUni.push_back(EncodeDestination(CIdentityID(oneItem)));
+                }
+                for (auto &oneItem : vdxfCodeNames)
+                {
+                    vdxfCodeNamesUni.push_back(oneItem);
+                }
+                for (auto &oneItem : statements)
+                {
+                    statementsUni.push_back(oneItem.GetHex());
+                }
+                printf("Ready to check signature on system: %s\nvdxfCodes: %s\nvdxfCodeNames: %s\nstatements: %s\nblockHeight: %u\nsigningID.name: %s\nprefixString: %s\nmsgHash: %s\n",
+                        EncodeDestination(CIdentityID(systemID)).c_str(),
+                        vdxfCodesUni.write().c_str(),
+                        vdxfCodeNamesUni.write().c_str(),
+                        statementsUni.write().c_str(),
+                        blockHeight,
+                        signingID.name.c_str(),
+                        prefixString.c_str(),
+                        msgHash.GetHex().c_str());
+                LogPrintf("Ready to check signature on system: %s\nvdxfCodes: %s\nvdxfCodeNames: %s\nstatements: %s\nblockHeight: %u\nsigningID.name: %s\nprefixString: %s\nmsgHash: %s\n",
+                        EncodeDestination(CIdentityID(systemID)).c_str(),
+                        vdxfCodesUni.write().c_str(),
+                        vdxfCodeNamesUni.write().c_str(),
+                        statementsUni.write().c_str(),
+                        blockHeight,
+                        signingID.name.c_str(),
+                        prefixString.c_str(),
+                        msgHash.GetHex().c_str());
+            }
             return SIGNATURE_INVALID;
         }
 
@@ -495,6 +535,11 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(co
             pDupSigs->push_back(oneSig);
         }
         keys.insert(checkKeyID);
+        if (LogAcceptCategory("notarysignatures") && LogAcceptCategory("verbose"))
+        {
+            printf("Signature OK - recovered %s\nfrom signature %s\nfor hash %s\nexpected: %s\nidentity: %s\n", EncodeDestination(CKeyID(checkKeyID)).c_str(), EncodeBase64(std::string(oneSig.begin(), oneSig.end())).c_str(), signatureHash.GetHex().c_str(), idKeys.begin() == idKeys.end() ? "empty" : EncodeDestination(CKeyID(*idKeys.begin())).c_str(), signingID.ToUniValue().write(1,2).c_str());
+            LogPrintf("Signature OK - recovered %s\nfrom signature %s\nfor hash %s\nexpected: %s\nidentity: %s\n", EncodeDestination(CKeyID(checkKeyID)).c_str(), EncodeBase64(std::string(oneSig.begin(), oneSig.end())).c_str(), signatureHash.GetHex().c_str(), idKeys.begin() == idKeys.end() ? "empty" : EncodeDestination(CKeyID(*idKeys.begin())).c_str(), signingID.ToUniValue().write(1,2).c_str());
+        }
     }
     if (keys.size() >= signingID.minSigs)
     {
@@ -1104,6 +1149,20 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             powAveragingWindow = uni_get_int64(find_value(obj, "powaveragingwindow"), DEFAULT_AVERAGING_WINDOW);
             blockNotarizationModulo = uni_get_int64(find_value(obj, "notarizationperiod"),
                                                     std::max((int64_t)(DEFAULT_BLOCK_NOTARIZATION_TIME / blockTime), (int64_t)MIN_BLOCK_NOTARIZATION_BLOCKS));
+
+            if (powAveragingWindow < MIN_AVERAGING_WINDOW || powAveragingWindow > MAX_AVERAGING_WINDOW)
+            {
+                LogPrintf("%s: powaveragingwindow: %d out of range %d - %d\n", __func__, powAveragingWindow, MIN_AVERAGING_WINDOW, MAX_AVERAGING_WINDOW);
+                nVersion = PBAAS_VERSION_INVALID;
+                return;
+            }
+
+            if (blockTime < MIN_BLOCKTIME_TARGET || blockTime > MAX_BLOCKTIME_TARGET)
+            {
+                LogPrintf("%s: blocktime: %d out of range %d - %d\n", __func__, blockTime, MIN_BLOCKTIME_TARGET, MAX_BLOCKTIME_TARGET);
+                nVersion = PBAAS_VERSION_INVALID;
+                return;
+            }
 
             for (auto era : vEras)
             {

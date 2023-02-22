@@ -731,6 +731,11 @@ CProofRoot::CProofRoot(const UniValue &uni) :
     type(TYPE_PBAAS),
     rootHeight(0)
 {
+    if (uni.isNull())
+    {
+        version = VERSION_INVALID;
+        return;
+    }
     version = (uint32_t)uni_get_int(find_value(uni, "version"));
     type = (uint32_t)uni_get_int(find_value(uni, "type"));
     systemID = GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "systemid"))));

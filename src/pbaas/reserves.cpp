@@ -555,9 +555,11 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                 CNotaryEvidence transactionProof(sysCCITemp.sourceSystemID, evidence.output, evidence.state, evidence.GetSelectEvidence(validEvidenceTypes), CNotaryEvidence::TYPE_IMPORT_PROOF);
 
                 CTransaction exportTx;
+                bool isPartial = false;
                 p = COptCCParams();
                 if (!(transactionProof.evidence.chainObjects.size() &&
-                    !((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.GetPartialTransaction(exportTx).IsNull() &&
+                    importNotarization.proofRoots[pBaseImport->sourceSystemID].stateRoot ==
+                        ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.CheckPartialTransaction(exportTx, &isPartial) &&
                     ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.TransactionHash() == pBaseImport->exportTxId &&
                     exportTx.vout.size() > pBaseImport->exportTxOutNum &&
                     exportTx.vout[pBaseImport->exportTxOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -566,7 +568,54 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                     p.vData.size() &&
                     (ccx = CCrossChainExport(p.vData[0])).IsValid()))
                 {
+                    if (LogAcceptCategory("notarization"))
+                    {
+                        printf("%s: Invalid export tx (%s) evidence from block height %u at proof height %u\ncomparing hash %s with proofroot for %s in notarization:\n%s\n",
+                                __func__,
+                                ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.TransactionHash().GetHex().c_str(),
+                                ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.GetBlockHeight(),
+                                ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.GetProofHeight(),
+                                ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.CheckPartialTransaction(exportTx, &isPartial).GetHex().c_str(),
+                                EncodeDestination(CIdentityID(pBaseImport->sourceSystemID)).c_str(),
+                                importNotarization.ToUniValue().write(1,2).c_str());
+                    }
                     return state.Error(strprintf("%s: invalid export evidence for import", __func__));
+                }
+
+                if (importFromDef.proofProtocol == importFromDef.PROOF_ETHNOTARIZATION)
+                {
+                    if (transactionProof.evidence.chainObjects.size() &&
+                        ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.IsChainProof())
+                    {
+                        CMMRProof &EthProof = ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.txProof;
+                        if (importFromDef.nativeCurrencyID.AuxDestCount() == 0)
+                        {
+                            if (IsVerusActive() &&
+                                !IsVerusMainnetActive())
+                            {
+                                // TODO: VNEXT retroactively hardcoded first testnet contract address, remove and ensure currency
+                                // definition is correct for vETH gateway on next testnet
+                                importFromDef.nativeCurrencyID.SetAuxDest(
+                                    CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(CTransferDestination::DecodeEthDestination("0x3fa3a60240ef59460f5b34e2ec5a06ab892a2d00"))),
+                                    0);
+                            }
+                            else
+                            {
+                                return state.Error(strprintf("%s: missing contract address in currency definition", __func__));
+                            }
+                        }
+                        if (uint160(importFromDef.nativeCurrencyID.GetAuxDest(0).destination) != EthProof.GetNativeAddress())
+                        {
+                            LogPrintf("%s: Invalid ETH storage address, Found: %s in AuxDest, got %s from proof", __func__,
+                            CTransferDestination::EncodeEthDestination(uint160(importFromDef.nativeCurrencyID.GetAuxDest(0).destination)),
+                            CTransferDestination::EncodeEthDestination(EthProof.GetNativeAddress()));
+                            return state.Error(strprintf("%s: invalid ETH storage address", __func__));
+                        }
+                    }
+                    else
+                    {
+                        return state.Error(strprintf("%s: ETH chainproof empty or Auxdest not found", __func__));
+                    }
                 }
 
                 uint160 externalSystemID = ccx.sourceSystemID == ASSETCHAINS_CHAINID ?
@@ -2876,10 +2925,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                 break;
 
                 case EVAL_EARNEDNOTARIZATION:
-                {
-                    // this is only used on the chain earning notarizations
-                    flags |= IS_CHAIN_NOTARIZATION;
-                }
                 case EVAL_ACCEPTEDNOTARIZATION:
                 {
                     CPBaaSNotarization onePBN;
@@ -2890,8 +2935,17 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         flags |= IS_REJECT;
                         return;
                     }
+
                     // verify
-                    // if this is the notaries that can finalize this chain, store notarization
+                    // if this is an earned notarization, it is mined or staked in
+                    // if it is an accepted notarization, then prioritize it only if it is from a currency launched by this chain
+                    // to preserve all accounting boundary protocols
+                    CCurrencyDefinition notaryCurrency;
+                    if (p.evalCode == EVAL_EARNEDNOTARIZATION ||
+                        (notaryCurrency = ConnectedChains.GetCachedCurrency(onePBN.currencyID)).launchSystemID == ASSETCHAINS_CHAINID)
+                    {
+                        flags |= IS_CHAIN_NOTARIZATION;
+                    }
                 }
                 break;
 
@@ -3307,13 +3361,11 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                  ((preexistingID.systemID != registeredCurrency.systemID &&
                    !((registeredCurrency.nativeCurrencyID.TypeNoFlags() == registeredCurrency.nativeCurrencyID.DEST_ETH ||
                       registeredCurrency.nativeCurrencyID.TypeNoFlags() == registeredCurrency.nativeCurrencyID.DEST_ETHNFT) &&
-                     (registeredCurrency.parent == registeredCurrency.systemID &&
-                      systemCurrency.IsValid() &&
+                     (systemCurrency.IsValid() &&
                       systemCurrency.IsGateway() &&
                       !systemCurrency.IsNameController())) &&
-                 !((preexistingID.systemID == registeredCurrency.launchSystemID ||
-                    (registeredCurrency.launchSystemID.IsNull() && preexistingID.parent.IsNull())) &&
-                   preexistingID.GetID() == registeredCurrency.SystemOrGatewayID())) ||
+                   !(preexistingID.systemID == registeredCurrency.launchSystemID ||
+                      (registeredCurrency.launchSystemID.IsNull() && preexistingID.parent.IsNull()))) ||
                  boost::to_lower_copy(preexistingID.name) != boost::to_lower_copy(registeredCurrency.name))))
             {
                 printf("WARNING!: Imported currency collides with pre-existing identity of another name.\n"
@@ -3379,13 +3431,11 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                  (importedID.systemID != preexistingCurrency.systemID &&
                   !((preexistingCurrency.nativeCurrencyID.TypeNoFlags() == preexistingCurrency.nativeCurrencyID.DEST_ETH ||
                      preexistingCurrency.nativeCurrencyID.TypeNoFlags() == preexistingCurrency.nativeCurrencyID.DEST_ETHNFT) &&
-                    (preexistingCurrency.parent == preexistingCurrency.systemID &&
-                     systemCurrency.IsValid() &&
+                    (systemCurrency.IsValid() &&
                      systemCurrency.IsGateway() &&
                      !systemCurrency.IsNameController())) &&
-                  !((importedID.systemID == preexistingCurrency.launchSystemID ||
-                    (preexistingCurrency.launchSystemID.IsNull() && importedID.parent.IsNull())) &&
-                   importedID.GetID() == preexistingCurrency.SystemOrGatewayID())) ||
+                  !(importedID.systemID == preexistingCurrency.launchSystemID ||
+                    (preexistingCurrency.launchSystemID.IsNull() && importedID.parent.IsNull()))) ||
                  boost::to_lower_copy(importedID.name) != boost::to_lower_copy(preexistingCurrency.name)))
             {
                 currencyCollision = true;
@@ -3443,7 +3493,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
 
                     // if there is any conflicting entry, we have an issue, otherwise, we are fine
                     foundMemDup = memIndex.size() > 0;
-                    for (auto &oneIdxEntry : memIndex)
+                    for (auto &oneIdxEntry : mempool.FilterUnspent(memIndex))
                     {
                         const CTransaction &identityTx = mempool.mapTx.find(oneIdxEntry.first.txhash)->GetTx();
                         preexistingID = CIdentity(identityTx.vout[oneIdxEntry.first.index].scriptPubKey);

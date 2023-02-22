@@ -144,7 +144,7 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
     return false;
 }
 
-CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, uint32_t *pHeightOut, CTxIn *pIdTxIn)
+CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, uint32_t *pHeightOut, CTxIn *pIdTxIn, bool checkMempool)
 {
     LOCK(mempool.cs);
 
@@ -168,11 +168,40 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
     }
     CTxIn &idTxIn = *pIdTxIn;
 
-    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue> > unspentOutputs, unspentNewIDX;
+    std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs, unspentNewIDX;
+    std::vector<std::pair<CInputDescriptor, uint32_t>> unspentInputs;
 
     uint160 keyID(CCrossChainRPCData::GetConditionID(nameID, EVAL_IDENTITY_PRIMARY));
 
-    if (GetAddressUnspent(keyID, CScript::P2IDX, unspentNewIDX) && GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
+    if ((!height || height > chainActive.Height()) && checkMempool)
+    {
+        ConnectedChains.GetUnspentByIndex(keyID, unspentInputs);
+        // if we got it from the mempool, don't check view
+        if (unspentInputs.size() && !unspentInputs[0].second)
+        {
+            COptCCParams p;
+            if (unspentInputs[0].first.scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_IDENTITY_PRIMARY &&
+                (ret = CIdentity(unspentInputs[0].first.scriptPubKey)).IsValid())
+            {
+                if (ret.GetID() == nameID)
+                {
+                    idTxIn = CTxIn(unspentInputs[0].first.txIn.prevout.hash, unspentInputs[0].first.txIn.prevout.n);
+                    *pHeightOut = -1;
+                }
+                else
+                {
+                    // got an identity masquerading as another, clear it
+                    ret = CIdentity();
+                }
+                return ret;
+            }
+        }
+        unspentInputs.clear();
+    }
+
+    if (unspentOutputs.size() || GetAddressUnspent(keyID, CScript::P2IDX, unspentNewIDX) && GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
     {
         // combine searches into 1 vector
         unspentOutputs.insert(unspentOutputs.begin(), unspentNewIDX.begin(), unspentNewIDX.end());
@@ -214,6 +243,7 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
         if (height != 0 && (*pHeightOut > height || (height == 1 && *pHeightOut == height)))
         {
             *pHeightOut = 0;
+            ret = CIdentity();
 
             // if we must check up to a specific height that is less than the latest height, do so
             std::vector<CAddressIndexDbEntry> addressIndex, addressIndex2;
@@ -239,7 +269,7 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
                     COptCCParams p;
                     LOCK(mempool.cs);
                     if (!addressIndex[i].first.spending &&
-                        addressIndex[i].first.txindex > txIndex &&    // always select the latest in a block, if there can be more than one
+                        (addressIndex[i].first.blockHeight == 1 || addressIndex[i].first.txindex > txIndex) &&    // always select the latest in a block, if there can be more than one
                         myGetTransaction(addressIndex[i].first.txhash, idTx, blkHash) &&
                         idTx.vout[addressIndex[i].first.index].scriptPubKey.IsPayToCryptoCondition(p) &&
                         p.IsValid() &&
@@ -855,7 +885,8 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
         if (issuingCurrency.IsFractional())
         {
             feePricingCurrency = issuingCurrency.FeePricingCurrency();
-            if (!(pricingState = ConnectedChains.GetCurrencyState(issuerID, (tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) - 1, false)).IsValid() ||
+            if ((tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) > height ||
+                !(pricingState = ConnectedChains.GetCurrencyState(issuerID, (tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) - 1, false)).IsValid() ||
                 !pricingState.IsLaunchConfirmed())
             {
                 return state.Error("Invalid currency state for gateway converter to register identity");
@@ -1375,7 +1406,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     }
 }
 
-bool GetNotarizationData(const uint160 &chainID, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut = NULL);
+bool GetNotarizationData(const uint160 &chainID, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut=nullptr, std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>> *pCounterEvidence=nullptr);
 
 bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
@@ -1481,6 +1512,11 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
         // always use default expiry
         int32_t reserveIndex = issuingCurrency.GetCurrenciesMap().find(feePricingCurrency)->second;
         std::vector<std::pair<CTransaction, uint256>> txOut;
+
+        if ((tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) > height)
+        {
+            return state.Error("Identity transaction must have at least " + std::to_string(DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) + " blocks for transaction expiry");
+        }
 
         pricingState = ConnectedChains.GetCurrencyState(issuerID, (tx.nExpiryHeight - DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA) - 1, false);
 
@@ -1872,7 +1908,6 @@ bool PrecheckIdentityCommitment(const CTransaction &tx, int32_t outNum, CValidat
                                 numIndexKeys++;
                                 uint160 destID = GetDestinationID(oneKey);
 
-                                // TODO: HARDENING - check any currency against itself as we do native
                                 if (destID == nativeCurrencyOffer)
                                 {
                                     hasNativeOffer = true;
@@ -2309,14 +2344,21 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         }
     }
 
-    // TODO: HARDENING at block one, a new PBaaS chain can mint IDs, but only those on its own chain or imported from its launch chain
-    // imported IDs must come from a system that can import the ID in question
+    // TODO: HARDENING - ensure that the block one coinbase only mints the IDs it is supposed to mint
+    // this may be a redundant note and may be removed when block one coinbase is fully checked
     if (isPBaaS)
     {
         if (height == 1)
         {
             // for block one IDs, ensure they are valid as per the launch parameters
-            return true;
+            if (tx.IsCoinBase())
+            {
+                return true;
+            }
+            else
+            {
+                return state.Error("Invalid ID minting in block 1");
+            }
         }
         else if (validCrossChainImport)
         {
@@ -2882,11 +2924,11 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
                 issuingCurrency = ConnectedChains.ThisChain();
             }
             bool success = ValidateSpendingIdentityReservation(spendingTx, outputNum, eval->state, height, issuingCurrency);
-            if (!success)
+            if (!success && LogAcceptCategory("identity"))
             {
                 UniValue jsonTx;
                 TxToUniv(spendingTx, uint256(), jsonTx);
-                printf("%s: failed to validate identity reservation:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+                LogPrintf("%s: failed to validate identity reservation:\n%s\n", __func__, jsonTx.write(1,2).c_str());
             }
             return success;
         }
@@ -2894,6 +2936,7 @@ bool ValidateIdentityCommitment(struct CCcontract_info *cp, Eval* eval, const CT
     else
     {
         printf("%s: error getting transaction %s to spend\n", __func__, spendingTx.vin[nIn].prevout.hash.GetHex().c_str());
+        LogPrintf("%s: error getting transaction %s to spend\n", __func__, spendingTx.vin[nIn].prevout.hash.GetHex().c_str());
         return false;
     }
 

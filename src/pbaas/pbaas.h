@@ -226,12 +226,82 @@ public:
         VERSION_LAST = 2,
         VERSION_CURRENT = 2,
         FINAL_CONFIRMATIONS = 9,
-        DEFAULT_NOTARIZATION_FEE = 10000,               // price of a notarization fee in native or launch system currency
+        DEFAULT_NOTARIZATION_FEE = 10000,               // default notarization fee when entering a signature for a notarization
+        DEFAULT_ACCEPTED_EVIDENCE_FEE = 100000,         // price of each evidence output when entering a notarization
         MAX_NODES = 2,                                  // only provide 2 nodes per notarization
         MIN_NOTARIZATION_OUTPUT = 0,                    // minimum amount for notarization output
+
+        EXPECT_MIN_HEADER_PROOFS = 1,                   // if header proofs are needed, we need this many or number of blocks
+        MIN_EARNED_FOR_SIGNED = 2,                      // minimum earned notarizations to notarize with witnesses
+        MIN_EARNED_FOR_AUTO = 4,                        // minimum earned notarizations to auto-notarize at any modulo
+        NUM_BLOCKS_BEFORE_EXTENSION = 150,              // if we haven't confirmed a notarization in this long, modulo gets multiplied
+        MODULO_EXTENSION_MULTIPLIER = 10,               // notarization rate drops to 1/10 when not confirmed on time
+        MIN_BLOCKS_TO_AUTOCONFIRM = 100,                // we cannot autoconfirm (signature-free) a notarization < 200 blocks old
+        MIN_BLOCKS_TO_SIGNCONFIRM = 15,                 // we cannot sign confirm a notarization < 15 blocks old
+
+        MAX_HEADER_PROOFS_PER_PROOF = 50,               // don't use more than this many header proofs in an alternate chain proof tx
+        MAX_BLOCKS_PER_COMMITMENT_RANGE = 256,          // up to 256 blocks per commitment range
+        MAX_BLOCK_RANGES_PER_PROOF = 5,                 // no more than 5 randomly selected ranges to cover any gap length
+        NUM_COMMITMENT_BLOCKS_START_OFFSET = 100,       // commitment blocks start this far before the actual start or at 1
+        NUM_BLOCKS_PER_PROOF_RANGE = 100,               // number of blocks in an ideal proof range
+        NUM_HEADER_PROOF_RANGE_DIVISOR = 10,            // divide proof range length by this to determine required header proofs
+        MIN_BLOCKS_PER_CHECKPOINT = 256,                // blocks before we need another checkpoint
+        MAX_PROOF_CHECKPOINTS = 100,                    // we do not add more than 100, after that, they are spaced further apart
+        BLOCKS_TO_STABLE_PBAAS_ROOT = 5,                // PBaaS tip ahead of considered a "laststableroot", must be proven on challenge
+        BLOCKS_ENFORCED_TO_STABLE_NOTARY_ROOT = 100,    // unnotarized notary chain tip blocks ahead of "laststableroot", must be proven on challenge
+        BLOCKS_TO_STABLE_NOTARY_ROOT = 102,             // used as last stable root to ensure we can prove statistically almost all the time
+        MIN_BLOCKS_FOR_SEMISTABLE_TIP = 2,              // leeway to ensure sticky notarizations
     };
-    //static const int FINAL_CONFIRMATIONS = 10;
-    //static const int MIN_BLOCKS_BETWEEN_NOTARIZATIONS = 8;
+
+    inline static int32_t MinBlocksToAutoNotarization(uint32_t notarizationBlockModulo)
+    {
+        return CCurrencyDefinition::MinBlocksToAutoNotarization(notarizationBlockModulo);
+    }
+
+    inline static int32_t MinBlocksToSignedNotarization(uint32_t notarizationBlockModulo)
+    {
+        return CCurrencyDefinition::MinBlocksToSignedNotarization(notarizationBlockModulo);
+    }
+
+    inline static int32_t MinBlocksToStartNotarization(uint32_t notarizationBlockModulo)
+    {
+        return CCurrencyDefinition::MinBlocksToStartNotarization(notarizationBlockModulo);
+    }
+
+    inline static int32_t BlocksBeforeAlternateStakeEnforcement()
+    {
+        return 300;
+    }
+
+    inline static int32_t GetBlocksBeforeModuloExtension(uint32_t notarizationBlockModulo)
+    {
+        uint32_t maxAutoConfirmBlocks = notarizationBlockModulo * MODULO_EXTENSION_MULTIPLIER * (MIN_EARNED_FOR_AUTO * 2);
+        return std::max(maxAutoConfirmBlocks, (uint32_t)NUM_BLOCKS_BEFORE_EXTENSION);
+    }
+
+    inline static int32_t NotarizationsBeforeModuloExtension()
+    {
+        return MIN_EARNED_FOR_AUTO << 1 + MIN_EARNED_FOR_AUTO;
+    }
+
+    inline static int32_t GetAdjustedNotarizationModuloExp(int64_t notarizationBlockModulo,
+                                                           int64_t heightChange,
+                                                           int64_t notarizationsBeforeModuloExtension,
+                                                           int64_t notarizationCount=0)
+    {
+        if (heightChange <= GetBlocksBeforeModuloExtension(notarizationBlockModulo) && notarizationCount <= notarizationsBeforeModuloExtension)
+        {
+            return notarizationBlockModulo;
+        }
+        int32_t nextCheckModulo = notarizationBlockModulo * MODULO_EXTENSION_MULTIPLIER;
+        int32_t nextCheckNotarizationBeforeModulo = notarizationsBeforeModuloExtension << 1;
+        return GetAdjustedNotarizationModuloExp(nextCheckModulo, heightChange, nextCheckNotarizationBeforeModulo, notarizationCount);
+    }
+
+    inline static int32_t GetAdjustedNotarizationModulo(uint32_t notarizationBlockModulo, uint32_t heightChange, int32_t notarizationCount=0)
+    {
+        return GetAdjustedNotarizationModuloExp(notarizationBlockModulo, heightChange, NotarizationsBeforeModuloExtension(), notarizationCount);
+    }
 
     enum FLAGS
     {
@@ -425,6 +495,11 @@ public:
         return "vrsc::system.notarization.acceptednotarization";
     }
 
+    static std::string PriorNotarizationKeyName()
+    {
+        return "vrsc::system.notarization.prior";
+    }
+
     static std::string LaunchNotarizationKeyName()
     {
         return "vrsc::system.currency.launch.notarization";
@@ -448,6 +523,11 @@ public:
     static std::string LaunchCompleteKeyName()
     {
         return "vrsc::system.currency.launch.complete";
+    }
+
+    static std::string RangeSelectEntropyKeyName()
+    {
+        return "vrsc::system.notarization.entropy";
     }
 
     static uint160 NotaryNotarizationKey()
@@ -476,6 +556,13 @@ public:
         static uint160 nameSpace;
         static uint160 acceptedNotarizationKey = CVDXF::GetDataKey(AcceptedNotarizationKeyName(), nameSpace);
         return acceptedNotarizationKey;
+    }
+
+    static uint160 PriorNotarizationKey()
+    {
+        static uint160 nameSpace;
+        static uint160 priorNotarizationKey = CVDXF::GetDataKey(PriorNotarizationKeyName(), nameSpace);
+        return priorNotarizationKey;
     }
 
     static uint160 LaunchNotarizationKey()
@@ -513,11 +600,18 @@ public:
         return signatureKey;
     }
 
+    static uint160 RangeSelectEntropyKey()
+    {
+        static uint160 nameSpace;
+        static uint160 rangeSelectKey = CVDXF::GetDataKey(RangeSelectEntropyKeyName(), nameSpace);
+        return rangeSelectKey;
+    }
+
     // if false, *this is unmodifed, otherwise, it is set to the last valid notarization in the requested range
     bool GetLastNotarization(const uint160 &currencyID,
                              int32_t startHeight=0,
                              int32_t endHeight=0,
-                             uint256 *txIDOut=nullptr,
+                             CAddressIndexDbEntry *txOutIdx=nullptr,
                              CTransaction *txOut=nullptr);
 
     // if false, no matching, unspent notarization found
@@ -540,6 +634,9 @@ public:
                               CTransferDestination feeRecipient=CTransferDestination(),
                               bool forcedRefunding=false) const;
 
+    static int GetBlocksPerCheckpoint(int heightChange);
+    static int GetNumCheckpoints(int heightChange);
+
     static bool CreateEarnedNotarization(const CRPCChainData &externalSystem,
                                          const CTransferDestination &Proposer,
                                          bool isStake,
@@ -548,6 +645,9 @@ public:
                                          CPBaaSNotarization &notarization);
 
     bool FindEarnedNotarization(CObjectFinalization &finalization, CAddressIndexDbEntry *pEarnedNotarizationIndex=nullptr) const;
+    static bool FindFinalizedIndexByVDXFKey(const uint160 &notarizationIdxKey,
+                                            CObjectFinalization &confirmedFinalization,
+                                            CAddressIndexDbEntry &earnedNotarizationIndex);
 
     // accepts enough information to build a local accepted notarization transaction
     // miner fees are deferred until an import that uses this notarization, in which case
@@ -563,8 +663,7 @@ public:
                                              const CRPCChainData &externalSystem,
                                              CValidationState &state,
                                              std::vector<TransactionBuilder> &txBuilders,
-                                             uint32_t nHeight,
-                                             bool &finalized);
+                                             uint32_t nHeight);
 
     static std::vector<uint256> SubmitFinalizedNotarizations(const CRPCChainData &externalSystem,
                                                              CValidationState &state);
@@ -588,6 +687,9 @@ public:
         }
         return proofRootIt->second;
     }
+
+    static std::vector<std::pair<uint32_t, uint32_t>>
+        GetBlockCommitmentRanges(uint32_t lastNotarizationHeight, uint32_t currentNotarizationHeight, uint256 entropy);
 
     void SetLaunchComplete(bool setTrue=true)
     {
@@ -789,7 +891,7 @@ public:
     std::multimap<arith_uint256, CPBaaSMergeMinedChainData *> mergeMinedTargets;
 
     LRUCache<uint160, CCurrencyDefinition> currencyDefCache;        // protected by cs_main, so doesn't need sync
-    LRUCache<std::tuple<uint160, uint32_t, bool>, CCoinbaseCurrencyState> currencyStateCache; // cached currency states @ heights + updated flag
+    LRUCache<std::tuple<uint160, uint256, bool>, CCoinbaseCurrencyState> currencyStateCache; // cached currency states @ heights + updated flag
 
     // make earned notarizations for one or more notary chains
     std::map<uint160, CNotarySystemInfo> notarySystems;
@@ -908,20 +1010,12 @@ public:
                             uint32_t fromHeight,
                             uint32_t toHeight);
 
-    bool GetPendingSystemExports(const uint160 systemID,
-                                 uint32_t fromHeight,
-                                 multimap<uint160, pair<int, CInputDescriptor>> &exportOutputs);
-
-    bool GetPendingCurrencyExports(const uint160 currencyID,
-                                   uint32_t fromHeight,
-                                   std::vector<pair<int, CInputDescriptor>> &exportOutputs);
-
     // given exports on this chain, provide the proofs of those export outputs
     bool GetExportProofs(uint32_t height,
                          std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> &exports);
 
     static bool GetReserveDeposits(const uint160 &currencyID, const CCoinsViewCache &view, std::vector<CInputDescriptor> &reserveDeposits);
-    static bool GetUnspentByIndex(const uint160 &indexID, std::vector<CInputDescriptor> &unspentOutptus);
+    static bool GetUnspentByIndex(const uint160 &indexID, std::vector<std::pair<CInputDescriptor, uint32_t>> &unspentOutptus);
 
     static bool IsValidCurrencyDefinitionImport(const CCurrencyDefinition &sourceSystemDef,
                                                 const CCurrencyDefinition &destSystemDef,

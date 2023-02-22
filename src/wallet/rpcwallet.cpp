@@ -2514,6 +2514,7 @@ static void MaybePushAddress(UniValue & entry, const CTxDestination &dest)
     }
 }
 
+bool ValidateStakeTransaction(const CCurrencyDefinition &sourceChain, const CTransaction &stakeTx, CStakeParams &stakeParams, bool slowValidation=true);
 bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakeParams, bool slowValidation=true);
 
 void ListTransactions(const CWalletTx& wtx, const string& strAccount, int nMinDepth, bool fLong, UniValue& ret, const isminefilter& filter)
@@ -3631,12 +3632,25 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
 
     CAmount allBal = pwalletMain->GetBalance();
     obj.push_back(Pair("balance",       ValueFromAmount(allBal)));
+    CAmount sharedBal = pwalletMain->GetSharedBalance();
     if (checkunlockedIDs)
     {
         CAmount unlockBal = pwalletMain->GetBalance(false);
         if (unlockBal != allBal)
         {
             obj.push_back(Pair("unlocked_balance",  ValueFromAmount(unlockBal)));
+        }
+    }
+    if (sharedBal)
+    {
+        obj.push_back(Pair("sharedbalance", ValueFromAmount(sharedBal)));
+        if (checkunlockedIDs)
+        {
+            CAmount unlockSharedBal = pwalletMain->GetSharedBalance(false);
+            if (unlockSharedBal != sharedBal)
+            {
+                obj.push_back(Pair("unlocked_shared_balance",  ValueFromAmount(unlockSharedBal)));
+            }
         }
     }
     obj.push_back(Pair("unconfirmed_balance", ValueFromAmount(pwalletMain->GetUnconfirmedBalance())));
@@ -3679,6 +3693,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     CCurrencyDefinition &chainDef = ConnectedChains.ThisChain();
     UniValue reserveBal(UniValue::VOBJ);
     CCurrencyValueMap resBal = pwalletMain->GetReserveBalance();
+    CCurrencyValueMap resSharedBal = pwalletMain->GetSharedReserveBalance();
 
     for (auto &oneBalance : resBal.valueMap)
     {
@@ -3701,6 +3716,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
             }
         }
     }
+
 
     UniValue unconfirmedReserveBal(UniValue::VOBJ);
     for (auto &oneBalance : pwalletMain->GetUnconfirmedReserveBalance().valueMap)
@@ -3766,9 +3782,9 @@ UniValue listunspent(const UniValue& params, bool fHelp)
     if (!EnsureWalletIsAvailable(fHelp))
         return NullUniValue;
 
-    if (fHelp || params.size() > 3)
+    if (fHelp || params.size() > 4)
         throw runtime_error(
-            "listunspent ( minconf maxconf  [\"address\",...] )\n"
+            "listunspent ( minconf maxconf  [\"address\",...] includeshared )\n"
             "\nReturns array of unspent transaction outputs\n"
             "with between minconf and maxconf (inclusive) confirmations.\n"
             "Optionally filter to only include txouts paid to specified addresses.\n"
@@ -3782,6 +3798,7 @@ UniValue listunspent(const UniValue& params, bool fHelp)
             "      \"address\"   (string) " + strprintf("%s",komodo_chainname()) + " address\n"
             "      ,...\n"
             "    ]\n"
+            "4. includeshared    (bool, optional, default=false) Include outputs that can also be spent by others\n"
             "\nResult\n"
             "[                   (array of json object)\n"
             "  {\n"
@@ -3829,6 +3846,8 @@ UniValue listunspent(const UniValue& params, bool fHelp)
             }
         }
     }
+
+    bool includeShared = params.size() > 3 ? uni_get_bool(params[3]) : false;
 
     UniValue results(UniValue::VARR);
     vector<COutput> vecOutputs;
@@ -4804,11 +4823,10 @@ CAmount getBalanceTaddr(std::string transparentAddress, int minDepth=1, bool ign
     return balance;
 }
 
-CCurrencyValueMap getCurrencyBalanceTaddr(std::string transparentAddress, int minDepth=1, bool ignoreUnspendable=true) {
+CCurrencyValueMap getCurrencyBalanceTaddr(std::string transparentAddress, int minDepth=1, bool ignoreUnspendable=true, bool includeShared=false) {
     CTxDestination destination;
     vector<COutput> vecOutputs;
     CCurrencyValueMap balance;
-
 
     bool wildCardRAddress = transparentAddress == "R*";
     bool wildCardiAddress = transparentAddress == "i*";
@@ -4827,7 +4845,7 @@ CCurrencyValueMap getCurrencyBalanceTaddr(std::string transparentAddress, int mi
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
-    pwalletMain->AvailableCoins(vecOutputs, false, NULL, true);
+    pwalletMain->AvailableCoins(vecOutputs, false, NULL, true, true, true, false, true, includeShared);
 
     BOOST_FOREACH(const COutput& out, vecOutputs)
     {
@@ -5133,9 +5151,9 @@ UniValue getcurrencybalance(const UniValue& params, bool fHelp)
     if (!EnsureWalletIsAvailable(fHelp))
         return NullUniValue;
 
-    if (fHelp || params.size()==0 || params.size() > 3)
+    if (fHelp || params.size()==0 || params.size() > 4)
         throw runtime_error(
-            "getcurrencybalance \"address\" ( minconf ) ( friendlynames )\n"
+            "getcurrencybalance \"address\" ( minconf ) ( friendlynames ) ( includeshared )\n"
             "\nReturns the balance in all currencies of a taddr or zaddr belonging to the node's wallet.\n"
             "\nCAUTION: If the wallet has only an incoming viewing key for this address, then spends cannot be"
             "\ndetected, and so the returned balance may be larger than the actual balance.\n"
@@ -5143,6 +5161,7 @@ UniValue getcurrencybalance(const UniValue& params, bool fHelp)
             "1. \"address\"      (string) The selected address. It may be a transparent or private address and include z*, R*, and i* wildcards.\n"
             "2. minconf          (numeric, optional, default=1) Only include transactions confirmed at least this many times.\n"
             "3. friendlynames    (boolean, optional, default=true) use friendly names instead of i-addresses.\n"
+            "4. includeshared    (bool, optional, default=false) Include outputs that can also be spent by others\n"
             "\nResult:\n"
             "amount              (numeric) The total amount in " + std::string(ASSETCHAINS_SYMBOL) + " received for this address.\n"
             "\nExamples:\n"
@@ -5167,6 +5186,8 @@ UniValue getcurrencybalance(const UniValue& params, bool fHelp)
     if (nMinDepth < 0) {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Minimum number of confirmations cannot be less than 0");
     }
+
+    bool includeShared = params.size() > 3 ? uni_get_bool(params[3]) : false;
 
     // Check that the from address is valid.
     auto fromaddress = params[0].get_str();

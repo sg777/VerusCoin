@@ -803,6 +803,17 @@ bool IsStandardTx(const CTransaction& tx, string& reason, const CChainParams& ch
             ::IsStandard(txout.scriptPubKey, whichType);
             reason = "scriptpubkey";
             //fprintf(stderr,">>>>>>>>>>>>>>> vout.%d nDataout.%d\n",v,nDataOut);
+            // if we are on Verus mainnet, there were a few transactions that got into the blocks
+            // earlier that are no longer allowed. exempt them.
+            COptCCParams p;
+            if (IsVerusMainnetActive() &&
+                txout.scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.version < 3 &&
+                nHeight < 1800000)
+            {
+                reason = "invalidsmarttx";
+                return true;
+            }
             return false;
         }
 
@@ -868,9 +879,9 @@ bool IsExpiredTx(const CTransaction &tx, int nBlockHeight)
     return static_cast<uint32_t>(nBlockHeight) > tx.nExpiryHeight;
 }
 
-bool IsExpiringSoonTx(const CTransaction &tx, int nNextBlockHeight)
+bool IsExpiringSoonTx(const CTransaction &tx, int nNextBlockHeight, int expiryThreshold)
 {
-    return IsExpiredTx(tx, nNextBlockHeight + TX_EXPIRING_SOON_THRESHOLD);
+    return IsExpiredTx(tx, nNextBlockHeight + expiryThreshold);
 }
 
 bool CheckFinalTx(const CTransaction &tx, int flags)
@@ -1183,7 +1194,7 @@ bool ContextualCheckTransaction(
 
     uint32_t verusVersion = CVerusSolutionVector::GetVersionByHeight(nHeight);
     bool isVerusVault = verusVersion >= CActivationHeight::ACTIVATE_VERUSVAULT;
-    // bool isPBaaS = verusVersion >= CActivationHeight::ACTIVATE_PBAAS;
+    bool isPBaaS = verusVersion >= CActivationHeight::ACTIVATE_PBAAS;
 
     // If Sprout rules apply, reject transactions which are intended for Overwinter and beyond
     if (isSprout && tx.fOverwintered) {
@@ -1412,9 +1423,18 @@ bool ContextualCheckTransaction(
             {
                 CCcontract_info CC;
                 CCcontract_info *cp;
-                if (!((p.evalCode <= EVAL_LAST) && (cp = CCinit(&CC, p.evalCode))))
+                if (!((p.evalCode <= EVAL_LAST) &&
+                    (cp = CCinit(&CC, p.evalCode))))
                 {
                     return state.DoS(100, error("ContextualCheckTransaction(): Invalid smart transaction eval code"), REJECT_INVALID, "bad-txns-evalcode-invalid");
+                }
+                if (isPBaaS &&
+                    (!IsVerusActive() ||
+                     IsVerusMainnetActive() ||
+                     chainActive[std::min((uint32_t)chainActive.Height(), (uint32_t)nHeight)]->nTime > PBAAS_TESTFORK_TIME) &&
+                    p.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
+                {
+                    return state.DoS(100, error("ContextualCheckTransaction(): smart transaction params exceed maximum size"), REJECT_INVALID, "bad-txns-script-element-too-large");
                 }
                 if (!CC.contextualprecheck(tx, i, state, nHeight))
                 {
@@ -1768,7 +1788,7 @@ bool AcceptToMemoryPool(CTxMemPool& pool, CValidationState &state, const CTransa
     return AcceptToMemoryPoolInt(pool, state, tx, fLimitFree, pfMissingInputs, fRejectAbsurdFee, dosLevel);
 }
 
-bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTransaction &tx, bool fLimitFree,bool* pfMissingInputs, bool fRejectAbsurdFee, int dosLevel, int32_t simHeight)
+bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTransaction &tx, bool fLimitFree, bool* pfMissingInputs, bool fRejectAbsurdFee, int dosLevel, int32_t simHeight, int expireThreshold)
 {
     AssertLockHeld(cs_main);
     if (pfMissingInputs)
@@ -1829,7 +1849,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
     // DoS mitigation: reject transactions expiring soon
     // Note that if a valid transaction belonging to the wallet is in the mempool and the node is shutdown,
     // upon restart, CWalletTx::AcceptToMemoryPool() will be invoked which might result in rejection.
-    if (IsExpiringSoonTx(tx, nextBlockHeight)) {
+    if (IsExpiringSoonTx(tx, nextBlockHeight, expireThreshold)) {
         return state.DoS(0, error("AcceptToMemoryPool(): transaction is expiring soon"), REJECT_INVALID, "tx-expiring-soon");
     }
 
@@ -3884,8 +3904,21 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 return state.DoS(100, error("ConnectBlock(): too many sigops"),
                                 REJECT_INVALID, "bad-blk-sigops");
 
-            // Check transaction contextually against consensus rules at block height
-            if (!ContextualCheckTransaction(tx, state, chainparams, nHeight, 10)) {
+            // ensure transaction can clear conflicts and get into mempool
+            std::list<CTransaction> removed;
+            bool missingInputs = false;
+            bool isPosTx = block.IsVerusPOSBlock() && (i + 1) == block.vtx.size();
+            if (((tx.IsCoinBase() || isPosTx) &&
+                 !ContextualCheckTransaction(tx, state, chainparams, nHeight, 10)) ||
+                (!(tx.IsCoinBase() || isPosTx) &&
+                 !AcceptToMemoryPoolInt(mempool, state, tx, false, &missingInputs, false, 10, nHeight, 0) &&
+                 !(state.GetRejectReason() == "already in mempool" ||
+                   state.GetRejectReason() == "already have coins") &&
+                 !(state.GetRejectReason() == "staking" &&
+                   IsVerusMainnetActive() &&
+                   nHeight < 1800000)))
+            {
+                LogPrintf("%s: ERROR: %s\nBlock %s rejected\n", __func__, state.GetRejectReason().c_str(), block.GetHash().GetHex().c_str());
                 return false; // Failure reason has been set in validation state object
             }
 
@@ -6091,124 +6124,23 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
                              REJECT_INVALID, "bad-cb-multiple");
 
     // Check transactions
-    CTransaction sTx;
-    CTransaction *ptx = NULL;
     bool success = true;
-    if ( ASSETCHAINS_CC != 0 ) // CC contracts might refer to transactions in the current block, from a CC spend within the same block and out of order
+    unsigned int nSigOps = 0;
+
+    for (uint32_t i = 0; i < block.vtx.size(); i++)
     {
-        int32_t i,j,rejects=0,lastrejects=0;
-
-        // we need this lock to prevent accepting transactions we shouldn't
-        LOCK(cs_main);
-        LOCK2(smartTransactionCS, mempool.cs);
-
-        SetMaxScriptElementSize(height);
-
-        //printf("checking block %d\n", height);
-        while ( 1 )
+        nSigOps += GetLegacySigOpCount(block.vtx[i]);
+        if (!CheckTransaction(block.vtx[i], state, verifier))
         {
-            for (i = block.hashPrevBlock.IsNull() ? 1 : 0; i < block.vtx.size(); i++)
-            {
-                CValidationState state;
-                CTransaction Tx;
-                const CTransaction &tx = (CTransaction)block.vtx[i];
-                if (((i == (block.vtx.size() - 1)) && (ASSETCHAINS_STAKED && komodo_isPoS((CBlock *)&block) != 0)))
-                    continue;
-                Tx = tx;
-
-                bool missinginputs = false;
-
-                if (Tx.vout.size() == 0)
-                {
-                    if (!Tx.IsCoinBase())
-                    {
-                        for (int j = 0; j < Tx.vin.size(); j++)
-                        {
-                            if (Tx.vin[j].prevout.hash.IsNull())
-                            {
-                                success = false;
-                            }
-                        }
-                    }
-                }
-
-                if (!tx.IsCoinBase() && myAddtomempool(Tx, &state, height, false, &missinginputs) == false ) // happens with out of order tx in block on resync
-                {
-                    //LogPrintf("%s: Rejected by mempool, reason: .%s.\n", __func__, state.GetRejectReason().c_str());
-                    //printf("%s: Rejected by mempool, reason: .%s.\n", __func__, state.GetRejectReason().c_str());
-
-                    uint32_t ecode;
-                    // take advantage of other checks, but if we were only rejected because it is present or a valid staking
-                    // transaction, sync with wallets and don't mark as a reject
-                    if (i == (block.vtx.size() - 1) && ASSETCHAINS_LWMAPOS && block.IsVerusPOSBlock() && state.GetRejectReason() == "staking")
-                    {
-                        sTx = Tx;
-                        ptx = &sTx;
-                    }
-                    else
-                    if (state.GetRejectReason() != "already have coins" &&
-                          !((missinginputs || state.GetRejectCode() == REJECT_DUPLICATE) && (!fCheckTxInputs || chainActive.Height() < height - 1)))
-                    {
-                        if (LogAcceptCategory("checkblock"))
-                        {
-                            LogPrint("checkblock", "Rejected transaction for %s, reject code %d\nchainActive.Height(): %d, height: %d\n", state.GetRejectReason().c_str(), state.GetRejectCode(), chainActive.Height(), height);
-                            for (auto input : Tx.vin)
-                            {
-                                LogPrint("checkblock", "input n: %d, hash: %s\n", input.prevout.n, input.prevout.hash.GetHex().c_str());
-                            }
-                        }
-                        rejects++;
-                    }
-                    else if (state.GetRejectReason() == "bad-txns-invalid-reserve")
-                    {
-                        // there is no way this will be ok
-                        success = false;
-                    }
-                }
-            }
-            if ( rejects == 0 || rejects == lastrejects )
-            {
-                if ( lastrejects != 0 )
-                {
-                    LogPrintf("lastrejects.%d -> all tx in mempool\n", lastrejects);
-                }
-                break;
-            }
-            //fprintf(stderr,"addtomempool ht.%d for CC checking: n.%d rejects.%d last.%d\n",height,(int32_t)block.vtx.size(),rejects,lastrejects);
-            lastrejects = rejects;
-            rejects = 0;
+            success = error("CheckBlock: CheckTransaction failed");
+            break;
         }
-        //fprintf(stderr,"done putting block's tx into mempool\n");
     }
-
-    if (success)
+    if (success &&
+        nSigOps > MAX_BLOCK_SIGOPS)
     {
-        for (uint32_t i = 0; i < block.vtx.size(); i++)
-        {
-            const CTransaction& tx = block.vtx[i];
-            if ( komodo_validate_interest(tx,height == 0 ? komodo_block2height((CBlock *)&block) : height,block.nTime,0) < 0 )
-            {
-                success = error("CheckBlock: komodo_validate_interest failed");
-            }
-            if (success && !CheckTransaction(tx, state, verifier))
-                success = error("CheckBlock: CheckTransaction failed");
-        }
-        if (success)
-        {
-            unsigned int nSigOps = 0;
-            BOOST_FOREACH(const CTransaction& tx, block.vtx)
-            {
-                nSigOps += GetLegacySigOpCount(tx);
-            }
-            if (nSigOps > MAX_BLOCK_SIGOPS)
-                success = state.DoS(100, error("CheckBlock: out-of-bounds SigOpCount"),
-                                REJECT_INVALID, "bad-blk-sigops", true);
-            if ( success && komodo_check_deposit(height,block,(pindex==0||pindex->pprev==0)?0:pindex->pprev->nTime) < 0 )
-            {
-                LogPrintf("CheckBlock: komodo_check_deposit error");
-                success = error("CheckBlock: komodo_check_deposit error");
-            }
-        }
+        success = state.DoS(100, error("CheckBlock: out-of-bounds SigOpCount"),
+                        REJECT_INVALID, "bad-blk-sigops", true);
     }
     return success;
 }
@@ -6763,9 +6695,13 @@ bool ProcessNewBlock(bool from_miner, int32_t height, CValidationState &state, c
 bool TestBlockValidity(CValidationState& state, const CChainParams& chainparams, const CBlock& block, CBlockIndex* pindexPrev, bool fCheckPOW, bool fCheckMerkleRoot)
 {
     AssertLockHeld(cs_main);
-    assert(pindexPrev == chainActive.Tip());
 
     bool success = false;
+
+    if (pindexPrev != chainActive.Tip())
+    {
+        return success;
+    }
 
     CCoinsViewCache viewNew(pcoinsTip);
     CBlockIndex indexDummy(block);
