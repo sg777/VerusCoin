@@ -3648,16 +3648,16 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         }
         if (chainDef.systemID == ASSETCHAINS_CHAINID)
         {
-            notarizationData.vtx.push_back(std::make_pair(std::get<1>(lastFinalized), std::get<2>(lastFinalized)));
-            notarizationData.lastConfirmed = 0;
-            notarizationData.forks.push_back(std::vector<int>({0}));
-            notarizationData.bestChain = 0;
             if (pCounterEvidence)
             {
                 pCounterEvidence->resize(notarizationData.vtx.size());
             }
             if (!optionalTxOut)
             {
+                notarizationData.vtx.push_back(std::make_pair(std::get<1>(lastFinalized), std::get<2>(lastFinalized)));
+                notarizationData.lastConfirmed = 0;
+                notarizationData.forks.push_back(std::vector<int>({0}));
+                notarizationData.bestChain = 0;
                 return true;
             }
         }

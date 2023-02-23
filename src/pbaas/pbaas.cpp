@@ -7621,7 +7621,7 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                         LogPrintf("%s: missing or invalid notarization for %s\n", __func__, EncodeDestination(CIdentityID(destID)).c_str());
                         if (notarizationTxes.size() != cnd.vtx.size())
                         {
-                            printf("NOTE: notarization and transaction vectors are not the same size\n");
+                            printf("NOTE: notarization and transaction vectors are not the same size - cnd.vtx.size(): %ld, notarizationTxes.size(): %ld\n", cnd.vtx.size(), notarizationTxes.size());
                             LogPrintf("NOTE: notarization and transaction vectors are not the same size\n");
                         }
                         break;
