@@ -3611,6 +3611,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         {
             pCounterEvidence->resize(notarizationData.vtx.size());
         }
+        optionalTxOut->resize(notarizationData.vtx.size());
         return true;
     }
     else if (!chainDef.IsToken() && height > 0)
@@ -3655,7 +3656,10 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
             {
                 pCounterEvidence->resize(notarizationData.vtx.size());
             }
-            return true;
+            if (!optionalTxOut)
+            {
+                return true;
+            }
         }
         CTransaction oneNTx;
         uint256 ntxBlockHash;
@@ -3683,6 +3687,12 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         {
             LogPrint("notarization", "%s: failure to find confirmed notarization starting point for currency %s\n", __func__, chainDef.ToUniValue().write(1,2).c_str());
             return false;
+        }
+
+        // if from this system, we're done
+        if (chainDef.systemID == ASSETCHAINS_CHAINID)
+        {
+            return true;
         }
 
         std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> pendingFinalizations;
