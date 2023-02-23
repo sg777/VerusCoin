@@ -474,7 +474,7 @@ public:
         MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK = 50,
         MAX_ETH_TRANSFER_EXPORTS_SIZE_PER_BLOCK = 100000,
         DEFAULT_BLOCK_NOTARIZATION_TIME = 600,      // default target time for block notarizations
-        MIN_BLOCK_NOTARIZATION_BLOCKS = 2,          // minimum target blocks for notarization period
+        MIN_BLOCK_NOTARIZATION_BLOCKS = 5,          // minimum target blocks for notarization period
         MAX_NOTARIZATION_CONVERSION_PRICING_INTERVAL = 100,  // there must be a notarization with conversion at least 100 blocks before reserve transfer
         DEFAULT_BLOCKTIME_TARGET = 60,              // default block time target for difficulty adjustment, in seconds
         MIN_BLOCKTIME_TARGET = 10,                  // min 10 seconds in first version of PBaaS
