@@ -7612,10 +7612,18 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                     std::vector<std::pair<CTransaction, uint256>> notarizationTxes;
 
                     // get notarization for the actual currency destination
-                    if (!GetNotarizationData(lastChain, cnd, &notarizationTxes) || cnd.lastConfirmed == -1)
+                    if (!GetNotarizationData(lastChain, cnd, &notarizationTxes) ||
+                        cnd.lastConfirmed == -1 ||
+                        !cnd.vtx.size() ||
+                        notarizationTxes.size() != cnd.vtx.size())
                     {
                         printf("%s: missing or invalid notarization for %s\n", __func__, EncodeDestination(CIdentityID(destID)).c_str());
                         LogPrintf("%s: missing or invalid notarization for %s\n", __func__, EncodeDestination(CIdentityID(destID)).c_str());
+                        if (notarizationTxes.size() != cnd.vtx.size())
+                        {
+                            printf("NOTE: notarization and transaction vectors are not the same size\n");
+                            LogPrintf("NOTE: notarization and transaction vectors are not the same size\n");
+                        }
                         break;
                     }
 

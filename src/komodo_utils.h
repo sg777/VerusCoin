@@ -1468,7 +1468,7 @@ void komodo_configfile(char *symbol, uint16_t rpcport)
                         int powAveragingWindow = GetArg("-powaveragingwindow", CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW);
                         int notarizationPeriod = GetArg("-notarizationperiod",
                                                         std::max((int)(CCurrencyDefinition::DEFAULT_BLOCK_NOTARIZATION_TIME / paramBlockTime),
-                                                                 (int)CCurrencyDefinition::MIN_BLOCK_NOTARIZATION_BLOCKS));
+                                                                 (int)CCurrencyDefinition::MIN_BLOCK_NOTARIZATION_PERIOD));
                         if (paramBlockTime != CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET ||
                             powAveragingWindow != CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW ||
                             notarizationPeriod != CCurrencyDefinition::BLOCK_NOTARIZATION_MODULO)
@@ -2257,7 +2257,7 @@ void komodo_args(char *argv0)
                 obj.pushKV("blocktime", paramBlockTime);
                 obj.pushKV("powaveragingwindow", GetArg("-powaveragingwindow", (int64_t)CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW));
                 obj.pushKV("notarizationperiod", GetArg("-notarizationperiod",
-                                                        std::max((int64_t)(CCurrencyDefinition::DEFAULT_BLOCK_NOTARIZATION_TIME / paramBlockTime), (int64_t)CCurrencyDefinition::MIN_BLOCK_NOTARIZATION_BLOCKS)));
+                                                        std::max((int64_t)(CCurrencyDefinition::DEFAULT_BLOCK_NOTARIZATION_TIME / paramBlockTime), (int64_t)CCurrencyDefinition::MIN_BLOCK_NOTARIZATION_PERIOD)));
 
                 UniValue eras(UniValue::VARR);
                 for (int i = 0; i <= ASSETCHAINS_LASTERA; i++)

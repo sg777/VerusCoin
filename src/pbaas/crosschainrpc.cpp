@@ -1148,7 +1148,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             blockTime = uni_get_int64(find_value(obj, "blocktime"), DEFAULT_BLOCKTIME_TARGET);
             powAveragingWindow = uni_get_int64(find_value(obj, "powaveragingwindow"), DEFAULT_AVERAGING_WINDOW);
             blockNotarizationModulo = uni_get_int64(find_value(obj, "notarizationperiod"),
-                                                    std::max((int64_t)(DEFAULT_BLOCK_NOTARIZATION_TIME / blockTime), (int64_t)MIN_BLOCK_NOTARIZATION_BLOCKS));
+                                                    std::max((int64_t)(DEFAULT_BLOCK_NOTARIZATION_TIME / blockTime), (int64_t)MIN_BLOCK_NOTARIZATION_PERIOD));
 
             if (powAveragingWindow < MIN_AVERAGING_WINDOW || powAveragingWindow > MAX_AVERAGING_WINDOW)
             {

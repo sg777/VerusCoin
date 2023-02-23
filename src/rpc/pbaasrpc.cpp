@@ -10659,6 +10659,12 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         newCurrency.launchSystemID = systemID;
     }
 
+    if (newCurrency.launchSystemID == ASSETCHAINS_CHAINID &&
+        newCurrency.blockNotarizationModulo < CCurrencyDefinition::MIN_BLOCK_NOTARIZATION_PERIOD)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency definition - less than minimum notarizationperiod");
+    }
+
     if (!newCurrency.IsValid())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency definition. see help.");
