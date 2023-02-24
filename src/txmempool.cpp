@@ -255,10 +255,10 @@ bool CTxMemPool::getAddressIndex(const std::vector<std::pair<uint160, int> > &ad
     return true;
 }
 
-std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> CTxMemPool::FilterUnspent(const std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> &memPoolOutputs)
+std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> CTxMemPool::FilterUnspent(const std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> &memPoolOutputs,
+                                                                                                std::set<COutPoint> &spentTxOuts)
 {
     std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> retVal;
-    std::set<COutPoint> spentTxOuts;
     std::set<COutPoint> txOuts;
 
     for (const auto &oneOut : memPoolOutputs)

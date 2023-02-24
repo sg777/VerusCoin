@@ -4633,88 +4633,60 @@ std::string CConnectedChains::GetFriendlyIdentityName(const CIdentity &identity)
 // returns all unspent chain exports for a specific chain/currency
 bool CConnectedChains::GetUnspentSystemExports(const CCoinsViewCache &view,
                                                const uint160 systemID,
-                                               std::vector<std::pair<int, CInputDescriptor>> &exportOutputs)
+                                               std::vector<std::pair<int, CInputDescriptor>> &exportOuts)
 {
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
     std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> exportUTXOs;
-
-    std::vector<std::pair<int, CInputDescriptor>> exportOuts;
 
     LOCK2(cs_main, mempool.cs);
 
     uint160 exportIndexKey = CCrossChainRPCData::GetConditionID(systemID, CCrossChainExport::SystemExportKey());
 
-    if (mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{exportIndexKey, CScript::P2IDX}}), exportUTXOs) &&
-        exportUTXOs.size())
+    std::vector<std::pair<CInputDescriptor, uint32_t>> outputs;
+    if (GetUnspentByIndex(exportIndexKey, outputs))
     {
-        for (auto &oneExport : mempool.FilterUnspent(exportUTXOs))
+        for (auto &oneOutput : outputs)
         {
-            const CCoins *coin = view.AccessCoins(oneExport.first.txhash);
-            if (coin->IsAvailable(oneExport.first.index))
+            COptCCParams p;
+            const CCoins *coin = view.AccessCoins(oneOutput.first.txIn.prevout.hash);
+            if (coin &&
+                !mempool.mapNextTx.count(COutPoint(oneOutput.first.txIn.prevout.hash, oneOutput.first.txIn.prevout.n)) &&
+                coin->IsAvailable(oneOutput.first.txIn.prevout.n))
             {
-                exportOuts.push_back(std::make_pair(0, CInputDescriptor(coin->vout[oneExport.first.index].scriptPubKey, oneExport.second.amount,
-                                                                    CTxIn(oneExport.first.txhash, oneExport.first.index))));
+                exportOuts.push_back(std::make_pair(oneOutput.second, oneOutput.first));
             }
         }
     }
-    if (!exportOuts.size() &&
-        !GetAddressUnspent(exportIndexKey, CScript::P2IDX, unspentOutputs))
-    {
-        return false;
-    }
-    else
-    {
-        for (auto it = unspentOutputs.begin(); it != unspentOutputs.end(); it++)
-        {
-            exportOuts.push_back(std::make_pair(it->second.blockHeight, CInputDescriptor(it->second.script, it->second.satoshis,
-                                                            CTxIn(it->first.txhash, it->first.index))));
-        }
-    }
-    exportOutputs.insert(exportOutputs.end(), exportOuts.begin(), exportOuts.end());
     return exportOuts.size() != 0;
 }
 
 // returns all unspent chain exports for a specific chain/currency
 bool CConnectedChains::GetUnspentCurrencyExports(const CCoinsViewCache &view,
                                                  const uint160 currencyID,
-                                                 std::vector<std::pair<int, CInputDescriptor>> &exportOutputs)
+                                                 std::vector<std::pair<int, CInputDescriptor>> &exportOuts)
 {
     std::vector<std::pair<CAddressUnspentKey, CAddressUnspentValue>> unspentOutputs;
     std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> exportUTXOs;
-
-    std::vector<std::pair<int, CInputDescriptor>> exportOuts;
 
     LOCK2(cs_main, mempool.cs);
 
     uint160 exportIndexKey = CCrossChainRPCData::GetConditionID(currencyID, CCrossChainExport::CurrencyExportKey());
 
-    if (mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{exportIndexKey, CScript::P2IDX}}), exportUTXOs) &&
-        exportUTXOs.size())
+    std::vector<std::pair<CInputDescriptor, uint32_t>> outputs;
+    if (GetUnspentByIndex(exportIndexKey, outputs))
     {
-        for (auto &oneExport : mempool.FilterUnspent(exportUTXOs))
+        for (auto &oneOutput : outputs)
         {
-            const CCoins *coin = view.AccessCoins(oneExport.first.txhash);
-            if (coin->IsAvailable(oneExport.first.index))
+            COptCCParams p;
+            const CCoins *coin = view.AccessCoins(oneOutput.first.txIn.prevout.hash);
+            if (coin &&
+                !mempool.mapNextTx.count(COutPoint(oneOutput.first.txIn.prevout.hash, oneOutput.first.txIn.prevout.n)) &&
+                coin->IsAvailable(oneOutput.first.txIn.prevout.n))
             {
-                exportOuts.push_back(std::make_pair(0, CInputDescriptor(coin->vout[oneExport.first.index].scriptPubKey, oneExport.second.amount,
-                                                                    CTxIn(oneExport.first.txhash, oneExport.first.index))));
+                exportOuts.push_back(std::make_pair(oneOutput.second, oneOutput.first));
             }
         }
     }
-    if (!exportOuts.size() &&
-        !GetAddressUnspent(exportIndexKey, CScript::P2IDX, unspentOutputs))
-    {
-        return false;
-    }
-    else
-    {
-        for (auto it = unspentOutputs.begin(); it != unspentOutputs.end(); it++)
-        {
-            exportOuts.push_back(std::make_pair(it->second.blockHeight, CInputDescriptor(it->second.script, it->second.satoshis,
-                                                            CTxIn(it->first.txhash, it->first.index))));
-        }
-    }
-    exportOutputs.insert(exportOutputs.end(), exportOuts.begin(), exportOuts.end());
     return exportOuts.size() != 0;
 }
 
@@ -4854,26 +4826,21 @@ bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, const CCoin
         LogPrintf("%s: Cannot read address indexes\n", __func__);
         return false;
     }
-    for (auto &oneConfirmed : confirmedUTXOs)
+    std::vector<std::pair<CInputDescriptor, uint32_t>> outputs;
+    if (GetUnspentByIndex(depositIndexKey, outputs))
     {
-        COptCCParams p;
-        if (!mempool.mapNextTx.count(COutPoint(oneConfirmed.first.txhash, oneConfirmed.first.index)) &&
-            view.GetCoins(oneConfirmed.first.txhash, coin) &&
-            coin.IsAvailable(oneConfirmed.first.index) &&
-            oneConfirmed.second.script.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_RESERVE_DEPOSIT)
+        for (auto &oneOutput : outputs)
         {
-            reserveDeposits.push_back(CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis,
-                                                        CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index)));
+            COptCCParams p;
+            if (!mempool.mapNextTx.count(COutPoint(oneOutput.first.txIn.prevout.hash, oneOutput.first.txIn.prevout.n)) &&
+                view.GetCoins(oneOutput.first.txIn.prevout.hash, coin) &&
+                coin.IsAvailable(oneOutput.first.txIn.prevout.n) &&
+                oneOutput.first.scriptPubKey.IsPayToCryptoCondition(p) && p.IsValid() && p.evalCode == EVAL_RESERVE_DEPOSIT)
+            {
+                reserveDeposits.push_back(CInputDescriptor(oneOutput.first.scriptPubKey, oneOutput.first.nValue,
+                                                            CTxIn(oneOutput.first.txIn.prevout.hash, oneOutput.first.txIn.prevout.n)));
+            }
         }
-    }
-
-    // we need to remove those that are spent
-    std::map<COutPoint, CInputDescriptor> memPoolOuts;
-    for (auto &oneUnconfirmed : mempool.FilterUnspent(unconfirmedUTXOs))
-    {
-        const CTransaction oneTx = mempool.mapTx.find(oneUnconfirmed.first.txhash)->GetTx();
-        reserveDeposits.push_back(CInputDescriptor(oneTx.vout[oneUnconfirmed.first.index].scriptPubKey, oneUnconfirmed.second.amount,
-                                                    CTxIn(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)));
     }
     return true;
 }
@@ -4889,8 +4856,17 @@ bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<std
         LogPrintf("%s: Cannot read address indexes\n", __func__);
         return false;
     }
+
+    std::set<COutPoint> spentInMempool;
+    auto memPoolOuts = mempool.FilterUnspent(unconfirmedUTXOs, spentInMempool);
+
     for (auto &oneConfirmed : confirmedUTXOs)
     {
+        if (spentInMempool.count(COutPoint(oneConfirmed.first.txhash, oneConfirmed.first.index)))
+        {
+            continue;
+        }
+
         COptCCParams p;
         if (!mempool.mapNextTx.count(COutPoint(oneConfirmed.first.txhash, oneConfirmed.first.index)) &&
             oneConfirmed.second.script.IsPayToCryptoCondition(p) && p.IsValid())
@@ -4902,8 +4878,7 @@ bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<std
     }
 
     // we need to remove those that are spent
-    std::map<COutPoint, CInputDescriptor> memPoolOuts;
-    for (auto &oneUnconfirmed : mempool.FilterUnspent(unconfirmedUTXOs))
+    for (auto &oneUnconfirmed : memPoolOuts)
     {
         const CTransaction oneTx = mempool.mapTx.find(oneUnconfirmed.first.txhash)->GetTx();
         unspentOutptus.push_back(std::make_pair(CInputDescriptor(oneTx.vout[oneUnconfirmed.first.index].scriptPubKey, oneUnconfirmed.second.amount,

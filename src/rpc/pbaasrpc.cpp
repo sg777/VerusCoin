@@ -171,7 +171,8 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
     }
     else if (checkMempool && !ClosedPBaaSChains.count(chainID) && mempool.getAddressIndex(addresses, results) && results.size())
     {
-        for (auto &currencyDefOut : mempool.FilterUnspent(results))
+        std::set<COutPoint> spentInMempool;
+        for (auto &currencyDefOut : mempool.FilterUnspent(results, spentInMempool))
         {
             CTransaction tx;
 
@@ -3642,8 +3643,8 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> lastFinalized = GetLastConfirmedNotarization(currencyID, chainActive.Height());
         if (std::get<0>(lastFinalized) == 0)
         {
-            LogPrintf("No confirmed notarization for %s, if this is not transient, node may need to reindex\n", EncodeDestination(CIdentityID(currencyID)).c_str());
-            printf("No confirmed notarization for %s, if this is not transient, node may need to reindex\n", EncodeDestination(CIdentityID(currencyID)).c_str());
+            LogPrintf("No confirmed notarization for %s, node may need to reindex\n", EncodeDestination(CIdentityID(currencyID)).c_str());
+            printf("No confirmed notarization for %s, node may need to reindex\n", EncodeDestination(CIdentityID(currencyID)).c_str());
             return false;
         }
         if (chainDef.systemID == ASSETCHAINS_CHAINID)
@@ -3692,6 +3693,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         // if from this system, we're done
         if (chainDef.systemID == ASSETCHAINS_CHAINID)
         {
+            notarizationData.vtx[0].second.currencyState = ConnectedChains.GetCurrencyState(chainDef, height, 0, true);
             return true;
         }
 

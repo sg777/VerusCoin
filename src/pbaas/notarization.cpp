@@ -6289,35 +6289,17 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
 {
     LOCK(mempool.cs);
     std::vector<std::pair<uint32_t, CInputDescriptor>> retVal;
-    std::vector<CAddressUnspentDbEntry> indexUnspent;
-    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> mempoolUnspent;
 
     uint160 indexKey = CCrossChainRPCData::GetConditionID(
         CCrossChainRPCData::GetConditionID(currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey()),
         ObjectFinalizationConfirmedKey());
-    if ((GetAddressUnspent(indexKey, CScript::P2IDX, indexUnspent) &&
-         mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexKey, CScript::P2IDX}}), mempoolUnspent)) &&
-        (indexUnspent.size() || mempoolUnspent.size()))
+
+    std::vector<std::pair<CInputDescriptor, uint32_t>> outputs;
+    if (ConnectedChains.GetUnspentByIndex(indexKey, outputs))
     {
-        for (auto &oneConfirmed : mempool.FilterUnspent(mempoolUnspent))
+        for (auto &oneOutput : outputs)
         {
-            auto txProxy = mempool.mapTx.find(oneConfirmed.first.txhash);
-            if (txProxy != mempool.mapTx.end())
-            {
-                auto &mpEntry = *txProxy;
-                auto &tx = mpEntry.GetTx();
-                //printf("%s: txid: %s, vout: %u\n", __func__, oneConfirmed.first.txhash.GetHex().c_str(), oneConfirmed.first.index);
-                retVal.push_back(std::make_pair(0,
-                                 CInputDescriptor(tx.vout[oneConfirmed.first.index].scriptPubKey,
-                                                  tx.vout[oneConfirmed.first.index].nValue,
-                                                  CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index))));
-            }
-        }
-        for (auto &oneConfirmed : indexUnspent)
-        {
-            //printf("%s: txid: %s, vout: %lu, blockheight: %d\n", __func__, oneConfirmed.first.txhash.GetHex().c_str(), oneConfirmed.first.index, oneConfirmed.second.blockHeight);
-            retVal.push_back(std::make_pair(oneConfirmed.second.blockHeight,
-                             CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis, CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index))));
+            retVal.push_back(std::make_pair(oneOutput.second, oneOutput.first));
         }
     }
     return retVal;
@@ -6327,34 +6309,17 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
 {
     LOCK(mempool.cs);
     std::vector<std::pair<uint32_t, CInputDescriptor>> retVal;
-    std::vector<CAddressUnspentDbEntry> indexUnspent;
-    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> mempoolUnspent;
 
     uint160 indexKey = CCrossChainRPCData::GetConditionID(
         CCrossChainRPCData::GetConditionID(currencyID, CObjectFinalization::ObjectFinalizationNotarizationKey()),
         ObjectFinalizationPendingKey());
-    if ((GetAddressUnspent(indexKey, CScript::P2IDX, indexUnspent) &&
-         mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexKey, CScript::P2IDX}}), mempoolUnspent)) &&
-        (indexUnspent.size() || mempoolUnspent.size()))
+
+    std::vector<std::pair<CInputDescriptor, uint32_t>> outputs;
+    if (ConnectedChains.GetUnspentByIndex(indexKey, outputs))
     {
-        for (auto &oneUnconfirmed : mempool.FilterUnspent(mempoolUnspent))
+        for (auto &oneOutput : outputs)
         {
-            auto txProxy = mempool.mapTx.find(oneUnconfirmed.first.txhash);
-            if (txProxy != mempool.mapTx.end())
-            {
-                auto &mpEntry = *txProxy;
-                auto &tx = mpEntry.GetTx();
-                retVal.push_back(std::make_pair(0,
-                                 CInputDescriptor(tx.vout[oneUnconfirmed.first.index].scriptPubKey,
-                                                  tx.vout[oneUnconfirmed.first.index].nValue,
-                                                  CTxIn(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index))));
-            }
-        }
-        for (auto &oneConfirmed : indexUnspent)
-        {
-            //printf("%s: txid: %s, vout: %lu, blockheight: %d\n", __func__, oneConfirmed.first.txhash.GetHex().c_str(), oneConfirmed.first.index, oneConfirmed.second.blockHeight);
-            retVal.push_back(std::make_pair(oneConfirmed.second.blockHeight,
-                             CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis, CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index))));
+            retVal.push_back(std::make_pair(oneOutput.second, oneOutput.first));
         }
     }
     return retVal;
@@ -6383,16 +6348,22 @@ CObjectFinalization::GetFinalizations(const uint160 &currencyID,
 
     LOCK(mempool.cs);
 
+    if (checkMempool)
+    {
+        mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexKey, CScript::P2IDX}}), mempoolFinalizations);
+    }
+    std::set<COutPoint> spentInMempool;
+    auto filteredMempoolOuts = mempool.FilterUnspent(mempoolFinalizations, spentInMempool);
+
     if (GetAddressIndex(indexKey, CScript::P2IDX, finalizationIndex, startHeight, endHeight) &&
-        finalizationIndex.size() &&
-        (!checkMempool || mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexKey, CScript::P2IDX}}), mempoolFinalizations)) &&
-        (finalizationIndex.size() || mempoolFinalizations.size()))
+        (finalizationIndex.size() || filteredMempoolOuts.size()))
     {
         std::vector<int> toRemove;
         std::map<COutPoint, int> outputMap;
         for (int i = 0; i < finalizationIndex.size(); i++)
         {
-            if (!finalizationIndex[i].first.spending)
+            if (!finalizationIndex[i].first.spending &&
+                !spentInMempool.count(COutPoint(finalizationIndex[i].first.txhash, finalizationIndex[i].first.index)))
             {
                 CTransaction finalizationTx;
                 CObjectFinalization of;
@@ -6416,19 +6387,15 @@ CObjectFinalization::GetFinalizations(const uint160 &currencyID,
                                                  finalizationTx, of));
             }
         }
-        for (int i = 0; i < mempoolFinalizations.size(); i++)
+        for (int i = 0; i < filteredMempoolOuts.size(); i++)
         {
-            if (mempoolFinalizations[i].first.spending)
-            {
-                continue;
-            }
             CTransaction oneTx;
-            if (mempool.lookup(mempoolFinalizations[i].first.txhash, oneTx))
+            if (mempool.lookup(filteredMempoolOuts[i].first.txhash, oneTx))
             {
                 retVal.push_back(std::make_tuple((uint32_t)0,
-                                                  COutPoint(mempoolFinalizations[i].first.txhash, mempoolFinalizations[i].first.index),
+                                                  COutPoint(filteredMempoolOuts[i].first.txhash, filteredMempoolOuts[i].first.index),
                                                   oneTx,
-                                                  CObjectFinalization(oneTx.vout[mempoolFinalizations[i].first.index].scriptPubKey)));
+                                                  CObjectFinalization(oneTx.vout[filteredMempoolOuts[i].first.index].scriptPubKey)));
             }
         }
     }
@@ -6625,32 +6592,14 @@ std::vector<std::pair<uint32_t, CInputDescriptor>> CObjectFinalization::GetUnspe
 {
     LOCK(mempool.cs);
     std::vector<std::pair<uint32_t, CInputDescriptor>> retVal;
-    std::vector<CAddressUnspentDbEntry> indexUnspent;
-    std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> mempoolUnspent;
     uint160 indexKey = CCrossChainRPCData::GetConditionID(CNotaryEvidence::NotarySignatureKey(), notarizationTxId, notarizationOutNum);
 
-    if ((GetAddressUnspent(indexKey, CScript::P2IDX, indexUnspent) &&
-         mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexKey, CScript::P2IDX}}), mempoolUnspent)) &&
-        (indexUnspent.size() || mempoolUnspent.size()))
+    std::vector<std::pair<CInputDescriptor, uint32_t>> outputs;
+    if (ConnectedChains.GetUnspentByIndex(indexKey, outputs))
     {
-        for (auto &oneUnconfirmed : mempool.FilterUnspent(mempoolUnspent))
+        for (auto &oneOutput : outputs)
         {
-            auto txProxy = mempool.mapTx.find(oneUnconfirmed.first.txhash);
-            if (txProxy != mempool.mapTx.end())
-            {
-                auto &mpEntry = *txProxy;
-                auto &tx = mpEntry.GetTx();
-                retVal.push_back(std::make_pair(0,
-                                 CInputDescriptor(tx.vout[oneUnconfirmed.first.index].scriptPubKey,
-                                                  tx.vout[oneUnconfirmed.first.index].nValue,
-                                                  CTxIn(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index))));
-            }
-        }
-        for (auto &oneConfirmed : indexUnspent)
-        {
-            //printf("%s: txid: %s, vout: %lu, blockheight: %d\n", __func__, oneConfirmed.first.txhash.GetHex().c_str(), oneConfirmed.first.index, oneConfirmed.second.blockHeight);
-            retVal.push_back(std::make_pair(oneConfirmed.second.blockHeight,
-                             CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis, CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index))));
+            retVal.push_back(std::make_pair(oneOutput.second, oneOutput.first));
         }
     }
     return retVal;
@@ -7167,6 +7116,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
         std::set<int> invalidatedOutputNums;
 
         std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> mempoolUnspent;
+        std::set<COutPoint> dummyOutPoints;
         if (mempool.getAddressIndex(
                 std::vector<std::pair<uint160, int32_t>>({
                     {CCrossChainRPCData::GetConditionID(CObjectFinalization::ObjectFinalizationFinalizedKey(),
@@ -7176,7 +7126,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                 mempoolUnspent) &&
             mempoolUnspent.size())
         {
-            for (auto &oneUnspent : mempool.FilterUnspent(mempoolUnspent))
+            for (auto &oneUnspent : mempool.FilterUnspent(mempoolUnspent, dummyOutPoints))
             {
                 // if we have a confirmed, valid entry in the mempool already, we don't have something to do
                 CTransaction oneTx;
