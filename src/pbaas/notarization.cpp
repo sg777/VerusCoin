@@ -8414,8 +8414,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
     {
         return state.Error("Notarizations not supported before PBaaS activation");
     }
-    // TODO: HARDENING - check that all is in place here, especially proof checking of accepted notarizations down below and conditions for
-    // earned notarizations
+    // TODO: HARDENING - check that all is in place here, especially state transitions of notarizations local and otherwise
 
     COptCCParams p;
     CPBaaSNotarization currentNotarization;
@@ -8882,6 +8881,18 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             }
             else
             {
+                std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> priorNotarizationInfo;
+
+                if (!(currentNotarization.IsDefinitionNotarization() ||
+                      currentNotarization.IsBlockOneNotarization()))
+                {
+                    priorNotarizationInfo = GetPriorReferencedNotarization(tx, outNum, currentNotarization, height - 1);
+                    if (!std::get<0>(priorNotarizationInfo))
+                    {
+                        return state.Error("Invalid prior notarization 4");
+                    }
+                }
+
                 if (!currentNotarization.IsRefunding() &&
                     (curDef.IsPBaaSChain() || (curDef.IsGateway() && !currentNotarization.IsDefinitionNotarization())) &&
                      curDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
@@ -8954,14 +8965,6 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                             return state.Error("Unable to get prior confirmed accepted notarization");
                         }
 
-                        std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> priorNotarizationInfo =
-                            GetPriorReferencedNotarization(tx, outNum, normalizedNotarization, height - 1);
-
-                        if (!std::get<0>(priorNotarizationInfo))
-                        {
-                            return state.Error("Invalid prior notarization 2");
-                        }
-
                         if (!IsNotarizationDescendent(normalizedNotarization, priorNotarizationInfo, lastConfirmedNotarizationInfo, state))
                         {
                             return false;
@@ -9021,6 +9024,24 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                         {
                             return state.Error("Unable to verify " + std::string(challengingRoots.size() ? "challenged" : "unchallenged") + " accepted notarization");
                         }
+                    }
+                }
+
+                // TODO: HARDENING - verify transitions
+                if (std::get<0>(priorNotarizationInfo))
+                {
+                    if (std::get<3>(priorNotarizationInfo).IsPreLaunch() &&
+                        !(currentNotarization.currencyState.IsLaunchClear() &&
+                          ((currentNotarization.IsLaunchConfirmed() && (currentNotarization.currencyState.IsLaunchConfirmed())) ||
+                           (currentNotarization.IsRefunding() && (currentNotarization.currencyState.IsRefunding())))))
+                    {
+                        LogPrintf("%s: Launch clear confirmed or refunding must be first non-prelaunch notarization %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(currentNotarization.currencyID).c_str());
+                        return false;
+                    }
+                    if (std::get<3>(priorNotarizationInfo).IsRefunding() && !currentNotarization.IsRefunding())
+                    {
+                        LogPrintf("%s: Cannot change refunding state for %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(currentNotarization.currencyID).c_str());
+                        return false;
                     }
                 }
             }

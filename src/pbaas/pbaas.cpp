@@ -4862,7 +4862,13 @@ bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<std
 
     for (auto &oneConfirmed : confirmedUTXOs)
     {
-        if (spentInMempool.count(COutPoint(oneConfirmed.first.txhash, oneConfirmed.first.index)))
+        BlockMap::iterator blockIt;
+        uint256 blockHash;
+        CTransaction tx;
+        if (spentInMempool.count(COutPoint(oneConfirmed.first.txhash, oneConfirmed.first.index)) ||
+            !myGetTransaction(oneConfirmed.first.txhash, tx, blockHash) ||
+            (blockIt = mapBlockIndex.find(blockHash)) == mapBlockIndex.end() ||
+            !chainActive.Contains(blockIt->second))
         {
             continue;
         }
@@ -5221,9 +5227,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         }
         else if (nHeight)
         {
-            // the first import ever cannot be on a chain that is already running and is not the same chain
-            // as the first export processed. it is either launched from the launch chain, which is running
-            // or as a new chain, started from a different launch chain.
+            // the first import ever. it is either launched from the launch chain, which is running
+            // or as a new chain, started from a different launch chain
             if (useProofs)
             {
                 LogPrintf("%s: invalid first import for currency %s on system %s\n", __func__, destCur.name.c_str(), EncodeDestination(CIdentityID(destCur.systemID)).c_str());
@@ -5233,10 +5238,28 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             // first import, but not first block, so not PBaaS launch - last import has no evidence to spend
             CChainNotarizationData cnd;
             std::vector<std::pair<CTransaction, uint256>> notarizationTxes;
+
             if (!GetNotarizationData(ccx.destCurrencyID, cnd, &notarizationTxes) || !cnd.IsConfirmed())
             {
                 LogPrintf("%s: cannot get notarization for currency %s on system %s\n", __func__, destCur.name.c_str(), EncodeDestination(CIdentityID(destCur.systemID)).c_str());
                 return false;
+            }
+
+            // if we are running on the chain of this currency, get our
+            // most recent notarization, even if it's from the mempool
+            if (destCur.systemID == ASSETCHAINS_CHAINID)
+            {
+                auto lastNotarizationRef = GetLastConfirmedNotarization(destCurID, nHeight + 1);
+                if (!std::get<0>(lastNotarizationRef) && std::get<2>(lastNotarizationRef).IsValid())
+                {
+                    cnd.vtx[0].first = std::get<1>(lastNotarizationRef);
+                    cnd.vtx[0].second = std::get<2>(lastNotarizationRef);
+                    if (!cnd.vtx[0].first.GetOutputTransaction(notarizationTxes[0].first, notarizationTxes[0].second))
+                    {
+                        LogPrintf("%s: cannot get notarization tx for currency %s on system %s\n", __func__, destCur.name.c_str());
+                        return false;
+                    }
+                }
             }
 
             lastNotarization = cnd.vtx[cnd.lastConfirmed].second;
@@ -5281,11 +5304,28 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             lastNotarization.currencyState.SetLaunchClear(false);
             lastNotarization.currencyState.SetPrelaunch(true);
         }
-        else if (lastCCI.IsInitialLaunchImport())
+        else if (lastNotarization.IsValid())
         {
-            lastNotarization.SetPreLaunch(false);
-            lastNotarization.currencyState.SetPrelaunch(false);
-            lastNotarization.currencyState.SetLaunchClear(false);
+            if (lastCCI.IsInitialLaunchImport())
+            {
+                if (ccx.IsChainDefinition() ||
+                    lastNotarization.currencyState.IsPrelaunch() ||
+                    !lastNotarization.currencyState.IsLaunchClear())
+                {
+                    LogPrintf("%s: Initial launch import can only follow launch clear for %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(ccx.destCurrencyID).c_str());
+                    return false;
+                }
+                lastNotarization.SetPreLaunch(false);
+                lastNotarization.currencyState.SetPrelaunch(false);
+                lastNotarization.currencyState.SetLaunchClear(false);
+            }
+            else if (ccx.IsChainDefinition() &&
+                    !(lastNotarization.currencyState.IsPrelaunch() &&
+                    lastNotarization.currencyState.IsLaunchClear()))
+            {
+                LogPrintf("%s: Chain definition export may only be imported on first launch import %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(ccx.destCurrencyID).c_str());
+                return false;
+            }
         }
 
         uint32_t nextHeight = useProofs && destCur.SystemOrGatewayID() == ASSETCHAINS_CHAINID || destCurID == ASSETCHAINS_CHAINID ?
@@ -6299,6 +6339,14 @@ bool CConnectedChains::GetCurrencyExports(const uint160 &currencyID,
             CTransaction exportTx;
             if (!idx.first.spending && myGetTransaction(idx.first.txhash, exportTx, blkHash))
             {
+                BlockMap::iterator blockIt;
+                if (!blkHash.IsNull() &&
+                    (blockIt = mapBlockIndex.find(blkHash)) == mapBlockIndex.end() ||
+                     !chainActive.Contains(blockIt->second))
+                {
+                    continue;
+                }
+
                 std::vector<CBaseChainObject *> opretTransfers;
                 CCrossChainExport ccx;
                 if ((ccx = CCrossChainExport(exportTx.vout[idx.first.index].scriptPubKey)).IsValid() &&
@@ -8023,12 +8071,6 @@ void CConnectedChains::ProcessLocalImports()
                 p.vData.size() &&
                 (ccx = CCrossChainExport(p.vData[0])).IsValid())
             {
-                // prelaunch exports come with their notarization and
-                // must be mined in before imported to ensure proper launch and refunds
-                if (ccx.IsPrelaunch() && hashBlock.IsNull())
-                {
-                    continue;
-                }
                 orderedExportsToFinalize[ccx.destCurrencyID].insert(
                     std::make_pair(ccx.sourceHeightStart,
                                    std::make_pair(std::make_pair(CInputDescriptor(scratchTx.vout[of.output.n].scriptPubKey,
@@ -8059,7 +8101,8 @@ void CConnectedChains::ProcessLocalImports()
                 (cci = CCrossChainImport(p.vData[0])).IsValid() &&
                 (cci.IsPostLaunch() || cci.IsDefinitionImport() || cci.sourceSystemID == ASSETCHAINS_CHAINID))
             {
-                // if not post launch, we are launching from this chain and need to get exports after the last import's source height
+                // if not post launch complete, we are launching from this chain and need to get exports
+                // after the last import's source height
                 if (ccx.IsClearLaunch())
                 {
                     std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> exportsFound;

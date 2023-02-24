@@ -1022,89 +1022,36 @@ bool CConnectedChains::GetLastImport(const uint160 &currencyID,
                                      CTransaction &lastImport,
                                      int32_t &outputNum)
 {
-    std::vector<CAddressUnspentDbEntry> unspentOutputs;
     std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> memPoolOutputs;
 
     LOCK2(cs_main, mempool.cs);
 
     uint160 importKey = CCrossChainRPCData::GetConditionID(currencyID, CCrossChainImport::CurrencyImportKey());
 
-    if (mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({std::make_pair(importKey, CScript::P2IDX)}), memPoolOutputs) &&
-        memPoolOutputs.size())
-    {
-        // make sure it isn't just a burned transaction to that address, drop out on first match
-        COptCCParams p;
-        CAddressUnspentDbEntry foundOutput;
-        std::set<COutPoint> spentTxOuts;
-        std::set<COutPoint> txOuts;
-
-        for (const auto &oneOut : memPoolOutputs)
-        {
-            // get last one in spending list
-            if (oneOut.first.spending)
-            {
-                CTransaction priorOutTx;
-                uint256 blockHash;
-                CTransaction curTx;
-
-                if (mempool.lookup(oneOut.first.txhash, curTx) &&
-                    curTx.vin.size() > oneOut.first.index)
-                {
-                    spentTxOuts.insert(curTx.vin[oneOut.first.index].prevout);
-                }
-                else
-                {
-                    throw JSONRPCError(RPC_DATABASE_ERROR, "Unable to retrieve data for prior import");
-                }
-            }
-        }
-        for (auto &oneOut : memPoolOutputs)
-        {
-            if (!oneOut.first.spending && !spentTxOuts.count(COutPoint(oneOut.first.txhash, oneOut.first.index)))
-            {
-                lastImport = mempool.mapTx.find(oneOut.first.txhash)->GetTx();
-                outputNum = oneOut.first.index;
-                return true;
-            }
-        }
-    }
-
-    // get last import from the specified chain
-    if (!GetAddressUnspent(importKey, CScript::P2IDX, unspentOutputs))
+    std::vector<std::pair<CInputDescriptor, uint32_t>> unspentOutputs;
+    if (!GetUnspentByIndex(importKey, unspentOutputs))
     {
         return false;
     }
 
-    // make sure it isn't just a burned transaction to that address, drop out on first match
+    // drop out on first match
     const std::pair<CAddressUnspentKey, CAddressUnspentValue> *pOutput = NULL;
     COptCCParams p;
     CAddressUnspentDbEntry foundOutput;
     for (const auto &output : unspentOutputs)
     {
-        if (output.second.script.IsPayToCryptoCondition(p) && p.IsValid() &&
+        uint256 blockHash;
+        if (output.first.scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid() &&
             p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
-            p.vData.size())
+            p.vData.size() &&
+            myGetTransaction(output.first.txIn.prevout.hash, lastImport, blockHash))
         {
-            foundOutput = output;
-            pOutput = &foundOutput;
-            break;
+            outputNum = output.first.txIn.prevout.n;
+            return true;
         }
     }
-    if (!pOutput)
-    {
-        return false;
-    }
-    uint256 hashBlk;
-    CCurrencyDefinition newCur;
-
-    if (!myGetTransaction(pOutput->first.txhash, lastImport, hashBlk))
-    {
-        return false;
-    }
-
-    outputNum = pOutput->first.index;
-
-    return true;
+    return false;
 }
 
 bool CConnectedChains::GetLastSourceImport(const uint160 &sourceSystemID,
