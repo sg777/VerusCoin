@@ -2413,7 +2413,7 @@ std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> GetPriorReferen
             std::get<2>(retVal) = CUTXORef();
             return retVal;
         }
-        std::get<0>(retVal) = lastBlockIt->second->GetHeight();
+        std::get<0>(retVal) = lastBlockHash.IsNull() ? 0 : lastBlockIt->second->GetHeight();
         std::get<1>(retVal) = lastNTx;
         std::get<3>(retVal) = lastLocalNotarization;
     }
