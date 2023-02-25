@@ -1290,22 +1290,20 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             }
             CTransaction prevNotTx;
             uint256 blkHash;
-            CPBaaSNotarization pbn;
             COptCCParams prevP;
-            if (notarization.prevNotarization.hash.IsNull() ||
-                !myGetTransaction(notarization.prevNotarization.hash, prevNotTx, blkHash) ||
-                notarization.prevNotarization.n < 0 ||
-                notarization.prevNotarization.n >= prevNotTx.vout.size() ||
-                !prevNotTx.vout[notarization.prevNotarization.n].scriptPubKey.IsPayToCryptoCondition(prevP) ||
-                !prevP.IsValid() ||
-                prevP.evalCode != EVAL_ACCEPTEDNOTARIZATION ||
-                !prevP.vData.size() ||
-                !(pbn = CPBaaSNotarization(prevP.vData[0])).IsValid() ||
-                pbn.currencyID != notarization.currencyID)
+            auto priorNotarization = GetPriorReferencedNotarization(tx, nextOutput - 1, notarization);
+            if (!std::get<3>(priorNotarization).IsValid())
             {
                 return state.Error("Non-definition exports with valid notarizations must have prior notarizations");
             }
-            CCurrencyDefinition destCurrency = ConnectedChains.GetCachedCurrency(ccx.destCurrencyID);
+
+            CPBaaSNotarization &pbn = std::get<3>(priorNotarization);
+            CCurrencyDefinition destCurrency = ConnectedChains.GetCachedCurrency(pbn.currencyID);
+
+            if (pbn.IsPreLaunch())
+            {
+                pbn.currencyState = ConnectedChains.GetCurrencyState(destCurrency, height - 1, true);
+            }
 
             if (ccx.sourceSystemID != ASSETCHAINS_CHAINID || !destCurrency.IsValid())
             {

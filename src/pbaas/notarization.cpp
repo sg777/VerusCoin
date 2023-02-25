@@ -8867,6 +8867,12 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                 // export or launch notarization
                 if (exportOutNum < 0 || !exportToCheck.IsValid() || !exportToCheck.IsPrelaunch())
                 {
+                    if (LogAcceptCategory("notarization"))
+                    {
+                        UniValue txUniv(UniValue::VOBJ);
+                        TxToUniv(tx, uint256(), txUniv);
+                        LogPrintf("%s: notarization without export on transaction:\n%s\n", __func__, txUniv.write(1,2).c_str());
+                    }
                     return state.Error("Prelaunch notarization with no export on transaction");
                 }
                 // precheck on cross chain export will create a new export from transfers and the last export
