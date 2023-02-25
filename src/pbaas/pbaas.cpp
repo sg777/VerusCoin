@@ -4872,6 +4872,7 @@ bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<std
         {
             continue;
         }
+        oneConfirmed.second.blockHeight = blockIt->second->GetHeight();
 
         COptCCParams p;
         if (!mempool.mapNextTx.count(COutPoint(oneConfirmed.first.txhash, oneConfirmed.first.index)) &&

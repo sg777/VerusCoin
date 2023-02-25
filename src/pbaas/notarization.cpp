@@ -8364,7 +8364,8 @@ bool IsNotarizationDescendent(const CPBaaSNotarization &checkNotarization,
     uint32_t lastHeight = std::get<0>(tmpPriorNotarizationInfo);
     while (!isDescendent &&
            std::get<0>(tmpPriorNotarizationInfo) &&
-           std::get<0>(tmpPriorNotarizationInfo) >= lastConfirmedHeight)
+           (!std::get<0>(tmpPriorNotarizationInfo) ||
+            std::get<0>(tmpPriorNotarizationInfo) >= lastConfirmedHeight))
     {
         if (std::get<2>(tmpPriorNotarizationInfo) == std::get<1>(lastConfirmedNotarization))
         {
@@ -8374,7 +8375,7 @@ bool IsNotarizationDescendent(const CPBaaSNotarization &checkNotarization,
         tmpPriorNotarizationInfo = GetPriorReferencedNotarization(std::get<1>(tmpPriorNotarizationInfo),
                                                                   std::get<2>(tmpPriorNotarizationInfo).n,
                                                                   std::get<3>(tmpPriorNotarizationInfo));
-        if (!std::get<0>(tmpPriorNotarizationInfo))
+        if (!std::get<3>(tmpPriorNotarizationInfo).IsValid())
         {
             // we can't confirm, but it should be in the past on testnet - let it go
             if (!IsVerusMainnetActive() &&
@@ -8879,7 +8880,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                       currentNotarization.IsBlockOneNotarization()))
                 {
                     priorNotarizationInfo = GetPriorReferencedNotarization(tx, outNum, currentNotarization);
-                    if (!std::get<0>(priorNotarizationInfo))
+                    if (!std::get<3>(priorNotarizationInfo).IsValid())
                     {
                         if (LogAcceptCategory("notarization"))
                         {
@@ -10069,7 +10070,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                 std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> priorNotarizationInfo =
                     GetPriorReferencedNotarization(finalizedTx, currentFinalization.output.n, notarization);
 
-                if (!std::get<0>(priorNotarizationInfo))
+                if (!std::get<3>(priorNotarizationInfo).IsValid())
                 {
                     return state.Error("Invalid prior notarization 3");
                 }
