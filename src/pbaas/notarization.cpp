@@ -2261,15 +2261,9 @@ std::vector<uint32_t> UnpackBlockCommitment(__uint128_t oneBlockCommitment)
 // notarization
 std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> GetPriorReferencedNotarization(const CTransaction &tx,
                                                                                                 int32_t notarizationOut,
-                                                                                                const CPBaaSNotarization &notarization,
-                                                                                                uint32_t height)
+                                                                                                const CPBaaSNotarization &notarization)
 {
     std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> retVal({0, CTransaction(), CUTXORef(), CPBaaSNotarization()});
-
-    if (height < chainActive.Height())
-    {
-        height = chainActive.Height();
-    }
 
     // if we can't go directly to the prior because this is a mirror, we'll need to get the data from
     // the proof that came with it on the blockchain. if it is prior to the testnet fork with that proof coming over,
@@ -2409,9 +2403,9 @@ std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> GetPriorReferen
         CPBaaSNotarization lastLocalNotarization;
         BlockMap::iterator lastBlockIt;
         if (!std::get<2>(retVal).GetOutputTransaction(lastNTx, lastBlockHash) ||
-            lastBlockHash.IsNull() ||
-            (lastBlockIt = mapBlockIndex.find(lastBlockHash)) == mapBlockIndex.end() ||
-            !chainActive.Contains(lastBlockIt->second) ||
+            (!lastBlockHash.IsNull() &&
+             ((lastBlockIt = mapBlockIndex.find(lastBlockHash)) == mapBlockIndex.end() ||
+              !chainActive.Contains(lastBlockIt->second))) ||
             lastNTx.vout.size() <= std::get<2>(retVal).n ||
             !(lastLocalNotarization = CPBaaSNotarization(lastNTx.vout[std::get<2>(retVal).n].scriptPubKey)).IsValid() ||
             lastLocalNotarization.currencyID != notarization.currencyID)
@@ -3381,8 +3375,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                             // std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization>
                             priorReferencedNotarization = GetPriorReferencedNotarization(lastNotarizationTx,
                                                                                         lastNotarizationAddressEntry.first.index,
-                                                                                        lastNotarization,
-                                                                                        mapBlockIndex[lastNotarizationBlockHash]->GetHeight());
+                                                                                        lastNotarization);
                             if (!std::get<0>(priorReferencedNotarization))
                             {
                                 lastNotarization = CPBaaSNotarization();
@@ -3416,8 +3409,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                                                             {(uint32_t)0, CTransaction(), CUTXORef(), CPBaaSNotarization()}) :
                                                           GetPriorReferencedNotarization(lastNotarizationTx,
                                                                                         expectedNotarization.prevNotarization.n,
-                                                                                        lastNotarization,
-                                                                                        mapBlockIndex[lastNotarizationBlockHash]->GetHeight());
+                                                                                        lastNotarization);
                             if (lastNotarization.IsBlockOneNotarization() || std::get<0>(priorReferencedNotarization))
                             {
                                 proofState = EXPECT_FUTURE_PROOF_ROOT;
@@ -8380,8 +8372,7 @@ bool IsNotarizationDescendent(const CPBaaSNotarization &checkNotarization,
         }
         tmpPriorNotarizationInfo = GetPriorReferencedNotarization(std::get<1>(tmpPriorNotarizationInfo),
                                                                   std::get<2>(tmpPriorNotarizationInfo).n,
-                                                                  std::get<3>(tmpPriorNotarizationInfo),
-                                                                  std::get<0>(tmpPriorNotarizationInfo) - 1);
+                                                                  std::get<3>(tmpPriorNotarizationInfo));
         if (!std::get<0>(tmpPriorNotarizationInfo))
         {
             // we can't confirm, but it should be in the past on testnet - let it go
@@ -8886,9 +8877,16 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                 if (!(currentNotarization.IsDefinitionNotarization() ||
                       currentNotarization.IsBlockOneNotarization()))
                 {
-                    priorNotarizationInfo = GetPriorReferencedNotarization(tx, outNum, currentNotarization, height - 1);
+                    priorNotarizationInfo = GetPriorReferencedNotarization(tx, outNum, currentNotarization);
                     if (!std::get<0>(priorNotarizationInfo))
                     {
+                        if (LogAcceptCategory("notarization"))
+                        {
+                            UniValue txUniv(UniValue::VOBJ);
+                            TxToUniv(tx, uint256(), txUniv);
+                            LogPrintf("%s: Invalid prior notarization for %s\n", __func__, txUniv.write(1,2).c_str());
+                            printf("%s: Invalid prior notarization for %s\n", __func__, txUniv.write(1,2).c_str());
+                        }
                         return state.Error("Invalid prior notarization 4");
                     }
                 }
@@ -9735,7 +9733,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         if (currentFinalization.IsConfirmed())
         {
             std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> priorNotarizationInfo =
-                GetPriorReferencedNotarization(finalizedTx, currentFinalization.output.n, normalizedNotarization, height - 1);
+                GetPriorReferencedNotarization(finalizedTx, currentFinalization.output.n, normalizedNotarization);
 
             if (!std::get<0>(priorNotarizationInfo))
             {
@@ -9884,8 +9882,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     priorTipNotarizationInfo =
                         GetPriorReferencedNotarization(std::get<1>(priorTipNotarizationInfo),
                                                         std::get<2>(priorTipNotarizationInfo).n,
-                                                        std::get<3>(priorTipNotarizationInfo),
-                                                        std::get<0>(priorTipNotarizationInfo) - 1);
+                                                        std::get<3>(priorTipNotarizationInfo));
                 }
 
                 if (!std::get<0>(priorTipNotarizationInfo))
@@ -10069,7 +10066,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             else
             {
                 std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> priorNotarizationInfo =
-                    GetPriorReferencedNotarization(finalizedTx, currentFinalization.output.n, notarization, height - 1);
+                    GetPriorReferencedNotarization(finalizedTx, currentFinalization.output.n, notarization);
 
                 if (!std::get<0>(priorNotarizationInfo))
                 {
@@ -10268,7 +10265,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         else
         {
             std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> priorNotarizationInfo =
-                GetPriorReferencedNotarization(finalizedTx, currentFinalization.output.n, notarization, height - 1);
+                GetPriorReferencedNotarization(finalizedTx, currentFinalization.output.n, notarization);
 
             if (!std::get<0>(priorNotarizationInfo))
             {

@@ -3691,7 +3691,7 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
                 }
 
                 std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> priorNotarization =
-                    GetPriorReferencedNotarization(nTx, f.output.n, n, chainActive.Height());
+                    GetPriorReferencedNotarization(nTx, f.output.n, n);
 
                 if (!optionalTxOut || !mapBlockIndex.count((*optionalTxOut)[0].second))
                 {
