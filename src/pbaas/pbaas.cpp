@@ -5317,7 +5317,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                     !(lastNotarization.currencyState.IsPrelaunch() &&
                     lastNotarization.currencyState.IsLaunchClear()))
             {
-                LogPrintf("%s: Chain definition export may only be imported on first launch import %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(ccx.destCurrencyID).c_str());
+                LogPrint("notarization", "%s: Chain definition export may only be imported on first launch import %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(ccx.destCurrencyID).c_str());
                 return false;
             }
         }
