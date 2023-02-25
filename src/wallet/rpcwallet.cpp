@@ -3722,7 +3722,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     {
         reserveSharedBal.push_back(make_pair(ConnectedChains.GetFriendlyCurrencyName(oneBalance.first), ValueFromAmount(oneBalance.second)));
     }
-    if (reserveBal.size())
+    if (reserveSharedBal.size())
     {
         obj.push_back(Pair("shared_reserve_balance", reserveSharedBal));
         if (checkunlockedIDs)
