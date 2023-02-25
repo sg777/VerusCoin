@@ -1300,11 +1300,6 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             CPBaaSNotarization &pbn = std::get<3>(priorNotarization);
             CCurrencyDefinition destCurrency = ConnectedChains.GetCachedCurrency(pbn.currencyID);
 
-            if (pbn.IsPreLaunch())
-            {
-                pbn.currencyState = ConnectedChains.GetCurrencyState(destCurrency, height - 1, true);
-            }
-
             if (ccx.sourceSystemID != ASSETCHAINS_CHAINID || !destCurrency.IsValid())
             {
                 return state.Error("Invalid export source system or destination currency");

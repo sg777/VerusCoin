@@ -3640,7 +3640,6 @@ bool GetNotarizationData(const uint160 &currencyID, CChainNotarizationData &nota
         // if from this system, we're done
         if (chainDef.systemID == ASSETCHAINS_CHAINID)
         {
-            notarizationData.vtx[0].second.currencyState = ConnectedChains.GetCurrencyState(chainDef, height, 0, true);
             return true;
         }
 
