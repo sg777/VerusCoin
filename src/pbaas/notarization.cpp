@@ -4033,10 +4033,11 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                         CTransaction priorNTx;
                         uint256 priorBlockHash;
                         if (foundNotarization.prevNotarization.GetOutputTransaction(priorNTx, priorBlockHash) &&
-                            (blockIt = mapBlockIndex.find(priorBlockHash)) != mapBlockIndex.end() &&
-                            chainActive.Contains(blockIt->second))
+                            (priorBlockHash.IsNull() ||
+                             ((blockIt = mapBlockIndex.find(priorBlockHash)) != mapBlockIndex.end() &&
+                             chainActive.Contains(blockIt->second))))
                         {
-                            firstUnspentFinalization.first = blockIt->second->GetHeight();
+                            firstUnspentFinalization.first = priorBlockHash.IsNull() ? 0 : blockIt->second->GetHeight();
                             firstUnspentFinalization.second.nValue = priorNTx.vout[foundNotarization.prevNotarization.n].nValue;
                             firstUnspentFinalization.second.scriptPubKey = priorNTx.vout[foundNotarization.prevNotarization.n].scriptPubKey;
                             continue;
