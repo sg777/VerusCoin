@@ -4966,7 +4966,7 @@ CCurrencyValueMap CWallet::GetReserveBalance(bool includeIDLocked) const
         {
             const CWalletTx* pcoin = &(*it).second;
             if (pcoin->IsTrusted())
-                retVal += pcoin->GetAvailableReserveCredit(includeIDLocked, includeIDLocked, ISMINE_SHARED);
+                retVal += pcoin->GetAvailableReserveCredit(includeIDLocked, includeIDLocked);
         }
     }
 
@@ -4982,7 +4982,7 @@ CCurrencyValueMap CWallet::GetSharedReserveBalance(bool includeIDLocked) const
         {
             const CWalletTx* pcoin = &(*it).second;
             if (pcoin->IsTrusted())
-                retVal += pcoin->GetAvailableReserveCredit(includeIDLocked, includeIDLocked);
+                retVal += pcoin->GetAvailableReserveCredit(includeIDLocked, includeIDLocked, ISMINE_SHARED);
         }
     }
 
