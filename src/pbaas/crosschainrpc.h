@@ -485,7 +485,7 @@ public:
         BLOCK_NOTARIZATION_MODULO = (DEFAULT_BLOCK_NOTARIZATION_TIME / DEFAULT_BLOCKTIME_TARGET), // default min notarization spacing (10 minutes)
         MIN_EARNED_FOR_AUTO = 4,
         MIN_BLOCKS_TO_SIGNCONFIRM = 15,
-        MIN_BLOCKS_TO_AUTOCONFIRM = 200,
+        MIN_BLOCKS_TO_AUTOCONFIRM = 150,
     };
 
     enum ECurrencyOptions

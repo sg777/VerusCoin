@@ -4491,6 +4491,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         // first, determine if we will accept this at all,
         if (height - foundOutput.first.blockHeight < blockSpacing)
         {
+            LogPrint("notarization", "too early to accept notarization waiting for block %u\n", foundOutput.first.blockHeight + blockSpacing);
             return state.Error(errorPrefix + "not enough blocks have passed to create accepted notarization yet");
         }
 
@@ -4502,8 +4503,6 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
             notarizationIdxToConfirm = cnd.forks[cnd.bestChain].back() == priorNotarizationIdx ?
                                         cnd.BestConfirmedNotarization(*pNotaryCurrency, confirmsRequired - 1, blocksRequired, height, txes) :
                                         -1;
-
-
 
             if (notarizationIdxToConfirm >= 0)
             {
@@ -6664,6 +6663,7 @@ int CChainNotarizationData::BestConfirmedNotarization(const CCurrencyDefinition 
         {
             return -1;
         }
+
         return *targetIt;
     }
     else
