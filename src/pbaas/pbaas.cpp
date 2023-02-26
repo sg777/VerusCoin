@@ -1436,8 +1436,11 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
         // TODO: HARDENING - we should probably make these unspendable and not spend them
         return true;
     }
-    else
+    else if (thisEvidence.type == thisEvidence.TYPE_NOTARY_EVIDENCE)
     {
+        CTransaction notaTx;
+        uint256 notaBlockHash;
+        CPBaaSNotarization referencedNotarization;
         for (int i = 0; i < tx.vin.size(); i++)
         {
             if ((uint32_t)i == nIn)
@@ -1472,6 +1475,25 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
                     {
                         finalizeSpends.insert(std::make_pair(of.output, of));
                     }
+                    else if (of.IsConfirmed())
+                    {
+                        // either this evidence comes from the alternate system itself, or we can get the notarization it refers to
+                        if (of.currencyID != thisEvidence.systemID &&
+                            (!thisEvidence.output.GetOutputTransaction(notaTx, notaBlockHash) ||
+                             notaTx.vout.size() <= thisEvidence.output.n ||
+                             !(referencedNotarization = CPBaaSNotarization(notaTx.vout[thisEvidence.output.n].scriptPubKey)).IsValid()))
+                        {
+                            LogPrint("notarization", "%s: Cannot get notarization from output (%s) on input %s\n",
+                                                    __func__,
+                                                    thisEvidence.output.ToString().c_str(),
+                                                    CUTXORef(tx.vin[nIn].prevout).ToString().c_str());
+                            return eval->state.Error("Cannot retrieve notarization for evidence");
+                        }
+
+                        // TODO: HARDENING - ensure that we do not descend from the notarization being confirmed,
+                        // meaning we are superceded by it
+                        finalizeSpends.insert(std::make_pair(of.output, of));
+                    }
                     continue;
                 }
                 else if ((p.evalCode == EVAL_EARNEDNOTARIZATION || p.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
@@ -1497,8 +1519,9 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
             }
         }
         bool retVal = chainActive.LastTip()->nTime <= PBAAS_TESTFORK_TIME ? true : finalizeSpends.count(thisEvidence.output) == 1;
-        return retVal ? true : eval->state.Error("Must spend exactly one matching finalization to spend notary evidence output");
+        return retVal ? true : eval->state.Error("Must spend exactly one matching finalization to spend notary evidence output, spending: " + std::to_string(finalizeSpends.count(thisEvidence.output)));
     }
+    return false;
 }
 
 bool IsNotaryEvidenceInput(const CScript &scriptSig)
