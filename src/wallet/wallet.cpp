@@ -1896,9 +1896,13 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                                     {
                                         uint256 idTxId;
                                         std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
-                                        if (!GetIdentity(CIdentityMapKey(GetDestinationID(oneDest)), idTxId, keyAndIdentity) ||
+                                        if (!GetIdentity(CIdentityID(GetDestinationID(oneDest)), keyAndIdentity) ||
                                             (nHeight - keyAndIdentity.first.blockHeight) < VERUS_MIN_STAKEAGE)
                                         {
+                                            if (LogAcceptCategory("staking") && !keyAndIdentity.second.IsValid())
+                                            {
+                                                LogPrintf("%s: Do not have ID %s in wallet\n", __func__, EncodeDestination(CIdentityID(GetDestinationID(oneDest))).c_str());
+                                            }
                                             isValid = false;
                                             break;
                                         }

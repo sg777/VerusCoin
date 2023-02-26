@@ -9039,8 +9039,8 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                 if (std::get<0>(priorNotarizationInfo))
                 {
                     if (std::get<3>(priorNotarizationInfo).IsPreLaunch() &&
-                        !(currentNotarization.currencyState.IsLaunchClear() &&
-                          ((currentNotarization.IsLaunchConfirmed() && (currentNotarization.currencyState.IsLaunchConfirmed())) ||
+                        !((currentNotarization.currencyState.IsLaunchClear() || curDef.systemID != ASSETCHAINS_CHAINID) &&
+                          ((currentNotarization.IsLaunchConfirmed() && currentNotarization.currencyState.IsLaunchConfirmed()) ||
                            (currentNotarization.IsRefunding() && (currentNotarization.currencyState.IsRefunding())))))
                     {
                         LogPrintf("%s: Launch clear confirmed or refunding must be first non-prelaunch notarization %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(currentNotarization.currencyID).c_str());
