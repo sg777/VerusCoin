@@ -1492,7 +1492,8 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
 
                         // TODO: HARDENING - ensure that we do not descend from the notarization being confirmed,
                         // meaning we are superceded by it
-                        finalizeSpends.insert(std::make_pair(of.output, of));
+                        finalizeSpends.insert(std::make_pair(thisEvidence.output, of));
+                        break;
                     }
                     continue;
                 }
