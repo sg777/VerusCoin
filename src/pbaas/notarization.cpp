@@ -6896,7 +6896,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     // 1) the notarization must be agreed to by 2 or greater valid earned notarizations since the next longest fork.
     //
 
-    // TODO: HARDENING - post evidence to finalize a notarization if the following is true:
+    // post evidence to finalize a notarization if the following is true:
     //
     // 1) We agree with the last finalized or a pending fork of notarizations on the other chain
     //    Said differently, we we can only attempt to submit finalization evidence if there is
@@ -8920,13 +8920,15 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                     {
                         return state.Error("Invalid notary evidence for accepted notarization");
                     }
+
                     auto notarySignatures = evidence.GetNotarySignatures();
-                    if (!notarySignatures.size() ||
-                        !notarySignatures[0].signatures.size())
+
+                    CCurrencyDefinition::EHashTypes hashType = CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR;
+                    if (notarySignatures.size() && notarySignatures[0].signatures.size())
                     {
-                        return state.Error("Notary signatures may not be empty for accepted notarization");
+                        hashType = (CCurrencyDefinition::EHashTypes)(notarySignatures[0].signatures.begin()->second.hashType);
                     }
-                    CNativeHashWriter hw((CCurrencyDefinition::EHashTypes)(notarySignatures[0].signatures.begin()->second.hashType));
+                    CNativeHashWriter hw(hashType);
                     CPBaaSNotarization normalizedNotarization = currentNotarization;
                     if (!currentNotarization.SetMirror(false))
                     {

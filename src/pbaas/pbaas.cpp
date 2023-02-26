@@ -1433,7 +1433,7 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
     if (thisEvidence.type == thisEvidence.TYPE_IMPORT_PROOF ||
         thisEvidence.type == thisEvidence.TYPE_MULTIPART_DATA)
     {
-        // TODO: HARDENING - we should actuall make these unspendable and not spend them
+        // TODO: HARDENING - we should probably make these unspendable and not spend them
         return true;
     }
     else
