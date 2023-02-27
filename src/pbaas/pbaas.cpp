@@ -1519,8 +1519,9 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
                 continue;
             }
         }
-        bool retVal = chainActive.LastTip()->nTime <= PBAAS_TESTFORK_TIME ? true : finalizeSpends.count(thisEvidence.output) == 1;
-        return retVal ? true : eval->state.Error("Must spend exactly one matching finalization to spend notary evidence output, spending: " + std::to_string(finalizeSpends.count(thisEvidence.output)));
+        return chainActive.LastTip()->nTime <= PBAAS_TESTFORK_TIME ? true : finalizeSpends.count(thisEvidence.output) == 1 ?
+                true :
+                eval->state.Error("Must spend exactly one matching finalization to spend notary evidence output, spending: " + std::to_string(finalizeSpends.count(thisEvidence.output)));
     }
     return false;
 }
@@ -5328,9 +5329,9 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             {
                 if (ccx.IsChainDefinition() ||
                     lastNotarization.currencyState.IsPrelaunch() ||
-                    !lastNotarization.currencyState.IsLaunchClear())
+                    lastNotarization.currencyState.IsLaunchClear())
                 {
-                    LogPrintf("%s: Initial launch import can only follow launch clear for %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(ccx.destCurrencyID).c_str());
+                    LogPrintf("%s: Post initial launch state import cannot regress to pre-launch or launch clear for %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(ccx.destCurrencyID).c_str());
                     return false;
                 }
                 lastNotarization.SetPreLaunch(false);
@@ -5339,7 +5340,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             }
             else if (ccx.IsChainDefinition() &&
                     !(lastNotarization.currencyState.IsPrelaunch() &&
-                    lastNotarization.currencyState.IsLaunchClear()))
+                      lastNotarization.currencyState.IsLaunchClear()))
             {
                 LogPrint("notarization", "%s: Chain definition export may only be imported on first launch import %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(ccx.destCurrencyID).c_str());
                 return false;
@@ -8625,7 +8626,7 @@ void CConnectedChains::SubmissionThread()
                         oneExportUni.pushKV("partialtransactionproof", oneExport.first.second.ToUniValue());
                         UniValue rtArr(UniValue::VARR);
 
-                        if (LogAcceptCategory("bridge") && IsVerusActive())
+                        if (LogAcceptCategory("crosschainexports") && IsVerusActive())
                         {
                             CDataStream ds = CDataStream(SER_GETHASH, PROTOCOL_VERSION);
                             for (auto &oneTransfer : oneExport.second)
