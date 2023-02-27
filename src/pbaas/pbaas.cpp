@@ -1484,7 +1484,7 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
                     {
                         if (oneOutNum == tx.vin[nIn].prevout.n)
                         {
-                            finalizeSpends.insert(std::make_pair(of.output, of));
+                            finalizeSpends.insert(std::make_pair(thisEvidence.output, of));
                             break;
                         }
                     }
