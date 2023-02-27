@@ -5327,7 +5327,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             {
                 if (ccx.IsChainDefinition() ||
                     lastNotarization.currencyState.IsPrelaunch() ||
-                    (destCur.SystemOrGatewayID() == ASSETCHAINS_CHAINID && !lastNotarization.currencyState.IsLaunchClear()))
+                    (sourceSystemDef.GetID() == ASSETCHAINS_CHAINID && !lastNotarization.currencyState.IsLaunchClear()))
                 {
                     LogPrintf("%s: Post initial launch state import cannot regress to pre-launch or launch clear for %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(ccx.destCurrencyID).c_str());
                     return false;
