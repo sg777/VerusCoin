@@ -4455,6 +4455,12 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     CPBaaSNotarization notarizationToConfirm;
     int notarizationIdxToConfirm = -1;
 
+    BlockMap::iterator lastConfirmedBlockIt = mapBlockIndex.find(txes[cnd.lastConfirmed].second);
+    if (lastConfirmedBlockIt == mapBlockIndex.end())
+    {
+        return state.Error(errorPrefix + "invalid confirmed notarization");
+    }
+
     // even if we don't have a valid signature, we may still be able to autonotarize
     // auto notarization operates more quickly when evidence is signed by
     // a quorum of notary witnesses, but can also confirm with a preponderance of cryptographic.
@@ -4468,7 +4474,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         if (!IsValidPrimaryChainEvidence(externalSystem,
                                          notaryEvidence,
                                          newNotarization,
-                                         mapBlockIndex[txes[cnd.lastConfirmed].second]->GetHeight(),
+                                         lastConfirmedBlockIt->second->GetHeight(),
                                          height,
                                          &entropyHash,
                                          strongestRoot).IsValid())
@@ -4501,7 +4507,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
             // if we are on the best fork and there are enough confirmations and blocks since any
             // unconfirmed notarization in our fork, we can confirm
             notarizationIdxToConfirm = cnd.forks[cnd.bestChain].back() == priorNotarizationIdx ?
-                                        cnd.BestConfirmedNotarization(*pNotaryCurrency, confirmsRequired - 1, blocksRequired, height, txes) :
+                                        cnd.BestConfirmedNotarization(*pNotaryCurrency, confirmsRequired - 1, blocksRequired, height, lastConfirmedBlockIt->second->GetHeight(), txes) :
                                         -1;
 
             if (notarizationIdxToConfirm >= 0)
@@ -6601,13 +6607,11 @@ int CChainNotarizationData::BestConfirmedNotarization(const CCurrencyDefinition 
                                                       int minNotaryConfirms,
                                                       int minBlockConfirms,
                                                       uint32_t height,
+                                                      uint32_t lastConfirmedHeight,
                                                       const std::vector<std::pair<CTransaction, uint256>> &txAndBlockVec) const
 {
-    // TODO: HARDENING - fix maxdepth to be passed the current notarization modulo to be more accurate AND discerning
-    // last notarization cannot be stale as an Earned notarization, but we give enough room to notarize if
-    // extended by having issues
-    int maxDepth = notarizingSystem.blockNotarizationModulo * (CPBaaSNotarization::MODULO_EXTENSION_MULTIPLIER +
-                                                                (CPBaaSNotarization::MODULO_EXTENSION_MULTIPLIER >> 1));
+    int maxDepth = ((lastConfirmedHeight / notarizingSystem.blockNotarizationModulo) + 1) * notarizingSystem.blockNotarizationModulo;
+
     uint160 notarizingSystemID = notarizingSystem.GetID();
 
     BlockMap::iterator blockIt;
@@ -6827,6 +6831,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     int minimumNotariesConfirm = pNotaryCurrency->MinimumNotariesConfirm();
     int confirmIfSigned;
     int confirmIfAuto;
+    uint32_t confirmedNotarizationHeight = externalSystem.chainDefinition.startBlock;
 
     std::vector<std::pair<CIdentityMapKey, CIdentityMapValue>> mine;
     {
@@ -6852,11 +6857,17 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
             return state.Error(errorPrefix + "no prior notarization found");
         }
 
+        auto lastConfirmedBlockIt = cnd.vtx.size() ? mapBlockIndex.find(txes[0].second) : mapBlockIndex.end();
+        confirmedNotarizationHeight = lastConfirmedBlockIt == mapBlockIndex.end() ?
+                                        externalSystem.chainDefinition.startBlock :
+                                        lastConfirmedBlockIt->second->GetHeight();
+
         confirmIfSigned =
             cnd.BestConfirmedNotarization(ConnectedChains.ThisChain(),
                                           CPBaaSNotarization::MIN_EARNED_FOR_SIGNED - 1,
                                           CPBaaSNotarization::MinBlocksToSignedNotarization(ConnectedChains.ThisChain().blockNotarizationModulo),
                                           nHeight,
+                                          confirmedNotarizationHeight,
                                           txes);
 
         confirmIfAuto =
@@ -6864,6 +6875,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                                           CPBaaSNotarization::MIN_EARNED_FOR_AUTO - 1,
                                           CPBaaSNotarization::MinBlocksToAutoNotarization(ConnectedChains.ThisChain().blockNotarizationModulo),
                                           nHeight,
+                                          confirmedNotarizationHeight,
                                           txes);
     }
 
@@ -7058,6 +7070,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                                              CPBaaSNotarization::MIN_EARNED_FOR_SIGNED - 1,
                                              CPBaaSNotarization::MinBlocksToSignedNotarization(ConnectedChains.ThisChain().blockNotarizationModulo),
                                              nHeight,
+                                             confirmedNotarizationHeight,
                                              txes);
 
         confirmIfAuto =
@@ -7065,6 +7078,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                                              CPBaaSNotarization::MIN_EARNED_FOR_AUTO - 1,
                                              CPBaaSNotarization::MinBlocksToAutoNotarization(ConnectedChains.ThisChain().blockNotarizationModulo),
                                              nHeight,
+                                             confirmedNotarizationHeight,
                                              txes);
 
         if (!pNotaryCurrency->IsPBaaSChain() || confirmIfSigned == -1)

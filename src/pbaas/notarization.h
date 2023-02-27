@@ -537,6 +537,7 @@ public:
                                   int minNotaryConfirms,
                                   int minBlockConfirms,
                                   uint32_t height,
+                                  uint32_t lastConfirmedHeight,
                                   const std::vector<std::pair<CTransaction, uint256>> &txAndBlockVec) const;
 
     UniValue ToUniValue(const std::vector<std::pair<CTransaction, uint256>> &transactionsAndBlockHash=std::vector<std::pair<CTransaction, uint256>>(),
