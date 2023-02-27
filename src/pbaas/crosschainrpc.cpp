@@ -558,7 +558,7 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(co
 CTransferDestination CTransferDestination::GetAuxDest(int destNum) const
 {
     CTransferDestination retVal;
-    if (destNum && destNum < auxDests.size())
+    if (destNum >= 0 && destNum < auxDests.size())
     {
         ::FromVector(auxDests[destNum], retVal);
         if (retVal.type & FLAG_DEST_AUX || retVal.auxDests.size())
@@ -606,7 +606,7 @@ bool CTransferDestination::EraseAuxDest(int destNum)
 {
     if (auxDests.size() <= destNum)
     {
-        LogPrintf("%s: Attempt to erase invalid auxDest index %d\n", __func__, destNum);
+        LogPrint("notarization", "%s: Attempt to erase invalid auxDest index %d\n", __func__, destNum);
         return false;
     }
     auxDests.erase(auxDests.begin() + destNum);
