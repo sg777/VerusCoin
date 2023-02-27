@@ -1434,6 +1434,7 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
     if (thisEvidence.type == thisEvidence.TYPE_MULTIPART_DATA)
     {
         // if the first of a multipart, get it and validate, if not, ensure that the first is spent to the same tx
+        return true;
     }
     if (thisEvidence.type == thisEvidence.TYPE_IMPORT_PROOF)
     {
@@ -1520,7 +1521,7 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
                 true :
                 eval->state.Error("Must spend exactly one matching finalization to spend notary evidence output, spending: " + std::to_string(finalizeSpends.count(thisEvidence.output)));
     }
-    return false;
+    return eval->state.Error("Invalid evidence spend");
 }
 
 bool IsNotaryEvidenceInput(const CScript &scriptSig)
