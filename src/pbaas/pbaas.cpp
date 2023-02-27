@@ -1441,6 +1441,15 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
         CTransaction notaTx;
         uint256 notaBlockHash;
         CPBaaSNotarization referencedNotarization;
+
+        if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
+        {
+            UniValue jsonTx(UniValue::VOBJ);
+            uint256 nullHash;
+            TxToUniv(tx, nullHash, jsonTx);
+            LogPrintf("Validating input %u of TX %s\n", nIn, jsonTx.write(1,2).c_str());
+        }
+
         for (int i = 0; i < tx.vin.size(); i++)
         {
             if ((uint32_t)i == nIn)
@@ -1448,7 +1457,7 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
                 continue;
             }
             auto &oneIn = tx.vin[i];
-            if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
+            if (LogAcceptCategory("notarization"))
             {
                 printf("%s: spending %s\n", __func__, CUTXORef(oneIn.prevout).ToString().c_str());
                 LogPrintf("%s: spending %s\n", __func__, CUTXORef(oneIn.prevout).ToString().c_str());
@@ -1466,34 +1475,13 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
                     p.vData.size() &&
                     (of = CObjectFinalization(p.vData[0])).IsValid())
                 {
-                    if (of.output.hash.IsNull())
+                    for (auto &oneOutNum : of.evidenceOutputs)
                     {
-                        of.output.hash = oneIn.prevout.hash;
-                    }
-                    if (!addedNotarization &&
-                        of.output == thisEvidence.output)
-                    {
-                        finalizeSpends.insert(std::make_pair(of.output, of));
-                    }
-                    else if (of.IsConfirmed())
-                    {
-                        // either this evidence comes from the alternate system itself, or we can get the notarization it refers to
-                        if (of.currencyID != thisEvidence.systemID &&
-                            (!thisEvidence.output.GetOutputTransaction(notaTx, notaBlockHash) ||
-                             notaTx.vout.size() <= thisEvidence.output.n ||
-                             !(referencedNotarization = CPBaaSNotarization(notaTx.vout[thisEvidence.output.n].scriptPubKey)).IsValid()))
+                        if (oneOutNum == nIn)
                         {
-                            LogPrint("notarization", "%s: Cannot get notarization from output (%s) on input %s\n",
-                                                    __func__,
-                                                    thisEvidence.output.ToString().c_str(),
-                                                    CUTXORef(tx.vin[nIn].prevout).ToString().c_str());
-                            return eval->state.Error("Cannot retrieve notarization for evidence");
+                            finalizeSpends.insert(std::make_pair(of.output, of));
+                            break;
                         }
-
-                        // TODO: HARDENING - ensure that we do not descend from the notarization being confirmed,
-                        // meaning we are superceded by it
-                        finalizeSpends.insert(std::make_pair(thisEvidence.output, of));
-                        break;
                     }
                     continue;
                 }
