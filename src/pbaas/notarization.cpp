@@ -8439,33 +8439,48 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
 
     // check aux destinations if this is an earned notarization, it cannot have auxdests
     // if it is an accepted notarization, it can have 1 auxdest
-    if ((p.evalCode == EVAL_EARNEDNOTARIZATION && currentNotarization.proposer.AuxDestCount()) ||
-        (p.evalCode == EVAL_ACCEPTEDNOTARIZATION && currentNotarization.proposer.AuxDestCount() > 1))
+    if (currentNotarization.proposer.AuxDestCount() > 1)
     {
         return state.Error("Too many auxilliary destinations in notarization proposer");
     }
-    else if (p.evalCode == EVAL_ACCEPTEDNOTARIZATION && currentNotarization.proposer.AuxDestCount() > 0)
+    else if (currentNotarization.proposer.AuxDestCount() > 0)
     {
-        CTransferDestination auxDest = currentNotarization.proposer.GetAuxDest(0);
-        // ensure that all proposer destinations and aux destinations are relevant for the purpose
-        bool fail = false;
-        switch (auxDest.TypeNoFlags())
+        if (p.evalCode == EVAL_ACCEPTEDNOTARIZATION)
         {
-            case auxDest.DEST_PK:
-            case auxDest.DEST_PKH:
-            case auxDest.DEST_ID:
+            if (currentNotarization.IsContractUpgrade())
             {
-                break;
+                return state.Error("Contract upgrade requests may only be in earned notarizations");
             }
-            default:
+            CTransferDestination auxDest = currentNotarization.proposer.GetAuxDest(0);
+            // ensure that all proposer destinations and aux destinations are relevant for the purpose
+            bool fail = false;
+            switch (auxDest.TypeNoFlags())
             {
-                fail = true;
+                case auxDest.DEST_PK:
+                case auxDest.DEST_PKH:
+                case auxDest.DEST_ID:
+                {
+                    break;
+                }
+                default:
+                {
+                    fail = true;
+                }
+            }
+            if (fail)
+            {
+                return state.Error("Accepted notarization beneficiary must be public key, publick key hash, or ID destination");
             }
         }
-        if (fail)
+        else if (!(currentNotarization.IsContractUpgrade() &&
+                   currentNotarization.proposer.GetAuxDest(0).TypeNoFlags() == CTransferDestination::DEST_ETH))
         {
-            return state.Error("Accepted notarization beneficiary must be public key, publick key hash, or ID destination");
+            return state.Error("Only contract upgrade specifying earned notarizations may have auxilliary destinations");
         }
+    }
+    else if (currentNotarization.IsContractUpgrade())
+    {
+        return state.Error("Contract upgrade request requires that miner/staker provide contract address for upgrade");
     }
 
     // ensure that we never accept an invalid proofroot for this chain in a notarization
@@ -8547,6 +8562,13 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
 
                 return state.Error("Unable to retrieve notarizing currency 1");
             }
+        }
+
+        if (currentNotarization.IsContractUpgrade() &&
+            (curDef.proofProtocol != curDef.PROOF_ETHNOTARIZATION ||
+             !curDef.IsGateway()))
+        {
+            return state.Error("Invalid currency for contract upgrade request in notarization");
         }
 
         bool preTestnetFork = PBAAS_TESTMODE && chainActive[height - 1]->nTime <= PBAAS_TESTFORK_TIME;

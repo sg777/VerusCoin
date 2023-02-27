@@ -28,8 +28,8 @@ static const int DEFAULT_RPC_TIMEOUT=900;
 static const uint32_t PBAAS_VERSION = 1;
 static const uint32_t PBAAS_VERSION_INVALID = 0;
 
-static const uint32_t PBAAS_TESTFORK_TIME = 1604216000;
-//static const uint32_t PBAAS_TESTFORK_TIME = 1676920000;
+//static const uint32_t PBAAS_TESTFORK_TIME = 1604216000;
+static const uint32_t PBAAS_TESTFORK_TIME = 1677608188;
 
 class CTransaction;
 class CScript;
@@ -269,15 +269,14 @@ public:
         return 0;
     }
 
+    void SetAuxDest(const CTransferDestination &auxDest, int destNum);
+    CTransferDestination GetAuxDest(int destNum) const;
+    bool EraseAuxDest(int destNum);
     void ClearAuxDests()
     {
         auxDests.clear();
         type &= ~FLAG_DEST_AUX;
     }
-
-    CTransferDestination GetAuxDest(int destNum) const;
-
-    void SetAuxDest(const CTransferDestination &auxDest, int destNum);
 
     void SetGatewayLeg(const uint160 &GatewayID=uint160(), int64_t Fees=0, const uint160 &vdxfCode=uint160())
     {

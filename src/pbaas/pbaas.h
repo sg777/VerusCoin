@@ -222,7 +222,7 @@ public:
         VERSION_INVALID = 0,
         VERSION_FIRST = 1,
         VERSION_PBAAS = 1,
-        VERSION_PBAAS2 = 2,
+        VERSION_PBAAS_MAINNET = 2,
         VERSION_LAST = 2,
         VERSION_CURRENT = 2,
         FINAL_CONFIRMATIONS = 9,
@@ -314,7 +314,8 @@ public:
         FLAG_ACCEPTED_MIRROR = 0x20,        // if this is set, this notarization is a mirror of an earned notarization on another chain
         FLAG_BLOCKONE_NOTARIZATION = 0x40,  // block 1 notarizations are auto-finalized, the blockchain itself will be worthless if it is wrong
         FLAG_SAME_CHAIN = 0x80,             // set if all currency information is verifiable on this chain
-        FLAG_LAUNCH_COMPLETE = 0x100        // set if all currency information is verifiable on this chain
+        FLAG_LAUNCH_COMPLETE = 0x100,       // set if all currency information is verifiable on this chain
+        FLAG_CONTRACT_UPGRADE = 0x200       // if set, this notarization agrees to the contract ugrade referenced in the first auxdest
     };
 
     uint32_t nVersion;
@@ -387,7 +388,7 @@ public:
         READWRITE(hashPrevCrossNotarization);
         READWRITE(prevHeight);
 
-        if (nVersion == VERSION_PBAAS2)
+        if (nVersion == VERSION_PBAAS_MAINNET)
         {
             std::vector<CCoinbaseCurrencyState> vecCurrencyStates;
             if (ser_action.ForRead())
@@ -799,6 +800,28 @@ public:
         else
         {
             flags &= ~FLAG_START_NOTARIZATION;
+        }
+    }
+
+    bool IsContractUpgrade() const
+    {
+        return flags & FLAG_CONTRACT_UPGRADE;
+    }
+
+    void SetContractUpgrade(const CTransferDestination &contractAddr, bool setTrue=true)
+    {
+        if (setTrue)
+        {
+            flags |= FLAG_CONTRACT_UPGRADE;
+            proposer.SetAuxDest(contractAddr, 0);
+        }
+        else
+        {
+            if (IsContractUpgrade())
+            {
+                proposer.EraseAuxDest(0);
+                flags &= ~FLAG_CONTRACT_UPGRADE;
+            }
         }
     }
 

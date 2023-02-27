@@ -558,7 +558,7 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(co
 CTransferDestination CTransferDestination::GetAuxDest(int destNum) const
 {
     CTransferDestination retVal;
-    if (destNum < auxDests.size())
+    if (destNum && destNum < auxDests.size())
     {
         ::FromVector(auxDests[destNum], retVal);
         if (retVal.type & FLAG_DEST_AUX || retVal.auxDests.size())
@@ -583,6 +583,11 @@ CTransferDestination CTransferDestination::GetAuxDest(int destNum) const
 
 void CTransferDestination::SetAuxDest(const CTransferDestination &auxDest, int destNum)
 {
+    if (auxDests.size() < destNum)
+    {
+        LogPrintf("%s: Invalid auxDest index %d. Cannot add more than one to auxDests at a time.\n", __func__, destNum);
+        assert(false);
+    }
     if (auxDests.size() == destNum)
     {
         auxDests.push_back(::AsVector(auxDest));
@@ -597,6 +602,20 @@ void CTransferDestination::SetAuxDest(const CTransferDestination &auxDest, int d
     }
 }
 
+bool CTransferDestination::EraseAuxDest(int destNum)
+{
+    if (auxDests.size() <= destNum)
+    {
+        LogPrintf("%s: Attempt to erase invalid auxDest index %d\n", __func__, destNum);
+        return false;
+    }
+    auxDests.erase(auxDests.begin() + destNum);
+    if (!auxDests.size())
+    {
+        type &= ~FLAG_DEST_AUX;
+    }
+    return true;
+}
 
 uint160 DecodeCurrencyName(std::string currencyStr)
 {
