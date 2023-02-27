@@ -8888,6 +8888,10 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                     priorNotarizationInfo = GetPriorReferencedNotarization(tx, outNum, currentNotarization);
                     if (!std::get<3>(priorNotarizationInfo).IsValid())
                     {
+                        if (!IsVerusMainnetActive() && chainActive[height - 1]->nTime <= PBAAS_TESTFORK_TIME)
+                        {
+                            return true;
+                        }
                         if (LogAcceptCategory("notarization"))
                         {
                             UniValue txUniv(UniValue::VOBJ);
