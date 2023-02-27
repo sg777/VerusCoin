@@ -1430,10 +1430,15 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
     CCrossChainImport cci, nextCCI;
 
     // if it's an import proof, we need to be spent to the next import
-    if (thisEvidence.type == thisEvidence.TYPE_IMPORT_PROOF ||
-        thisEvidence.type == thisEvidence.TYPE_MULTIPART_DATA)
+    // TODO: HARDENING - handle multipart and import proof types
+    if (thisEvidence.type == thisEvidence.TYPE_MULTIPART_DATA)
     {
-        // TODO: HARDENING - we should probably make these unspendable and not spend them
+        // if the first of a multipart, get it and validate, if not, ensure that the first is spent to the same tx
+    }
+    if (thisEvidence.type == thisEvidence.TYPE_IMPORT_PROOF)
+    {
+        // ensure that this is only spent by the next import
+        //
         return true;
     }
     else if (thisEvidence.type == thisEvidence.TYPE_NOTARY_EVIDENCE)
@@ -1477,7 +1482,7 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
                 {
                     for (auto &oneOutNum : of.evidenceOutputs)
                     {
-                        if (oneOutNum == nIn)
+                        if (oneOutNum == tx.vin[nIn].prevout.n)
                         {
                             finalizeSpends.insert(std::make_pair(of.output, of));
                             break;
