@@ -8776,7 +8776,9 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
 
                             // TODO: POST HARDENING - need another double check on finalization that the work/stake
                             // alternation wasn't violated
-                            if (pLastIndex->IsVerusPOSBlock() == isStake)
+                            if (pLastIndex->IsVerusPOSBlock() == isStake &&
+                                PBAAS_TESTMODE &&
+                                pLastIndex->nTime > PBAAS_TESTFORK_TIME)
                             {
                                 return state.Error("earned notarizations must alternate between work and stake blocks - ineligible");
                             }
