@@ -9709,6 +9709,8 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         return state.Error("Unable to get last confirmed notarization");
     }
 
+    bool preTestnetFork = PBAAS_TESTMODE && chainActive.LastTip()->nTime < PBAAS_TESTFORK_TIME;
+
     if (currentFinalization.IsConfirmed() || currentFinalization.IsRejected())
     {
         CUTXORef finalizationOutput = currentFinalization.output;
@@ -9764,6 +9766,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         // if it does not have confirmed signatures, it can still be confirmed with auto notarization, but it will take
         // more confirmations and more blocks to ensure a longer period of time to defend against any potential hash, stake, or
         // network attacks
+
         if (currentFinalization.IsConfirmed())
         {
             std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> priorNotarizationInfo =
@@ -9771,7 +9774,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
 
             if (!std::get<0>(priorNotarizationInfo))
             {
-                if (chainActive.LastTip()->nTime < PBAAS_TESTFORK_TIME)
+                if (preTestnetFork)
                 {
                     return true;
                 }
@@ -10007,6 +10010,10 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                        numNotaryConfirms >= numAutoNeeded &&
                        (height - pCurNotarizationBlkIndex->GetHeight()) >= numBlocksAutoNeeded)))
                 {
+                    if (preTestnetFork && signatureState == CNotaryEvidence::STATE_CONFIRMED)
+                    {
+                        return true;
+                    }
                     return state.Error("Insufficient notary confirms and/or blocks to confirm notarization with given evidence");
                 }
 
@@ -10083,6 +10090,10 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                            numNotaryConfirms >= (numAutoNeeded - 1) &&
                            (height - pCurNotarizationBlkIndex->GetHeight()) >= numBlocksAutoNeeded)))
                     {
+                        if (preTestnetFork && signatureState == CNotaryEvidence::STATE_CONFIRMED)
+                        {
+                            return true;
+                        }
                         return state.Error("Insufficient notary confirms and/or blocks to confirm accepted notarization with given evidence");
                     }
                 }
