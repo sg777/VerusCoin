@@ -1488,6 +1488,10 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
                             break;
                         }
                     }
+                    if (finalizeSpends.size())
+                    {
+                        break;
+                    }
                     continue;
                 }
                 else if ((p.evalCode == EVAL_EARNEDNOTARIZATION || p.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
