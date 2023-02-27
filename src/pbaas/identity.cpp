@@ -1738,6 +1738,15 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             }
             txMap[oneTxIn.prevout.hash] = sourceTx;
 
+            BlockMap::iterator commitmentBlkIt;
+            if (isPBaaS &&
+                (hashBlk.IsNull() ||
+                    (commitmentBlkIt = mapBlockIndex.find(hashBlk)) == mapBlockIndex.end() ||
+                    !chainActive.Contains(commitmentBlkIt->second)))
+            {
+                return state.Error("Invalid commitment reference");
+            }
+
             if (oneTxIn.prevout.n >= sourceTx.vout.size())
             {
                 //extern void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& entry);

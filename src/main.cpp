@@ -5172,9 +5172,9 @@ bool static DisconnectTip(CValidationState &state, const CChainParams& chainpara
             CValidationState stateDummy;
 
             // don't keep coinbase, staking, or invalid transactions
-            if (tx.IsCoinBase() || ((i == (block.vtx.size() - 1)) && (ASSETCHAINS_STAKED && komodo_isPoS((CBlock *)&block) != 0)) || !AcceptToMemoryPool(mempool, stateDummy, tx, false, NULL))
+            if (!(tx.IsCoinBase() || ((i == (block.vtx.size() - 1)) && block.IsVerusPOSBlock())))
             {
-                mempool.remove(tx, removed, true);
+                AcceptToMemoryPool(mempool, stateDummy, tx, false, NULL);
             }
 
             // if this is a staking tx, and we are on Verus Sapling with nothing at stake solution,
