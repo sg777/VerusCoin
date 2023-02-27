@@ -8549,7 +8549,8 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             }
         }
 
-        bool additionalEvidenceRequired = chainActive[height - 1]->nTime > PBAAS_TESTFORK_TIME &&
+        bool preTestnetFork = PBAAS_TESTMODE && chainActive[height - 1]->nTime <= PBAAS_TESTFORK_TIME;
+        bool additionalEvidenceRequired = !preTestnetFork &&
                                             curDef.proofProtocol == curDef.PROOF_PBAASMMR &&
                                             curDef.notarizationProtocol != curDef.NOTARIZATION_NOTARY_CHAINID;
 
@@ -8581,7 +8582,8 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                     // if there is a proof root in this accepted notarization, it must be as part of an import
                     // and the proof root should match the evidence notarization reference used to prove the
                     // import.
-                    if (currentNotarization.prevNotarization.IsNull() ||
+                    if (!preTestnetFork &&
+                        currentNotarization.prevNotarization.IsNull() ||
                         !myGetTransaction(currentNotarization.prevNotarization.hash, priorNotTx, hashBlock) ||
                         priorNotTx.vout.size() <= currentNotarization.prevNotarization.n ||
                         !priorNotTx.vout[currentNotarization.prevNotarization.n].scriptPubKey.IsPayToCryptoCondition(priorP) ||
@@ -8649,6 +8651,10 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                              !priorNotarization.IsDefinitionNotarization()) ||
                             (currentNotarization.hashPrevCrossNotarization.IsNull() && !curDef.IsGateway()))
                         {
+                            if (preTestnetFork)
+                            {
+                                return true;
+                            }
                             return state.Error("Invalid prior for earned notarization");
                         }
 
