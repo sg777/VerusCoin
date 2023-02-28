@@ -339,7 +339,7 @@ CIdentity::LookupIdentities(const CIdentityID &nameID, uint32_t gteHeight, uint3
                     identityIndex[i].first.index >= identityTx.vout.size() ||
                     !(identityTx.vout[identityIndex[i].first.index].scriptPubKey.IsPayToCryptoCondition(fP) &&
                         fP.IsValid() &&
-                        fP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                        fP.evalCode == EVAL_IDENTITY_PRIMARY &&
                         fP.vData.size() &&
                         (identity = CIdentity(fP.vData[0])).IsValid()))
                 {
