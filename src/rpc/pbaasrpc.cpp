@@ -13906,7 +13906,7 @@ UniValue getidentityrange(const UniValue& params, bool fHelp)
     }
 
     bool txProof = params.size() > 2 ? uni_get_bool(params[2]) : false;
-    uint32_t txProofHeight = params.size() > 3 ? uni_get_int64(params[1]) : 0;
+    uint32_t txProofHeight = params.size() > 3 ? uni_get_int64(params[3]) : 0;
     if (txProofHeight < lteHeight)
     {
         txProofHeight = lteHeight;
@@ -14059,7 +14059,7 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     }
 
     bool txProof = params.size() > 2 ? uni_get_bool(params[2]) : false;
-    uint32_t txProofHeight = params.size() > 3 ? uni_get_int64(params[1]) : 0;
+    uint32_t txProofHeight = params.size() > 3 ? uni_get_int64(params[3]) : 0;
     if (txProofHeight < lteHeight)
     {
         txProofHeight = lteHeight;
@@ -14155,6 +14155,151 @@ UniValue getidentity(const UniValue& params, bool fHelp)
             }
         }
 
+        return ret;
+    }
+    else
+    {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Identity not found");
+    }
+}
+
+UniValue getidentityhistory(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 5)
+    {
+        throw runtime_error(
+            "getidentityhistory \"name@ || iid\" (heightstart) (heightend) (txproofs) (txproofheight)\n"
+            "\n\n"
+
+            "\nArguments\n"
+            "    \"name@ || iid\"                       (string, required) name followed by \"@\" or i-address of an identity\n"
+            "    \"heightstart\"                        (number, optional) default=0, only return content from this height forward, inclusive\n"
+            "    \"heightend\"                          (number, optional) default=0 which means max height, only return content up to this height,\n"
+            "                                                               inclusive. -1 means also return values from the mempool.\n"
+            "    \"txproofs\"                           (bool, optional) default=false, if true, returns proof of ID\n"
+            "    \"txproofheight\"                      (number, optional) default=\"height\", height from which to generate a proof\n"
+
+            "\nResult:\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getidentityhistory", "\"name@\"")
+            + HelpExampleRpc("getidentityhistory", "\"name@\"")
+        );
+    }
+
+    CheckIdentityAPIsValid();
+
+    CTxDestination idID = DecodeDestination(uni_get_str(params[0]));
+    if (idID.which() != COptCCParams::ADDRTYPE_ID)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity parameter must be valid friendly name or identity address: \"" + uni_get_str(params[0]) + "\"");
+    }
+
+    LOCK(cs_main);
+
+    uint32_t gteHeight = 0;
+    uint32_t height = chainActive.Height();
+    uint32_t lteHeight = height;
+    bool useMempool = false;
+    if (params.size() > 1)
+    {
+        uint32_t tmpHeight = uni_get_int64(params[1]);
+        if (tmpHeight > 0)
+        {
+            gteHeight = tmpHeight;
+        }
+    }
+    if (params.size() > 2)
+    {
+        uint32_t tmpHeight = uni_get_int64(params[2]);
+        if (tmpHeight > 0 && lteHeight > tmpHeight)
+        {
+            lteHeight = tmpHeight;
+        }
+        else if (!tmpHeight || tmpHeight == -1)
+        {
+            lteHeight = height + 1;
+            useMempool = tmpHeight == -1;
+        }
+    }
+
+    bool txProof = params.size() > 3 ? uni_get_bool(params[3]) : false;
+    uint32_t txProofHeight = params.size() > 4 ? uni_get_int64(params[4]) : 0;
+    if (txProofHeight < lteHeight)
+    {
+        txProofHeight = lteHeight;
+    }
+
+    CTxIn idTxIn;
+
+    CIdentity identity;
+    bool canSign = false, canSpend = false;
+
+    if (pwalletMain)
+    {
+        LOCK(pwalletMain->cs_wallet);
+        uint256 txID;
+        std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+        if (pwalletMain->GetIdentity(GetDestinationID(idID), keyAndIdentity, lteHeight))
+        {
+            canSign = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SIGN;
+            canSpend = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SPEND;
+            identity = static_cast<CIdentity>(keyAndIdentity.second);
+        }
+    }
+
+    uint160 identityID = GetDestinationID(idID);
+    identity = CIdentity::LookupIdentity(CIdentityID(identityID), lteHeight, &height, &idTxIn, useMempool);
+
+    if (!identity.IsValid() && identityID == VERUS_CHAINID)
+    {
+        std::vector<CTxDestination> primary({CTxDestination(CKeyID(uint160()))});
+        std::vector<std::pair<uint160, uint256>> contentmap;
+        std::multimap<uint160, std::vector<unsigned char>> contentmultimap;
+
+        identity = CIdentity(CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS ? CIdentity::VERSION_PBAAS : CIdentity::VERSION_VAULT,
+                             CIdentity::FLAG_ACTIVECURRENCY,
+                             primary,
+                             1,
+                             ConnectedChains.ThisChain().parent,
+                             VERUS_CHAINNAME,
+                             contentmap,
+                             contentmultimap,
+                             ConnectedChains.ThisChain().GetID(),
+                             ConnectedChains.ThisChain().GetID(),
+                             std::vector<libzcash::SaplingPaymentAddress>());
+    }
+
+    UniValue ret(UniValue::VOBJ);
+
+    uint160 parent;
+    if (identity.IsValid() && identity.name == CleanName(identity.name, parent, true))
+    {
+        ret.pushKV("fullyqualifiedname", ConnectedChains.GetFriendlyIdentityName(identity));
+        ret.push_back(Pair("status", identity.IsRevoked() ? "revoked" : "active"));
+        ret.push_back(Pair("canspendfor", canSpend));
+        ret.push_back(Pair("cansignfor", canSign));
+        ret.push_back(Pair("blockheight", (int64_t)height));
+        ret.push_back(Pair("txid", idTxIn.prevout.hash.GetHex()));
+        ret.push_back(Pair("vout", (int32_t)idTxIn.prevout.n));
+
+        auto identities = CIdentity::LookupIdentities(GetDestinationID(idID), gteHeight, lteHeight, useMempool, txProof, txProofHeight);
+
+        UniValue identityArrUni(UniValue::VARR);
+        for (auto &oneIdentity : identities)
+        {
+            UniValue identityDescr(UniValue::VOBJ);
+            identityDescr.pushKV("identity", std::get<0>(oneIdentity).ToUniValue());
+            identityDescr.pushKV("blockhash", std::get<1>(oneIdentity).GetHex());
+            identityDescr.pushKV("height", (int64_t)std::get<2>(oneIdentity));
+            identityDescr.pushKV("output", std::get<3>(oneIdentity).ToUniValue());
+            if (txProof && std::get<4>(oneIdentity).IsValid())
+            {
+                identityDescr.pushKV("proof", std::get<4>(oneIdentity).ToUniValue());
+            }
+            identityArrUni.push_back(identityDescr);
+        }
+        ret.pushKV("history", identityArrUni);
         return ret;
     }
     else
@@ -15398,6 +15543,7 @@ static const CRPCCommand commands[] =
     { "identity",     "setidentitytimelock",          &setidentitytimelock,    true  },
     { "identity",     "recoveridentity",              &recoveridentity,        true  },
     { "identity",     "getidentity",                  &getidentity,            true  },
+    { "identity",     "getidentityhistory",           &getidentityhistory,     true  },
     { "identity",     "listidentities",               &listidentities,         true  },
     { "identity",     "getidentitieswithaddress",     &getidentitieswithaddress, true  },
     { "identity",     "getidentitieswithrevocation",  &getidentitieswithrevocation, true  },

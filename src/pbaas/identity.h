@@ -758,6 +758,13 @@ public:
     static CIdentityID GetID(const std::string &Name, uint160 &parent);
 
     CIdentity LookupIdentity(const std::string &name, uint32_t height=0, uint32_t *pHeightOut=nullptr, CTxIn *pTxIn=nullptr);
+    static std::vector<std::tuple<CIdentity, uint256, uint32_t, CUTXORef, CPartialTransactionProof>>
+        LookupIdentities(const CIdentityID &nameID,
+                         uint32_t gteHeight=0,
+                         uint32_t lteHeight=0,
+                         bool checkMempool=false,
+                         bool getProofs=false,
+                         uint32_t proofHeight=0);
     static CIdentity LookupIdentity(const CIdentityID &nameID, uint32_t height=0, uint32_t *pHeightOut=nullptr, CTxIn *pTxIn=nullptr, bool checkMempool=false);
     static CIdentity LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHeightOut=nullptr, CTxIn *idTxIn=nullptr, CTransaction *pidTx=nullptr);
 
