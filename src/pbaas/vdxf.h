@@ -589,7 +589,7 @@ public:
 // standard name parsing functions
 std::string TrimLeading(const std::string &Name, unsigned char ch);
 std::string TrimTrailing(const std::string &Name, unsigned char ch);
-std::string TrimSpaces(const std::string &Name);
+std::string TrimSpaces(const std::string &Name, bool removeDuals=true);
 
 // this deserializes a vector into either a VDXF data object or a VDXF structured
 // object, which may contain one or more VDXF data objects.

@@ -50,8 +50,37 @@ std::string TrimTrailing(const std::string &Name, unsigned char ch)
     return nameCopy;
 }
 
-std::string TrimSpaces(const std::string &Name)
+std::string TrimSpaces(const std::string &Name, bool removeDuals)
 {
+    if (removeDuals)
+    {
+        std::string nameCopy = TrimTrailing(TrimLeading(Name, ' '), ' ');
+        std::string noDuals = " \u200C\u200D";
+        std::string lastDual;
+        std::vector<int> toRemove;
+        for (int i = 0; i < nameCopy.size(); i++)
+        {
+            size_t dualCharPos = noDuals.find(nameCopy[i]);
+            if (removeDuals &&
+                dualCharPos != std::string::npos)
+            {
+                std::string checkDual = nameCopy.substr(dualCharPos, 1);
+                if (checkDual == lastDual)
+                {
+                    toRemove.push_back(i);
+                }
+            }
+            else if (!lastDual.empty())
+            {
+                lastDual.clear();
+            }
+        }
+        for (auto posIt = toRemove.rbegin(); posIt != toRemove.rend(); posIt++)
+        {
+            nameCopy.erase(nameCopy.begin() + *posIt);
+        }
+        return nameCopy;
+    }
     return TrimTrailing(TrimLeading(Name, ' '), ' ');
 }
 
@@ -61,16 +90,10 @@ std::vector<std::string> CVDXF::ParseSubNames(const std::string &Name, std::stri
 {
     std::string nameCopy = Name;
     std::string invalidChars = "\\/:*?\"<>|";
+
     if (displayfilter)
     {
         invalidChars += "\n\t\r\b\t\v\f\x1B";
-    }
-    for (int i = 0; i < nameCopy.size(); i++)
-    {
-        if (invalidChars.find(nameCopy[i]) != std::string::npos)
-        {
-            return std::vector<std::string>();
-        }
     }
 
     std::vector<std::string> retNames;
@@ -150,7 +173,7 @@ std::vector<std::string> CVDXF::ParseSubNames(const std::string &Name, std::stri
 std::string CVDXF::CleanName(const std::string &Name, uint160 &Parent, bool displayfilter)
 {
     std::string chainName;
-    std::vector<std::string> subNames = ParseSubNames(Name, chainName);
+    std::vector<std::string> subNames = ParseSubNames(Name, chainName, displayfilter);
 
     if (!subNames.size())
     {

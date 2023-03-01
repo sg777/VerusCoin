@@ -2314,6 +2314,18 @@ public:
         return challengeKey;
     }
 
+    static std::string TipChallengeKeyName()
+    {
+        return "vrsc::evidence.tipchallenge";
+    }
+
+    static uint160 TipChallengeKey()
+    {
+        static uint160 nameSpace;
+        static uint160 challengeKey = CVDXF::GetDataKey(TipChallengeKeyName(), nameSpace);
+        return challengeKey;
+    }
+
     static std::string ValidityChallengeKeyName()
     {
         return "vrsc::evidence.validitychallenge";

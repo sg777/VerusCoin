@@ -427,7 +427,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             }
         }
 
-        name = CleanName(name, parent);
+        name = CleanName(name, parent, true);
 
         std::string systemIDStr = uni_get_str(find_value(obj, "systemid"));
         if (systemIDStr != "")
@@ -893,7 +893,7 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
     powAveragingWindow(DEFAULT_AVERAGING_WINDOW),
     blockNotarizationModulo(BLOCK_NOTARIZATION_MODULO)
 {
-    name = boost::to_upper_copy(CleanName(currencyName, parent));
+    name = boost::to_upper_copy(CleanName(currencyName, parent, true));
     if (parent.IsNull())
     {
         UniValue uniCurrency(UniValue::VOBJ);
@@ -1348,6 +1348,40 @@ std::string TrimTrailing(const std::string &Name, unsigned char ch)
     return nameCopy;
 }
 
+std::string TrimSpaces(const std::string &Name, bool removeDuals)
+{
+    if (removeDuals)
+    {
+        std::string nameCopy = TrimTrailing(TrimLeading(Name, ' '), ' ');
+        std::string noDuals = " \u200C\u200D";
+        std::string lastDual;
+        std::vector<int> toRemove;
+        for (int i = 0; i < nameCopy.size(); i++)
+        {
+            size_t dualCharPos = noDuals.find(nameCopy[i]);
+            if (removeDuals &&
+                dualCharPos != std::string::npos)
+            {
+                std::string checkDual = nameCopy.substr(dualCharPos, 1);
+                if (checkDual == lastDual)
+                {
+                    toRemove.push_back(i);
+                }
+            }
+            else if (!lastDual.empty())
+            {
+                lastDual.clear();
+            }
+        }
+        for (auto posIt = toRemove.rbegin(); posIt != toRemove.rend(); posIt++)
+        {
+            nameCopy.erase(nameCopy.begin() + *posIt);
+        }
+        return nameCopy;
+    }
+    return TrimTrailing(TrimLeading(Name, ' '), ' ');
+}
+
 // this will add the current Verus chain name to subnames if it is not present
 // on both id and chain names
 std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter, bool addVerus)
@@ -1423,7 +1457,7 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
             retNames[i] = std::string(retNames[i], 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
         }
         // spaces are allowed, but no sub-name can have leading or trailing spaces
-        if (!retNames[i].size() || retNames[i] != TrimTrailing(TrimLeading(retNames[i], ' '), ' '))
+        if (!retNames[i].size() || retNames[i] != TrimSpaces(retNames[i], displayfilter))
         {
             return std::vector<std::string>();
         }

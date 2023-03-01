@@ -23,7 +23,11 @@ bool GetCurrencyDefinition(const uint160 &chainID, CCurrencyDefinition &chainDef
 UniValue getnotarizationproofs(const UniValue& params, bool fHelp);
 
 // if pCounterEvidence is non-null, each entry in the returned vector, which can be indexed as vtx is, returns evidence, followed by challenge root and entropy root
-bool GetNotarizationData(const uint160 &chainID, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut=nullptr, std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>> *pCounterEvidence=nullptr);
+bool GetNotarizationData(const uint160 &chainID,
+                         CChainNotarizationData &notarizationData,
+                         std::vector<std::pair<CTransaction, uint256>> *optionalTxOut=nullptr,
+                         std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>> *pCounterEvidence=nullptr,
+                         std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence>>> *pEvidence=nullptr);
 
 bool GetChainTransfers(std::multimap<uint160, std::pair<CInputDescriptor, CReserveTransfer>> &inputDescriptors,
                             uint160 chainFilter = uint160(), int start=0, int end=0, uint32_t flags=CReserveTransfer::VALID);

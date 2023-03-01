@@ -1503,7 +1503,11 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     }
 }
 
-bool GetNotarizationData(const uint160 &chainID, CChainNotarizationData &notarizationData, std::vector<std::pair<CTransaction, uint256>> *optionalTxOut=nullptr, std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>> *pCounterEvidence=nullptr);
+bool GetNotarizationData(const uint160 &chainID,
+                         CChainNotarizationData &notarizationData,
+                         std::vector<std::pair<CTransaction, uint256>> *optionalTxOut=nullptr,
+                         std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>> *pCounterEvidence=nullptr,
+                         std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence>>> *pEvidence=nullptr);
 
 bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
@@ -1638,7 +1642,9 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
                     break;
                 }
                 newIdentity = CIdentity(p.vData[0]);
+                uint160 dummyParent;
                 valid = newIdentity.IsValid() &&
+                    newIdentity.name == CleanName(newIdentity.name, dummyParent, true) &&
                     (advNewName.IsValid() ?
                         newIdentity.parent == advNewName.parent :
                         (newIdentity.parent == ASSETCHAINS_CHAINID || (IsVerusActive() && newIdentity.parent.IsNull() && newIdentity.GetID() == ASSETCHAINS_CHAINID)));
