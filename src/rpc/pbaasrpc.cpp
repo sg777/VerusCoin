@@ -8950,6 +8950,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             CAmount sourceAmount = AmountFromValue(find_value(uniOutputs[i], "amount"));
             auto destStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "address")));
             auto exportId = uni_get_bool(find_value(uniOutputs[i], "exportid"));
+            auto exportCurrency = uni_get_bool(find_value(uniOutputs[i], "exportcurrency"));
             auto refundToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "refundto")));
             auto memoStr = uni_get_str(find_value(uniOutputs[i], "memo"));
             bool preConvert = uni_get_bool(find_value(uniOutputs[i], "preconvert"));
@@ -8963,8 +8964,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             auto convertToStr = TrimSpaces(rawConvertToStr, true);
             auto rawExportToStr = uni_get_str(find_value(params[0], "exportto"));
             auto exportToStr = TrimSpaces(rawExportToStr, true);
-            auto rawExportCurrency = uni_get_str(find_value(params[0], "exportcurrency"));
-            auto exportCurrency = TrimSpaces(rawExportCurrency, true);
             auto rawFeeCurrencyStr = uni_get_str(find_value(params[0], "feecurrency"));
             auto feeCurrencyStr = TrimSpaces(rawFeeCurrencyStr, true);
             auto rawViaStr = uni_get_str(find_value(params[0], "via"));
