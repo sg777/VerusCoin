@@ -1812,7 +1812,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
 
     if (advancedIdentity)
     {
-        cleanName = CleanName(newIdentity.name, parentID, true, false);
+        cleanName = CleanName(newIdentity.name, parentID, isPBaaS, false);
         if (cleanName.empty())
         {
             return state.Error("Invalid name characters specified in identity registration");
