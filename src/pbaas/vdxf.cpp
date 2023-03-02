@@ -10,6 +10,8 @@
 
 #include "vdxf.h"
 #include "crosschainrpc.h"
+#include "utf8.h"
+#include "util.h"
 
 std::string CVDXF::DATA_KEY_SEPARATOR = "::";
 
@@ -52,30 +54,40 @@ std::string TrimTrailing(const std::string &Name, unsigned char ch)
 
 std::string TrimSpaces(const std::string &Name, bool removeDuals)
 {
-    std::string nameCopy = Name;
+    if (utf8valid(Name.c_str()) != 0)
+    {
+        return "";
+    }
     std::string noDuals = removeDuals ?
         std::string(u8"\u0020\u00A0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u200C\u200D\u202F\u205F\u3000") :
         " ";
     std::vector<int> allDuals;
     std::vector<int> toRemove;
-    for (int i = 0; i < nameCopy.size(); i++)
+
+    int len = utf8len(Name.c_str());
+    const char *nextChar = Name.c_str();
+    for (int i = 0; i < len; i++)
     {
-        size_t dualCharPos = noDuals.find(nameCopy[i]);
+        utf8_int32_t outPoint;
+        nextChar = utf8codepoint(nextChar, &outPoint);
+
+        char *dualCharPos = utf8chr(noDuals.c_str(), outPoint);
+
         if ((removeDuals ||
-                (i == allDuals.size() ||
-                i == (nameCopy.size() - 1))) &&
-                dualCharPos != std::string::npos)
+            (i == allDuals.size() ||
+             i == (len - 1))) &&
+             dualCharPos)
         {
             bool wasLastDual = allDuals.size() && allDuals.back() == (i - 1);
             if (i == allDuals.size() ||
-                i == (nameCopy.size() - 1) ||
+                i == (len - 1) ||
                 (removeDuals && wasLastDual))
             {
                 toRemove.push_back(i);
             }
             allDuals.push_back(i);
             if (i &&
-                i == (nameCopy.size() - 1) &&
+                i == (Name.size() - 1) &&
                 wasLastDual)
             {
                 int toRemoveIdx = toRemove.size() - 1;
@@ -94,12 +106,39 @@ std::string TrimSpaces(const std::string &Name, bool removeDuals)
                 }
             }
         }
+        i++;
     }
-    for (auto posIt = toRemove.rbegin(); posIt != toRemove.rend(); posIt++)
+
+    // now, reconstruct the string char by char, but skip the ones to remove
+    if (toRemove.size())
     {
-        nameCopy.erase(nameCopy.begin() + *posIt);
+        std::string nameCopy;
+        int toRemoveIdx = 0;
+
+        nextChar = Name.c_str();
+        for (int i = 0; i < len; i++)
+        {
+            utf8_int32_t outPoint;
+            nextChar = utf8codepoint(nextChar, &outPoint);
+
+            if (toRemoveIdx < toRemove.size() && i++ == toRemove[toRemoveIdx])
+            {
+                toRemoveIdx++;
+                continue;
+            }
+            char tmpCodePointStr[5] = {0};
+            if (!utf8catcodepoint(tmpCodePointStr, outPoint, 5))
+            {
+                LogPrintf("%s: Invalid name string\n", __func__);
+            }
+            nameCopy += std::string(tmpCodePointStr);
+        }
+        return nameCopy;
     }
-    return nameCopy;
+    else
+    {
+        return Name;
+    }
 }
 
 // this will add the current Verus chain name to subnames if it is not present
