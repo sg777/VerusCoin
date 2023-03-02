@@ -54,7 +54,7 @@ std::string TrimSpaces(const std::string &Name, bool removeDuals)
 {
     std::string nameCopy = Name;
     std::string noDuals = removeDuals ?
-        "\u0020\u00A0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u200C\u200D\u202F\u205F\u3000" :
+        std::string(u8"\u0020\u00A0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u200C\u200D\u202F\u205F\u3000") :
         " ";
     std::vector<int> allDuals;
     std::vector<int> toRemove;
