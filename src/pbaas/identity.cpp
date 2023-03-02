@@ -1645,7 +1645,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
                 uint160 dummyParent;
                 valid = newIdentity.IsValid() &&
                     ((!isPBaaS && newIdentity.name == CleanName(newIdentity.name, dummyParent)) ||
-                     (isPBaaS && newIdentity.name == CleanName(newIdentity.name, dummyParent, true)) &&
+                     (isPBaaS && newIdentity.name == CleanName(newIdentity.name, dummyParent, true))) &&
                     (advNewName.IsValid() ?
                         newIdentity.parent == advNewName.parent :
                         (newIdentity.parent == ASSETCHAINS_CHAINID || (IsVerusActive() && newIdentity.parent.IsNull() && newIdentity.GetID() == ASSETCHAINS_CHAINID)));
