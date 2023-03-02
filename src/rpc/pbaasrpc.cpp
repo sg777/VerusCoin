@@ -14067,7 +14067,7 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     UniValue ret(UniValue::VOBJ);
 
     uint160 parent;
-    if (identity.IsValid() && identity.name == CleanName(identity.name, parent, true))
+    if (identity.IsValid() && identity.name == CleanName(identity.name, parent))
     {
         ret.pushKV("fullyqualifiedname", ConnectedChains.GetFriendlyIdentityName(identity));
         ret.push_back(Pair("identity", identity.ToUniValue()));
@@ -14227,7 +14227,7 @@ UniValue getidentityhistory(const UniValue& params, bool fHelp)
     UniValue ret(UniValue::VOBJ);
 
     uint160 parent;
-    if (identity.IsValid() && identity.name == CleanName(identity.name, parent, true))
+    if (identity.IsValid() && identity.name == CleanName(identity.name, parent))
     {
         ret.pushKV("fullyqualifiedname", ConnectedChains.GetFriendlyIdentityName(identity));
         ret.push_back(Pair("status", identity.IsRevoked() ? "revoked" : "active"));
@@ -14328,7 +14328,7 @@ UniValue listidentities(const UniValue& params, bool fHelp)
             for (auto identity : mine)
             {
                 uint160 parent;
-                if (identity.second.IsValid() && identity.second.name == CleanName(identity.second.name, parent, true))
+                if (identity.second.IsValid() && identity.second.name == CleanName(identity.second.name, parent))
                 {
                     oneIdentity = CIdentity::LookupIdentity(identity.first.idID, 0, &oneIdentityHeight);
 
@@ -14367,7 +14367,7 @@ UniValue listidentities(const UniValue& params, bool fHelp)
             for (auto identity : imsigner)
             {
                 uint160 parent;
-                if (identity.second.IsValid() && identity.second.name == CleanName(identity.second.name, parent, true))
+                if (identity.second.IsValid() && identity.second.name == CleanName(identity.second.name, parent))
                 {
                     oneIdentity = CIdentity::LookupIdentity(identity.first.idID, 0, &oneIdentityHeight);
 
@@ -14404,7 +14404,7 @@ UniValue listidentities(const UniValue& params, bool fHelp)
             for (auto identity : notmine)
             {
                 uint160 parent;
-                if (identity.second.IsValid() && identity.second.name == CleanName(identity.second.name, parent, true))
+                if (identity.second.IsValid() && identity.second.name == CleanName(identity.second.name, parent))
                 {
                     oneIdentity = CIdentity::LookupIdentity(identity.first.idID, 0, &oneIdentityHeight);
 

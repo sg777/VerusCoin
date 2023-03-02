@@ -114,7 +114,7 @@ UniValue getvdxfid_internal(const UniValue& params)
 
     if (idDest.which() == COptCCParams::ADDRTYPE_ID)
     {
-        cleanName = CleanName(vdxfName, parentID, true, true);
+        cleanName = CleanName(vdxfName, parentID);
         vdxfID = GetDestinationID(idDest);
     }
     else
@@ -365,7 +365,7 @@ CTxDestination DecodeDestination(const std::string& str, const CChainParams& par
     else if (std::count(str.begin(), str.end(), '@') == 1)
     {
         uint160 parent;
-        std::string cleanName = CleanName(str, parent);
+        std::string cleanName = CleanName(str, parent, true, true);
         if (cleanName != "")
         {
             parent.SetNull();

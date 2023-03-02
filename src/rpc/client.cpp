@@ -296,7 +296,7 @@ CTxDestination DecodeDestination(const std::string& str)
     else if (std::count(str.begin(), str.end(), '@') == 1)
     {
         uint160 parent;
-        std::string cleanName = CleanName(str, parent);
+        std::string cleanName = CleanName(str, parent, true);
         if (cleanName != "")
         {
             parent.SetNull();
@@ -1350,36 +1350,52 @@ std::string TrimTrailing(const std::string &Name, unsigned char ch)
 
 std::string TrimSpaces(const std::string &Name, bool removeDuals)
 {
-    if (removeDuals)
+    std::string nameCopy = Name;
+    std::string noDuals = "\u0020\u00A0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u200C\u200D\u202F\u205F\u3000";
+    std::vector<int> allDuals;
+    std::vector<int> toRemove;
+    for (int i = 0; i < nameCopy.size(); i++)
     {
-        std::string nameCopy = TrimTrailing(TrimLeading(Name, ' '), ' ');
-        std::string noDuals = " \u200C\u200D";
-        std::string lastDual;
-        std::vector<int> toRemove;
-        for (int i = 0; i < nameCopy.size(); i++)
-        {
-            size_t dualCharPos = noDuals.find(nameCopy[i]);
-            if (removeDuals &&
+        size_t dualCharPos = noDuals.find(nameCopy[i]);
+        if ((removeDuals ||
+                (i == allDuals.size() ||
+                i == (nameCopy.size() - 1))) &&
                 dualCharPos != std::string::npos)
+        {
+            bool wasLastDual = allDuals.size() && allDuals.back() == (i - 1);
+            if (i == allDuals.size() ||
+                i == (nameCopy.size() - 1) ||
+                (removeDuals && wasLastDual))
             {
-                std::string checkDual = nameCopy.substr(dualCharPos, 1);
-                if (checkDual == lastDual)
+                toRemove.push_back(i);
+            }
+            allDuals.push_back(i);
+            if (i &&
+                i == (nameCopy.size() - 1) &&
+                wasLastDual)
+            {
+                int toRemoveIdx = toRemove.size() - 1;
+                int nextDual = 0;
+                for (auto dualIt = allDuals.rbegin(); dualIt != allDuals.rend(); dualIt++)
                 {
-                    toRemove.push_back(i);
+                    if (nextDual && *dualIt != (nextDual - 1))
+                    {
+                        break;
+                    }
+                    if (toRemoveIdx < 0 || toRemove[toRemoveIdx] != *dualIt)
+                    {
+                        toRemove.insert(toRemove.begin() + ++toRemoveIdx, *dualIt);
+                    }
+                    toRemoveIdx--;
                 }
             }
-            else if (!lastDual.empty())
-            {
-                lastDual.clear();
-            }
         }
-        for (auto posIt = toRemove.rbegin(); posIt != toRemove.rend(); posIt++)
-        {
-            nameCopy.erase(nameCopy.begin() + *posIt);
-        }
-        return nameCopy;
     }
-    return TrimTrailing(TrimLeading(Name, ' '), ' ');
+    for (auto posIt = toRemove.rbegin(); posIt != toRemove.rend(); posIt++)
+    {
+        nameCopy.erase(nameCopy.begin() + *posIt);
+    }
+    return nameCopy;
 }
 
 // this will add the current Verus chain name to subnames if it is not present
