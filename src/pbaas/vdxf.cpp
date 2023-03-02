@@ -74,8 +74,8 @@ std::string TrimSpaces(const std::string &Name, bool removeDuals)
         char *dualCharPos = utf8chr(noDuals.c_str(), outPoint);
 
         if ((removeDuals ||
-            (i == allDuals.size() ||
-             i == (len - 1))) &&
+             (i == allDuals.size() ||
+              i == (len - 1))) &&
              dualCharPos)
         {
             bool wasLastDual = allDuals.size() && allDuals.back() == (i - 1);
@@ -106,7 +106,6 @@ std::string TrimSpaces(const std::string &Name, bool removeDuals)
                 }
             }
         }
-        i++;
     }
 
     // now, reconstruct the string char by char, but skip the ones to remove
