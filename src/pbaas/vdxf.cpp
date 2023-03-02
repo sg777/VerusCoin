@@ -176,7 +176,7 @@ std::vector<std::string> CVDXF::ParseSubNames(const std::string &Name, std::stri
             retNames[i] = std::string(retNames[i], 0, (KOMODO_ASSETCHAIN_MAXLEN - 1));
         }
         // spaces are allowed, but no sub-name can have leading or trailing spaces
-        if (!retNames[i].size() || retNames[i] != TrimTrailing(TrimLeading(retNames[i], ' '), ' '))
+        if (!retNames[i].size() || retNames[i] != TrimSpaces(retNames[i], displayfilter))
         {
             return std::vector<std::string>();
         }
