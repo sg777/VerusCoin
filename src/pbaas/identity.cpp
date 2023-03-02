@@ -1529,6 +1529,11 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     bool isPBaaS = networkVersion >= CActivationHeight::ACTIVATE_PBAAS; // this is only PBaaS differences, not Verus Vault
     bool advancedIdentity = networkVersion >= CActivationHeight::ACTIVATE_VERUSVAULT;
 
+    std::set<uint160> burnSet;
+    burnSet.insert(GetDestinationID(DecodeDestination("i5oFhZ8Bby47KHbnvomVDtrfd71HQFL7vN")));
+    burnSet.insert(GetDestinationID(DecodeDestination("iBvu9M4kEzLYQmT2rB57rwQqfWUVUA9qub")));
+    burnSet.insert(GetDestinationID(DecodeDestination("i8j7hatfvNXvj38EfnSQZzqYczrKL9LNoo")));
+
     AssertLockHeld(cs_main);
 
     // get output and determine which kind of reservation it is
@@ -1644,11 +1649,16 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
                 newIdentity = CIdentity(p.vData[0]);
                 uint160 dummyParent;
                 valid = newIdentity.IsValid() &&
-                    ((!isPBaaS && newIdentity.name == CleanName(newIdentity.name, dummyParent)) ||
-                     (isPBaaS && newIdentity.name == CleanName(newIdentity.name, dummyParent, true))) &&
-                    (advNewName.IsValid() ?
-                        newIdentity.parent == advNewName.parent :
-                        (newIdentity.parent == ASSETCHAINS_CHAINID || (IsVerusActive() && newIdentity.parent.IsNull() && newIdentity.GetID() == ASSETCHAINS_CHAINID)));
+                        (((chainActive.LastTip()->nTime < PBAAS_TESTFORK_TIME ||
+                           burnSet.count(newIdentity.GetID())) &&
+                          newIdentity.name == CleanName(newIdentity.name, dummyParent)) ||
+                         newIdentity.name == CleanName(newIdentity.name, dummyParent, true)) &&
+                        (advNewName.IsValid() ?
+                           newIdentity.parent == advNewName.parent :
+                           (newIdentity.parent == ASSETCHAINS_CHAINID ||
+                            (IsVerusActive() &&
+                             newIdentity.parent.IsNull() &&
+                             newIdentity.GetID() == ASSETCHAINS_CHAINID)));
                 if (!valid)
                 {
                     break;
