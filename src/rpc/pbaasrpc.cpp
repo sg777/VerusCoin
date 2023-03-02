@@ -8972,7 +8972,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             if (rawCurrencyStr != currencyStr ||
                 rawConvertToStr != convertToStr ||
                 rawExportToStr != exportToStr ||
-                rawExportCurrency != exportCurrency ||
                 rawFeeCurrencyStr != feeCurrencyStr ||
                 rawViaStr != viaStr)
             {
