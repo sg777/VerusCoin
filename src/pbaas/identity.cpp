@@ -1656,7 +1656,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
                 else if (!isPBaaS && newIdentity.name != CleanName(newIdentity.name, dummyParent, true))
                 {
                     LogPrint("identity", "tagged identity (%s : namehex: %s) at height (%u)\n",
-                                            newIdentity.name.c_str(),
+                                            EncodeDestination(CIdentityID(newIdentity.GetID())).c_str(),
                                             HexBytes((unsigned char *)(newIdentity.name.c_str()), strlen(newIdentity.name.c_str())).c_str(),
                                             height);
                 }

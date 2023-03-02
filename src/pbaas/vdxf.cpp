@@ -52,8 +52,13 @@ std::string TrimTrailing(const std::string &Name, unsigned char ch)
     return nameCopy;
 }
 
-std::string TrimSpaces(const std::string &Name, bool removeDuals)
+std::string TrimSpaces(const std::string &Name, bool removeDuals, const std::string &_invalidChars)
 {
+    std::string invalidChars = _invalidChars;
+    if (removeDuals)
+    {
+        invalidChars += "\n\t\r\b\t\v\f\x1B";
+    }
     if (utf8valid(Name.c_str()) != 0)
     {
         return "";
@@ -69,7 +74,15 @@ std::string TrimSpaces(const std::string &Name, bool removeDuals)
     for (int i = 0; i < len; i++)
     {
         utf8_int32_t outPoint;
+        utf8_int32_t invalidPoint;
         nextChar = utf8codepoint(nextChar, &outPoint);
+
+        if (utf8chr(invalidChars.c_str(), outPoint))
+        {
+            toRemove.push_back(i);
+            allDuals.push_back(i);
+            continue;
+        }
 
         char *dualCharPos = utf8chr(noDuals.c_str(), outPoint);
 
@@ -128,7 +141,7 @@ std::string TrimSpaces(const std::string &Name, bool removeDuals)
             char tmpCodePointStr[5] = {0};
             if (!utf8catcodepoint(tmpCodePointStr, outPoint, 5))
             {
-                LogPrintf("%s: Invalid name string\n", __func__);
+                LogPrintf("%s: Invalid name string: %s\n", __func__, Name.c_str());
             }
             nameCopy += std::string(tmpCodePointStr);
         }
@@ -145,12 +158,6 @@ std::string TrimSpaces(const std::string &Name, bool removeDuals)
 std::vector<std::string> CVDXF::ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter, bool addVerus)
 {
     std::string nameCopy = Name;
-    std::string invalidChars = "\\/:*?\"<>|";
-
-    if (displayfilter)
-    {
-        invalidChars += "\n\t\r\b\t\v\f\x1B";
-    }
 
     std::vector<std::string> retNames;
     boost::split(retNames, nameCopy, boost::is_any_of("@"));

@@ -620,7 +620,7 @@ bool CTransferDestination::EraseAuxDest(int destNum)
 uint160 DecodeCurrencyName(std::string currencyStr)
 {
     uint160 retVal;
-    currencyStr = TrimSpaces(currencyStr);
+    currencyStr = TrimSpaces(currencyStr, true);
     if (!currencyStr.size())
     {
         return retVal;

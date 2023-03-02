@@ -5838,11 +5838,21 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
     bool toFractional = false;
     bool reserveToReserve = false;
 
-    auto currencyStr = TrimSpaces(uni_get_str(find_value(params[0], "currency")));
+    auto rawCurrencyStr = uni_get_str(find_value(params[0], "currency"));
+    auto currencyStr = TrimSpaces(rawCurrencyStr, true);
     CAmount sourceAmount = AmountFromValue(find_value(params[0], "amount"));
-    auto convertToStr = TrimSpaces(uni_get_str(find_value(params[0], "convertto")));
-    auto viaStr = TrimSpaces(uni_get_str(find_value(params[0], "via")));
+    auto rawConvertToStr = uni_get_str(find_value(params[0], "convertto"));
+    auto convertToStr = TrimSpaces(rawConvertToStr, true);
+    auto rawViaStr = uni_get_str(find_value(params[0], "via"));
+    auto viaStr = TrimSpaces(rawViaStr, true);
     bool preConvert = uni_get_bool(find_value(params[0], "preconvert"));
+
+    if (rawCurrencyStr != currencyStr ||
+        rawConvertToStr != convertToStr ||
+        rawViaStr != viaStr)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "all currency names used must be valid with no leading or trailing spaces");
+    }
 
     LOCK(cs_main);
 
@@ -6433,7 +6443,13 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "To buy an identity, define the identity by the \"for\" object as you would when registering, with \"name\", \"primaryaddresses\", etc. Do not use an \"identity\" tag");
         }
 
-        auto currencyStr = TrimSpaces(uni_get_str(find_value(forValue, "currency")));
+        auto rawCurrencyStr = uni_get_str(find_value(params[0], "currency"));
+        auto currencyStr = TrimSpaces(rawCurrencyStr, true);
+        if (rawCurrencyStr != currencyStr)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency name specified must be valid with no leading or trailing spaces");
+        }
+
         CAmount destinationAmount = AmountFromValue(find_value(forValue, "amount"));
         auto memoStr = TrimSpaces(uni_get_str(find_value(forValue, "memo")));
 
@@ -6453,7 +6469,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             }
         }
 
-        auto destStr = TrimSpaces(uni_get_str(find_value(forValue, "address")));
+        auto destStr = TrimSpaces(uni_get_str(find_value(forValue, "address")), true);
 
         fundsDestination = ValidateDestination(destStr);
         CTransferDestination dest;
@@ -6510,7 +6526,12 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
         // first, construct the "offer" input, which will either be funds or an ID from this wallet
         if (find_value(offerValue, "identity").isNull())
         {
-            auto currencyStr = TrimSpaces(uni_get_str(find_value(offerValue, "currency")));
+            auto rawCurrencyStr = uni_get_str(find_value(params[0], "currency"));
+            auto currencyStr = TrimSpaces(rawCurrencyStr, true);
+            if (rawCurrencyStr != currencyStr)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency name specified in offer must be valid with no leading or trailing spaces");
+            }
             CAmount sourceAmount = AmountFromValue(find_value(offerValue, "amount"));
 
             if (!sourceAmount)
@@ -6827,7 +6848,12 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
         // then, sign the transaction, put it in an opreturn, and make the transaction that contains it
         if (find_value(forValue, "name").isNull())
         {
-            auto currencyStr = TrimSpaces(uni_get_str(find_value(forValue, "currency")));
+            auto rawCurrencyStr = uni_get_str(find_value(params[0], "currency"));
+            auto currencyStr = TrimSpaces(rawCurrencyStr, true);
+            if (rawCurrencyStr != currencyStr)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency name must be valid with no leading or trailing spaces");
+            }
             CAmount destinationAmount = AmountFromValue(find_value(forValue, "amount"));
             auto memoStr = TrimSpaces(uni_get_str(find_value(forValue, "memo")));
 
@@ -7501,7 +7527,12 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
         else if (deliver.isObject())
         {
             // determine the currency we are offering to deliver
-            auto currencyStr = TrimSpaces(uni_get_str(find_value(deliver, "currency")));
+            auto rawCurrencyStr = uni_get_str(find_value(params[0], "currency"));
+            auto currencyStr = TrimSpaces(rawCurrencyStr, true);
+            if (rawCurrencyStr != currencyStr)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency name in acceptance must be valid with no leading or trailing spaces");
+            }
             CAmount destinationAmount = AmountFromValue(find_value(deliver, "amount"));
             uint160 curID;
             if (!currencyStr.empty())
@@ -8916,21 +8947,38 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             }
 
             auto opRetHex = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "opret")));
-            auto currencyStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "currency")));
             CAmount sourceAmount = AmountFromValue(find_value(uniOutputs[i], "amount"));
-            auto convertToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "convertto")));
-            auto exportToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "exportto")));
-            auto feeCurrencyStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "feecurrency")));
-            auto viaStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "via")));
             auto destStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "address")));
             auto exportId = uni_get_bool(find_value(uniOutputs[i], "exportid"));
-            auto exportCurrency = uni_get_bool(find_value(uniOutputs[i], "exportcurrency"));
             auto refundToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "refundto")));
             auto memoStr = uni_get_str(find_value(uniOutputs[i], "memo"));
             bool preConvert = uni_get_bool(find_value(uniOutputs[i], "preconvert"));
             bool burnCurrency = uni_get_bool(find_value(uniOutputs[i], "burn")) || uni_get_bool(find_value(uniOutputs[i], "burnweight"));
             bool burnWeight = uni_get_bool(find_value(uniOutputs[i], "burnweight"));
             bool mintNew = uni_get_bool(find_value(uniOutputs[i], "mintnew"));
+
+            auto rawCurrencyStr = uni_get_str(find_value(params[0], "currency"));
+            auto currencyStr = TrimSpaces(rawCurrencyStr, true);
+            auto rawConvertToStr = uni_get_str(find_value(params[0], "convertto"));
+            auto convertToStr = TrimSpaces(rawConvertToStr, true);
+            auto rawExportToStr = uni_get_str(find_value(params[0], "exportto"));
+            auto exportToStr = TrimSpaces(rawExportToStr, true);
+            auto rawExportCurrency = uni_get_str(find_value(params[0], "exportcurrency"));
+            auto exportCurrency = TrimSpaces(rawExportCurrency, true);
+            auto rawFeeCurrencyStr = uni_get_str(find_value(params[0], "feecurrency"));
+            auto feeCurrencyStr = TrimSpaces(rawFeeCurrencyStr, true);
+            auto rawViaStr = uni_get_str(find_value(params[0], "via"));
+            auto viaStr = TrimSpaces(rawViaStr, true);
+
+            if (rawCurrencyStr != currencyStr ||
+                rawConvertToStr != convertToStr ||
+                rawExportToStr != exportToStr ||
+                rawExportCurrency != exportCurrency ||
+                rawFeeCurrencyStr != feeCurrencyStr ||
+                rawViaStr != viaStr)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "all currency names specified must be valid with no leading or trailing spaces");
+            }
 
             bool hasPBaaSParams = currencyStr.size() ||
                                   convertToStr.size() ||

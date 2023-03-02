@@ -1348,7 +1348,7 @@ std::string TrimTrailing(const std::string &Name, unsigned char ch)
     return nameCopy;
 }
 
-std::string TrimSpaces(const std::string &Name, bool removeDuals)
+std::string TrimSpaces(const std::string &Name, bool removeDuals, const std::string &invalidChars)
 {
     std::string nameCopy = Name;
     std::string noDuals = "\u0020\u00A0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u200C\u200D\u202F\u205F\u3000";
@@ -1403,18 +1403,6 @@ std::string TrimSpaces(const std::string &Name, bool removeDuals)
 std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter, bool addVerus)
 {
     std::string nameCopy = Name;
-    std::string invalidChars = "\\/:*?\"<>|";
-    if (displayfilter)
-    {
-        invalidChars += "\n\t\r\b\t\v\f\x1B";
-    }
-    for (int i = 0; i < nameCopy.size(); i++)
-    {
-        if (invalidChars.find(nameCopy[i]) != std::string::npos)
-        {
-            return std::vector<std::string>();
-        }
-    }
 
     std::vector<std::string> retNames;
     boost::split(retNames, nameCopy, boost::is_any_of("@"));
@@ -1424,7 +1412,7 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
     }
 
     bool explicitChain = false;
-    if (retNames.size() == 2)
+    if (retNames.size() == 2 && !retNames[1].empty())
     {
         ChainOut = retNames[1];
         explicitChain = true;
@@ -1432,6 +1420,13 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
 
     nameCopy = retNames[0];
     boost::split(retNames, nameCopy, boost::is_any_of("."));
+
+    if (retNames.size() && retNames.back().empty())
+    {
+        addVerus = false;
+        retNames.pop_back();
+        nameCopy.pop_back();
+    }
 
     int numRetNames = retNames.size();
 
@@ -1478,7 +1473,6 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
             return std::vector<std::string>();
         }
     }
-
     return retNames;
 }
 
