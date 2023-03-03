@@ -294,7 +294,13 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
 }
 
 std::vector<std::tuple<CIdentity, uint256, uint32_t, CUTXORef, CPartialTransactionProof>>
-CIdentity::LookupIdentities(const CIdentityID &nameID, uint32_t gteHeight, uint32_t lteHeight, bool checkMempool, bool getProofs, uint32_t proofHeight)
+CIdentity::LookupIdentities(const CIdentityID &nameID,
+                            uint32_t gteHeight,
+                            uint32_t lteHeight,
+                            bool checkMempool,
+                            bool getProofs,
+                            uint32_t proofHeight,
+                            const std::vector<uint160> &_indexKeys)
 {
     // if we don't have an endHeight, we also check the mempool
     if (!lteHeight || lteHeight == -1)
@@ -302,25 +308,33 @@ CIdentity::LookupIdentities(const CIdentityID &nameID, uint32_t gteHeight, uint3
         lteHeight = chainActive.Height();
     }
 
+    std::vector<uint160> indexKeys = _indexKeys.size() ?
+                                        _indexKeys :
+                                        std::vector<uint160>({CCrossChainRPCData::GetConditionID(nameID, EVAL_IDENTITY_PRIMARY)});
+
     std::vector<std::tuple<CIdentity, uint256, uint32_t, CUTXORef, CPartialTransactionProof>> retVal;
     std::vector<CAddressIndexDbEntry> identityIndex;
     std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> mempoolIdentities;
 
-    uint160 indexKey(CCrossChainRPCData::GetConditionID(nameID, EVAL_IDENTITY_PRIMARY));
+    std::vector<std::pair<uint160, int32_t>> indexVec;
+    for (auto &oneKey : indexKeys)
+    {
+        GetAddressIndex(oneKey, CScript::P2IDX, identityIndex, gteHeight, lteHeight);
+        indexVec.push_back({oneKey, CScript::P2IDX});
+    }
 
     LOCK(mempool.cs);
 
     if (checkMempool)
     {
-        mempool.getAddressIndex(std::vector<std::pair<uint160, int32_t>>({{indexKey, CScript::P2IDX}}), mempoolIdentities);
+        mempool.getAddressIndex(indexVec, mempoolIdentities);
     }
 
     // order from first that spends unknown to last that has no spender
     std::map<COutPoint, uint256> spentOutputs;
     mempoolIdentities = mempool.FilterAddressDeltas(mempoolIdentities, spentOutputs);
 
-    if (GetAddressIndex(indexKey, CScript::P2IDX, identityIndex, gteHeight, lteHeight) &&
-        (identityIndex.size() || mempoolIdentities.size()))
+    if (identityIndex.size() || mempoolIdentities.size())
     {
         std::vector<int> toRemove;
         std::map<COutPoint, int> outputMap;
@@ -388,6 +402,110 @@ CIdentity::LookupIdentities(const CIdentityID &nameID, uint32_t gteHeight, uint3
         }
     }
     return retVal;
+}
+
+std::multimap<uint160, std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>>
+CIdentity::GetAggregatedIdentityMultimap(const uint160 &idID,
+                                         uint32_t startHeight,
+                                         uint32_t endHeight,
+                                         bool checkMempool,
+                                         bool getProofs,
+                                         uint32_t proofHeight,
+                                         const uint160 &indexKey)
+{
+    std::multimap<uint160, std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>>
+        retMap;
+
+    std::vector<uint160> indexKeys;
+    if (!indexKey.IsNull())
+    {
+        indexKeys.push_back(indexKey);
+        indexKeys.push_back(CVDXF_Data::ContentMultiMapRemoveKey());
+    }
+
+    auto identityHistory = LookupIdentities(idID, startHeight, endHeight, checkMempool, getProofs, proofHeight, indexKeys);
+    for (auto &oneIdentity : identityHistory)
+    {
+        for (auto it = std::get<0>(oneIdentity).contentMultiMap.begin(); it != std::get<0>(oneIdentity).contentMultiMap.end(); it++)
+        {
+            if (it->first == CVDXF_Data::ContentMultiMapRemoveKey() &&
+                it->second.size())
+            {
+                CContentMultiMapRemove removeAction;
+                bool success;
+                ::FromVector(it->second, removeAction, &success);
+                if (!success ||
+                    !removeAction.IsValid())
+                {
+                    continue;
+                }
+                if (removeAction.action == removeAction.ACTION_CLEAR_MAP)
+                {
+                    retMap.clear();
+                }
+                else if (removeAction.action == removeAction.ACTION_REMOVE_ALL_KEY)
+                {
+                    retMap.erase(removeAction.entryKey);
+                }
+                else if (removeAction.action == removeAction.ACTION_REMOVE_ALL_KEYVALUE || removeAction.action == removeAction.ACTION_REMOVE_ONE_KEYVALUE)
+                {
+                    // all other actions require referencing specific keyed elements
+                    auto removeItemRange = retMap.equal_range(removeAction.entryKey);
+                    std::vector<std::multimap<uint160,
+                                    std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>>::iterator>
+                        itemsToRemove;
+                    for (auto removeItemCursor = removeItemRange.first; removeItemCursor != removeItemRange.second; removeItemCursor++)
+                    {
+                        CNativeHashWriter hw;
+                        hw.write((char *)&(std::get<0>(removeItemCursor->second)[0]), std::get<0>(removeItemCursor->second).size());
+                        if (hw.GetHash() == removeAction.valueHash)
+                        {
+                            itemsToRemove.push_back(removeItemCursor);
+                            if (removeAction.action == removeAction.ACTION_REMOVE_ONE_KEYVALUE)
+                            {
+                                break;
+                            }
+                        }
+                    }
+                    for (auto &oneCursor : itemsToRemove)
+                    {
+                        retMap.erase(oneCursor);
+                    }
+                }
+            }
+            else
+            {
+                retMap.insert(std::make_pair(it->first, std::make_tuple(it->second, std::get<1>(oneIdentity), std::get<2>(oneIdentity), std::get<3>(oneIdentity), std::get<4>(oneIdentity))));
+            }
+        }
+    }
+    return retMap;
+}
+
+std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>>
+CIdentity::GetIdentityContentByKey(const uint160 &idID,
+                                   const uint160 &vdxfKey,
+                                   uint32_t startHeight,
+                                   uint32_t endHeight,
+                                   bool checkMempool,
+                                   bool getProofs,
+                                   uint32_t proofHeight)
+{
+    uint160 lookupKey = CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(vdxfKey, idID));
+    auto aggregatedMap = GetAggregatedIdentityMultimap(idID, startHeight, endHeight, checkMempool, getProofs, proofHeight, lookupKey);
+
+    std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>> retVec;
+    auto keyRange = aggregatedMap.equal_range(vdxfKey);
+    std::multimap<uint32_t, std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof> &> sortMap;
+    for (auto keyIt = keyRange.first; keyIt != keyRange.second; keyIt++)
+    {
+        sortMap.insert({std::get<2>(keyIt->second), keyIt->second});
+    }
+    for (auto &oneEntry : sortMap)
+    {
+        retVec.push_back(oneEntry.second);
+    }
+    return retVec;
 }
 
 CIdentity CIdentity::LookupIdentity(const std::string &name, uint32_t height, uint32_t *pHeightOut, CTxIn *idTxIn)

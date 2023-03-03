@@ -764,7 +764,24 @@ public:
                          uint32_t lteHeight=0,
                          bool checkMempool=false,
                          bool getProofs=false,
-                         uint32_t proofHeight=0);
+                         uint32_t proofHeight=0,
+                         const std::vector<uint160> &indexKeys=std::vector<uint160>());
+    static std::multimap<uint160, std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>>
+        GetAggregatedIdentityMultimap(const uint160 &idID,
+                                      uint32_t startHeight=0,
+                                      uint32_t endHeight=0,
+                                      bool checkMempool=false,
+                                      bool getProofs=false,
+                                      uint32_t proofHeight=0,
+                                      const uint160 &indexKey=uint160());
+    static std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>>
+        GetIdentityContentByKey(const uint160 &idID,
+                                const uint160 &vdxfKey,
+                                uint32_t startHeight=0,
+                                uint32_t endHeight=0,
+                                bool checkMempool=false,
+                                bool getProofs=false,
+                                uint32_t proofHeight=0);
     static CIdentity LookupIdentity(const CIdentityID &nameID, uint32_t height=0, uint32_t *pHeightOut=nullptr, CTxIn *pTxIn=nullptr, bool checkMempool=false);
     static CIdentity LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHeightOut=nullptr, CTxIn *idTxIn=nullptr, CTransaction *pidTx=nullptr);
 

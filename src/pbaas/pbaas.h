@@ -47,29 +47,34 @@ static const int64_t PBAAS_MINNOTARIZATIONOUTPUT = 10000;   // enough for one fe
 static const int32_t PBAAS_MINSTARTBLOCKDELTA = 50;         // minimum number of blocks to wait for starting a chain after definition
 static const int32_t PBAAS_MAXPRIORBLOCKS = 16;             // maximum prior block commitments to include in prior blocks chain object
 
-// This data structure is used on an output that provides proof of stake validation for other crypto conditions
-// with rate limited spends based on a PoS contest
-class CPoSSelector
+class CUpgradeDescriptor
 {
 public:
-    uint32_t nBits;                         // PoS difficulty target
-    uint32_t nTargetSpacing;                // number of 1/1000ths of a block between selections (e.g. 1 == 1000 selections per block)
+    enum EVersions {
+        VERSION_INVALID = 0,
+        VERSION_FIRST = 1,
+        VERSION_LAST = 1,
+        VERSION_CURRENT = 1,
+    };
 
-    CPoSSelector(uint32_t bits, uint32_t TargetSpacing)
-    {
-        nBits = bits;
-        nTargetSpacing = TargetSpacing;
-    }
+    uint32_t version;                       // version
+    uint160 upgradeID;                      // upgrade identifier
+    uint32_t upgradeBlockHeight;            // number of 1/1000ths of a block between selections (e.g. 1 == 1000 selections per block)
+
+    CUpgradeDescriptor(uint32_t Version=VERSION_INVALID) : version(Version), upgradeBlockHeight(0) {}
+    CUpgradeDescriptor(const uint160 &UpgradeID, uint32_t UpgradeHeight, uint32_t Version=VERSION_CURRENT) :
+        version(Version), upgradeID(UpgradeID), upgradeBlockHeight(UpgradeHeight) {}
 
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(nBits);
-        READWRITE(nTargetSpacing);
+        READWRITE(VARINT(version));
+        READWRITE(upgradeID);
+        READWRITE(VARINT(upgradeBlockHeight));
     }
 
-    CPoSSelector(const std::vector<unsigned char> &asVector)
+    CUpgradeDescriptor(const std::vector<unsigned char> &asVector)
     {
         FromVector(asVector, *this);
     }
@@ -81,7 +86,7 @@ public:
 
     bool IsValid() const
     {
-        return nBits != 0;
+        return version >= VERSION_FIRST && version <= VERSION_LAST && !upgradeID.IsNull() && upgradeBlockHeight;
     }
 };
 
@@ -913,7 +918,8 @@ public:
     std::map<uint160, CPBaaSMergeMinedChainData> mergeMinedChains;
     std::multimap<arith_uint256, CPBaaSMergeMinedChainData *> mergeMinedTargets;
 
-    std::set<uint160> activeUpgradeKeys;
+    std::map<uint32_t, uint160> activeUpgradesByHeight;
+    std::map<uint160, CUpgradeDescriptor> activeUpgradesByKey;
 
     LRUCache<uint160, CCurrencyDefinition> currencyDefCache;        // protected by cs_main, so doesn't need sync
     LRUCache<std::tuple<uint160, uint256, bool>, CCoinbaseCurrencyState> currencyStateCache; // cached currency states @ heights + updated flag
@@ -1152,7 +1158,7 @@ public:
     bool IsVerusPBaaSAvailable();
     bool IsNotaryAvailable(bool callToCheck=false);
     bool ConfigureEthBridge(bool callToCheck=false);
-    bool CheckNotifications();
+    bool CheckOracleUpgrades();
 
     std::vector<CCurrencyDefinition> GetMergeMinedChains()
     {
@@ -1171,7 +1177,6 @@ public:
 
     bool GetNotaryIDs(const CRPCChainData notaryChain, const std::set<uint160> &idIDs, std::map<uint160,CIdentity> &identities);
 
-    // enables location of rejected finalizations
     static std::string UpgradeDataKeyName()
     {
         return "vrsc::system.upgradedata";

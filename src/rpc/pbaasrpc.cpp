@@ -14308,6 +14308,154 @@ UniValue getidentityhistory(const UniValue& params, bool fHelp)
     }
 }
 
+UniValue getidentitycontent(const UniValue& params, bool fHelp)
+{
+    if (fHelp || params.size() < 1 || params.size() > 6)
+    {
+        throw runtime_error(
+            "getidentitycontent \"name@ || iid\" (heightstart) (heightend) (txproofs) (txproofheight) (vdxfkey)\n"
+            "\n\n"
+
+            "\nArguments\n"
+            "    \"name@ || iid\"                       (string, required) name followed by \"@\" or i-address of an identity\n"
+            "    \"heightstart\"                        (number, optional) default=0, only return content from this height forward, inclusive\n"
+            "    \"heightend\"                          (number, optional) default=0 which means max height, only return content up to this height,\n"
+            "                                                               inclusive. -1 means also return values from the mempool.\n"
+            "    \"txproofs\"                           (bool, optional) default=false, if true, returns proof of ID\n"
+            "    \"txproofheight\"                      (number, optional) default=\"height\", height from which to generate a proof\n"
+            "    \"vdxfkey\"                            (vdxf key, optional) default=null, more selective search for specific content in ID\n"
+
+            "\nResult:\n"
+
+            "\nExamples:\n"
+            + HelpExampleCli("getidentitycontent", "\"name@\"")
+            + HelpExampleRpc("getidentitycontent", "\"name@\"")
+        );
+    }
+
+    CheckIdentityAPIsValid();
+
+    CTxDestination idID = DecodeDestination(uni_get_str(params[0]));
+    if (idID.which() != COptCCParams::ADDRTYPE_ID)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Identity parameter must be valid friendly name or identity address: \"" + uni_get_str(params[0]) + "\"");
+    }
+
+    LOCK(cs_main);
+
+    uint32_t gteHeight = 0;
+    uint32_t height = chainActive.Height();
+    uint32_t lteHeight = height;
+    bool useMempool = false;
+    if (params.size() > 1)
+    {
+        uint32_t tmpHeight = uni_get_int64(params[1]);
+        if (tmpHeight > 0)
+        {
+            gteHeight = tmpHeight;
+        }
+    }
+    if (params.size() > 2)
+    {
+        uint32_t tmpHeight = uni_get_int64(params[2]);
+        if (tmpHeight > 0 && lteHeight > tmpHeight)
+        {
+            lteHeight = tmpHeight;
+        }
+        else if (!tmpHeight || tmpHeight == -1)
+        {
+            lteHeight = height + 1;
+            useMempool = tmpHeight == -1;
+        }
+    }
+
+    bool txProof = params.size() > 3 ? uni_get_bool(params[3]) : false;
+    uint32_t txProofHeight = params.size() > 4 ? uni_get_int64(params[4]) : 0;
+    if (txProofHeight < lteHeight)
+    {
+        txProofHeight = lteHeight;
+    }
+
+    uint160 vdxfKey = params.size() > 5 ? GetDestinationID(DecodeDestination(uni_get_str(params[5]))) : uint160();
+
+    CTxIn idTxIn;
+
+    CIdentity identity;
+    bool canSign = false, canSpend = false;
+
+    if (pwalletMain)
+    {
+        LOCK(pwalletMain->cs_wallet);
+        uint256 txID;
+        std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+        if (pwalletMain->GetIdentity(GetDestinationID(idID), keyAndIdentity, lteHeight))
+        {
+            canSign = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SIGN;
+            canSpend = keyAndIdentity.first.flags & keyAndIdentity.first.CAN_SPEND;
+            identity = static_cast<CIdentity>(keyAndIdentity.second);
+        }
+    }
+
+    uint160 identityID = GetDestinationID(idID);
+    identity = CIdentity::LookupIdentity(CIdentityID(identityID), lteHeight, &height, &idTxIn, useMempool);
+
+    if (!identity.IsValid() && identityID == VERUS_CHAINID)
+    {
+        std::vector<CTxDestination> primary({CTxDestination(CKeyID(uint160()))});
+        std::vector<std::pair<uint160, uint256>> contentmap;
+        std::multimap<uint160, std::vector<unsigned char>> contentmultimap;
+
+        identity = CIdentity(CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS ? CIdentity::VERSION_PBAAS : CIdentity::VERSION_VAULT,
+                             CIdentity::FLAG_ACTIVECURRENCY,
+                             primary,
+                             1,
+                             ConnectedChains.ThisChain().parent,
+                             VERUS_CHAINNAME,
+                             contentmap,
+                             contentmultimap,
+                             ConnectedChains.ThisChain().GetID(),
+                             ConnectedChains.ThisChain().GetID(),
+                             std::vector<libzcash::SaplingPaymentAddress>());
+    }
+
+    UniValue ret(UniValue::VOBJ);
+
+    uint160 parent;
+    if (identity.IsValid() && identity.name == CleanName(identity.name, parent))
+    {
+        ret.pushKV("fullyqualifiedname", ConnectedChains.GetFriendlyIdentityName(identity));
+        ret.push_back(Pair("status", identity.IsRevoked() ? "revoked" : "active"));
+        ret.push_back(Pair("canspendfor", canSpend));
+        ret.push_back(Pair("cansignfor", canSign));
+        ret.push_back(Pair("blockheight", (int64_t)height));
+        ret.push_back(Pair("fromheight", (int64_t)gteHeight));
+        ret.push_back(Pair("toheight", (int64_t)lteHeight));
+        ret.push_back(Pair("txid", idTxIn.prevout.hash.GetHex()));
+        ret.push_back(Pair("vout", (int32_t)idTxIn.prevout.n));
+
+        auto contentMap = CIdentity::GetAggregatedIdentityMultimap(identityID,
+                                                                   gteHeight,
+                                                                   lteHeight,
+                                                                   useMempool,
+                                                                   txProof,
+                                                                   txProofHeight,
+                                                                   vdxfKey);
+
+        // put the aggregated content map in the ID before rendering
+        identity.contentMultiMap.clear();
+        for (auto oneMapEntry : contentMap)
+        {
+            identity.contentMultiMap.insert(std::make_pair(oneMapEntry.first, std::get<0>(oneMapEntry.second)));
+        }
+        ret.push_back(Pair("identity", identity.ToUniValue()));
+    }
+    else
+    {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Identity not found");
+    }
+    return ret;
+}
+
 UniValue IdentityPairToUni(const std::pair<CIdentityMapKey, CIdentityMapValue> &identity)
 {
     UniValue oneID(UniValue::VOBJ);
@@ -15544,6 +15692,7 @@ static const CRPCCommand commands[] =
     { "identity",     "recoveridentity",              &recoveridentity,        true  },
     { "identity",     "getidentity",                  &getidentity,            true  },
     { "identity",     "getidentityhistory",           &getidentityhistory,     true  },
+    { "identity",     "getidentitycontent",           &getidentitycontent,     true  },
     { "identity",     "listidentities",               &listidentities,         true  },
     { "identity",     "getidentitieswithaddress",     &getidentitieswithaddress, true  },
     { "identity",     "getidentitieswithrevocation",  &getidentitieswithrevocation, true  },

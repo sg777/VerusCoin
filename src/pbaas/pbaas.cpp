@@ -4150,9 +4150,38 @@ bool CConnectedChains::IsNotaryAvailable(bool callToCheck)
            CheckVerusPBaaSAvailable();
 }
 
-bool CConnectedChains::CheckNotifications()
+bool CConnectedChains::CheckOracleUpgrades()
 {
     // check for a specific
+    if (PBAAS_NOTIFICATION_ORACLE.IsNull())
+    {
+        LogPrintf("%s: No notification oracle defined - cannot check for upgrades");
+        return false;
+    }
+    //std::map<uint32_t, uint160> activeUpgradesByHeight;
+    //std::map<uint160, uint32_t> activeUpgradesByKey;
+
+    uint32_t startHeight = activeUpgradesByHeight.size() ? activeUpgradesByHeight.rbegin()->first : 0;
+    uint32_t delta = std::max((1440 * 60) / ConnectedChains.ThisChain().blockTime, (uint32_t)1440);
+    startHeight = startHeight < delta ? 0 : startHeight - delta;
+
+    auto upgradeData = CIdentity::GetIdentityContentByKey(PBAAS_NOTIFICATION_ORACLE, UpgradeDataKey(ASSETCHAINS_CHAINID), startHeight);
+
+    CUpgradeDescriptor oneUpgrade;
+    if (upgradeData.size())
+    {
+        for (auto &oneUpgrade : upgradeData)
+        {
+            CUpgradeDescriptor upgrade(std::get<0>(oneUpgrade));
+            if (upgrade.IsValid())
+            {
+                LOCK(ConnectedChains.cs_mergemining);
+                activeUpgradesByHeight.insert({upgrade.upgradeBlockHeight, upgrade.upgradeID});
+                activeUpgradesByKey.insert({upgrade.upgradeID, upgrade});
+            }
+        }
+        return true;
+    }
     return false;
 }
 

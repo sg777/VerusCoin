@@ -5691,7 +5691,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                                     // this challenge will be incorporated into
                                     // our notarization
                                     UniValue challengeRequest(UniValue::VOBJ);
-                                    challengeRequest.pushKV("indexkey", i);
+                                    challengeRequest.pushKV("txout", cnd.vtx[unchallengedForks[forkToChallenge][k]].first.ToUniValue());
                                     challengeRequest.pushKV("proofroot", cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].ToUniValue());
                                     challengeRoots.push_back(challengeRequest);
                                 }
@@ -5746,7 +5746,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                                 // this challenge will be incorporated into
                                 // our notarization
                                 UniValue challengeRequest(UniValue::VOBJ);
-                                challengeRequest.pushKV("indexkey", i);
+                                challengeRequest.pushKV("txout", cnd.vtx[unchallengedForks[forkToChallenge][k]].first.ToUniValue());
                                 challengeRequest.pushKV("proofroot", cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].ToUniValue());
                                 challengeRoots.push_back(challengeRequest);
                             }
@@ -8337,7 +8337,10 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             UniValue challengeRoots(UniValue::VARR);
             for (int challengeNum = confirmingIdx + 1; challengeNum < crosschainCND.vtx.size(); challengeNum++)
             {
-                challengeRoots.push_back(crosschainCND.vtx[challengeNum].second.proofRoots[ASSETCHAINS_CHAINID].ToUniValue());
+                UniValue challengeRootObj(UniValue::VOBJ);
+                challengeRootObj.pushKV("txout", crosschainCND.vtx[challengeNum].first.ToUniValue());
+                challengeRootObj.pushKV("proofroot", crosschainCND.vtx[challengeNum].second.proofRoots[ASSETCHAINS_CHAINID].ToUniValue());
+                challengeRoots.push_back(challengeRootObj);
             }
             if (challengeRoots.size())
             {
@@ -8360,7 +8363,6 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             params.push_back(challengeRequests);
             try
             {
-                UniValue submitchallenges(const UniValue& params, bool fHelp);
                 proofRequest = getnotarizationproofs(params, false);
             } catch (exception e)
             {
