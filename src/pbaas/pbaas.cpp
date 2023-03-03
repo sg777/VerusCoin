@@ -4150,6 +4150,12 @@ bool CConnectedChains::IsNotaryAvailable(bool callToCheck)
            CheckVerusPBaaSAvailable();
 }
 
+bool CConnectedChains::CheckNotifications()
+{
+    // check for a specific
+    return false;
+}
+
 bool CConnectedChains::ConfigureEthBridge(bool callToCheck)
 {
     // first time through, we initialize the VETH gateway config file

@@ -913,6 +913,8 @@ public:
     std::map<uint160, CPBaaSMergeMinedChainData> mergeMinedChains;
     std::multimap<arith_uint256, CPBaaSMergeMinedChainData *> mergeMinedTargets;
 
+    std::set<uint160> activeUpgradeKeys;
+
     LRUCache<uint160, CCurrencyDefinition> currencyDefCache;        // protected by cs_main, so doesn't need sync
     LRUCache<std::tuple<uint160, uint256, bool>, CCoinbaseCurrencyState> currencyStateCache; // cached currency states @ heights + updated flag
 
@@ -1150,6 +1152,7 @@ public:
     bool IsVerusPBaaSAvailable();
     bool IsNotaryAvailable(bool callToCheck=false);
     bool ConfigureEthBridge(bool callToCheck=false);
+    bool CheckNotifications();
 
     std::vector<CCurrencyDefinition> GetMergeMinedChains()
     {
@@ -1165,7 +1168,21 @@ public:
     bool GetNotaryCurrencies(const CRPCChainData notaryChain,
                              const std::set<uint160> &currencyIDs,
                              std::map<uint160, std::pair<CCurrencyDefinition,CPBaaSNotarization>> &currencyDefs);
+
     bool GetNotaryIDs(const CRPCChainData notaryChain, const std::set<uint160> &idIDs, std::map<uint160,CIdentity> &identities);
+
+    // enables location of rejected finalizations
+    static std::string UpgradeDataKeyName()
+    {
+        return "vrsc::system.upgradedata";
+    }
+
+    static uint160 UpgradeDataKey(const uint160 &systemID)
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(UpgradeDataKeyName(), nameSpace);
+        return CCrossChainRPCData::GetConditionID(key, systemID);
+    }
 };
 
 template <typename TOBJ>

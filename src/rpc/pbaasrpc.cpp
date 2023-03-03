@@ -4987,7 +4987,7 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
 
                     uint32_t startHeight = priorNotarization.IsValid() && priorNotarization.proofRoots.count(ASSETCHAINS_CHAINID) ?
                                                 priorNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight :
-                                                1;
+                                                priorRoot.IsValid() ? priorRoot.rootHeight : 1;
 
                     uint32_t heightChange = futureRoot.rootHeight - startHeight;
 

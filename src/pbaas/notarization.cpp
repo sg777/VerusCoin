@@ -1693,7 +1693,7 @@ CChainNotarizationData::CChainNotarizationData(UniValue &obj,
                             {
                                 continue;
                             }
-                            (*pEvidence)[j].push_back(oneEvidenceItem);
+                            pEvidence->back().push_back(oneEvidenceItem);
                         }
                     }
                 }
@@ -1724,7 +1724,7 @@ CChainNotarizationData::CChainNotarizationData(UniValue &obj,
                             {
                                 continue;
                             }
-                            (*pCounterEvidence)[j].push_back(oneCounterEvidenceItem);
+                            pCounterEvidence->back().push_back(oneCounterEvidenceItem);
                         }
                     }
                 }
@@ -3668,7 +3668,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                         }
                         else
                         {
-                            validBasicEvidence = (lastLocalNotarization.IsValid() && lastLocalNotarization.IsPreLaunch()) || !challengeProofRoot.IsValid();
+                            validBasicEvidence = !challengeProofRoot.IsValid();
                             proofState = validBasicEvidence ? EXPECT_NOTHING : EXPECT_COMMITMENT_PROOF;
                         }
                     }
@@ -5450,32 +5450,16 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     //    if we don't qualify to notarize.
     //
 
-    UniValue validIndexesUni = find_value(bestProofRootResult, "validindexes");
-    if (LogAcceptCategory("earnednotarizations") &&
-        validIndexesUni.size() != proofRootsUni.size())
+    std::set<int> validCrossChainIndexSet;
+    std::set<int> invalidCrossChainIndexSet;
     {
-        LogPrintf("%s: not all indexes are valid\n", __func__);
-    }
-
-    // now, we have the index for the transaction and notarization we agree with, a list of those we consider invalid,
-    // and the most recent notarization to use when creating the new one
-    //
-    // we need to potentially make transactions for the challenges or add them to notarizations
-    //
-
-    if (!isGatewayFirstContact && (!validIndexesUni.isArray() || !validIndexesUni.size()))
-    {
-        return state.Error("no-valid-proofroots");
-    }
-
-    std::set<int> validIndexSet;
-    std::set<int> invalidIndexSet;
-    for (int i = 0; i < validIndexesUni.size(); i++)
-    {
-        // although we agree with the data, also make sure that it is proven with a future root we agree with,
-        // ensuring that it is not forking off from or trying to front run this chain
-        if (crossChainEvidence.size() > i)
+        // for GetProofRoot
+        LOCK(cs_main);
+        for (int i = 0; i < crossChainEvidence.size(); i++)
         {
+            // though we should agree with the data, also make sure that if it required proof,
+            // it is proven with a future root we agree with, ensuring that it is not forking off from or trying to front run this chain
+            bool isValid = true;
             for (auto &oneEvidenceItem : crossChainEvidence[i])
             {
                 // we'll be looking for evidence that is confirmed, which should have come with the
@@ -5499,17 +5483,23 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                             ((CChainObject<CProofRoot> *)autoProof.chainObjects[1])->object != CProofRoot::GetProofRoot(futureHeight))
                         {
                             // we don't agree with this one because of the proof root, so we will ignore its existence
+                            isValid = false;
                             continue;
                         }
+                        // if we do agree, move on
+                        isValid = true;
+                        break;
                     }
                 }
             }
-        }
-
-        validIndexSet.insert(uni_get_int(validIndexesUni[i], INT32_MAX));
-        if (!(cnd.vtx.size() > *validIndexSet.rbegin() && *validIndexSet.rbegin() >= 0))
-        {
-            return state.Error("invalid-validindex-returned");
+            if (!isValid)
+            {
+                invalidCrossChainIndexSet.insert(i);
+            }
+            else
+            {
+                validCrossChainIndexSet.insert(i);
+            }
         }
     }
 
@@ -5517,16 +5507,41 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     // to determine best chain of any provably invalid forks
     CChainNotarizationData prunedCND = cnd;
 
+    UniValue validIndexesUni = find_value(bestProofRootResult, "validindexes");
+    if (LogAcceptCategory("earnednotarizations") &&
+        validIndexesUni.size() != proofRootsUni.size())
+    {
+        LogPrintf("%s: not all indexes are valid\n", __func__);
+    }
+
+    // now, we have the index for the transaction and notarization we agree with, a list of those we consider invalid,
+    // and the most recent notarization to use when creating the new one
+    //
+    // we need to potentially make transactions for the challenges or add them to notarizations
+    //
+
+    if (!isGatewayFirstContact && (!validIndexesUni.isArray() || !validIndexesUni.size()))
+    {
+        return state.Error("no-valid-proofroots");
+    }
+
     std::set<int> challengedIndexes;
     UniValue challengeRequests(UniValue::VARR);
     UniValue challengeRoots(UniValue::VARR);
     UniValue validityChallenges(UniValue::VARR);
+
+    std::set<int> validIndexSet;
+
     if (externalSystem.chainDefinition.IsPBaaSChain())
     {
         // all challenges we make will require requesting challenge data from the notary chain
         // so we batch them up for one call
         if (validIndexesUni.isArray() && validIndexesUni.size())
         {
+            for (int i = 0; i < validIndexesUni.size(); i++)
+            {
+                validIndexSet.insert(uni_get_int(validIndexesUni[i], -1));
+            }
             std::vector<std::vector<int>> unchallengedForks = cnd.forks;
             for (int i = 1; i < cnd.vtx.size(); i++)
             {
@@ -5567,7 +5582,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                     pCurNotarizationIndex->IsVerusPOSBlock() == pPriorNotarizationIndex->IsVerusPOSBlock())
                 {
                     validIndexSet.erase(unchallengedForks[j][k]);
-                    invalidIndexSet.insert(unchallengedForks[j][k]);    // these are provably invalidated
                 }
 
                 CBlockIndex *pConfirmedNotarizationIndex = mapBlockIndex[txes[0].second];
@@ -5579,7 +5593,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 if (priorBlockPeriod >= blockPeriodNumber)
                 {
                     validIndexSet.erase(unchallengedForks[j][k]);
-                    invalidIndexSet.insert(unchallengedForks[j][k]);    // these are provably invalidated
                 }
 
                 // if valid, use it to eliminate remaining forks and collect remaining challenges
@@ -5939,8 +5952,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                         // just by submitting an alternative, we will be challenging
                         break;
 
-
-
                         if (unchallengedForks[forkToChallenge].size() > k &&
                             unchallengedForks[forkToChallenge][k] == invalidIndex)
                         {
@@ -6121,7 +6132,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         }
         else if (latestProofRoot.IsValid())
         {
-            // if we have challenge roots them to our
+            // if we have challenge roots, add them to our
             // request for proof along with challenges
             UniValue newProofRequest(UniValue::VOBJ);
 
@@ -6322,6 +6333,10 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             CPBaaSNotarization lastPBN;
             for (prevNotarizationIdx = crosschainCND.vtx.size() - 1; prevNotarizationIdx >= 0; prevNotarizationIdx--)
             {
+                if (invalidCrossChainIndexSet.count(prevNotarizationIdx))
+                {
+                    continue;
+                }
                 lastPBN = crosschainCND.vtx[prevNotarizationIdx].second;
                 std::map<uint160, CProofRoot>::iterator pIT = lastPBN.proofRoots.find(ASSETCHAINS_CHAINID);
                 if (pIT != lastPBN.proofRoots.end() &&
@@ -7948,6 +7963,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     // on this chain
     UniValue params(UniValue::VARR);
     params.push_back(EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)));
+    params.push_back(true);
+    params.push_back(true);
 
     UniValue result;
     try
@@ -7972,6 +7989,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         return retVal;
     }
 
+    std::set<int> validCrossChainIndexSet;
+    std::set<int> invalidCrossChainIndexSet;
     {
         LOCK(cs_main);
         // if the returned data is not confirmed, then it is a gateway that has not yet confirmed its first transaction
@@ -8009,6 +8028,55 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 }
             }
         }
+        else
+        {
+            for (int i = 0; i < evidence.size(); i++)
+            {
+                // though we should agree with the data, also make sure that if it required proof,
+                // it is proven with a future root we agree with, ensuring that it is not forking off from or trying to front run this chain
+                bool isValid = true;
+                for (auto &oneEvidenceItem : evidence[i])
+                {
+                    // we'll be looking for evidence that is confirmed, which should have come with the
+                    // notarization. we need to agree with the future root used, or we will issue a tip challenge
+                    // to prevent front running with invalid tips.
+                    if (std::get<1>(oneEvidenceItem).IsValid() &&
+                        std::get<1>(oneEvidenceItem).IsConfirmed())
+                    {
+                        std::set<int> evidenceTypes;
+                        evidenceTypes.insert(CHAINOBJ_PROOF_ROOT);
+                        evidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
+
+                        CCrossChainProof autoProof = std::get<1>(oneEvidenceItem).GetSelectEvidence(evidenceTypes);
+                        if (autoProof.chainObjects.size() >= 3 &&
+                            autoProof.chainObjects[0]->objectType == CHAINOBJ_TRANSACTION_PROOF &&
+                            autoProof.chainObjects[1]->objectType == CHAINOBJ_PROOF_ROOT &&
+                            autoProof.chainObjects[2]->objectType == CHAINOBJ_TRANSACTION_PROOF)
+                        {
+                            uint32_t futureHeight = ((CChainObject<CProofRoot> *)autoProof.chainObjects[1])->object.rootHeight;
+                            if (futureHeight > chainActive.Height() ||
+                                ((CChainObject<CProofRoot> *)autoProof.chainObjects[1])->object != CProofRoot::GetProofRoot(futureHeight))
+                            {
+                                // we don't agree with this one because of the proof root, so we will ignore its existence
+                                isValid = false;
+                                continue;
+                            }
+                            // if we do agree, move on
+                            isValid = true;
+                            break;
+                        }
+                    }
+                }
+                if (!isValid)
+                {
+                    invalidCrossChainIndexSet.insert(i);
+                }
+                else
+                {
+                    validCrossChainIndexSet.insert(i);
+                }
+            }
+        }
     }
 
     // our latest confirmed is what we may submit.
@@ -8042,6 +8110,11 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     int confirmingIdx;
     for (confirmingIdx = crosschainCND.vtx.size() - 1; confirmingIdx >= 0; confirmingIdx--)
     {
+        // if we already know it is on a fork, don't confirm it
+        if (invalidCrossChainIndexSet.count(confirmingIdx))
+        {
+            continue;
+        }
         auto &oneNotarization = crosschainCND.vtx[confirmingIdx];
 
         // all core proof roots that are in a prior, agreed notarization, must be present in the new one,
@@ -9040,7 +9113,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                                 CCrossChainRPCData::GetConditionID(currentNotarization.currencyID, CPBaaSNotarization::NotaryNotarizationKey()),
                                 CScript::P2IDX,
                                 addresses,
-                                mapBlockIndex[hashBlock]->GetHeight(),
+                                priorHeight + 1,
                                 height - 1) &&
                             addresses.size())
                         {
