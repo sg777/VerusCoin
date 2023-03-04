@@ -4601,20 +4601,20 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         for (int i = priorNotarizationIdx + 1; i < cnd.vtx.size(); i++)
         {
             if (proofDescr.challengeOutputs[i - (priorNotarizationIdx + 1)] != cnd.vtx[i].first ||
-                challengeRoots.chainObjects[(i - (priorNotarizationIdx + 1)) << 1]->objectType != CHAINOBJ_PROOF_ROOT)
+                challengeRoots.chainObjects[1 + ((i - (priorNotarizationIdx + 1)) << 1)]->objectType != CHAINOBJ_PROOF_ROOT)
             {
                 LogPrint("notarization", "%s\n", challengeRoots.ToUniValue().write(1,2).c_str());
                 return state.Error(errorPrefix + "invalid challenge response proofs 1");
             }
             if (!strongestRoot.IsValid() ||
                 CChainPower::ExpandCompactPower(
-                    ((CChainObject<CProofRoot> *)challengeRoots.chainObjects[(i - (priorNotarizationIdx + 1)) << 1])->object.compactPower) >
+                    ((CChainObject<CProofRoot> *)challengeRoots.chainObjects[1 + ((i - (priorNotarizationIdx + 1)) << 1)])->object.compactPower) >
                   CChainPower::ExpandCompactPower(strongestRoot.compactPower))
             {
-                strongestRoot = ((CChainObject<CProofRoot> *)challengeRoots.chainObjects[(i - (priorNotarizationIdx + 1)) << 1])->object;
+                strongestRoot = ((CChainObject<CProofRoot> *)challengeRoots.chainObjects[1 + ((i - (priorNotarizationIdx + 1)) << 1)])->object;
             }
             if (CChainPower::ExpandCompactPower(
-                    ((CChainObject<CProofRoot> *)challengeRoots.chainObjects[(i - (priorNotarizationIdx + 1)) << 1])->object.compactPower) >
+                    ((CChainObject<CProofRoot> *)challengeRoots.chainObjects[1 + ((i - (priorNotarizationIdx + 1)) << 1)])->object.compactPower) >
                   CChainPower::ExpandCompactPower(newNotarization.proofRoots[newNotarization.currencyID].compactPower))
             {
                 isChallengeStronger = true;
