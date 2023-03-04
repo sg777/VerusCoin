@@ -4829,12 +4829,6 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                                 {
                                     blockHeight = confirmRoot.rootHeight;
                                 }
-                                else if (CProofRoot::GetProofRoot(oneChallengeRoot.rootHeight) == oneChallengeRoot)
-                                {
-                                    // the only way we can create counter evidence for this proof root which we agree with
-                                    // is if it's a skip challenge for now, ignore matching requests
-                                    continue;
-                                }
                                 CMMRProof blockHeaderProof;
                                 chainActive.GetBlockProof(curMMV, blockHeaderProof, oneChallengeRoot.rootHeight);
                                 challengeRoots.push_back({oneTxOut,
@@ -5008,6 +5002,8 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                     {
                         uint32_t rangeStart = fromHeight;
                         int32_t rangeLen = futureRoot.rootHeight - rangeStart;
+
+                        curMMV.resize(futureRoot.rootHeight + 1);
 
                         std::vector<__uint128_t> blockCommitmentsSmall = GetBlockCommitments(rangeStart, futureRoot.rootHeight, entropyHash);
                         if (!blockCommitmentsSmall.size())

@@ -4583,16 +4583,18 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     CProofRoot strongestRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
     if (numChallenges)
     {
-        if (challengeRoots.chainObjects.size() != (numChallenges << 1 + 1))
+        if (challengeRoots.chainObjects.size() != ((numChallenges << 1) + 1))
         {
-            return state.Error(errorPrefix + "invalid challenge response proofs");
+            LogPrint("notarization", "%s\n", (errorPrefix + "invalid challenge response proofs number: " + std::to_string(challengeRoots.chainObjects.size()) + ", expected: " + std::to_string((numChallenges << 1) + 1)).c_str());
+            LogPrint("notarization", "%s\n", challengeRoots.ToUniValue().write(1,2).c_str());
+            return state.Error(errorPrefix + "invalid challenge response proofs number: " + std::to_string(challengeRoots.chainObjects.size()) + ", expected: " + std::to_string((numChallenges << 1) + 1));
         }
 
         CPrimaryProofDescriptor proofDescr(((CChainObject<CEvidenceData> *)challengeRoots.chainObjects[0])->object.dataVec);
 
         if (!proofDescr.IsValid() ||
             proofDescr.challengeOutputs.size() != (cnd.vtx.size() - (priorNotarizationIdx + 1)) ||
-            challengeRoots.chainObjects.size() < (proofDescr.challengeOutputs.size() << 1 + 1))
+            challengeRoots.chainObjects.size() < ((proofDescr.challengeOutputs.size() << 1) + 1))
         {
             return state.Error(errorPrefix + "invalid challenge response proofs");
         }
@@ -4601,6 +4603,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
             if (proofDescr.challengeOutputs[i - (priorNotarizationIdx + 1)] != cnd.vtx[i].first ||
                 challengeRoots.chainObjects[(i - (priorNotarizationIdx + 1)) << 1]->objectType != CHAINOBJ_PROOF_ROOT)
             {
+                LogPrint("notarization", "%s\n", challengeRoots.ToUniValue().write(1,2).c_str());
                 return state.Error(errorPrefix + "invalid challenge response proofs 1");
             }
             if (!strongestRoot.IsValid() ||
@@ -8229,6 +8232,10 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 // go backwards until we find one to confirm or fail
                 for (int i = crosschainCND.vtx.size() - 1; i > 0; i--)
                 {
+                    if (invalidCrossChainIndexSet.count(i))
+                    {
+                        continue;
+                    }
                     CAddressIndexDbEntry tmpIndexEntry;
                     if (crosschainCND.vtx[i].second.proofRoots.count(ASSETCHAINS_CHAINID) &&
                         crosschainCND.vtx[i].second.FindEarnedNotarization(finalizationObj, &tmpIndexEntry) &&
@@ -8304,7 +8311,6 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             earnedNotarizationIndexEntry.first.txhash = notarizationTxInfo.first.txIn.prevout.hash;
             earnedNotarizationIndexEntry.first.index = notarizationTxInfo.first.txIn.prevout.n;
         }
-
 
         std::vector<std::tuple<uint32_t, COutPoint, CTransaction, CObjectFinalization>>
           finalizationsForSubmission = CObjectFinalization::GetFinalizations(cnd.vtx[cnd.lastConfirmed].first,
