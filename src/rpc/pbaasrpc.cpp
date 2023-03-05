@@ -6468,7 +6468,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "To buy an identity, define the identity by the \"for\" object as you would when registering, with \"name\", \"primaryaddresses\", etc. Do not use an \"identity\" tag");
         }
 
-        auto rawCurrencyStr = uni_get_str(find_value(params[0], "currency"));
+        auto rawCurrencyStr = uni_get_str(find_value(forValue, "currency"));
         auto currencyStr = TrimSpaces(rawCurrencyStr, true);
         if (rawCurrencyStr != currencyStr)
         {
@@ -6551,7 +6551,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
         // first, construct the "offer" input, which will either be funds or an ID from this wallet
         if (find_value(offerValue, "identity").isNull())
         {
-            auto rawCurrencyStr = uni_get_str(find_value(params[0], "currency"));
+            auto rawCurrencyStr = uni_get_str(find_value(offerValue, "currency"));
             auto currencyStr = TrimSpaces(rawCurrencyStr, true);
             if (rawCurrencyStr != currencyStr)
             {
@@ -6873,7 +6873,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
         // then, sign the transaction, put it in an opreturn, and make the transaction that contains it
         if (find_value(forValue, "name").isNull())
         {
-            auto rawCurrencyStr = uni_get_str(find_value(params[0], "currency"));
+            auto rawCurrencyStr = uni_get_str(find_value(forValue, "currency"));
             auto currencyStr = TrimSpaces(rawCurrencyStr, true);
             if (rawCurrencyStr != currencyStr)
             {
@@ -7552,7 +7552,7 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
         else if (deliver.isObject())
         {
             // determine the currency we are offering to deliver
-            auto rawCurrencyStr = uni_get_str(find_value(params[0], "currency"));
+            auto rawCurrencyStr = uni_get_str(find_value(deliver, "currency"));
             auto currencyStr = TrimSpaces(rawCurrencyStr, true);
             if (rawCurrencyStr != currencyStr)
             {
@@ -8958,6 +8958,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
     static std::set<std::string> paramSet({"currency", "amount", "convertto", "exportto", "feecurrency", "via", "address", "exportid", "exportcurrency", "refundto", "memo", "preconvert",  "burn", "burnweight", "mintnew", "opret"});
 
+    printf("%s: params[1]: %s\n", __func__, params[1].write(1,2).c_str());
+
     try
     {
         for (int i = 0; i < uniOutputs.size(); i++)
@@ -8983,15 +8985,15 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             bool burnWeight = uni_get_bool(find_value(uniOutputs[i], "burnweight"));
             bool mintNew = uni_get_bool(find_value(uniOutputs[i], "mintnew"));
 
-            auto rawCurrencyStr = uni_get_str(find_value(params[0], "currency"));
+            auto rawCurrencyStr = uni_get_str(find_value(uniOutputs[i], "currency"));
             auto currencyStr = TrimSpaces(rawCurrencyStr, true);
-            auto rawConvertToStr = uni_get_str(find_value(params[0], "convertto"));
+            auto rawConvertToStr = uni_get_str(find_value(uniOutputs[i], "convertto"));
             auto convertToStr = TrimSpaces(rawConvertToStr, true);
-            auto rawExportToStr = uni_get_str(find_value(params[0], "exportto"));
+            auto rawExportToStr = uni_get_str(find_value(uniOutputs[i], "exportto"));
             auto exportToStr = TrimSpaces(rawExportToStr, true);
-            auto rawFeeCurrencyStr = uni_get_str(find_value(params[0], "feecurrency"));
+            auto rawFeeCurrencyStr = uni_get_str(find_value(uniOutputs[i], "feecurrency"));
             auto feeCurrencyStr = TrimSpaces(rawFeeCurrencyStr, true);
-            auto rawViaStr = uni_get_str(find_value(params[0], "via"));
+            auto rawViaStr = uni_get_str(find_value(uniOutputs[i], "via"));
             auto viaStr = TrimSpaces(rawViaStr, true);
 
             if (rawCurrencyStr != currencyStr ||
