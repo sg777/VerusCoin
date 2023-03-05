@@ -4764,12 +4764,14 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                     }
 
                     uint32_t blocksBetween = futureRoot.rootHeight - confirmRoot.rootHeight;
+                    int enforceFutureRootDistance = ((confirmNotarization.IsValid() || ConnectedChains.notarySystems.size()) ?
+                                                        CPBaaSNotarization::BLOCKS_TO_STABLE_PBAAS_ROOT :
+                                                        CPBaaSNotarization::BLOCKS_ENFORCED_TO_STABLE_NOTARY_ROOT);
                     if (futureRoot.rootHeight > nHeight ||
-                        (!lastConfirmedRoot.IsValid() &&
-                         blocksBetween < CPBaaSNotarization::BLOCKS_ENFORCED_TO_STABLE_NOTARY_ROOT))
+                        (!lastConfirmedRoot.IsValid() && blocksBetween < enforceFutureRootDistance))
                     {
                         oneRetObj.pushKV("error", "Too early for stable proof, have blocks to tip " + std::to_string(blocksBetween) +
-                                                  ", need " + std::to_string(CPBaaSNotarization::BLOCKS_ENFORCED_TO_STABLE_NOTARY_ROOT));
+                                                  ", need " + std::to_string(enforceFutureRootDistance));
                         break;
                     }
 
