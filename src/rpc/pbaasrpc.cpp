@@ -5022,8 +5022,6 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                         {
                             for (int currentOffset = 0; currentOffset < checkSmallCommitments.size(); currentOffset++)
                             {
-                                std::vector<uint32_t> UnpackBlockCommitment(__uint128_t oneBlockCommitment);
-
                                 LogPrintf("%s: reading small commitments\n", __func__);
                                 auto commitmentVec = UnpackBlockCommitment(checkSmallCommitments[currentOffset]);
                                 arith_uint256 powTarget, posTarget;

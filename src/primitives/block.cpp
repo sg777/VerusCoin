@@ -864,6 +864,24 @@ CHashCommitments::CHashCommitments(const std::vector<__uint128_t> &smallCommitme
     }
 }
 
+// returns a vector of unsigned 32 bit values as:
+// 0 - nTime
+// 1 - nBits
+// 2 - nPoSBits
+// 3 - (block height << 1) + IsPos bit
+std::vector<uint32_t> UnpackBlockCommitment(__uint128_t oneBlockCommitment)
+{
+    std::vector<uint32_t> retVal;
+    retVal.push_back(oneBlockCommitment & UINT32_MAX);
+    oneBlockCommitment >>= 32;
+    retVal.insert(retVal.begin(), oneBlockCommitment & UINT32_MAX);
+    oneBlockCommitment >>= 32;
+    retVal.insert(retVal.begin(), oneBlockCommitment & UINT32_MAX);
+    oneBlockCommitment >>= 32;
+    retVal.insert(retVal.begin(), oneBlockCommitment & UINT32_MAX);
+    return retVal;
+}
+
 uint256 CHashCommitments::GetSmallCommitments(std::vector<__uint128_t> &smallCommitments) const
 {
     // if have something, process it
@@ -894,8 +912,6 @@ uint256 CHashCommitments::GetSmallCommitments(std::vector<__uint128_t> &smallCom
             LogPrintf("%s: RETURNING COMMITMENTS:\n", __func__);
             for (int currentOffset = 0; currentOffset < smallCommitments.size(); currentOffset++)
             {
-                std::vector<uint32_t> UnpackBlockCommitment(__uint128_t oneBlockCommitment);
-
                 auto commitmentVec = UnpackBlockCommitment(smallCommitments[currentOffset]);
                 arith_uint256 powTarget, posTarget;
                 powTarget.SetCompact(commitmentVec[1]);

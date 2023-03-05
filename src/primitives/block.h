@@ -813,6 +813,8 @@ enum CHAIN_OBJECT_TYPES
     CHAINOBJ_EVIDENCEDATA = 10      // flexible evidence data
 };
 
+std::vector<uint32_t> UnpackBlockCommitment(__uint128_t oneBlockCommitment);
+
 // the proof of an opret output, which is simply the types of objects and hashes of each
 class COpRetProof
 {

@@ -2332,24 +2332,6 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
     return true;
 }
 
-// returns a vector of unsigned 32 bit values as:
-// 0 - nTime
-// 1 - nBits
-// 2 - nPoSBits
-// 3 - (block height << 1) + IsPos bit
-std::vector<uint32_t> UnpackBlockCommitment(__uint128_t oneBlockCommitment)
-{
-    std::vector<uint32_t> retVal;
-    retVal.push_back(oneBlockCommitment & UINT32_MAX);
-    oneBlockCommitment >>= 32;
-    retVal.insert(retVal.begin(), oneBlockCommitment & UINT32_MAX);
-    oneBlockCommitment >>= 32;
-    retVal.insert(retVal.begin(), oneBlockCommitment & UINT32_MAX);
-    oneBlockCommitment >>= 32;
-    retVal.insert(retVal.begin(), oneBlockCommitment & UINT32_MAX);
-    return retVal;
-}
-
 // Whether this is an earned notarization or accepted, it retrieves the prior notarization on the chain
 // for accepted notarizations, there must be valid proof of the prior notarization for it to correctly return the prior
 // notarization
@@ -3855,8 +3837,6 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                         auto checkTypes = ((CChainObject<CHashCommitments> *)proofComponent)->object.GetSmallCommitments(checkSmallCommitments);
                         for (int currentOffset = 0; currentOffset < checkSmallCommitments.size(); currentOffset++)
                         {
-                            std::vector<uint32_t> UnpackBlockCommitment(__uint128_t oneBlockCommitment);
-
                             auto commitmentVec = UnpackBlockCommitment(checkSmallCommitments[currentOffset]);
                             arith_uint256 powTarget, posTarget;
                             powTarget.SetCompact(commitmentVec[1]);
