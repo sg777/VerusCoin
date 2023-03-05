@@ -3247,9 +3247,6 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
     bool validChallengeEvidence = false;
     bool validBasicEvidence = false;
 
-    CProofRoot &defaultProofRoot = provenNotarization.proofRoots[provenNotarization.currencyID];
-    CProofRoot &currentChainRoot = provenNotarization.proofRoots[ASSETCHAINS_CHAINID];
-
     uint256 headerSelectionHash;
 
     CBlockHeaderAndProof posBlockHeaderAndProof;
@@ -3532,8 +3529,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                 if (proofComponent->objectType == CHAINOBJ_PROOF_ROOT)
                 {
                     futureProofRoot = ((CChainObject<CProofRoot> *)proofComponent)->object;
-                    if (futureProofRoot.systemID == expectedNotarization.currencyID &&
-                        futureProofRoot.rootHeight > defaultProofRoot.rootHeight)
+                    if (futureProofRoot.systemID == expectedNotarization.currencyID)
                     {
                         proofState = EXPECT_THISNOTARIZATION_PROOF;
                     }
@@ -3914,7 +3910,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                         blockHeader.IsVerusPOSBlock() == (oneBlockCommitment[3] & 1) &&
                         ((oneBlockCommitment[3] & 1) ? blockHeader.GetVerusPOSTarget() == oneBlockCommitment[2] : blockHeader.nBits == oneBlockCommitment[1]) &&
                         ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object.ValidateBlockHash(blockHeader.GetHash(), blockToProve) ==
-                            defaultProofRoot.stateRoot)
+                            futureProofRoot.stateRoot)
                     {
                         if (blockHeader.IsVerusPOSBlock())
                         {
@@ -4130,7 +4126,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
 
     // some incorrect evidence is on testnet, so let it pass if we are on VRSCTEST and before the
     // test fork time
-    CPBaaSNotarization retVal((!validBasicEvidence || (challengeProofRoot.IsValid() && !validChallengeEvidence)) ?
+    CPBaaSNotarization retVal(((!validBasicEvidence && !validChallengeEvidence) || (challengeProofRoot.IsValid() && !validChallengeEvidence)) ?
                                CPBaaSNotarization() :
                                expectedNotarization);
     if (IsVerusActive() && !IsVerusMainnetActive() && !retVal.IsValid())

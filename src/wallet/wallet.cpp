@@ -4357,7 +4357,7 @@ int CWallet::ScanForWalletTransactions(CBlockIndex* pindexStart, bool fUpdate)
 
     {
         //Lock cs_keystore to prevent wallet from locking during rescan
-        LOCK(cs_KeyStore);
+        LOCK2(mempool.cs, cs_KeyStore);
 
         // no need to read and scan block, if block was created before
         // our wallet birthday (as adjusted for block time variability)

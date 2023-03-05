@@ -2305,12 +2305,12 @@ void myRemovefrommempool(const CTransaction &tx)
     mempool.remove(tx, removed, true);
 }
 
-bool myGetTransaction(const uint256 &hash, CTransaction &txOut, uint256 &hashBlock)
+bool myGetTransaction(const uint256 &hash, CTransaction &txOut, uint256 &hashBlock, bool checkMempool)
 {
     // need a GetTransaction without lock so the validation code for assets can run without deadlock
     {
         //fprintf(stderr,"check mempool\n");
-        if (mempool.lookup(hash, txOut))
+        if (checkMempool && mempool.lookup(hash, txOut))
         {
             //fprintf(stderr,"found in mempool\n");
             return true;
