@@ -4811,8 +4811,6 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                     auto curMMV = chainActive.GetMMV();
                     curMMV.resize(confirmRoot.rootHeight + 1);
 
-                    bool proveFullEvidence = (challengeRootsUni.isArray() && challengeRootsUni.size());
-
                     if (challengeRootsUni.isArray() && challengeRootsUni.size())
                     {
                         bool doBreak = false;
@@ -5013,11 +5011,44 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                         }
                         evidence.evidence << CHashCommitments(blockCommitmentsSmall);
 
+                        std::vector<__uint128_t> checkSmallCommitments;
+                        auto checkTypes = ((CChainObject<CHashCommitments> *)evidence.evidence.chainObjects.back())->object.GetSmallCommitments(checkSmallCommitments);
+                        if (checkSmallCommitments != blockCommitmentsSmall)
+                        {
+                            LogPrintf("%s: ERROR - commitments evidence mismatch\n", __func__);
+                        }
+
+                        if (LogAcceptCategory("notarization"))
+                        {
+                            for (int currentOffset = 0; currentOffset < checkSmallCommitments.size(); currentOffset++)
+                            {
+                                std::vector<uint32_t> UnpackBlockCommitment(__uint128_t oneBlockCommitment);
+
+                                LogPrintf("%s: reading small commitments\n", __func__);
+                                auto commitmentVec = UnpackBlockCommitment(checkSmallCommitments[currentOffset]);
+                                arith_uint256 powTarget, posTarget;
+                                powTarget.SetCompact(commitmentVec[1]);
+                                posTarget.SetCompact(commitmentVec[2]);
+                                LogPrintf("nHeight: %u, nTime: %u, PoW target: %s, PoS target: %s, isPoS: %u\n",
+                                            commitmentVec[3] >> 1,
+                                            commitmentVec[0],
+                                            powTarget.GetHex().c_str(),
+                                            posTarget.GetHex().c_str(),
+                                            commitmentVec[3] & 1);
+                            }
+                        }
+
                         int loopNum = std::min(std::max(rangeLen / CPBaaSNotarization::NUM_HEADER_PROOF_RANGE_DIVISOR,
                                                     (int)CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS),
                                                 (int)CPBaaSNotarization::MAX_HEADER_PROOFS_PER_PROOF);
 
                         uint256 headerSelectionHash = entropyHash;
+                        if (LogAcceptCategory("notarization"))
+                        {
+                            LogPrintf("%s: creating evidence with entropyHash: %s\n", __func__, entropyHash.GetHex().c_str());
+                        }
+
+
                         int headerLoop;
                         for (headerLoop = 0; headerLoop < loopNum; headerLoop++)
                         {

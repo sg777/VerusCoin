@@ -3842,10 +3842,33 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                         std::get<3>(priorReferencedNotarization).proofRoots[expectedNotarization.currencyID].rootHeight :
                         1;
 
-                    int endHeight = lastNotarization.proofRoots[expectedNotarization.currencyID].rootHeight;
+                    int endHeight = futureProofRoot.rootHeight;
                     rangeLen = endHeight - startingHeight;
 
                     commitmentRanges = CPBaaSNotarization::GetBlockCommitmentRanges(startingHeight, endHeight, entropyHash);
+
+                    if (LogAcceptCategory("notarization"))
+                    {
+                        LogPrintf("%s: CHECKING COMMITMENTS with entropyHash: %s\n", __func__, entropyHash.GetHex().c_str());
+
+                        std::vector<__uint128_t> checkSmallCommitments;
+                        auto checkTypes = ((CChainObject<CHashCommitments> *)proofComponent)->object.GetSmallCommitments(checkSmallCommitments);
+                        for (int currentOffset = 0; currentOffset < checkSmallCommitments.size(); currentOffset++)
+                        {
+                            std::vector<uint32_t> UnpackBlockCommitment(__uint128_t oneBlockCommitment);
+
+                            auto commitmentVec = UnpackBlockCommitment(checkSmallCommitments[currentOffset]);
+                            arith_uint256 powTarget, posTarget;
+                            powTarget.SetCompact(commitmentVec[1]);
+                            posTarget.SetCompact(commitmentVec[2]);
+                            LogPrintf("nHeight: %u, nTime: %u, PoW target: %s, PoS target: %s, isPoS: %u\n",
+                                        commitmentVec[3] >> 1,
+                                        commitmentVec[0],
+                                        powTarget.GetHex().c_str(),
+                                        posTarget.GetHex().c_str(),
+                                        commitmentVec[3] & 1);
+                        }
+                    }
 
                     int checkIndex = 0;
                     bool mismatchIndex = false;
@@ -5123,20 +5146,26 @@ std::vector<CNodeData> GetGoodNodes(int maxNum)
 }
 
 std::vector<std::pair<uint32_t, uint32_t>>
-CPBaaSNotarization::GetBlockCommitmentRanges(uint32_t lastNotarizationHeight, uint32_t currentNotarizationHeight, uint256 entropy)
+CPBaaSNotarization::GetBlockCommitmentRanges(uint32_t fromHeight, uint32_t toHeight, uint256 entropy)
 {
-    std::vector<std::pair<uint32_t, uint32_t>> retVal = std::vector<std::pair<uint32_t, uint32_t>>({{std::make_pair(lastNotarizationHeight, currentNotarizationHeight)}});
+    if (toHeight < MAX_BLOCKS_PER_COMMITMENT_RANGE + 1)
+    {
+        return std::vector<std::pair<uint32_t, uint32_t>>({{std::make_pair(std::max(fromHeight, (uint32_t)1), toHeight)}});
+    }
 
-    int priorHeight = std::max((int)lastNotarizationHeight - NUM_COMMITMENT_BLOCKS_START_OFFSET, 1);
+    std::vector<std::pair<uint32_t, uint32_t>> retVal;
+
+    int priorHeight = std::max((int)fromHeight - NUM_COMMITMENT_BLOCKS_START_OFFSET, 1);
+    int startingHeight = std::max((int)fromHeight, 1);
 
     // if our range is larger than 256, break it into up to 5, 256 block ranges and
     // spread them randomly over the target proof space
-    if ((currentNotarizationHeight - priorHeight) > MAX_BLOCKS_PER_COMMITMENT_RANGE)
+    if ((toHeight - priorHeight) > MAX_BLOCKS_PER_COMMITMENT_RANGE)
     {
-        int totalRange = currentNotarizationHeight - priorHeight;
+        int totalRange = toHeight - priorHeight;
         int rangeLeft = totalRange;
         int numBlockRanges = std::max(std::min((int)((rangeLeft >> 1) / MAX_BLOCKS_PER_COMMITMENT_RANGE), (int)MAX_BLOCK_RANGES_PER_PROOF), 1);
-        int blocksPerSection = (currentNotarizationHeight - priorHeight) / numBlockRanges;
+        int blocksPerSection = (toHeight - priorHeight) / numBlockRanges;
 
         CNativeHashWriter hw;
         hw << RangeSelectEntropyKey();
@@ -5153,32 +5182,35 @@ CPBaaSNotarization::GetBlockCommitmentRanges(uint32_t lastNotarizationHeight, ui
                 blocksThisSection += rangeLeft;
                 rangeLeft = 0;
             }
-            // we need room for the range we will prove
-            blocksThisSection -= std::min(totalRange, (int)MAX_BLOCKS_PER_COMMITMENT_RANGE);
-
-            uint32_t rangeStart = (UintToArith256(entropy).GetLow64() % blocksThisSection);
-            retVal.push_back(std::make_pair(rangeStart, rangeStart + MAX_BLOCKS_PER_COMMITMENT_RANGE));
+            // we need room for the range we will prove, hence the subtraction of at least the blocks needed after
+            // the chosen start block
+            uint32_t rangeStart = startingHeight + (UintToArith256(entropy).GetLow64() %
+                    (blocksThisSection - std::min(blocksThisSection, (int)MAX_BLOCKS_PER_COMMITMENT_RANGE)));
+            startingHeight += blocksThisSection;
+            // last is inclusive in proof, so subtract 1 to get a total of MAX_BLOCKS_PER_COMMITMENT_RANGE
+            retVal.push_back(std::make_pair(rangeStart, rangeStart + (MAX_BLOCKS_PER_COMMITMENT_RANGE - 1)));
         }
     }
     return retVal;
 }
 
-std::vector<__uint128_t> GetBlockCommitments(uint32_t lastNotarizationHeight, uint32_t currentNotarizationHeight, const uint256 &entropy)
+std::vector<__uint128_t> GetBlockCommitments(uint32_t fromHeight, uint32_t toHeight, const uint256 &entropy)
 {
     std::vector<__uint128_t> blockCommitmentsSmall;
-    if (chainActive.Height() >= currentNotarizationHeight)
+    if (chainActive.Height() >= toHeight)
     {
-        auto blockRanges = CPBaaSNotarization::GetBlockCommitmentRanges(lastNotarizationHeight, currentNotarizationHeight, entropy);
+        auto blockRanges = CPBaaSNotarization::GetBlockCommitmentRanges(fromHeight, toHeight, entropy);
+
         // commit to prior blocks nTime, nBits, stakeBits, & work or stake power component for up to 256 blocks prior or back,
         // to the last notarization, whichever comes first, enabling later random verification of subset
-        auto rangeOffset = blockCommitmentsSmall.size();
         for (auto &oneRange : blockRanges)
         {
-            int currentOffset = oneRange.second - oneRange.first;
-            blockCommitmentsSmall.resize(blockCommitmentsSmall.size() + currentOffset--);
+            int currentOffset = blockCommitmentsSmall.size() + (oneRange.second - oneRange.first);
+            blockCommitmentsSmall.resize(currentOffset + 1);
 
-            uint32_t blockNum = oneRange.second - 1;
-            for (; blockNum >= oneRange.first; blockNum--, currentOffset--)
+            // needed for some compilers
+            int64_t loopLimit = oneRange.first;
+            for (int64_t blockNum = oneRange.second; blockNum >= loopLimit; (blockNum--, currentOffset--))
             {
                 bool isPosBlock = chainActive[blockNum]->IsVerusPOSBlock();
                 __uint128_t bigCommitmentNum((uint32_t)chainActive[blockNum]->nTime);
@@ -5186,6 +5218,21 @@ std::vector<__uint128_t> GetBlockCommitments(uint32_t lastNotarizationHeight, ui
                 bigCommitmentNum = (bigCommitmentNum << 32) | (uint32_t)chainActive[blockNum]->GetVerusPOSTarget();
                 bigCommitmentNum = (bigCommitmentNum << 32) | ((uint32_t)(blockNum << 1) | (uint32_t)isPosBlock);
                 blockCommitmentsSmall[currentOffset] = bigCommitmentNum;
+
+                if (LogAcceptCategory("notarization"))
+                {
+                    LogPrintf("%s: reading small commitments\n", __func__);
+                    auto commitmentVec = UnpackBlockCommitment(blockCommitmentsSmall[currentOffset]);
+                    arith_uint256 powTarget, posTarget;
+                    powTarget.SetCompact(commitmentVec[1]);
+                    posTarget.SetCompact(commitmentVec[2]);
+                    LogPrintf("nHeight: %u, nTime: %u, PoW target: %s, PoS target: %s, isPoS: %u\n",
+                                commitmentVec[3] >> 1,
+                                commitmentVec[0],
+                                powTarget.GetHex().c_str(),
+                                posTarget.GetHex().c_str(),
+                                commitmentVec[3] & 1);
+                }
             }
         }
     }
@@ -8363,6 +8410,11 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             proofRequest.pushKV("toheight", (int64_t)cnd.vtx[cnd.lastConfirmed].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight);
             UniValue challengeRequests(UniValue::VARR);
             challengeRequests.push_back(proofRequest);
+
+            if (LogAcceptCategory("notarization"))
+            {
+                LogPrintf("%s: Sending proof request: %s\n", __func__, proofRequest.write(1,2).c_str());
+            }
 
             // get primary proof, keep lock, since we're calling to our local function
             params = UniValue(UniValue::VARR);

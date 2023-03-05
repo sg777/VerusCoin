@@ -892,10 +892,11 @@ public:
     // in the commitmentTypes as low bit boolean indicators of PoS vs. PoW (PoS == true)
     CHashCommitments(const std::vector<__uint128_t> &smallCommitmentsLowBool, uint32_t nVersion=VERSION_CURRENT);
 
-    CHashCommitments(const UniValue &uniObj)
+    CHashCommitments(const UniValue &uniObj, uint32_t nVersion=VERSION_CURRENT)
     {
         try
         {
+            version = uni_get_int64(find_value(uniObj, "version"), nVersion);
             std::string hexData = uni_get_str(find_value(uniObj, "hex"));
             if (!hexData.empty() && IsHex(hexData))
             {

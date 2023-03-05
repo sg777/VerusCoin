@@ -878,14 +878,38 @@ uint256 CHashCommitments::GetSmallCommitments(std::vector<__uint128_t> &smallCom
         for (; smallIndex >= 0; smallIndex--)
         {
             arith_uint256 from256 = UintToArith256(hashCommitments[bigIndex]);
-            if (currentBigOffset)
+            if (!currentBigOffset)
             {
-                from256 = from256 >> 128;
+                from256 = from256 << 128;
             }
-            smallCommitments[smallIndex] = ((__uint128_t)(from256 >> 64).GetLow64()) + (__uint128_t)(from256.GetLow64());
+            from256 = from256 >> 128;
+            smallCommitments[smallIndex] = ((__uint128_t)(from256 >> 64).GetLow64() << 64) + (__uint128_t)(from256.GetLow64());
             if (currentBigOffset ^= 1)
             {
                 bigIndex--;
+            }
+        }
+        if (LogAcceptCategory("notarization"))
+        {
+            LogPrintf("%s: RETURNING COMMITMENTS:\n", __func__);
+            for (int currentOffset = 0; currentOffset < smallCommitments.size(); currentOffset++)
+            {
+                std::vector<uint32_t> UnpackBlockCommitment(__uint128_t oneBlockCommitment);
+
+                auto commitmentVec = UnpackBlockCommitment(smallCommitments[currentOffset]);
+                arith_uint256 powTarget, posTarget;
+                powTarget.SetCompact(commitmentVec[1]);
+                posTarget.SetCompact(commitmentVec[2]);
+                LogPrintf("nHeight: %u, nTime: %u, PoW target: %s, PoS target: %s, isPoS: %u\n",
+                            commitmentVec[3] >> 1,
+                            commitmentVec[0],
+                            powTarget.GetHex().c_str(),
+                            posTarget.GetHex().c_str(),
+                            commitmentVec[3] & 1);
+                if (!commitmentVec[1])
+                {
+                    LogPrintf("INVALID ENTRY\n");
+                }
             }
         }
     }
