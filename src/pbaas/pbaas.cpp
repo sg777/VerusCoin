@@ -4193,7 +4193,7 @@ UniValue CUpgradeDescriptor::ToUniValue() const
 
 void CConnectedChains::CheckOracleUpgrades()
 {
-    // check for a specific
+    // check for a specific oracle
     if (PBAAS_NOTIFICATION_ORACLE.IsNull())
     {
         LogPrintf("%s: No notification oracle defined - cannot check for upgrades");
@@ -4209,7 +4209,26 @@ void CConnectedChains::CheckOracleUpgrades()
     uint32_t startHeight = 0;
     uint32_t delta = std::max((1440 * 60) / ConnectedChains.ThisChain().blockTime, (uint32_t)1440);
 
-    auto upgradeData = CIdentity::GetIdentityContentByKey(PBAAS_NOTIFICATION_ORACLE, UpgradeDataKey(ASSETCHAINS_CHAINID), APPROX_RELEASE_HEIGHT, 0, false, false, 0, true);
+    std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>> upgradeData;
+    if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) >= CActivationHeight::ACTIVATE_PBAAS)
+    {
+        upgradeData = CIdentity::GetIdentityContentByKey(PBAAS_NOTIFICATION_ORACLE, UpgradeDataKey(ASSETCHAINS_CHAINID), APPROX_RELEASE_HEIGHT, 0, false, false, 0, true);
+    }
+    else
+    {
+        CIdentity oracleID = CIdentity::LookupIdentity(PBAAS_NOTIFICATION_ORACLE, chainActive.Height());
+
+        if (oracleID.contentMap.count(TestForkUpgradeKey()))
+        {
+            upgradeData.resize(upgradeData.size() + 1);
+            std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[TestForkUpgradeKey()].GetHex());
+        }
+        else if (oracleID.contentMap.count(PBaaSUpgradeKey()))
+        {
+            upgradeData.resize(upgradeData.size() + 1);
+            std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[PBaaSUpgradeKey()].GetHex());
+        }
+    }
 
     CUpgradeDescriptor oneUpgrade;
     if (upgradeData.size())

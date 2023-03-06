@@ -75,7 +75,7 @@ public:
         READWRITE(VARINT(minDaemonVersion));
         READWRITE(upgradeID);
         READWRITE(VARINT(upgradeBlockHeight));
-        READWRITE(upgradeTargetTime);
+        READWRITE(VARINT(upgradeTargetTime));
     }
 
     CUpgradeDescriptor(const std::vector<unsigned char> &asVector)
@@ -93,7 +93,7 @@ public:
 
     bool IsValid() const
     {
-        return version >= VERSION_FIRST && version <= VERSION_LAST && !upgradeID.IsNull() && upgradeBlockHeight;
+        return version >= VERSION_FIRST && version <= VERSION_LAST && !upgradeID.IsNull() && (upgradeBlockHeight || upgradeTargetTime);
     }
 };
 
