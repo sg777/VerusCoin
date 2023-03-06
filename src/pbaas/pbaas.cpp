@@ -4238,8 +4238,8 @@ void CConnectedChains::CheckOracleUpgrades()
         }
         else
         {
-            printf("%s: ERROR - THE NETWORK HAS MOVED ON TO THE NEXT VERSION - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VERUS_VERSION, upgradePBaaSIt->second.upgradeBlockHeight - 1);
-            LogPrintf("%s: ERROR - THE NETWORK HAS MOVED ON TO THE NEXT VERSION - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VERUS_VERSION, upgradePBaaSIt->second.upgradeBlockHeight - 1);
+            printf("%s: ERROR - THE NETWORK IS UPGRADING TO PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VERUS_VERSION, upgradePBaaSIt->second.upgradeBlockHeight - 1);
+            LogPrintf("%s: ERROR - THE NETWORK IS UPGRADING TO PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VERUS_VERSION, upgradePBaaSIt->second.upgradeBlockHeight - 1);
             KOMODO_STOPAT = upgradePBaaSIt->second.upgradeBlockHeight - 1;
         }
     }

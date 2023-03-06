@@ -2652,11 +2652,11 @@ static const CRPCCommand commands[] =
     { "addressindex",       "getaddressutxos",        &getaddressutxos,        false }, /* insight explorer */
     { "addressindex",       "getaddressmempool",      &getaddressmempool,      true  }, /* insight explorer */
     { "blockchain",         "getspentinfo",           &getspentinfo,           false }, /* insight explorer */
+    { "blockchain",         "processupgradedata",     &processupgradedata,     true },
     // END insightexplorer
 
     /* Not shown in help */
     { "hidden",             "setmocktime",            &setmocktime,            true  },
-    { "blockchain",         "processupgradedata",     &processupgradedata,     false },
 };
 
 void RegisterMiscRPCCommands(CRPCTable &tableRPC)
