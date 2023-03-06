@@ -3645,6 +3645,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     SetMaxScriptElementSize(nHeight);
 
+    ConnectedChains.CheckOracleUpgrades();
+
     if (CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_PBAAS)
     {
         ConnectedChains.ConfigureEthBridge();

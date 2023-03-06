@@ -58,11 +58,13 @@ public:
     };
 
     uint32_t version;                       // version
-    uint160 upgradeID;                      // upgrade identifier
-    uint32_t upgradeBlockHeight;            // number of 1/1000ths of a block between selections (e.g. 1 == 1000 selections per block)
+    uint32_t minDaemonVersion;              // if we are not at this version or higher, we cannot support this upgrade
+    uint160 upgradeID;                      // upgrade identifier for listening client
+    uint32_t upgradeBlockHeight;            // block height at which the upgrade should happen
+    uint32_t upgradeTargetTime;             // target time for upgrade, depending on specific upgrade activation rules
 
     CUpgradeDescriptor(uint32_t Version=VERSION_INVALID) : version(Version), upgradeBlockHeight(0) {}
-    CUpgradeDescriptor(const uint160 &UpgradeID, uint32_t UpgradeHeight, uint32_t Version=VERSION_CURRENT) :
+    CUpgradeDescriptor(const uint160 &UpgradeID, uint32_t minDaemonVersion, uint32_t UpgradeHeight, uint32_t upgradeTargetTime, uint32_t Version=VERSION_CURRENT) :
         version(Version), upgradeID(UpgradeID), upgradeBlockHeight(UpgradeHeight) {}
 
     ADD_SERIALIZE_METHODS;
@@ -70,14 +72,19 @@ public:
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
         READWRITE(VARINT(version));
+        READWRITE(VARINT(minDaemonVersion));
         READWRITE(upgradeID);
         READWRITE(VARINT(upgradeBlockHeight));
+        READWRITE(upgradeTargetTime);
     }
 
     CUpgradeDescriptor(const std::vector<unsigned char> &asVector)
     {
         FromVector(asVector, *this);
     }
+
+    CUpgradeDescriptor(const UniValue &uni);
+    UniValue ToUniValue() const;
 
     std::vector<unsigned char> AsVector()
     {
@@ -918,7 +925,6 @@ public:
     std::map<uint160, CPBaaSMergeMinedChainData> mergeMinedChains;
     std::multimap<arith_uint256, CPBaaSMergeMinedChainData *> mergeMinedTargets;
 
-    std::map<uint32_t, uint160> activeUpgradesByHeight;
     std::map<uint160, CUpgradeDescriptor> activeUpgradesByKey;
 
     LRUCache<uint160, CCurrencyDefinition> currencyDefCache;        // protected by cs_main, so doesn't need sync
@@ -1153,12 +1159,15 @@ public:
 
     CCurrencyDefinition GetDestinationCurrency(const CReserveTransfer &rt) const;
 
+    uint32_t ParseVersion(const std::string &versionStr) const;
+    uint32_t GetVerusVersion() const;
     bool CheckVerusPBaaSAvailable(UniValue &chainInfo, UniValue &chainDef);
     bool CheckVerusPBaaSAvailable();      // may use RPC to call Verus
     bool IsVerusPBaaSAvailable();
     bool IsNotaryAvailable(bool callToCheck=false);
     bool ConfigureEthBridge(bool callToCheck=false);
-    bool CheckOracleUpgrades();
+    void CheckOracleUpgrades();
+    bool IsUpgradeActive(const uint160 &upgradeID, uint32_t blockHeight=UINT32_MAX, uint32_t blockTime=UINT32_MAX) const;
 
     std::vector<CCurrencyDefinition> GetMergeMinedChains()
     {
@@ -1187,6 +1196,30 @@ public:
         static uint160 nameSpace;
         static uint160 key = CVDXF::GetDataKey(UpgradeDataKeyName(), nameSpace);
         return CCrossChainRPCData::GetConditionID(key, systemID);
+    }
+
+    static std::string TestForkUpgradeKeyName()
+    {
+        return "vrsc::system.upgradedata.pbaastestfork";
+    }
+
+    static uint160 TestForkUpgradeKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF_Data::GetDataKey(TestForkUpgradeKeyName(), nameSpace);
+        return key;
+    }
+
+    static std::string PBaaSUpgradeKeyName()
+    {
+        return "vrsc::system.upgradedata.pbaasupgrade";
+    }
+
+    static uint160 PBaaSUpgradeKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF_Data::GetDataKey(PBaaSUpgradeKeyName(), nameSpace);
+        return key;
     }
 };
 

@@ -773,7 +773,8 @@ public:
                                       bool checkMempool=false,
                                       bool getProofs=false,
                                       uint32_t proofHeight=0,
-                                      const uint160 &indexKey=uint160());
+                                      const uint160 &indexKey=uint160(),
+                                      bool keepDeleted=false);
     static std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>>
         GetIdentityContentByKey(const uint160 &idID,
                                 const uint160 &vdxfKey,
@@ -781,7 +782,8 @@ public:
                                 uint32_t endHeight=0,
                                 bool checkMempool=false,
                                 bool getProofs=false,
-                                uint32_t proofHeight=0);
+                                uint32_t proofHeight=0,
+                                bool keepDeleted=false);
     static CIdentity LookupIdentity(const CIdentityID &nameID, uint32_t height=0, uint32_t *pHeightOut=nullptr, CTxIn *pTxIn=nullptr, bool checkMempool=false);
     static CIdentity LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHeightOut=nullptr, CTxIn *idTxIn=nullptr, CTransaction *pidTx=nullptr);
 

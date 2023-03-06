@@ -50,7 +50,7 @@ extern string PBAAS_HOST;
 extern string PBAAS_USERPASS;
 extern int32_t PBAAS_PORT;
 extern std::string VERUS_CHAINNAME;
-
+extern uint32_t PBAAS_TESTFORK_TIME;
 
 //
 // Exception thrown on connection error.  This error is used to determine

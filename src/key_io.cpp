@@ -984,6 +984,8 @@ std::vector<unsigned char> VectorEncodeVDXFUni(const UniValue &obj)
     auto oneValKeys = obj.getKeys();
     auto oneValValues = obj.getValues();
 
+    // TODO: change if / else to a map lookup
+
     for (int k = 0; k < oneValKeys.size(); k++)
     {
         uint160 objTypeKey = ParseVDXFKey(oneValKeys[k]);

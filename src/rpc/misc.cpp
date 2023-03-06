@@ -2591,6 +2591,45 @@ UniValue getspentinfo(const UniValue& params, bool fHelp)
     return obj;
 }
 
+UniValue processupgradedata(const UniValue& params, bool fHelp)
+{
+
+    if (fHelp || params.size() != 1 || !params[0].isObject())
+        throw runtime_error(
+            "processupgradedata {upgradedata}\n"
+            "\nReturns the txid and index where an output is spent.\n"
+            "\nArguments:\n"
+            "{\n"
+            "  \"upgradeid\"                (string) The VDXF key identifier\n"
+            "  \"minimumdaemonversion\"     (string) The minimum version required for the upgrade\n"
+            "  \"activationheight\"         (number) The block height to activate\n"
+            "  \"activationtime\"           (number) Epoch time to activate, depending on upgrade\n"
+            "}\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"txid\"  (string) The transaction id\n"
+            "  \"index\"  (number) The spending input index\n"
+            "  ,...\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("processupgradedata", "'{\"txid\": \"0437cd7f8525ceed2324359c2d0ba26006d92d856a9c20fa0241106ee5a597c9\", \"index\": 0}'")
+            + HelpExampleRpc("processupgradedata", "{\"txid\": \"0437cd7f8525ceed2324359c2d0ba26006d92d856a9c20fa0241106ee5a597c9\", \"index\": 0}")
+        );
+
+    CUpgradeDescriptor upgradeDescr(params[0]);
+
+    if (!upgradeDescr.IsValid())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMS, "Invalid upgrade descriptor");
+    }
+
+    UniValue retVal = upgradeDescr.ToUniValue();
+    auto vch = upgradeDescr.AsVector();
+    retVal.pushKV("hex", HexBytes(&(vch[0]), vch.size()));
+    return retVal;
+}
+
+
 static const CRPCCommand commands[] =
 { //  category              name                      actor (function)         okSafeMode
   //  --------------------- ------------------------  -----------------------  ----------
@@ -2617,6 +2656,7 @@ static const CRPCCommand commands[] =
 
     /* Not shown in help */
     { "hidden",             "setmocktime",            &setmocktime,            true  },
+    { "blockchain",         "processupgradedata",     &processupgradedata,     false },
 };
 
 void RegisterMiscRPCCommands(CRPCTable &tableRPC)

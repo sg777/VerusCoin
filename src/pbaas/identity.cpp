@@ -411,7 +411,8 @@ CIdentity::GetAggregatedIdentityMultimap(const uint160 &idID,
                                          bool checkMempool,
                                          bool getProofs,
                                          uint32_t proofHeight,
-                                         const uint160 &indexKey)
+                                         const uint160 &indexKey,
+                                         bool keepDeleted)
 {
     std::multimap<uint160, std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>>
         retMap;
@@ -420,7 +421,10 @@ CIdentity::GetAggregatedIdentityMultimap(const uint160 &idID,
     if (!indexKey.IsNull())
     {
         indexKeys.push_back(indexKey);
-        indexKeys.push_back(CVDXF_Data::ContentMultiMapRemoveKey());
+        if (!keepDeleted)
+        {
+            indexKeys.push_back(CVDXF_Data::ContentMultiMapRemoveKey());
+        }
     }
 
     auto identityHistory = LookupIdentities(idID, startHeight, endHeight, checkMempool, getProofs, proofHeight, indexKeys);
@@ -489,10 +493,11 @@ CIdentity::GetIdentityContentByKey(const uint160 &idID,
                                    uint32_t endHeight,
                                    bool checkMempool,
                                    bool getProofs,
-                                   uint32_t proofHeight)
+                                   uint32_t proofHeight,
+                                   bool keepDeleted)
 {
     uint160 lookupKey = CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(vdxfKey, idID));
-    auto aggregatedMap = GetAggregatedIdentityMultimap(idID, startHeight, endHeight, checkMempool, getProofs, proofHeight, lookupKey);
+    auto aggregatedMap = GetAggregatedIdentityMultimap(idID, startHeight, endHeight, checkMempool, getProofs, proofHeight, lookupKey, keepDeleted);
 
     std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>> retVec;
     auto keyRange = aggregatedMap.equal_range(vdxfKey);

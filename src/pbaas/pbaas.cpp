@@ -15,6 +15,7 @@
 #include "rpc/pbaasrpc.h"
 #include "timedata.h"
 #include "transaction_builder.h"
+#include "deprecation.h"
 #include <map>
 
 CConnectedChains ConnectedChains;
@@ -4001,24 +4002,45 @@ bool CConnectedChains::IsVerusPBaaSAvailable()
             FirstNotaryChain().chainDefinition.GetID() == VERUS_CHAINID);
 }
 
+int atoicatch(const std::string &istr)
+{
+    try
+    {
+        return atoi(istr);
+    }
+    catch(const std::exception& e)
+    {
+        return 0;
+    }
+}
+
+uint32_t CConnectedChains::ParseVersion(const std::string &versionStr) const
+{
+    std::vector<std::string> versionNums;
+    boost::split(versionNums, versionStr, boost::is_any_of(".-"));
+    uint32_t currentVersion = 0;
+    for (int i = 0; i < 4; i++)
+    {
+        currentVersion <<= 8;
+        currentVersion = (currentVersion & 0xffffff00) | ((versionNums.size() > i ? atoicatch(versionNums[i]) : 0) & 0x000000ff);
+    }
+    return currentVersion;
+}
+
+uint32_t CConnectedChains::GetVerusVersion() const
+{
+    return ParseVersion(VERUS_VERSION);
+}
+
 extern string PBAAS_HOST, PBAAS_USERPASS;
 extern int32_t PBAAS_PORT;
 bool CConnectedChains::CheckVerusPBaaSAvailable(UniValue &chainInfoUni, UniValue &chainDefUni)
 {
     if (chainInfoUni.isObject() && chainDefUni.isObject())
     {
-        UniValue uniVer = find_value(chainInfoUni, "VRSCversion");
-        std::vector<std::string> versionNums1, versionNums2;
-        boost::split(versionNums1, uni_get_str(uniVer), boost::is_any_of("."));
-        boost::split(versionNums2, VERUS_VERSION, boost::is_any_of("."));
-
-        // major and minor versions must match for current merge mining/notarization
-        if (ConnectedChains.FirstNotaryChain().chainDefinition.IsGateway() ||
-            (versionNums1.size() >= 2 &&
-             versionNums2.size() >= 2 &&
-             versionNums1[0] == versionNums2[0] &&
-             versionNums1[1] == versionNums2[1] &&
-             uni_get_str(find_value(chainInfoUni, "chainid")) == EncodeDestination(CIdentityID(ConnectedChains.FirstNotaryChain().GetID()))))
+        std::string versionStr = uni_get_str(find_value(chainInfoUni, "VRSCversion"));
+        if ((GetVerusVersion() & 0xffff0000) == (ParseVersion(versionStr) & 0xffff0000) &&
+             uni_get_str(find_value(chainInfoUni, "chainid")) == EncodeDestination(CIdentityID(ConnectedChains.FirstNotaryChain().GetID())))
         {
             LOCK(cs_mergemining);
             CCurrencyDefinition chainDef(chainDefUni);
@@ -4150,22 +4172,44 @@ bool CConnectedChains::IsNotaryAvailable(bool callToCheck)
            CheckVerusPBaaSAvailable();
 }
 
-bool CConnectedChains::CheckOracleUpgrades()
+CUpgradeDescriptor::CUpgradeDescriptor(const UniValue &uni) :
+    version(uni_get_int(find_value(uni, "version"), VERSION_CURRENT)),
+    upgradeID(ParseVDXFKey(uni_get_str(find_value(uni, "upgradeid")))),
+    minDaemonVersion(ConnectedChains.ParseVersion(uni_get_str(find_value(uni, "minimumdaemonversion")))),
+    upgradeBlockHeight(uni_get_int64(find_value(uni, "activationheight"))),
+    upgradeTargetTime(uni_get_int64(find_value(uni, "activationtargettime")))
+{}
+
+UniValue CUpgradeDescriptor::ToUniValue() const
+{
+    UniValue uni(UniValue::VOBJ);
+    uni.pushKV("version", (int64_t)version);
+    uni.pushKV("upgradeid", EncodeDestination(CIdentityID(upgradeID)));
+    uni.pushKV("minimumdaemonversion", (int64_t)minDaemonVersion);
+    uni.pushKV("activationheight", (int64_t)upgradeBlockHeight);
+    uni.pushKV("activationtargettime", (int64_t)upgradeTargetTime);
+    return uni;
+}
+
+void CConnectedChains::CheckOracleUpgrades()
 {
     // check for a specific
     if (PBAAS_NOTIFICATION_ORACLE.IsNull())
     {
         LogPrintf("%s: No notification oracle defined - cannot check for upgrades");
-        return false;
+        return;
     }
-    //std::map<uint32_t, uint160> activeUpgradesByHeight;
-    //std::map<uint160, uint32_t> activeUpgradesByKey;
 
-    uint32_t startHeight = activeUpgradesByHeight.size() ? activeUpgradesByHeight.rbegin()->first : 0;
+    // limited number of upgrades considered in each client at a time currently
+    std::vector<uint160> upgradesToCheck = std::vector<uint160>({TestForkUpgradeKey(), PBaaSUpgradeKey()});
+
+    auto upgradeTestForkIt = activeUpgradesByKey.find(TestForkUpgradeKey());
+    auto upgradePBaaSIt = activeUpgradesByKey.find(PBaaSUpgradeKey());
+
+    uint32_t startHeight = 0;
     uint32_t delta = std::max((1440 * 60) / ConnectedChains.ThisChain().blockTime, (uint32_t)1440);
-    startHeight = startHeight < delta ? 0 : startHeight - delta;
 
-    auto upgradeData = CIdentity::GetIdentityContentByKey(PBAAS_NOTIFICATION_ORACLE, UpgradeDataKey(ASSETCHAINS_CHAINID), startHeight);
+    auto upgradeData = CIdentity::GetIdentityContentByKey(PBAAS_NOTIFICATION_ORACLE, UpgradeDataKey(ASSETCHAINS_CHAINID), APPROX_RELEASE_HEIGHT, 0, false, false, 0, true);
 
     CUpgradeDescriptor oneUpgrade;
     if (upgradeData.size())
@@ -4176,13 +4220,37 @@ bool CConnectedChains::CheckOracleUpgrades()
             if (upgrade.IsValid())
             {
                 LOCK(ConnectedChains.cs_mergemining);
-                activeUpgradesByHeight.insert({upgrade.upgradeBlockHeight, upgrade.upgradeID});
                 activeUpgradesByKey.insert({upgrade.upgradeID, upgrade});
             }
         }
-        return true;
     }
-    return false;
+
+    if (upgradeTestForkIt != activeUpgradesByKey.end() &&
+        upgradeTestForkIt->second.minDaemonVersion >= GetVerusVersion())
+    {
+        PBAAS_TESTFORK_TIME = upgradeTestForkIt->second.upgradeTargetTime;
+    }
+    if (upgradePBaaSIt != activeUpgradesByKey.end())
+    {
+        if (upgradePBaaSIt->second.minDaemonVersion >= GetVerusVersion())
+        {
+            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV7, upgradePBaaSIt->second.upgradeBlockHeight);
+        }
+        else
+        {
+            printf("%s: ERROR - THE NETWORK HAS MOVED ON TO THE NEXT VERSION - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VERUS_VERSION, upgradePBaaSIt->second.upgradeBlockHeight - 1);
+            LogPrintf("%s: ERROR - THE NETWORK HAS MOVED ON TO THE NEXT VERSION - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VERUS_VERSION, upgradePBaaSIt->second.upgradeBlockHeight - 1);
+            KOMODO_STOPAT = upgradePBaaSIt->second.upgradeBlockHeight - 1;
+        }
+    }
+}
+
+bool CConnectedChains::IsUpgradeActive(const uint160 &upgradeID, uint32_t blockHeight, uint32_t blockTime) const
+{
+    auto it = activeUpgradesByKey.find(upgradeID);
+    return it != activeUpgradesByKey.end() &&
+           it->second.minDaemonVersion >= GetVerusVersion() &&
+           (it->second.upgradeBlockHeight >= blockHeight || chainActive.LastTip()->nTime >= blockTime);
 }
 
 bool CConnectedChains::ConfigureEthBridge(bool callToCheck)

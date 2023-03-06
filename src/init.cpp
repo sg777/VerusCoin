@@ -1864,6 +1864,8 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
                     ConnectedChains.ConfigureEthBridge(true);
                 }
 
+                ConnectedChains.CheckOracleUpgrades();
+
                 CChainNotarizationData cnd;
                 if (ConnectedChains.FirstNotaryChain().IsValid())
                 {

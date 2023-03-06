@@ -28,8 +28,7 @@ static const int DEFAULT_RPC_TIMEOUT=900;
 static const uint32_t PBAAS_VERSION = 1;
 static const uint32_t PBAAS_VERSION_INVALID = 0;
 
-static const uint32_t PBAAS_TESTFORK_TIME = 1604216000;
-//static const uint32_t PBAAS_TESTFORK_TIME = 1677608188;
+extern uint32_t PBAAS_TESTFORK_TIME;
 
 class CTransaction;
 class CScript;
