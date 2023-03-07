@@ -1491,6 +1491,7 @@ std::string CleanName(const std::string &Name, uint160 &Parent, bool displayfilt
     }
 
     if (!Parent.IsNull() &&
+        subNames.size() > 1 &&
         boost::to_lower_copy(subNames.back()) == boost::to_lower_copy(VERUS_CHAINNAME))
     {
         subNames.pop_back();

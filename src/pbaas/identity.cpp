@@ -852,6 +852,106 @@ bool CIdentity::GetActiveIdentitiesWithRecoveryID(const CIdentityID &idID, std::
     return false;
 }
 
+bool HasReferralRequired(const CIdentity &identity, const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height, const CCurrencyDefinition &issuingParent)
+{
+    CTransaction inputTx;
+    uint160 parentID = issuingParent.GetID();
+    bool isNativeParent = parentID == ASSETCHAINS_CHAINID;
+    bool authorizedIssuance = false;
+    uint160 checkReferralID;
+
+    if (identity.parent.IsNull() && issuingParent.parent.IsNull() && identity.GetID() == issuingParent.GetID())
+    {
+        uint160 idParent = issuingParent.GetID();
+        checkReferralID = CIdentity::GetID(identity.name, idParent);
+    }
+
+    for (auto &oneIn : tx.vin)
+    {
+        uint256 blockHash;
+
+        // this is not an input check, but we will check if the input is available
+        // the precheck's can be called sometimes before their antecedents are available, but
+        // if they are available, which will be checked on the input check, they will also be
+        // available here at least once in the verification of the tx
+        if (inputTx.GetHash() == oneIn.prevout.hash || myGetTransaction(oneIn.prevout.hash, inputTx, blockHash))
+        {
+            if (oneIn.prevout.n >= inputTx.vout.size())
+            {
+                return state.Error("Invalid input number for source transaction");
+            }
+
+            COptCCParams p;
+
+            // make sure that no form of complex output could circumvent the test for controller
+            // this should be encapsulated as a test that can handle complex cases, but until then
+            // require them to be simple when validating
+            if (!(inputTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    p.version >= p.VERSION_V3))
+            {
+                continue;
+            }
+
+            std::vector<CIdentity> checkIdentities;
+            for (auto oneDest : p.vKeys)
+            {
+                if (oneDest.which() == COptCCParams::ADDRTYPE_ID)
+                {
+                    CIdentity checkIdentity = CIdentity::LookupIdentity(GetDestinationID(oneDest), height);
+                    uint160 idID = GetDestinationID(oneDest);
+
+                    // any valid, unrevoked ID from the same parent may be a referral by signing the transaction
+                    if (checkIdentity.IsValidUnrevoked() &&
+                        (checkIdentity.parent == parentID ||
+                         GetDestinationID(idID) == parentID ||
+                         (chainActive[height]->nTime >= PBAAS_TESTFORK_TIME && !checkReferralID.IsNull() && idID == checkReferralID)))
+                    {
+                        checkIdentities.push_back(checkIdentity);
+                    }
+                }
+            }
+
+            for (auto potentialReferral : checkIdentities)
+            {
+                std::set<uint160> signingKeys;
+                for (auto &oneDest : potentialReferral.primaryAddresses)
+                {
+                    signingKeys.insert(GetDestinationID(oneDest));
+                }
+
+                CSmartTransactionSignatures smartSigs;
+                std::vector<unsigned char> ffVec = GetFulfillmentVector(oneIn.scriptSig);
+                if (!(ffVec.size() &&
+                        (smartSigs = CSmartTransactionSignatures(std::vector<unsigned char>(ffVec.begin(), ffVec.end()))).IsValid() &&
+                        smartSigs.sigHashType == SIGHASH_ALL))
+                {
+                    continue;
+                }
+
+                int numIDSigs = 0;
+
+                // ensure that the transaction is sent to the ID and signed by a valid ID signature
+                for (auto &oneSig : smartSigs.signatures)
+                {
+                    if (signingKeys.count(oneSig.first))
+                    {
+                        numIDSigs++;
+                    }
+                }
+
+                if (numIDSigs < potentialReferral.minSigs)
+                {
+                    continue;
+                }
+                authorizedIssuance = true;
+                break;
+            }
+        }
+    }
+    return authorizedIssuance;
+}
+
 // this enables earliest rejection of invalid identity registrations transactions
 bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height, CCurrencyDefinition issuingParent)
 {
@@ -1139,6 +1239,11 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
                     break;
                 }
                 newIdentity = CIdentity(p.vData[0]);
+                if (newIdentity.parent.IsNull() &&
+                    !HasReferralRequired(newIdentity, tx, outNum, state, height, ConnectedChains.ThisChain()))
+                {
+                    return state.Error("Cannot make identity without valid referral");
+                }
             }
             else if (p.evalCode == EVAL_IDENTITY_RESERVATION)
             {
