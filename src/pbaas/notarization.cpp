@@ -5129,16 +5129,16 @@ CPBaaSNotarization::GetBlockCommitmentRanges(uint32_t fromHeight, uint32_t toHei
     {
         return std::vector<std::pair<uint32_t, uint32_t>>({{std::make_pair(std::max(fromHeight, (uint32_t)1), toHeight)}});
     }
-    uint32_t endHeight = std::max(fromHeight - NUM_COMMITMENT_BLOCKS_START_OFFSET, (uint32_t)1) + numBlocksPerCommitmentRange + 1;
-    if (chainActive.Height() < endHeight)
-    {
-        numBlocksPerCommitmentRange -= (endHeight - chainActive.Height());
-    }
 
     std::vector<std::pair<uint32_t, uint32_t>> retVal;
 
     int priorHeight = std::max((int)fromHeight - NUM_COMMITMENT_BLOCKS_START_OFFSET, 1);
     int startingHeight = std::max((int)fromHeight, 1);
+
+    if ((toHeight - priorHeight) < numBlocksPerCommitmentRange)
+    {
+        numBlocksPerCommitmentRange = (toHeight - priorHeight);
+    }
 
     // if our range is larger than 256, break it into up to 5, 256 block ranges and
     // spread them randomly over the target proof space
@@ -5159,16 +5159,16 @@ CPBaaSNotarization::GetBlockCommitmentRanges(uint32_t fromHeight, uint32_t toHei
         {
             int blocksThisSection = blocksPerSection;
             rangeLeft -= blocksPerSection;
-            if (rangeLeft < blocksPerSection)
+            if (rangeLeft && rangeLeft < blocksPerSection)
             {
                 blocksThisSection += rangeLeft;
                 rangeLeft = 0;
             }
             // we need room for the range we will prove, hence the subtraction of at least the blocks needed after
             // the chosen start block
-            uint32_t rangeStart = startingHeight + (UintToArith256(entropy).GetLow64() %
+            uint32_t rangeStart = priorHeight + (UintToArith256(entropy).GetLow64() %
                     (blocksThisSection - std::min(blocksThisSection, (int)numBlocksPerCommitmentRange)));
-            startingHeight += blocksThisSection;
+
             // last is inclusive in proof, so subtract 1 to get a total of numBlocksPerCommitmentRange
             retVal.push_back(std::make_pair(rangeStart, rangeStart + (numBlocksPerCommitmentRange - 1)));
         }
