@@ -12187,6 +12187,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parent currency for this network");
     }
 
+    std::string rawName = uni_get_str(params[0]);
     std::string name = CleanName(uni_get_str(params[0]), parentID, true, true);
     if (parentID != parentCurrency.GetID())
     {
@@ -12194,7 +12195,9 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     }
 
     uint160 idID = GetDestinationID(DecodeDestination(name + "@"));
-    if (idID == ASSETCHAINS_CHAINID && IsVerusActive())
+    if (idID == ASSETCHAINS_CHAINID &&
+        IsVerusActive() &&
+        !CVDXF::HasExplicitParent(rawName))
     {
         name = VERUS_CHAINNAME;
         parentID.SetNull();
@@ -12202,7 +12205,10 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
 
     // if either we have an invalid name or an implied parent, that is not valid
     if (!(idID == VERUS_CHAINID && IsVerusActive() && parentID.IsNull()) &&
-         (name == "" || parentID != parentCurrency.GetID() || name != uni_get_str(params[0])))
+         (name == "" ||
+          parentID != parentCurrency.GetID() ||
+          (!CVDXF::HasExplicitParent(rawName) &&
+           name != uni_get_str(params[0]))))
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid name for commitment. Names must not have leading or trailing spaces and must not include any of the following characters between parentheses (\\/:*?\"<>|@)");
     }
@@ -12557,7 +12563,9 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity");
     }
 
-    if (IsVerusActive())
+    std::string rawName = uni_get_str(find_value(nameResUni,"name"));
+    if (IsVerusActive() &&
+        !CVDXF::HasExplicitParent(rawName))
     {
         CIdentity checkIdentity(newID);
         checkIdentity.parent.SetNull();
@@ -12758,7 +12766,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     else
     {
         if (txid.IsNull() ||
-            CleanName(reservation.name, resParent) != CleanName(newID.name, impliedParent, true) ||
+            CleanName(rawName, resParent) != CleanName(newID.name, newID.parent, true, !CVDXF::HasExplicitParent(rawName)) ||
             resParent != impliedParent)
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity description or mismatched reservation.");

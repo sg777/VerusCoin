@@ -222,6 +222,7 @@ public:
     }
 
     static std::string DATA_KEY_SEPARATOR;
+    static bool HasExplicitParent(const std::string &Name);
     static std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter=false, bool addVerus=true);
     static std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false);
     static uint160 GetID(const std::string &Name);

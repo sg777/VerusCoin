@@ -153,6 +153,30 @@ std::string TrimSpaces(const std::string &Name, bool removeDuals, const std::str
     }
 }
 
+bool CVDXF::HasExplicitParent(const std::string &Name)
+{
+    std::string ChainOut;
+    bool hasExplicitParent = false;
+
+    std::string nameCopy = Name;
+
+    std::vector<std::string> retNames;
+    boost::split(retNames, nameCopy, boost::is_any_of("@"));
+    if (!retNames.size() || retNames.size() > 2)
+    {
+        return false;
+    }
+
+    nameCopy = retNames[0];
+    boost::split(retNames, nameCopy, boost::is_any_of("."));
+
+    if (retNames.size() && retNames.back().empty())
+    {
+        return true;
+    }
+    return false;
+}
+
 // this will add the current Verus chain name to subnames if it is not present
 // on both id and chain names
 std::vector<std::string> CVDXF::ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter, bool addVerus)
