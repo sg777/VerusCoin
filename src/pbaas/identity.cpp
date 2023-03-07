@@ -904,7 +904,7 @@ bool HasReferralRequired(const CIdentity &identity, const CTransaction &tx, int3
                     // any valid, unrevoked ID from the same parent may be a referral by signing the transaction
                     if (checkIdentity.IsValidUnrevoked() &&
                         (checkIdentity.parent == parentID ||
-                         GetDestinationID(idID) == parentID ||
+                         idID == parentID ||
                          (chainActive[height]->nTime >= PBAAS_TESTFORK_TIME && !checkReferralID.IsNull() && idID == checkReferralID)))
                     {
                         checkIdentities.push_back(checkIdentity);
