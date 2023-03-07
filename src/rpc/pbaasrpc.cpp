@@ -12751,11 +12751,12 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         }
     }
 
-    uint160 impliedParent, resParent;
+    uint160 impliedParent = newID.parent;
+    uint160 resParent;
     if (advReservation.IsValid())
     {
         resParent = advReservation.parent;
-        impliedParent = newID.parent;
+
         if (txid.IsNull() ||
             CleanName(advReservation.name, resParent) != CleanName(newID.name, impliedParent, true) ||
             resParent != impliedParent)
