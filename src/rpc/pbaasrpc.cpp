@@ -12507,6 +12507,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     CNameReservation reservation;
     CAdvancedNameReservation advReservation;
+    std::string rawName = uni_get_str(find_value(nameResUni,"name"));
     if (!find_value(nameResUni, "version").isNull() && !find_value(nameResUni, "parent").isNull())
     {
         if (!isPBaaS)
@@ -12517,7 +12518,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     }
     else
     {
-        reservation = CNameReservation(nameResUni);
+        reservation = CNameReservation(nameResUni, CVDXF::HasExplicitParent(rawName) ? uint160() : ASSETCHAINS_CHAINID);
     }
 
     UniValue rawID = find_value(params[0], "identity");
@@ -12563,7 +12564,6 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity");
     }
 
-    std::string rawName = uni_get_str(find_value(nameResUni,"name"));
     if (IsVerusActive() &&
         !CVDXF::HasExplicitParent(rawName))
     {
