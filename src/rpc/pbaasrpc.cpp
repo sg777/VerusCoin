@@ -12212,6 +12212,14 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid control address for commitment");
     }
+    if (dest.which() == COptCCParams::ADDRTYPE_ID)
+    {
+        CIdentity controlIdentity = CIdentity::LookupIdentity(CIdentityID(GetDestinationID(dest)));
+        if (!controlIdentity.IsValidUnrevoked())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "If control address in an identity, it must be a currently valid and unrevoked friendly name or i-address");
+        }
+    }
 
     CIdentityID referrer;
     if (params.size() > 2 && !uni_get_str(params[2]).empty())
