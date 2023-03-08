@@ -1210,6 +1210,18 @@ public:
         return key;
     }
 
+    static std::string OptionalPBaaSUpgradeKeyName()
+    {
+        return "vrsc::system.upgradedata.optionalpbaasupgrade";
+    }
+
+    static uint160 OptionalPBaaSUpgradeKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF_Data::GetDataKey(OptionalPBaaSUpgradeKeyName(), nameSpace);
+        return key;
+    }
+
     static std::string PBaaSUpgradeKeyName()
     {
         return "vrsc::system.upgradedata.pbaasupgrade";

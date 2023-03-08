@@ -3746,9 +3746,12 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
             CProofRoot confirmedRoot = ConnectedChains.FinalizedChainRoot();
             uint32_t kNotHeight = komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
-            if (confirmedRoot.IsValid())
+            bool optionalPBaaSUpgrade = ConnectedChains.IsUpgradeActive(CConnectedChains::OptionalPBaaSUpgradeKey(), pindex->pprev->GetHeight());
+
+            if (confirmedRoot.IsValid() || optionalPBaaSUpgrade)
             {
-                if (kNotHeight <= confirmedRoot.rootHeight ||
+                if (optionalPBaaSUpgrade ||
+                    kNotHeight <= confirmedRoot.rootHeight ||
                     !mapBlockIndex.count(notarizedhash) ||
                     mapBlockIndex[notarizedhash]->GetAncestor(confirmedRoot.rootHeight)->GetBlockHash() != confirmedRoot.blockHash)
                 {
@@ -5122,11 +5125,17 @@ bool static DisconnectTip(CValidationState &state, const CChainParams& chainpara
 
         CProofRoot confirmedRoot = ConnectedChains.FinalizedChainRoot();
         uint32_t kNotHeight = komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
-        if (confirmedRoot.IsValid())
+        bool optionalPBaaSUpgrade = ConnectedChains.IsUpgradeActive(CConnectedChains::OptionalPBaaSUpgradeKey(), pindexDelete->GetHeight());
+
+        if (confirmedRoot.IsValid() ||
+            optionalPBaaSUpgrade)
         {
-            if (kNotHeight <= confirmedRoot.rootHeight ||
+            CBlockIndex *pAncestor;
+            if (optionalPBaaSUpgrade ||
+                kNotHeight <= confirmedRoot.rootHeight ||
                 !mapBlockIndex.count(notarizedhash) ||
-                mapBlockIndex[notarizedhash]->GetAncestor(confirmedRoot.rootHeight)->GetBlockHash() != confirmedRoot.blockHash)
+                !(pAncestor = mapBlockIndex[notarizedhash]->GetAncestor(confirmedRoot.rootHeight)) ||
+                pAncestor->GetBlockHash() != confirmedRoot.blockHash)
             {
                 notarizedhash = confirmedRoot.blockHash;
             }
@@ -5404,11 +5413,12 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
 
     bool fInvalidFound = false;
     const CBlockIndex *pindexOldTip = chainActive.Tip();
+    uint32_t oldHeight = pindexOldTip->GetHeight();
     const CBlockIndex *pindexFork = chainActive.FindFork(pindexMostWork);
 
     // stop trying to reorg if the reorged chain is before last notarized height.
     // stay on the same chain tip!
-    int32_t prevMoMheight; uint256 notarizedhash,txid;
+    int32_t prevMoMheight; uint256 notarizedhash, txid;
 
     CProofRoot confirmedRoot = ConnectedChains.FinalizedChainRoot();
     uint32_t notarizedht = komodo_notarized_height(&prevMoMheight, &notarizedhash, &txid);
@@ -5424,19 +5434,21 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
     }
 
     auto blkIt = mapBlockIndex.find(notarizedhash);
-    if ( pindexFork != 0 &&
-         pindexOldTip->GetHeight() > notarizedht &&
-         blkIt != mapBlockIndex.end() &&
-         chainActive.Contains(blkIt->second) &&
-         pindexFork->GetHeight() < notarizedht )
+
+    if (!ConnectedChains.IsUpgradeActive(CConnectedChains::OptionalPBaaSUpgradeKey(), oldHeight) &&
+        pindexFork != 0 &&
+        oldHeight > notarizedht &&
+        blkIt != mapBlockIndex.end() &&
+        chainActive.Contains(blkIt->second) &&
+        pindexFork->GetHeight() < notarizedht )
     {
-        LogPrintf("pindexOldTip->GetHeight().%d > notarizedht %d && pindexFork->GetHeight().%d is < notarizedht %d, so ignore it\n",(int32_t)pindexOldTip->GetHeight(),notarizedht,(int32_t)pindexFork->GetHeight(),notarizedht);
+        LogPrintf("oldHeight.%d > notarizedht %d && pindexFork->GetHeight().%d is < notarizedht %d, so ignore it\n",(int32_t)oldHeight,notarizedht,(int32_t)pindexFork->GetHeight(),notarizedht);
         // *** DEBUG ***
         if (1)
         {
             const CBlockIndex *pindexLastNotarized = mapBlockIndex[notarizedhash];
             auto msg = "- " + strprintf(_("Current tip : %s, height %d, work %s"),
-                                pindexOldTip->phashBlock->GetHex(), pindexOldTip->GetHeight(), pindexOldTip->chainPower.chainWork.GetHex()) + "\n" +
+                                pindexOldTip->phashBlock->GetHex(), oldHeight, pindexOldTip->chainPower.chainWork.GetHex()) + "\n" +
                 "- " + strprintf(_("New tip     : %s, height %d, work %s"),
                                 pindexMostWork->phashBlock->GetHex(), pindexMostWork->GetHeight(), pindexMostWork->chainPower.chainWork.GetHex()) + "\n" +
                 "- " + strprintf(_("Fork point  : %s, height %d"),
@@ -5459,7 +5471,7 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
 
         CValidationState tmpstate;
         InvalidateBlock(tmpstate, Params(), pindexMostWork); // trying to invalidate longest chain, which tried to reorg notarized chain (in case of fork point below last notarized block)
-        return state.DoS(100, error("ActivateBestChainStep(): pindexOldTip->GetHeight().%d > notarizedht %d && pindexFork->GetHeight().%d is < notarizedht %d, so ignore it",(int32_t)pindexOldTip->GetHeight(),notarizedht,(int32_t)pindexFork->GetHeight(),notarizedht),
+        return state.DoS(100, error("ActivateBestChainStep(): oldHeight.%d > notarizedht %d && pindexFork->GetHeight().%d is < notarizedht %d, so ignore it",(int32_t)oldHeight,notarizedht,(int32_t)pindexFork->GetHeight(),notarizedht),
                 REJECT_INVALID, "past-notarized-height");
     }
 
@@ -5467,7 +5479,7 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
     // - If pindexMostWork is in a chain that doesn't have the same genesis block as our chain,
     //   then pindexFork will be null, and we would need to remove the entire chain including
     //   our genesis block. In practice this (probably) won't happen because of checks elsewhere.
-    auto reorgLength = pindexOldTip ? pindexOldTip->GetHeight() - (pindexFork ? pindexFork->GetHeight() : -1) : 0;
+    auto reorgLength = pindexOldTip ? oldHeight - (pindexFork ? pindexFork->GetHeight() : -1) : 0;
     static_assert(MAX_REORG_LENGTH > 0, "We must be able to reorg some distance");
     if (reorgLength > MAX_REORG_LENGTH) {
         auto msg = strprintf(_(
@@ -5476,7 +5488,7 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
                                ), reorgLength, MAX_REORG_LENGTH) + "\n\n" +
         _("Reorganization details") + ":\n" +
         "- " + strprintf(_("Current tip: %s, height %d, work %s\nstake %s"),
-                         pindexOldTip->phashBlock->GetHex(), pindexOldTip->GetHeight(), pindexOldTip->chainPower.chainWork.GetHex(),
+                         pindexOldTip->phashBlock->GetHex(), oldHeight, pindexOldTip->chainPower.chainWork.GetHex(),
                          pindexOldTip->chainPower.chainStake.GetHex()) + "\n" +
         "- " + strprintf(_("New tip:     %s, height %d, work %s\nstake %s"),
                          pindexMostWork->phashBlock->GetHex(), pindexMostWork->GetHeight(), pindexMostWork->chainPower.chainWork.GetHex(),

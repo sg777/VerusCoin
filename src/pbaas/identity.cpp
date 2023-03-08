@@ -1240,6 +1240,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
                 }
                 newIdentity = CIdentity(p.vData[0]);
                 if (newIdentity.parent.IsNull() &&
+                    chainActive[height - 1]->nTime > PBAAS_TESTFORK_TIME &&
                     !HasReferralRequired(newIdentity, tx, outNum, state, height, ConnectedChains.ThisChain()))
                 {
                     return state.Error("Cannot make identity without valid referral");

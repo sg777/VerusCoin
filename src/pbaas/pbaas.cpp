@@ -4191,6 +4191,11 @@ UniValue CUpgradeDescriptor::ToUniValue() const
     return uni;
 }
 
+std::string VersionString(uint32_t version)
+{
+    return ("v" + std::to_string(version >> 24) + "." + std::to_string((version >> 16) & 0xff) + "." + std::to_string((version >> 8) & 0xff) + ((version & 0xff) ? "-" + std::to_string(version & 0xff) : ""));
+}
+
 void CConnectedChains::CheckOracleUpgrades()
 {
     // check for a specific oracle
@@ -4201,8 +4206,6 @@ void CConnectedChains::CheckOracleUpgrades()
     }
 
     // limited number of upgrades considered in each client at a time currently
-    std::vector<uint160> upgradesToCheck = std::vector<uint160>({TestForkUpgradeKey(), PBaaSUpgradeKey()});
-
     uint32_t startHeight = 0;
     uint32_t delta = std::max((1440 * 60) / ConnectedChains.ThisChain().blockTime, (uint32_t)1440);
 
@@ -4225,6 +4228,11 @@ void CConnectedChains::CheckOracleUpgrades()
             upgradeData.resize(upgradeData.size() + 1);
             std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[PBaaSUpgradeKey()].GetHex());
         }
+        else if (oracleID.contentMap.count(OptionalPBaaSUpgradeKey()))
+        {
+            upgradeData.resize(upgradeData.size() + 1);
+            std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[OptionalPBaaSUpgradeKey()].GetHex());
+        }
     }
 
     CUpgradeDescriptor oneUpgrade;
@@ -4245,21 +4253,24 @@ void CConnectedChains::CheckOracleUpgrades()
     auto upgradePBaaSIt = activeUpgradesByKey.find(PBaaSUpgradeKey());
 
     if (upgradeTestForkIt != activeUpgradesByKey.end() &&
-        upgradeTestForkIt->second.minDaemonVersion >= GetVerusVersion())
+        upgradeTestForkIt->second.minDaemonVersion <= GetVerusVersion())
     {
         PBAAS_TESTFORK_TIME = upgradeTestForkIt->second.upgradeTargetTime;
     }
     if (upgradePBaaSIt != activeUpgradesByKey.end())
     {
-        if (upgradePBaaSIt->second.minDaemonVersion >= GetVerusVersion())
+        if (upgradePBaaSIt->second.minDaemonVersion <= GetVerusVersion())
         {
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV7, upgradePBaaSIt->second.upgradeBlockHeight);
         }
         else
         {
-            printf("%s: ERROR - THE NETWORK IS UPGRADING TO PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VERUS_VERSION, upgradePBaaSIt->second.upgradeBlockHeight - 1);
-            LogPrintf("%s: ERROR - THE NETWORK IS UPGRADING TO PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VERUS_VERSION, upgradePBaaSIt->second.upgradeBlockHeight - 1);
-            KOMODO_STOPAT = upgradePBaaSIt->second.upgradeBlockHeight - 1;
+            printf("%s: ERROR - THE NETWORK IS UPGRADING TO PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VersionString(upgradePBaaSIt->second.minDaemonVersion), upgradePBaaSIt->second.upgradeBlockHeight - 1);
+            if (KOMODO_STOPAT == 0 || KOMODO_STOPAT > (upgradePBaaSIt->second.upgradeBlockHeight - 1))
+            {
+                LogPrintf("%s: ERROR - THE NETWORK IS UPGRADING TO PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VersionString(upgradePBaaSIt->second.minDaemonVersion), upgradePBaaSIt->second.upgradeBlockHeight - 1);
+                KOMODO_STOPAT = upgradePBaaSIt->second.upgradeBlockHeight - 1;
+            }
         }
     }
 }
@@ -4267,9 +4278,21 @@ void CConnectedChains::CheckOracleUpgrades()
 bool CConnectedChains::IsUpgradeActive(const uint160 &upgradeID, uint32_t blockHeight, uint32_t blockTime) const
 {
     auto it = activeUpgradesByKey.find(upgradeID);
-    return it != activeUpgradesByKey.end() &&
-           it->second.minDaemonVersion >= GetVerusVersion() &&
-           (it->second.upgradeBlockHeight >= blockHeight || chainActive.LastTip()->nTime >= blockTime);
+    if (it != activeUpgradesByKey.end())
+    {
+        if (it->second.minDaemonVersion > GetVerusVersion())
+        {
+            printf("%s: ERROR - THE NETWORK IS PREPARING FOR PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s OR GREATER TO SYNC PAST BLOCK %u ON THE VERUS NETWORK\n", __func__, VersionString(it->second.minDaemonVersion), it->second.upgradeBlockHeight - 1);
+            if (KOMODO_STOPAT == 0 || KOMODO_STOPAT > (it->second.upgradeBlockHeight - 1))
+            {
+                LogPrintf("%s: ERROR - THE NETWORK IS PREPARING FOR PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s OR GREATER TO SYNC PAST BLOCK %u ON THE VERUS NETWORK\n", __func__, VersionString(it->second.minDaemonVersion), it->second.upgradeBlockHeight - 1);
+                KOMODO_STOPAT = it->second.upgradeBlockHeight - 1;
+            }
+        }
+        return ((it->second.upgradeBlockHeight && blockHeight >= it->second.upgradeBlockHeight) ||
+                (it->second.upgradeTargetTime && blockTime >= it->second.upgradeTargetTime));
+    }
+    return false;
 }
 
 bool CConnectedChains::ConfigureEthBridge(bool callToCheck)
