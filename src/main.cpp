@@ -5413,7 +5413,7 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
 
     bool fInvalidFound = false;
     const CBlockIndex *pindexOldTip = chainActive.Tip();
-    uint32_t oldHeight = pindexOldTip->GetHeight();
+    uint32_t oldHeight = chainActive.Height();
     const CBlockIndex *pindexFork = chainActive.FindFork(pindexMostWork);
 
     // stop trying to reorg if the reorged chain is before last notarized height.
