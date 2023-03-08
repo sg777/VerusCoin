@@ -11675,17 +11675,15 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     cp = CCinit(&CC, EVAL_ACCEPTEDNOTARIZATION);
     CTxDestination notarizationDest;
 
-    if (newChain.notarizationProtocol == newChain.NOTARIZATION_AUTO || newChain.notarizationProtocol == newChain.NOTARIZATION_NOTARY_CONFIRM)
+    if (newChain.notarizationProtocol == newChain.NOTARIZATION_AUTO ||
+        newChain.notarizationProtocol == newChain.NOTARIZATION_NOTARY_CONFIRM ||
+        newChain.notarizationProtocol == newChain.NOTARIZATION_NOTARY_CHAINID)
     {
         notarizationDest = CPubKey(ParseHex(CC.CChexstr));
     }
-    else if (newChain.notarizationProtocol == newChain.NOTARIZATION_NOTARY_CHAINID)
-    {
-        notarizationDest = CIdentityID(newChainID);
-    }
     else
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "None or notarization protocol specified");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "No valid notarization protocol specified");
     }
 
     dests = std::vector<CTxDestination>({notarizationDest});
@@ -11843,13 +11841,10 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             CTxDestination notarizationDest;
 
             if (newGatewayConverter.notarizationProtocol == newGatewayConverter.NOTARIZATION_AUTO ||
-                newGatewayConverter.notarizationProtocol == newGatewayConverter.NOTARIZATION_NOTARY_CONFIRM)
+                newGatewayConverter.notarizationProtocol == newGatewayConverter.NOTARIZATION_NOTARY_CONFIRM ||
+                newGatewayConverter.notarizationProtocol == newGatewayConverter.NOTARIZATION_NOTARY_CHAINID)
             {
                 notarizationDest = CPubKey(ParseHex(CC.CChexstr));
-            }
-            else if (newGatewayConverter.notarizationProtocol == newGatewayConverter.NOTARIZATION_NOTARY_CHAINID)
-            {
-                notarizationDest = CIdentityID(gatewayCurrencyID);
             }
             else
             {

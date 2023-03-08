@@ -770,12 +770,15 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         }
 
         notarizationProtocol = (ENotarizationProtocol)uni_get_int(find_value(obj, "notarizationprotocol"), (int32_t)NOTARIZATION_AUTO);
-        if (notarizationProtocol != NOTARIZATION_AUTO && notarizationProtocol != NOTARIZATION_NOTARY_CONFIRM)
+        if (notarizationProtocol != NOTARIZATION_AUTO &&
+            notarizationProtocol != NOTARIZATION_NOTARY_CONFIRM &&
+            notarizationProtocol != NOTARIZATION_NOTARY_CHAINID)
         {
-            LogPrintf("%s: notarization protocol for PBaaS chains must be %d (NOTARIZATION_AUTO) or %d (NOTARIZATION_NOTARY_CONFIRM)\n", __func__, (int)NOTARIZATION_NOTARY_CONFIRM);
+            LogPrintf("%s: notarization protocol for PBaaS chains must be %d (NOTARIZATION_AUTO), %d (NOTARIZATION_NOTARY_CONFIRM), or  %d (NOTARIZATION_NOTARY_CHAINID)\n", __func__, (int)NOTARIZATION_AUTO, (int)NOTARIZATION_NOTARY_CONFIRM, (int)NOTARIZATION_NOTARY_CHAINID);
             nVersion = PBAAS_VERSION_INVALID;
             return;
         }
+
         proofProtocol = (EProofProtocol)uni_get_int(find_value(obj, "proofprotocol"), (int32_t)PROOF_PBAASMMR);
         if (proofProtocol != PROOF_PBAASMMR && proofProtocol != PROOF_CHAINID && proofProtocol != PROOF_ETHNOTARIZATION)
         {
@@ -808,7 +811,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
              proofProtocol == PROOF_CHAINID &&
              IsPBaaSChain())
         {
-            LogPrintf("%s: proofprotocol %d not yet implemented on this chain\n", __func__, (int)PROOF_CHAINID);
+            LogPrintf("%s: proofprotocol %d as a PBaaS chain is not yet implemented in this version of Verus PBaaS\n", __func__, (int)PROOF_CHAINID);
             nVersion = PBAAS_VERSION_INVALID;
             return;
         }
@@ -1086,6 +1089,10 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
         UniValue notaryArr = find_value(obj, "notaries");
         minNotariesConfirm = 0;
+        if (notarizationProtocol == NOTARIZATION_NOTARY_CHAINID)
+        {
+            notaries.push_back(GetID());
+        }
         if (notaryArr.isArray())
         {
             for (int i = 0; i < notaryArr.size(); i++)
