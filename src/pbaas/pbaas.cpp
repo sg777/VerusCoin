@@ -4265,10 +4265,10 @@ void CConnectedChains::CheckOracleUpgrades()
         }
         else
         {
-            printf("%s: ERROR - THE NETWORK IS UPGRADING TO PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VersionString(upgradePBaaSIt->second.minDaemonVersion), upgradePBaaSIt->second.upgradeBlockHeight - 1);
+            printf("%s: ERROR - THE NETWORK IS UPGRADING TO PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VersionString(upgradePBaaSIt->second.minDaemonVersion).c_str(), upgradePBaaSIt->second.upgradeBlockHeight - 1);
             if (KOMODO_STOPAT == 0 || KOMODO_STOPAT > (upgradePBaaSIt->second.upgradeBlockHeight - 1))
             {
-                LogPrintf("%s: ERROR - THE NETWORK IS UPGRADING TO PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VersionString(upgradePBaaSIt->second.minDaemonVersion), upgradePBaaSIt->second.upgradeBlockHeight - 1);
+                LogPrintf("%s: ERROR - THE NETWORK IS UPGRADING TO PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VersionString(upgradePBaaSIt->second.minDaemonVersion).c_str(), upgradePBaaSIt->second.upgradeBlockHeight - 1);
                 KOMODO_STOPAT = upgradePBaaSIt->second.upgradeBlockHeight - 1;
             }
         }
@@ -4282,10 +4282,10 @@ bool CConnectedChains::IsUpgradeActive(const uint160 &upgradeID, uint32_t blockH
     {
         if (it->second.minDaemonVersion > GetVerusVersion())
         {
-            printf("%s: ERROR - THE NETWORK IS PREPARING FOR PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s OR GREATER TO SYNC PAST BLOCK %u ON THE VERUS NETWORK\n", __func__, VersionString(it->second.minDaemonVersion), it->second.upgradeBlockHeight - 1);
+            printf("%s: ERROR - THE NETWORK IS PREPARING FOR PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s OR GREATER TO SYNC PAST BLOCK %u ON THE VERUS NETWORK\n", __func__, VersionString(it->second.minDaemonVersion).c_str(), it->second.upgradeBlockHeight - 1);
             if (KOMODO_STOPAT == 0 || KOMODO_STOPAT > (it->second.upgradeBlockHeight - 1))
             {
-                LogPrintf("%s: ERROR - THE NETWORK IS PREPARING FOR PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s OR GREATER TO SYNC PAST BLOCK %u ON THE VERUS NETWORK\n", __func__, VersionString(it->second.minDaemonVersion), it->second.upgradeBlockHeight - 1);
+                LogPrintf("%s: ERROR - THE NETWORK IS PREPARING FOR PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s OR GREATER TO SYNC PAST BLOCK %u ON THE VERUS NETWORK\n", __func__, VersionString(it->second.minDaemonVersion).c_str(), it->second.upgradeBlockHeight - 1);
                 KOMODO_STOPAT = it->second.upgradeBlockHeight - 1;
             }
         }
