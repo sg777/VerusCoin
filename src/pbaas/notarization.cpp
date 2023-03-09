@@ -3251,6 +3251,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
 
     CBlockHeaderAndProof posBlockHeaderAndProof;
     CPartialTransactionProof posSourceProof;
+    uint32_t provingBlockHeight;
     CStakeParams stakeParams;
     std::vector<CBlockHeaderProof> posEntropyHeaders;
     std::vector<CIdentity> stakeSpendingIDs;
@@ -3941,6 +3942,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                                         ds >> posEntropyHeaders.back();
                                     }
                                 }
+                                provingBlockHeight = blockToProve;
                                 proofState = posEntropyHeaders.size() == 2 && posEntropyHeaders.back().IsValid() ? EXPECT_STAKE_TX : EXPECT_NOTHING;
                             }
                             catch(const std::exception& e)
@@ -3986,7 +3988,8 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                     bool stakeTxPassed = txMerkleRoot == posBlockHeaderAndProof.blockHeader.hashMerkleRoot &&
                                          ValidateStakeTransaction(outTx, stakeParams, false) &&
                                          stakeParams.prevHash == posBlockHeaderAndProof.blockHeader.hashPrevBlock &&
-                                         stakeParams.srcHeight == posSourceProof.GetBlockHeight();
+                                         stakeParams.srcHeight == posSourceProof.GetBlockHeight() &&
+                                         stakeParams.blkHeight == provingBlockHeight;
 
                     // Below, after we have gotten the stakeguard output and when we have any ID keys we may need, we can
                     // verify the spend signature.
@@ -4012,11 +4015,24 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                             CConstVerusSolutionVector::Version(posBlockHeaderAndProof.blockHeader.nSolution),
                             externalCurrency.MagicNumber(),
                             posBlockHeaderAndProof.blockHeader.nNonce,
-                            ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight(),
+                            provingBlockHeight,
                             (!PBAAS_TESTMODE && evidence.systemID == VERUS_CHAINID));
 
                         if (externalCurrency.IsValid() && (UintToArith256(rawPosHash) / outTx.vout[0].nValue) > posTarget)
                         {
+                            if (LogAcceptCategory("notarization"))
+                            {
+                                UniValue txUniv(UniValue::VOBJ);
+                                TxToUniv(outTx, uint256(), txUniv);
+                                LogPrintf("%s: Validation failure - stake transaction winner:\n%s\n", __func__, txUniv.write(1,2).c_str());
+
+                                LogPrintf("Solution version: %u\nMagic number: %d\nNonce: %s\nHeight: %u\n",
+                                            CConstVerusSolutionVector::Version(posBlockHeaderAndProof.blockHeader.nSolution),
+                                            (int)externalCurrency.MagicNumber(),
+                                            posBlockHeaderAndProof.blockHeader.nNonce.GetHex().c_str(),
+                                            ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight());
+                            }
+
                             proofState = EXPECT_NOTHING;
                         }
                         else
@@ -4026,6 +4042,13 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                     }
                     else
                     {
+                        LogPrintf("Stake TX validation failure\nstakeParams.srcHeight: %u\nstakeParams.blkHeight: %u\nstakeParams.prevHash: %s\nposSourceProof.GetBlockHeight(): %u\nprovingBlockHeight: %u\nposBlockHeaderAndProof.blockHeader.hashPrevBlock: %s\n",
+                                  stakeParams.srcHeight,
+                                  stakeParams.blkHeight,
+                                  stakeParams.prevHash.GetHex().c_str(),
+                                  posSourceProof.GetBlockHeight(),
+                                  provingBlockHeight,
+                                  posBlockHeaderAndProof.blockHeader.hashPrevBlock.GetHex().c_str());
                         proofState = EXPECT_NOTHING;
                     }
                 }
@@ -4050,6 +4073,13 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                     uint256 txMMRRoot = ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.CheckPartialTransaction(outTx, &isPartial);
                     CProofRoot lastNotarizationRoot = lastNotarization.proofRoots[expectedNotarization.currencyID];
 
+                    // get the proofroot for startingheight
+                    CProofRoot startingRoot = std::get<3>(priorReferencedNotarization).proofRoots.count(expectedNotarization.currencyID) ?
+                        std::get<3>(priorReferencedNotarization).proofRoots[expectedNotarization.currencyID] :
+                        CProofRoot();
+
+                    // if it is proven against this block MMR root, it must be the stake transaction
+                    // and we must be ready to prove it all
                     if (txMMRRoot == posBlockHeaderAndProof.blockHeader.GetBlockMMRRoot())
                     {
                         for (int j = 0; j < outTx.vout.size(); j++)
@@ -4075,11 +4105,12 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                         validChallengeEvidence = (++numHeaderProofs >= numHeaders);
                         proofState = EXPECT_HEADER_PROOFS;
                     }
-                    else if (posBlockHeaderAndProof.GetBlockHeight() > 0 &&
+                    else if (((CChainObject<CPartialTransactionProof> *)proofComponent)->object.IsChainProof() &&
+                             posBlockHeaderAndProof.GetBlockHeight() > 0 &&
                              (posBlockHeaderAndProof.GetBlockHeight() - ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight()) >= VERUS_MIN_STAKEAGE &&
-                             ((((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight() > lastNotarizationRoot.rootHeight &&
+                             ((((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight() > startingRoot.rootHeight &&
                                txMMRRoot == posBlockHeaderAndProof.blockHeader.GetPrevMMRRoot()) ||
-                              txMMRRoot == lastNotarization.proofRoots[expectedNotarization.currencyID].stateRoot))
+                               txMMRRoot == startingRoot.stateRoot))
                     {
                         for (auto &oneOut : outTx.vout)
                         {
@@ -4106,6 +4137,19 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                     }
                     else
                     {
+                        if (LogAcceptCategory("notarization"))
+                        {
+                            LogPrintf("\nIsChainProof: %s\nProofHeight: %u\nposBlockHeaderAndProof.GetBlockHeight(): %u\n((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight():%u\nlastNotarizationRoot.rootHeight: %u\ntxMMRRoot: %s\nposBlockHeaderAndProof.blockHeader.GetPrevMMRRoot(): %s\nlastNotarizationRoot.stateRoot: %s\nfutureProofRoot.stateroot: %s\n",
+                                      ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.IsChainProof() ? "true" : "false",
+                                      ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetProofHeight(),
+                                      posBlockHeaderAndProof.GetBlockHeight(),
+                                      ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight(),
+                                      lastNotarizationRoot.rootHeight,
+                                      txMMRRoot.GetHex().c_str(),
+                                      posBlockHeaderAndProof.blockHeader.GetPrevMMRRoot().GetHex().c_str(),
+                                      lastNotarizationRoot.stateRoot.GetHex().c_str(),
+                                      futureProofRoot.stateRoot.GetHex().c_str());
+                        }
                         proofState = EXPECT_NOTHING;
                     }
                 }
@@ -5221,7 +5265,7 @@ std::vector<__uint128_t> GetBlockCommitments(uint32_t fromHeight, uint32_t toHei
     return blockCommitmentsSmall;
 }
 
-bool ProvePosBlock(uint32_t startingHeight, const CBlockIndex *pindex, CNotaryEvidence &evidence, CValidationState &state)
+bool ProvePosBlock(uint32_t lastProofRootHeight, const CBlockIndex *pindex, CNotaryEvidence &evidence, CValidationState &state)
 {
     // if this is a PoS block, add the entire spending transaction && a coinbase stakeguard output, which
     // will enable full PoS and signature verification, preventing any form of "fake stake" attack that
@@ -5296,8 +5340,8 @@ bool ProvePosBlock(uint32_t startingHeight, const CBlockIndex *pindex, CNotaryEv
                                                           std::vector<int>(),
                                                           std::vector<int>({(int)std::get<1>(idTuple).prevout.n}),
                                                           pIDBlockIdx,
-                                                          startingHeight != 1 && pIDBlockIdx->GetHeight() <= startingHeight ?
-                                                            startingHeight :
+                                                          lastProofRootHeight != 1 && pIDBlockIdx->GetHeight() <= lastProofRootHeight ?
+                                                            lastProofRootHeight :
                                                             pindex->GetHeight() - 1);
         }
     }

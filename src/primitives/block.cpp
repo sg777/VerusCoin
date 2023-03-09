@@ -364,7 +364,7 @@ uint256 CBlockHeader::GetRawVerusPOSHash(int32_t blockVersion, uint32_t solVersi
     {
         CVerusHashV2Writer hashWriter = CVerusHashV2Writer(SER_GETHASH, PROTOCOL_VERSION);
 
-        hashWriter << ASSETCHAINS_MAGIC;
+        hashWriter << magic;
         hashWriter << nonce;
         hashWriter << height;
         return hashWriter.GetHash();
@@ -373,7 +373,7 @@ uint256 CBlockHeader::GetRawVerusPOSHash(int32_t blockVersion, uint32_t solVersi
     {
         CVerusHashWriter hashWriter = CVerusHashWriter(SER_GETHASH, PROTOCOL_VERSION);
 
-        hashWriter << ASSETCHAINS_MAGIC;
+        hashWriter << magic;
         hashWriter << nonce;
         hashWriter << height;
         return hashWriter.GetHash();

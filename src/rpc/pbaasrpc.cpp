@@ -4261,7 +4261,7 @@ UniValue getbestproofroot(const UniValue& params, bool fHelp)
     return retVal;
 }
 
-bool ProvePosBlock(uint32_t startingHeight, const CBlockIndex *pindex, CNotaryEvidence &evidence, CValidationState &state);
+bool ProvePosBlock(uint32_t lastProofRootHeight, const CBlockIndex *pindex, CNotaryEvidence &evidence, CValidationState &state);
 std::vector<__uint128_t> GetBlockCommitments(uint32_t lastNotarizationHeight, uint32_t currentNotarizationHeight, const uint256 &entropy);
 
 UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
@@ -5047,7 +5047,6 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                         {
                             LogPrintf("%s: creating evidence with entropyHash: %s\n", __func__, entropyHash.GetHex().c_str());
                         }
-
 
                         int headerLoop;
                         for (headerLoop = 0; headerLoop < loopNum; headerLoop++)
