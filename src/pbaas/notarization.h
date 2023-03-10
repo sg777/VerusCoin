@@ -103,6 +103,7 @@ public:
     }
     CObjectFinalization(const CTransaction &tx, uint32_t *pEcode=nullptr, int32_t *pFinalizationOutNum=nullptr, uint32_t minFinalHeight=0, uint8_t Version=VERSION_CURRENT);
     CObjectFinalization(const CScript &script);
+    CObjectFinalization(const UniValue &uni);
 
     ADD_SERIALIZE_METHODS;
 
@@ -492,7 +493,8 @@ public:
     CChainNotarizationData(UniValue &obj,
                            bool loadNotarizations=false,
                            std::vector<uint256> *pBlockHash=nullptr,
-                           std::vector<std::vector<std::tuple<CNotaryEvidence, CProofRoot, CProofRoot>>> *pCounterEvidence=nullptr);
+                           std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>> *pCounterEvidence=nullptr,
+                           std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence>>> *pEvidence=nullptr);
 
     ADD_SERIALIZE_METHODS;
 
@@ -537,19 +539,21 @@ public:
                                   int minNotaryConfirms,
                                   int minBlockConfirms,
                                   uint32_t height,
+                                  uint32_t lastConfirmedHeight,
                                   const std::vector<std::pair<CTransaction, uint256>> &txAndBlockVec) const;
 
     UniValue ToUniValue(const std::vector<std::pair<CTransaction, uint256>> &transactionsAndBlockHash=std::vector<std::pair<CTransaction, uint256>>(),
                         const std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>> &counterEvidence=
-                            std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>>()) const;
+                            std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>>(),
+                        const std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence>>> &evidence=
+                            std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence>>>()) const;
 };
 
 std::vector<CNodeData> GetGoodNodes(int maxNum=CCurrencyDefinition::MAX_STARTUP_NODES);
 std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(uint160 curID, uint32_t height);
 std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> GetPriorReferencedNotarization(const CTransaction &tx,
                                                                                                 int32_t notarizationOut,
-                                                                                                const CPBaaSNotarization &notarization,
-                                                                                                uint32_t height);
+                                                                                                const CPBaaSNotarization &notarization);
 bool ValidateEarnedNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsEarnedNotarizationInput(const CScript &scriptSig);
 bool ValidateAcceptedNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);

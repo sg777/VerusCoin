@@ -1144,14 +1144,14 @@ CUTXORef::CUTXORef(const UniValue &uni)
 UniValue CObjectFinalization::ToUniValue() const
 {
     UniValue ret(UniValue::VOBJ);
-    ret.push_back(Pair("finalizationtype", (FinalizationType() == FINALIZE_NOTARIZATION) ?
-                                                "finalizenotarization" : FinalizationType() == FINALIZE_EXPORT ?
-                                                "finalizeexport" : "invalid"));
+    ret.push_back(Pair("finalizationtype", finalizationType));
     ret.push_back(Pair("status", IsConfirmed() ?
                                     "confirmed" :
                                     IsRejected() ?
                                         "rejected" :
-                                        "pending"));
+                                        IsChallenge() ?
+                                            "challenge" :
+                                            "pending"));
     if (evidenceInputs.size())
     {
         UniValue inputsUni(UniValue::VARR);

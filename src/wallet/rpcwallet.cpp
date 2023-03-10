@@ -3692,6 +3692,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
 
     CCurrencyDefinition &chainDef = ConnectedChains.ThisChain();
     UniValue reserveBal(UniValue::VOBJ);
+    UniValue reserveSharedBal(UniValue::VOBJ);
     CCurrencyValueMap resBal = pwalletMain->GetReserveBalance();
     CCurrencyValueMap resSharedBal = pwalletMain->GetSharedReserveBalance();
 
@@ -3717,6 +3718,27 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
         }
     }
 
+    for (auto &oneBalance : resSharedBal.valueMap)
+    {
+        reserveSharedBal.push_back(make_pair(ConnectedChains.GetFriendlyCurrencyName(oneBalance.first), ValueFromAmount(oneBalance.second)));
+    }
+    if (reserveSharedBal.size())
+    {
+        obj.push_back(Pair("shared_reserve_balance", reserveSharedBal));
+        if (checkunlockedIDs)
+        {
+            UniValue unlockedReserveBal(UniValue::VOBJ);
+            CCurrencyValueMap unlockedResBal = pwalletMain->GetSharedReserveBalance(false);
+            if (resBal != unlockedResBal)
+            {
+                for (auto &oneBalance : unlockedResBal.valueMap)
+                {
+                    unlockedReserveBal.push_back(make_pair(ConnectedChains.GetFriendlyCurrencyName(oneBalance.first), ValueFromAmount(oneBalance.second)));
+                }
+                obj.push_back(Pair("unlocked_shared_reserve_balance", unlockedReserveBal));
+            }
+        }
+    }
 
     UniValue unconfirmedReserveBal(UniValue::VOBJ);
     for (auto &oneBalance : pwalletMain->GetUnconfirmedReserveBalance().valueMap)

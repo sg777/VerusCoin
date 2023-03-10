@@ -3492,8 +3492,9 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                     // it must be verified
 
                     // if there is any conflicting entry, we have an issue, otherwise, we are fine
+                    std::set<COutPoint> dummySpentInMempool;
                     foundMemDup = memIndex.size() > 0;
-                    for (auto &oneIdxEntry : mempool.FilterUnspent(memIndex))
+                    for (auto &oneIdxEntry : mempool.FilterUnspent(memIndex, dummySpentInMempool))
                     {
                         const CTransaction &identityTx = mempool.mapTx.find(oneIdxEntry.first.txhash)->GetTx();
                         preexistingID = CIdentity(identityTx.vout[oneIdxEntry.first.index].scriptPubKey);

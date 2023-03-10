@@ -1896,9 +1896,13 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                                     {
                                         uint256 idTxId;
                                         std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
-                                        if (!GetIdentity(CIdentityMapKey(GetDestinationID(oneDest)), idTxId, keyAndIdentity) ||
+                                        if (!GetIdentity(CIdentityID(GetDestinationID(oneDest)), keyAndIdentity) ||
                                             (nHeight - keyAndIdentity.first.blockHeight) < VERUS_MIN_STAKEAGE)
                                         {
+                                            if (LogAcceptCategory("staking") && !keyAndIdentity.second.IsValid())
+                                            {
+                                                LogPrintf("%s: Do not have ID %s in wallet\n", __func__, EncodeDestination(CIdentityID(GetDestinationID(oneDest))).c_str());
+                                            }
                                             isValid = false;
                                             break;
                                         }
@@ -4353,7 +4357,7 @@ int CWallet::ScanForWalletTransactions(CBlockIndex* pindexStart, bool fUpdate)
 
     {
         //Lock cs_keystore to prevent wallet from locking during rescan
-        LOCK(cs_KeyStore);
+        LOCK2(mempool.cs, cs_KeyStore);
 
         // no need to read and scan block, if block was created before
         // our wallet birthday (as adjusted for block time variability)
@@ -4966,7 +4970,7 @@ CCurrencyValueMap CWallet::GetReserveBalance(bool includeIDLocked) const
         {
             const CWalletTx* pcoin = &(*it).second;
             if (pcoin->IsTrusted())
-                retVal += pcoin->GetAvailableReserveCredit(includeIDLocked, includeIDLocked, ISMINE_SHARED);
+                retVal += pcoin->GetAvailableReserveCredit(includeIDLocked, includeIDLocked);
         }
     }
 
@@ -4982,7 +4986,7 @@ CCurrencyValueMap CWallet::GetSharedReserveBalance(bool includeIDLocked) const
         {
             const CWalletTx* pcoin = &(*it).second;
             if (pcoin->IsTrusted())
-                retVal += pcoin->GetAvailableReserveCredit(includeIDLocked, includeIDLocked);
+                retVal += pcoin->GetAvailableReserveCredit(includeIDLocked, includeIDLocked, ISMINE_SHARED);
         }
     }
 
