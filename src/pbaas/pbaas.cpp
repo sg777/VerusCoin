@@ -4212,27 +4212,24 @@ void CConnectedChains::CheckOracleUpgrades()
     std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>> upgradeData;
     if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) >= CActivationHeight::ACTIVATE_PBAAS)
     {
-        upgradeData = CIdentity::GetIdentityContentByKey(PBAAS_NOTIFICATION_ORACLE, UpgradeDataKey(ASSETCHAINS_CHAINID), APPROX_RELEASE_HEIGHT, 0, false, false, 0, true);
+        upgradeData = CIdentity::GetIdentityContentByKey(PBAAS_NOTIFICATION_ORACLE, UpgradeDataKey(ASSETCHAINS_CHAINID), IsVerusMainnetActive() ? APPROX_RELEASE_HEIGHT : 0, 0, false, false, 0, true);
     }
-    else
-    {
-        CIdentity oracleID = CIdentity::LookupIdentity(PBAAS_NOTIFICATION_ORACLE, chainActive.Height());
+    CIdentity oracleID = CIdentity::LookupIdentity(PBAAS_NOTIFICATION_ORACLE, chainActive.Height());
 
-        if (oracleID.contentMap.count(TestForkUpgradeKey()))
-        {
-            upgradeData.resize(upgradeData.size() + 1);
-            std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[TestForkUpgradeKey()].GetHex());
-        }
-        else if (oracleID.contentMap.count(PBaaSUpgradeKey()))
-        {
-            upgradeData.resize(upgradeData.size() + 1);
-            std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[PBaaSUpgradeKey()].GetHex());
-        }
-        else if (oracleID.contentMap.count(OptionalPBaaSUpgradeKey()))
-        {
-            upgradeData.resize(upgradeData.size() + 1);
-            std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[OptionalPBaaSUpgradeKey()].GetHex());
-        }
+    if (oracleID.contentMap.count(TestForkUpgradeKey()))
+    {
+        upgradeData.resize(upgradeData.size() + 1);
+        std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[TestForkUpgradeKey()].GetHex());
+    }
+    else if (oracleID.contentMap.count(PBaaSUpgradeKey()))
+    {
+        upgradeData.resize(upgradeData.size() + 1);
+        std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[PBaaSUpgradeKey()].GetHex());
+    }
+    else if (oracleID.contentMap.count(OptionalPBaaSUpgradeKey()))
+    {
+        upgradeData.resize(upgradeData.size() + 1);
+        std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[OptionalPBaaSUpgradeKey()].GetHex());
     }
 
     CUpgradeDescriptor oneUpgrade;
