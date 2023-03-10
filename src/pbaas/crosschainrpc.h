@@ -28,8 +28,7 @@ static const int DEFAULT_RPC_TIMEOUT=900;
 static const uint32_t PBAAS_VERSION = 1;
 static const uint32_t PBAAS_VERSION_INVALID = 0;
 
-static const uint32_t PBAAS_TESTFORK_TIME = 1604216000;
-//static const uint32_t PBAAS_TESTFORK_TIME = 1676920000;
+extern uint32_t PBAAS_TESTFORK_TIME;
 
 class CTransaction;
 class CScript;
@@ -269,15 +268,14 @@ public:
         return 0;
     }
 
+    void SetAuxDest(const CTransferDestination &auxDest, int destNum);
+    CTransferDestination GetAuxDest(int destNum) const;
+    bool EraseAuxDest(int destNum);
     void ClearAuxDests()
     {
         auxDests.clear();
         type &= ~FLAG_DEST_AUX;
     }
-
-    CTransferDestination GetAuxDest(int destNum) const;
-
-    void SetAuxDest(const CTransferDestination &auxDest, int destNum);
 
     void SetGatewayLeg(const uint160 &GatewayID=uint160(), int64_t Fees=0, const uint160 &vdxfCode=uint160())
     {
@@ -474,7 +472,7 @@ public:
         MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK = 50,
         MAX_ETH_TRANSFER_EXPORTS_SIZE_PER_BLOCK = 100000,
         DEFAULT_BLOCK_NOTARIZATION_TIME = 600,      // default target time for block notarizations
-        MIN_BLOCK_NOTARIZATION_BLOCKS = 2,          // minimum target blocks for notarization period
+        MIN_BLOCK_NOTARIZATION_PERIOD = 5,          // minimum target blocks for notarization period
         MAX_NOTARIZATION_CONVERSION_PRICING_INTERVAL = 100,  // there must be a notarization with conversion at least 100 blocks before reserve transfer
         DEFAULT_BLOCKTIME_TARGET = 60,              // default block time target for difficulty adjustment, in seconds
         MIN_BLOCKTIME_TARGET = 10,                  // min 10 seconds in first version of PBaaS
@@ -485,7 +483,7 @@ public:
         BLOCK_NOTARIZATION_MODULO = (DEFAULT_BLOCK_NOTARIZATION_TIME / DEFAULT_BLOCKTIME_TARGET), // default min notarization spacing (10 minutes)
         MIN_EARNED_FOR_AUTO = 4,
         MIN_BLOCKS_TO_SIGNCONFIRM = 15,
-        MIN_BLOCKS_TO_AUTOCONFIRM = 200,
+        MIN_BLOCKS_TO_AUTOCONFIRM = 150,
     };
 
     enum ECurrencyOptions

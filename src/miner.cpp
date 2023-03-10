@@ -983,15 +983,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
 
             // add notarization before other outputs
             cp = CCinit(&CC, EVAL_EARNEDNOTARIZATION);
-            if (newCurID == ASSETCHAINS_CHAINID &&
-                newCurrency.notarizationProtocol == newCurrency.NOTARIZATION_NOTARY_CHAINID)
-            {
-                dests = std::vector<CTxDestination>({CIdentityID(newCurID)});
-            }
-            else
-            {
-                dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-            }
+            dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
             outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &newNotarization))));
 
             // add export before other outputs
@@ -1045,15 +1037,8 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
 
             // add notarization before other outputs
             cp = CCinit(&CC, EVAL_EARNEDNOTARIZATION);
-            if (newCurID == ASSETCHAINS_CHAINID &&
-                newCurrency.notarizationProtocol == newCurrency.NOTARIZATION_NOTARY_CHAINID)
-            {
-                dests = std::vector<CTxDestination>({CIdentityID(newCurID)});
-            }
-            else
-            {
-                dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-            }
+            dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+
             // this currency is not launching now
             newNotarization.SetLaunchConfirmed();
             newNotarization.SetLaunchComplete();
@@ -1114,15 +1099,8 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
     else
     {
         cp = CCinit(&CC, EVAL_EARNEDNOTARIZATION);
-        if (newCurID == ASSETCHAINS_CHAINID &&
-            newCurrency.notarizationProtocol == newCurrency.NOTARIZATION_NOTARY_CHAINID)
-        {
-            dests = std::vector<CTxDestination>({CIdentityID(newCurID)});
-        }
-        else
-        {
-            dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-        }
+        dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+
         // we notarize our notary chain here, not ourselves
         if (newNotarization.currencyID == ASSETCHAINS_CHAINID)
         {

@@ -50,7 +50,7 @@ extern string PBAAS_HOST;
 extern string PBAAS_USERPASS;
 extern int32_t PBAAS_PORT;
 extern std::string VERUS_CHAINNAME;
-
+extern uint32_t PBAAS_TESTFORK_TIME;
 
 //
 // Exception thrown on connection error.  This error is used to determine
@@ -558,7 +558,7 @@ CIdentitySignature::ESignatureVerification CIdentitySignature::CheckSignature(co
 CTransferDestination CTransferDestination::GetAuxDest(int destNum) const
 {
     CTransferDestination retVal;
-    if (destNum < auxDests.size())
+    if (destNum >= 0 && destNum < auxDests.size())
     {
         ::FromVector(auxDests[destNum], retVal);
         if (retVal.type & FLAG_DEST_AUX || retVal.auxDests.size())
@@ -583,6 +583,11 @@ CTransferDestination CTransferDestination::GetAuxDest(int destNum) const
 
 void CTransferDestination::SetAuxDest(const CTransferDestination &auxDest, int destNum)
 {
+    if (auxDests.size() < destNum)
+    {
+        LogPrintf("%s: Invalid auxDest index %d. Cannot add more than one to auxDests at a time.\n", __func__, destNum);
+        assert(false);
+    }
     if (auxDests.size() == destNum)
     {
         auxDests.push_back(::AsVector(auxDest));
@@ -597,11 +602,25 @@ void CTransferDestination::SetAuxDest(const CTransferDestination &auxDest, int d
     }
 }
 
+bool CTransferDestination::EraseAuxDest(int destNum)
+{
+    if (auxDests.size() <= destNum)
+    {
+        LogPrint("notarization", "%s: Attempt to erase invalid auxDest index %d\n", __func__, destNum);
+        return false;
+    }
+    auxDests.erase(auxDests.begin() + destNum);
+    if (!auxDests.size())
+    {
+        type &= ~FLAG_DEST_AUX;
+    }
+    return true;
+}
 
 uint160 DecodeCurrencyName(std::string currencyStr)
 {
     uint160 retVal;
-    currencyStr = TrimSpaces(currencyStr);
+    currencyStr = TrimSpaces(currencyStr, true);
     if (!currencyStr.size())
     {
         return retVal;
@@ -671,7 +690,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             }
         }
 
-        name = CleanName(name, parent);
+        name = CleanName(name, parent, true);
 
         std::string systemIDStr = uni_get_str(find_value(obj, "systemid"));
         if (systemIDStr != "")
@@ -751,12 +770,15 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
         }
 
         notarizationProtocol = (ENotarizationProtocol)uni_get_int(find_value(obj, "notarizationprotocol"), (int32_t)NOTARIZATION_AUTO);
-        if (notarizationProtocol != NOTARIZATION_AUTO && notarizationProtocol != NOTARIZATION_NOTARY_CONFIRM)
+        if (notarizationProtocol != NOTARIZATION_AUTO &&
+            notarizationProtocol != NOTARIZATION_NOTARY_CONFIRM &&
+            notarizationProtocol != NOTARIZATION_NOTARY_CHAINID)
         {
-            LogPrintf("%s: notarization protocol for PBaaS chains must be %d (NOTARIZATION_AUTO) or %d (NOTARIZATION_NOTARY_CONFIRM)\n", __func__, (int)NOTARIZATION_NOTARY_CONFIRM);
+            LogPrintf("%s: notarization protocol for PBaaS chains must be %d (NOTARIZATION_AUTO), %d (NOTARIZATION_NOTARY_CONFIRM), or  %d (NOTARIZATION_NOTARY_CHAINID)\n", __func__, (int)NOTARIZATION_AUTO, (int)NOTARIZATION_NOTARY_CONFIRM, (int)NOTARIZATION_NOTARY_CHAINID);
             nVersion = PBAAS_VERSION_INVALID;
             return;
         }
+
         proofProtocol = (EProofProtocol)uni_get_int(find_value(obj, "proofprotocol"), (int32_t)PROOF_PBAASMMR);
         if (proofProtocol != PROOF_PBAASMMR && proofProtocol != PROOF_CHAINID && proofProtocol != PROOF_ETHNOTARIZATION)
         {
@@ -789,7 +811,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
              proofProtocol == PROOF_CHAINID &&
              IsPBaaSChain())
         {
-            LogPrintf("%s: proofprotocol %d not yet implemented on this chain\n", __func__, (int)PROOF_CHAINID);
+            LogPrintf("%s: proofprotocol %d as a PBaaS chain is not yet implemented in this version of Verus PBaaS\n", __func__, (int)PROOF_CHAINID);
             nVersion = PBAAS_VERSION_INVALID;
             return;
         }
@@ -1067,6 +1089,10 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
         UniValue notaryArr = find_value(obj, "notaries");
         minNotariesConfirm = 0;
+        if (notarizationProtocol == NOTARIZATION_NOTARY_CHAINID)
+        {
+            notaries.push_back(GetID());
+        }
         if (notaryArr.isArray())
         {
             for (int i = 0; i < notaryArr.size(); i++)
@@ -1148,7 +1174,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             blockTime = uni_get_int64(find_value(obj, "blocktime"), DEFAULT_BLOCKTIME_TARGET);
             powAveragingWindow = uni_get_int64(find_value(obj, "powaveragingwindow"), DEFAULT_AVERAGING_WINDOW);
             blockNotarizationModulo = uni_get_int64(find_value(obj, "notarizationperiod"),
-                                                    std::max((int64_t)(DEFAULT_BLOCK_NOTARIZATION_TIME / blockTime), (int64_t)MIN_BLOCK_NOTARIZATION_BLOCKS));
+                                                    std::max((int64_t)(DEFAULT_BLOCK_NOTARIZATION_TIME / blockTime), (int64_t)MIN_BLOCK_NOTARIZATION_PERIOD));
 
             if (powAveragingWindow < MIN_AVERAGING_WINDOW || powAveragingWindow > MAX_AVERAGING_WINDOW)
             {
@@ -1205,7 +1231,7 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
     powAveragingWindow(DEFAULT_AVERAGING_WINDOW),
     blockNotarizationModulo(BLOCK_NOTARIZATION_MODULO)
 {
-    name = boost::to_upper_copy(CleanName(currencyName, parent));
+    name = boost::to_upper_copy(CleanName(currencyName, parent, true));
     if (parent.IsNull())
     {
         UniValue uniCurrency(UniValue::VOBJ);

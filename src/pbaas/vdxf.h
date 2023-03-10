@@ -222,6 +222,7 @@ public:
     }
 
     static std::string DATA_KEY_SEPARATOR;
+    static bool HasExplicitParent(const std::string &Name);
     static std::vector<std::string> ParseSubNames(const std::string &Name, std::string &ChainOut, bool displayfilter=false, bool addVerus=true);
     static std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false);
     static uint160 GetID(const std::string &Name);
@@ -589,7 +590,7 @@ public:
 // standard name parsing functions
 std::string TrimLeading(const std::string &Name, unsigned char ch);
 std::string TrimTrailing(const std::string &Name, unsigned char ch);
-std::string TrimSpaces(const std::string &Name);
+std::string TrimSpaces(const std::string &Name, bool removeDuals=false, const std::string &invalidChars="\\/:*?\"<>|");
 
 // this deserializes a vector into either a VDXF data object or a VDXF structured
 // object, which may contain one or more VDXF data objects.

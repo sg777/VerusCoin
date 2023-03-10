@@ -452,7 +452,6 @@ public:
     // extraHashes are the count of additional elements, such as work or power, to also incorporate into the hash tree
     uint256 SafeCheck(uint256 hash) const
     {
-        HASHALGOWRITER hw(SER_GETHASH, 0);
         int64_t index = nIndex;
 
         if (index == -1)
@@ -461,6 +460,7 @@ public:
         // printf("start SafeCheck branch.size(): %lu, index: %lu, hash: %s\n", branch.size(), index, HashAbbrev(hash).c_str());
         for (auto it(branch.begin()); it != branch.end(); ++it)
         {
+            HASHALGOWRITER hw(SER_GETHASH, 0);
             if (index & 1) 
             {
                 if (*it == hash) 
@@ -688,6 +688,7 @@ public:
     {
         CDataStream s(SER_NETWORK, PROTOCOL_VERSION);
         s << oldProof;
+        DeleteProofSequence();
         s >> *this;
     }
     const CMMRProof &operator=(const CMMRProof &operand)
@@ -715,6 +716,9 @@ public:
         {
             int32_t proofSize;
             READWRITE(proofSize);
+
+            // in case it is deserialized with something present
+            DeleteProofSequence();
 
             bool error = false;
             for (int i = 0; i < proofSize && !error; i++)

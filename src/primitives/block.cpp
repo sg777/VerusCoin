@@ -364,7 +364,7 @@ uint256 CBlockHeader::GetRawVerusPOSHash(int32_t blockVersion, uint32_t solVersi
     {
         CVerusHashV2Writer hashWriter = CVerusHashV2Writer(SER_GETHASH, PROTOCOL_VERSION);
 
-        hashWriter << ASSETCHAINS_MAGIC;
+        hashWriter << magic;
         hashWriter << nonce;
         hashWriter << height;
         return hashWriter.GetHash();
@@ -373,7 +373,7 @@ uint256 CBlockHeader::GetRawVerusPOSHash(int32_t blockVersion, uint32_t solVersi
     {
         CVerusHashWriter hashWriter = CVerusHashWriter(SER_GETHASH, PROTOCOL_VERSION);
 
-        hashWriter << ASSETCHAINS_MAGIC;
+        hashWriter << magic;
         hashWriter << nonce;
         hashWriter << height;
         return hashWriter.GetHash();
@@ -616,7 +616,7 @@ CPartialTransactionProof CBlock::GetPartialTransactionProof(const CTransaction &
     else
     {
         // make a proof of the whole transaction
-        CMMRProof exportProof = CMMRProof() << CMerkleBranch<CHashWriter>(txIndex, GetMerkleBranch(txIndex));
+        CMMRProof exportProof = CMMRProof() << CBTCMerkleBranch(txIndex, GetMerkleBranch(txIndex));
         return CPartialTransactionProof(exportProof, tx);
     }
 }
@@ -864,6 +864,24 @@ CHashCommitments::CHashCommitments(const std::vector<__uint128_t> &smallCommitme
     }
 }
 
+// returns a vector of unsigned 32 bit values as:
+// 0 - nTime
+// 1 - nBits
+// 2 - nPoSBits
+// 3 - (block height << 1) + IsPos bit
+std::vector<uint32_t> UnpackBlockCommitment(__uint128_t oneBlockCommitment)
+{
+    std::vector<uint32_t> retVal;
+    retVal.push_back(oneBlockCommitment & UINT32_MAX);
+    oneBlockCommitment >>= 32;
+    retVal.insert(retVal.begin(), oneBlockCommitment & UINT32_MAX);
+    oneBlockCommitment >>= 32;
+    retVal.insert(retVal.begin(), oneBlockCommitment & UINT32_MAX);
+    oneBlockCommitment >>= 32;
+    retVal.insert(retVal.begin(), oneBlockCommitment & UINT32_MAX);
+    return retVal;
+}
+
 uint256 CHashCommitments::GetSmallCommitments(std::vector<__uint128_t> &smallCommitments) const
 {
     // if have something, process it
@@ -878,14 +896,36 @@ uint256 CHashCommitments::GetSmallCommitments(std::vector<__uint128_t> &smallCom
         for (; smallIndex >= 0; smallIndex--)
         {
             arith_uint256 from256 = UintToArith256(hashCommitments[bigIndex]);
-            if (currentBigOffset)
+            if (!currentBigOffset)
             {
-                from256 = from256 >> 128;
+                from256 = from256 << 128;
             }
-            smallCommitments[smallIndex] = ((__uint128_t)(from256 >> 64).GetLow64()) + (__uint128_t)(from256.GetLow64());
+            from256 = from256 >> 128;
+            smallCommitments[smallIndex] = ((__uint128_t)(from256 >> 64).GetLow64() << 64) + (__uint128_t)(from256.GetLow64());
             if (currentBigOffset ^= 1)
             {
                 bigIndex--;
+            }
+        }
+        if (LogAcceptCategory("notarization"))
+        {
+            LogPrintf("%s: RETURNING COMMITMENTS:\n", __func__);
+            for (int currentOffset = 0; currentOffset < smallCommitments.size(); currentOffset++)
+            {
+                auto commitmentVec = UnpackBlockCommitment(smallCommitments[currentOffset]);
+                arith_uint256 powTarget, posTarget;
+                powTarget.SetCompact(commitmentVec[1]);
+                posTarget.SetCompact(commitmentVec[2]);
+                LogPrintf("nHeight: %u, nTime: %u, PoW target: %s, PoS target: %s, isPoS: %u\n",
+                            commitmentVec[3] >> 1,
+                            commitmentVec[0],
+                            powTarget.GetHex().c_str(),
+                            posTarget.GetHex().c_str(),
+                            commitmentVec[3] & 1);
+                if (!commitmentVec[1])
+                {
+                    LogPrintf("INVALID ENTRY\n");
+                }
             }
         }
     }

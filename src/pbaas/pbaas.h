@@ -47,32 +47,44 @@ static const int64_t PBAAS_MINNOTARIZATIONOUTPUT = 10000;   // enough for one fe
 static const int32_t PBAAS_MINSTARTBLOCKDELTA = 50;         // minimum number of blocks to wait for starting a chain after definition
 static const int32_t PBAAS_MAXPRIORBLOCKS = 16;             // maximum prior block commitments to include in prior blocks chain object
 
-// This data structure is used on an output that provides proof of stake validation for other crypto conditions
-// with rate limited spends based on a PoS contest
-class CPoSSelector
+class CUpgradeDescriptor
 {
 public:
-    uint32_t nBits;                         // PoS difficulty target
-    uint32_t nTargetSpacing;                // number of 1/1000ths of a block between selections (e.g. 1 == 1000 selections per block)
+    enum EVersions {
+        VERSION_INVALID = 0,
+        VERSION_FIRST = 1,
+        VERSION_LAST = 1,
+        VERSION_CURRENT = 1,
+    };
 
-    CPoSSelector(uint32_t bits, uint32_t TargetSpacing)
-    {
-        nBits = bits;
-        nTargetSpacing = TargetSpacing;
-    }
+    uint32_t version;                       // version
+    uint32_t minDaemonVersion;              // if we are not at this version or higher, we cannot support this upgrade
+    uint160 upgradeID;                      // upgrade identifier for listening client
+    uint32_t upgradeBlockHeight;            // block height at which the upgrade should happen
+    uint32_t upgradeTargetTime;             // target time for upgrade, depending on specific upgrade activation rules
+
+    CUpgradeDescriptor(uint32_t Version=VERSION_INVALID) : version(Version), upgradeBlockHeight(0) {}
+    CUpgradeDescriptor(const uint160 &UpgradeID, uint32_t minDaemonVersion, uint32_t UpgradeHeight, uint32_t upgradeTargetTime, uint32_t Version=VERSION_CURRENT) :
+        version(Version), upgradeID(UpgradeID), upgradeBlockHeight(UpgradeHeight) {}
 
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(nBits);
-        READWRITE(nTargetSpacing);
+        READWRITE(VARINT(version));
+        READWRITE(VARINT(minDaemonVersion));
+        READWRITE(upgradeID);
+        READWRITE(VARINT(upgradeBlockHeight));
+        READWRITE(VARINT(upgradeTargetTime));
     }
 
-    CPoSSelector(const std::vector<unsigned char> &asVector)
+    CUpgradeDescriptor(const std::vector<unsigned char> &asVector)
     {
         FromVector(asVector, *this);
     }
+
+    CUpgradeDescriptor(const UniValue &uni);
+    UniValue ToUniValue() const;
 
     std::vector<unsigned char> AsVector()
     {
@@ -81,7 +93,7 @@ public:
 
     bool IsValid() const
     {
-        return nBits != 0;
+        return version >= VERSION_FIRST && version <= VERSION_LAST && !upgradeID.IsNull() && (upgradeBlockHeight || upgradeTargetTime);
     }
 };
 
@@ -222,7 +234,7 @@ public:
         VERSION_INVALID = 0,
         VERSION_FIRST = 1,
         VERSION_PBAAS = 1,
-        VERSION_PBAAS2 = 2,
+        VERSION_PBAAS_MAINNET = 2,
         VERSION_LAST = 2,
         VERSION_CURRENT = 2,
         FINAL_CONFIRMATIONS = 9,
@@ -314,7 +326,8 @@ public:
         FLAG_ACCEPTED_MIRROR = 0x20,        // if this is set, this notarization is a mirror of an earned notarization on another chain
         FLAG_BLOCKONE_NOTARIZATION = 0x40,  // block 1 notarizations are auto-finalized, the blockchain itself will be worthless if it is wrong
         FLAG_SAME_CHAIN = 0x80,             // set if all currency information is verifiable on this chain
-        FLAG_LAUNCH_COMPLETE = 0x100        // set if all currency information is verifiable on this chain
+        FLAG_LAUNCH_COMPLETE = 0x100,       // set if all currency information is verifiable on this chain
+        FLAG_CONTRACT_UPGRADE = 0x200       // if set, this notarization agrees to the contract ugrade referenced in the first auxdest
     };
 
     uint32_t nVersion;
@@ -387,7 +400,7 @@ public:
         READWRITE(hashPrevCrossNotarization);
         READWRITE(prevHeight);
 
-        if (nVersion == VERSION_PBAAS2)
+        if (nVersion == VERSION_PBAAS_MAINNET)
         {
             std::vector<CCoinbaseCurrencyState> vecCurrencyStates;
             if (ser_action.ForRead())
@@ -802,6 +815,28 @@ public:
         }
     }
 
+    bool IsContractUpgrade() const
+    {
+        return flags & FLAG_CONTRACT_UPGRADE;
+    }
+
+    void SetContractUpgrade(const CTransferDestination &contractAddr, bool setTrue=true)
+    {
+        if (setTrue)
+        {
+            flags |= FLAG_CONTRACT_UPGRADE;
+            proposer.SetAuxDest(contractAddr, 0);
+        }
+        else
+        {
+            if (IsContractUpgrade())
+            {
+                proposer.EraseAuxDest(0);
+                flags &= ~FLAG_CONTRACT_UPGRADE;
+            }
+        }
+    }
+
     bool IsLaunchConfirmed() const
     {
         return flags & FLAG_LAUNCH_CONFIRMED;
@@ -889,6 +924,8 @@ public:
     CBlock lastBlock;
     std::map<uint160, CPBaaSMergeMinedChainData> mergeMinedChains;
     std::multimap<arith_uint256, CPBaaSMergeMinedChainData *> mergeMinedTargets;
+
+    std::map<uint160, CUpgradeDescriptor> activeUpgradesByKey;
 
     LRUCache<uint160, CCurrencyDefinition> currencyDefCache;        // protected by cs_main, so doesn't need sync
     LRUCache<std::tuple<uint160, uint256, bool>, CCoinbaseCurrencyState> currencyStateCache; // cached currency states @ heights + updated flag
@@ -1122,11 +1159,15 @@ public:
 
     CCurrencyDefinition GetDestinationCurrency(const CReserveTransfer &rt) const;
 
+    uint32_t ParseVersion(const std::string &versionStr) const;
+    uint32_t GetVerusVersion() const;
     bool CheckVerusPBaaSAvailable(UniValue &chainInfo, UniValue &chainDef);
     bool CheckVerusPBaaSAvailable();      // may use RPC to call Verus
     bool IsVerusPBaaSAvailable();
     bool IsNotaryAvailable(bool callToCheck=false);
     bool ConfigureEthBridge(bool callToCheck=false);
+    void CheckOracleUpgrades();
+    bool IsUpgradeActive(const uint160 &upgradeID, uint32_t blockHeight=UINT32_MAX, uint32_t blockTime=UINT32_MAX) const;
 
     std::vector<CCurrencyDefinition> GetMergeMinedChains()
     {
@@ -1142,7 +1183,56 @@ public:
     bool GetNotaryCurrencies(const CRPCChainData notaryChain,
                              const std::set<uint160> &currencyIDs,
                              std::map<uint160, std::pair<CCurrencyDefinition,CPBaaSNotarization>> &currencyDefs);
+
     bool GetNotaryIDs(const CRPCChainData notaryChain, const std::set<uint160> &idIDs, std::map<uint160,CIdentity> &identities);
+
+    static std::string UpgradeDataKeyName()
+    {
+        return "vrsc::system.upgradedata";
+    }
+
+    static uint160 UpgradeDataKey(const uint160 &systemID)
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF::GetDataKey(UpgradeDataKeyName(), nameSpace);
+        return CCrossChainRPCData::GetConditionID(key, systemID);
+    }
+
+    static std::string TestForkUpgradeKeyName()
+    {
+        return "vrsc::system.upgradedata.pbaastestfork";
+    }
+
+    static uint160 TestForkUpgradeKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF_Data::GetDataKey(TestForkUpgradeKeyName(), nameSpace);
+        return key;
+    }
+
+    static std::string OptionalPBaaSUpgradeKeyName()
+    {
+        return "vrsc::system.upgradedata.optionalpbaasupgrade";
+    }
+
+    static uint160 OptionalPBaaSUpgradeKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF_Data::GetDataKey(OptionalPBaaSUpgradeKeyName(), nameSpace);
+        return key;
+    }
+
+    static std::string PBaaSUpgradeKeyName()
+    {
+        return "vrsc::system.upgradedata.pbaasupgrade";
+    }
+
+    static uint160 PBaaSUpgradeKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF_Data::GetDataKey(PBaaSUpgradeKeyName(), nameSpace);
+        return key;
+    }
 };
 
 template <typename TOBJ>
