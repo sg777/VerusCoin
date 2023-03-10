@@ -616,7 +616,7 @@ CPartialTransactionProof CBlock::GetPartialTransactionProof(const CTransaction &
     else
     {
         // make a proof of the whole transaction
-        CMMRProof exportProof = CMMRProof() << CMerkleBranch<CHashWriter>(txIndex, GetMerkleBranch(txIndex));
+        CMMRProof exportProof = CMMRProof() << CBTCMerkleBranch(txIndex, GetMerkleBranch(txIndex));
         return CPartialTransactionProof(exportProof, tx);
     }
 }

@@ -3930,6 +3930,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
 
                             try
                             {
+                                posSourceProof = CPartialTransactionProof();
                                 ds >> posSourceProof;
                                 if (posSourceProof.IsValid())
                                 {
@@ -4042,7 +4043,10 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                     }
                     else
                     {
-                        LogPrintf("Stake TX validation failure\nstakeParams.srcHeight: %u\nstakeParams.blkHeight: %u\nstakeParams.prevHash: %s\nposSourceProof.GetBlockHeight(): %u\nprovingBlockHeight: %u\nposBlockHeaderAndProof.blockHeader.hashPrevBlock: %s\n",
+                        LogPrintf("Stake TX validation failure for txid: %s\nexpected merkle root: %s\nproof header: %s\nstakeParams.srcHeight: %u\nstakeParams.blkHeight: %u\nstakeParams.prevHash: %s\nposSourceProof.GetBlockHeight(): %u\nprovingBlockHeight: %u\nposBlockHeaderAndProof.blockHeader.hashPrevBlock: %s\n",
+                                  txMerkleRoot.GetHex().c_str(),
+                                  posBlockHeaderAndProof.blockHeader.hashMerkleRoot.GetHex().c_str(),
+                                  outTx.GetHash().GetHex().c_str(),
                                   stakeParams.srcHeight,
                                   stakeParams.blkHeight,
                                   stakeParams.prevHash.GetHex().c_str(),
@@ -5280,8 +5284,32 @@ bool ProvePosBlock(uint32_t lastProofRootHeight, const CBlockIndex *pindex, CNot
 
     // now prove:
     //
-    // 1) the entire last transaction in the block - proven by the block Merkle Tree, available in the proven header
+    // 1) the entire last transaction in the block - proven by the block Merkle root, which is available in the proven header
     evidence.evidence << posBlock.GetPartialTransactionProof(posBlock.vtx.back(), posBlock.vtx.size() - 1);
+
+    if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
+    {
+        CTransaction checkTx;
+
+        auto checkProof = posBlock.GetPartialTransactionProof(posBlock.vtx.back(), posBlock.vtx.size() - 1);
+        uint256 txHash = checkProof.GetPartialTransaction(checkTx);
+        uint256 merkleRoot = checkProof.CheckPartialTransaction(checkTx);
+
+        uint32_t shiftIndex = ((CBTCMerkleBranch *)(checkProof.txProof.proofSequence[0]))->nIndex;
+        LogPrintf("%s: Checking stake transaction proof\nMerkle branch:\nindex: %d\n", __func__, shiftIndex);
+
+        for (auto oneHash : ((CBTCMerkleBranch *)(checkProof.txProof.proofSequence[0]))->branch)
+        {
+            LogPrintf("hash on %s: %s\n", shiftIndex & 1 ? "left" : "right", oneHash.GetHex().c_str());
+            shiftIndex >>= 1;
+        }
+
+        uint256 checkMerkle =
+            SafeCheckMerkleBranch(txHash, ((CBTCMerkleBranch *)(checkProof.txProof.proofSequence[0]))->branch, ((CBTCMerkleBranch *)(checkProof.txProof.proofSequence[0]))->nIndex);
+
+        LogPrintf("Proving block 1513\nHeader:\n%s\nProofRoot at 1513: %s\n", pindex->ToString().c_str(), CProofRoot::GetProofRoot(pindex->GetHeight()).ToUniValue().write(1,2).c_str());
+        LogPrintf("txhash: %s\ncheckTx.GetHash(): %s\ncalculated merkle: %s\ncheckMerkle: %s\n", txHash.GetHex().c_str(), checkTx.GetHash().GetHex().c_str(), merkleRoot.GetHex().c_str(), checkMerkle.GetHex().c_str());
+    }
 
     // 2) any ID outputs from the past needed to verify keys for a signature, and
     COptCCParams stakeOutP;

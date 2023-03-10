@@ -4900,7 +4900,7 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                         std::vector<int> txOutsToProve;
                         if (priorNotarization.IsBlockOneNotarization())
                         {
-                            // get entire coinbase proof
+                            // get entire coinbase
                             txInsToProve.push_back(0);
                             txOutsToProve.resize(priorNotarizationTx.vout.size());
                             for (int outNum = 0; outNum < txOutsToProve.size(); outNum++)
