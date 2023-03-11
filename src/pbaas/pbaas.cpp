@@ -550,8 +550,8 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                                     }
 
                                     if (!priorCcx.IsValid() ||
-                                        priorImport.exportTxId != priorExportTx.GetHash() ||
-                                        priorImport.exportTxOutNum != exportTxOut ||
+                                        (!(priorImport.IsInitialLaunchImport() && priorImport.sourceSystemHeight == priorCcx.sourceHeightEnd) &&
+                                         (priorImport.exportTxId != priorExportTx.GetHash() || priorImport.exportTxOutNum != exportTxOut)) ||
                                         (((priorCcx.sourceHeightEnd + 1) != ccx.sourceHeightStart) &&
                                          ((priorCcx.sourceHeightEnd + 1) != (ccx.sourceHeightEnd + 1))))
                                     {
