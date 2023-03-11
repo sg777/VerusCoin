@@ -7669,7 +7669,8 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
         if (confirmationResult != CNotaryEvidence::EStates::STATE_CONFIRMED &&
             confirmationResult != CNotaryEvidence::EStates::STATE_REJECTED &&
             pNotaryCurrency->notarizationProtocol == pNotaryCurrency->NOTARIZATION_AUTO &&
-            pNotaryCurrency->proofProtocol == pNotaryCurrency->PROOF_PBAASMMR) // not confirmed or rejected - see if we can auto-confirm
+            pNotaryCurrency->proofProtocol == pNotaryCurrency->PROOF_PBAASMMR &&
+            chainActive.LastTip()->nTime >= PBAAS_TESTFORK_TIME) // not confirmed or rejected - see if we can auto-confirm
         {
             idx = confirmIfAuto;
             attemptAutoConfirm = true;
