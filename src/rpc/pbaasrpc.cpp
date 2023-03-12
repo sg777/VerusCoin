@@ -3601,7 +3601,7 @@ bool GetNotarizationData(const uint160 &currencyID,
             printf("No confirmed notarization for %s, node may need to reindex\n", EncodeDestination(CIdentityID(currencyID)).c_str());
             return false;
         }
-        if (chainDef.systemID == ASSETCHAINS_CHAINID)
+        if (chainDef.SystemOrGatewayID() == ASSETCHAINS_CHAINID)
         {
             if (pCounterEvidence)
             {
@@ -3611,14 +3611,21 @@ bool GetNotarizationData(const uint160 &currencyID,
             {
                 pEvidence->resize(notarizationData.vtx.size());
             }
-            if (!optionalTxOut)
+            CTransaction returnTx;
+            uint256 blkHash;
+            LOCK(mempool.cs);
+            if (!std::get<1>(lastFinalized).GetOutputTransaction(returnTx, blkHash))
             {
-                notarizationData.vtx.push_back(std::make_pair(std::get<1>(lastFinalized), std::get<2>(lastFinalized)));
-                notarizationData.lastConfirmed = 0;
-                notarizationData.forks.push_back(std::vector<int>({0}));
-                notarizationData.bestChain = 0;
-                return true;
+                LogPrintf("Cannot retrieve notarization for %s, node may need to reindex\n", EncodeDestination(CIdentityID(currencyID)).c_str());
+                printf("Cannot retrieve notarization for %s, node may need to reindex\n", EncodeDestination(CIdentityID(currencyID)).c_str());
+                return false;
             }
+            optionalTxOut->push_back(std::make_pair(returnTx, blkHash));
+            notarizationData.vtx.push_back(std::make_pair(std::get<1>(lastFinalized), std::get<2>(lastFinalized)));
+            notarizationData.lastConfirmed = 0;
+            notarizationData.forks.push_back(std::vector<int>({0}));
+            notarizationData.bestChain = 0;
+            return true;
         }
         CTransaction oneNTx;
         uint256 ntxBlockHash;
@@ -3649,8 +3656,17 @@ bool GetNotarizationData(const uint160 &currencyID,
         }
 
         // if from this system, we're done
-        if (chainDef.systemID == ASSETCHAINS_CHAINID)
+        if (chainDef.SystemOrGatewayID() == ASSETCHAINS_CHAINID)
         {
+            if (pCounterEvidence)
+            {
+                pCounterEvidence->resize(notarizationData.vtx.size());
+            }
+            if (pEvidence)
+            {
+                pEvidence->resize(notarizationData.vtx.size());
+            }
+            optionalTxOut->resize(notarizationData.vtx.size());
             return true;
         }
 
