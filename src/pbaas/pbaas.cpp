@@ -4039,8 +4039,9 @@ bool CConnectedChains::CheckVerusPBaaSAvailable(UniValue &chainInfoUni, UniValue
     if (chainInfoUni.isObject() && chainDefUni.isObject())
     {
         std::string versionStr = uni_get_str(find_value(chainInfoUni, "VRSCversion"));
-        if ((GetVerusVersion() & 0xffff0000) == (ParseVersion(versionStr) & 0xffff0000) &&
-             uni_get_str(find_value(chainInfoUni, "chainid")) == EncodeDestination(CIdentityID(ConnectedChains.FirstNotaryChain().GetID())))
+        if ((IsVerusActive() && !IsVerusMainnetActive() && GetTime() < PBAAS_TESTFORK_TIME) ||
+            (((GetVerusVersion() & 0xffff0000) == (ParseVersion(versionStr) & 0xffff0000)) &&
+             uni_get_str(find_value(chainInfoUni, "chainid")) == EncodeDestination(CIdentityID(ConnectedChains.FirstNotaryChain().GetID()))))
         {
             LOCK(cs_mergemining);
             CCurrencyDefinition chainDef(chainDefUni);
