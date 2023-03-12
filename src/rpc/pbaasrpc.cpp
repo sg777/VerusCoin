@@ -3830,6 +3830,11 @@ bool GetNotarizationData(const uint160 &currencyID,
                 }
             }
         }
+        // in case we did not fill this out, resize it
+        if (pCounterEvidence)
+        {
+            pCounterEvidence->resize(notarizationData.vtx.size());
+        }
     }
     else if (pCounterEvidence)
     {
