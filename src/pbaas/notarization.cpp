@@ -8133,8 +8133,11 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         !(crosschainCND = CChainNotarizationData(result, true, &blockHashes, &counterEvidence, &evidence)).IsValid() ||
         (!externalSystem.chainDefinition.IsGateway() && !crosschainCND.IsConfirmed()))
     {
-        LogPrintf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-        printf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+        if (LogAcceptCategory("notarization"))
+        {
+            LogPrintf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+            printf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+        }
         return retVal;
     }
 
@@ -8449,8 +8452,11 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                    ConnectedChains.ThisChain().launchSystemID == externalSystem.chainDefinition.GetID()) ||
                    ::AsVector(newConfirmedNotarization) == ::AsVector(cnd.vtx[cnd.lastConfirmed].second)))
             {
-                LogPrintf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-                printf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                if (LogAcceptCategory("notarization"))
+                {
+                    LogPrintf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                    printf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                }
                 return retVal;
             }
             earnedNotarizationIndexEntry.first.blockHeight = 1;
