@@ -3686,6 +3686,7 @@ bool GetNotarizationData(const uint160 &currencyID,
             std::make_heap(pendingFinalizations.begin(), pendingFinalizations.end(), indexComparer);
 
             std::multimap<CUTXORef, std::pair<CUTXORef, CPBaaSNotarization>> notarizationReferences;
+            std::set<CUTXORef> consideredNotarizations;
             std::map<CUTXORef, std::pair<CTransaction, uint256>> referencedTxes;
 
             CTransaction nTx;
@@ -3738,6 +3739,12 @@ bool GetNotarizationData(const uint160 &currencyID,
                 {
                     f.output.hash = it->first.txhash;
                 }
+
+                if (consideredNotarizations.count(f.output))
+                {
+                    continue;
+                }
+                consideredNotarizations.insert(f.output);
 
                 notarizationReferences.insert(std::make_pair(std::get<2>(priorNotarization), std::make_pair(f.output, n)));
                 if (optionalTxOut)
