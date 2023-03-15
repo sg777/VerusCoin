@@ -35,7 +35,7 @@ CTxMemPoolEntry::CTxMemPoolEntry(const CTransaction& _tx, const CAmount& _nFee,
                                  int64_t _nTime, double _dPriority,
                                  unsigned int _nHeight, bool poolHasNoInputsOf,
                                  bool _spendsCoinbase, uint32_t _nBranchId, bool hasreserve, int64_t FeeDelta):
-    tx(std::make_shared<CTransaction>(_tx)), nFee(_nFee), nTime(_nTime), dPriority(_dPriority), nHeight(_nHeight),
+    std::make_shared<CTransaction>(_tx), nFee(_nFee), nTime(_nTime), dPriority(_dPriority), nHeight(_nHeight),
     hadNoDependencies(poolHasNoInputsOf), hasReserve(hasreserve),
     spendsCoinbase(_spendsCoinbase), feeDelta(FeeDelta), nBranchId(_nBranchId)
 {

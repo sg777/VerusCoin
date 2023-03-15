@@ -69,6 +69,7 @@ public:
     CTxMemPoolEntry(const CTxMemPoolEntry& other);
 
     const CTransaction& GetTx() const { return *this->tx; }
+    std::shared_ptr<const CTransaction> GetSharedTx() const { return this->tx; }
     double GetPriority(unsigned int currentHeight) const;
     CAmount GetFee() const { return nFee; }
     void UpdateFeeDelta(int64_t FeeDelta) { feeDelta = FeeDelta; }
