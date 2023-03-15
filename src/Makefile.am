@@ -199,8 +199,6 @@ BITCOIN_CORE_H = \
   consensus/validation.h \
   core_io.h \
   core_memusage.h \
-  crypto/chacha20.h \
-  crypto/chacha20.cpp \
   crypto/haraka.h \
   crypto/haraka_portable.h \
   crypto/verus_clhash.h \
@@ -355,8 +353,6 @@ libbitcoin_server_a_SOURCES = \
   cheatcatcher.cpp \
   checkpoints.cpp \
   crosschain.cpp \
-  crypto/chacha20.h \
-  crypto/chacha20.cpp \
   crypto/haraka.h \
   crypto/haraka_portable.h \
   crypto/verus_clhash.h \
@@ -552,8 +548,6 @@ libbitcoin_common_a_SOURCES = \
   crypto/sph_keccak.h \
   crypto/keccak.c \
   crypto/keccak.h \
-  crypto/chacha20.h \
-  crypto/chacha20.cpp \
   hash.cpp \
   importcoin.cpp \
   key.cpp \
