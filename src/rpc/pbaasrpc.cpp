@@ -3928,8 +3928,8 @@ UniValue getnotarizationdata(const UniValue& params, bool fHelp)
 
             "\nArguments\n"
             "1. \"currencyid\"                  (string, required) the hex-encoded ID or string name search for notarizations on\n"
-            "2. \"(getevidence)\"               (bool, optiona)    if true, returns notarization evidence as well as other data\n"
-            "1. \"(separatecounterevidence)\"   (bool, optiona)    if true, counter-evidence is processed and returned with proofroots\n"
+            "2. \"(getevidence)\"               (bool, optional)    if true, returns notarization evidence as well as other data\n"
+            "1. \"(separatecounterevidence)\"   (bool, optional)    if true, counter-evidence is processed and returned with proofroots\n"
 
             "\nResult:\n"
             "{\n"

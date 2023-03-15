@@ -546,6 +546,8 @@ libbitcoin_common_a_SOURCES = \
   crypto/sph_keccak.h \
   crypto/keccak.c \
   crypto/keccak.h \
+  crypto/chacha20.h \
+  crypto/chacha20.cpp \
   hash.cpp \
   importcoin.cpp \
   key.cpp \
