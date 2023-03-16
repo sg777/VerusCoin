@@ -1718,4 +1718,38 @@ public:
     UniValue ToUniValue() const;
 };
 
+struct WTxId
+{
+    const uint256 hash;
+    const uint256 authDigest;
+
+    WTxId() :
+        authDigest(LEGACY_TX_AUTH_DIGEST) {}
+
+    WTxId(const uint256& hashIn, const uint256& authDigestIn=LEGACY_TX_AUTH_DIGEST) :
+        hash(hashIn), authDigest(authDigestIn) {}
+
+    const std::vector<unsigned char> ToBytes() const {
+        std::vector<unsigned char> vData(hash.begin(), hash.end());
+        vData.insert(vData.end(), authDigest.begin(), authDigest.end());
+        return vData;
+    }
+
+    friend bool operator<(const WTxId& a, const WTxId& b)
+    {
+        return (a.hash < b.hash ||
+            (a.hash == b.hash && a.authDigest < b.authDigest));
+    }
+
+    friend bool operator==(const WTxId& a, const WTxId& b)
+    {
+        return a.hash == b.hash && a.authDigest == b.authDigest;
+    }
+
+    friend bool operator!=(const WTxId& a, const WTxId& b)
+    {
+        return a.hash != b.hash || a.authDigest != b.authDigest;
+    }
+};
+
 #endif // BITCOIN_PRIMITIVES_TRANSACTION_H

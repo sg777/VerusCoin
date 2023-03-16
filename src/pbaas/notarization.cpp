@@ -2382,7 +2382,7 @@ std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> GetPriorReferen
 
         if (!autoProof.chainObjects.size())
         {
-            LogPrint("notarization", "%s: notarization block hash not found in block index or active chain");
+            LogPrint("notarization", "%s: notarization block hash proof type not found in block index or active chain at height \n", __func__);
             return retVal;
         }
 
@@ -3639,17 +3639,8 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                         int heightChange = futureProofRoot.rootHeight -
                                             lastNotarization.proofRoots[lastNotarization.currencyID].rootHeight;
                         numExpectedCheckpoints = CPBaaSNotarization::GetNumCheckpoints(heightChange);
-                        if (numExpectedCheckpoints &&
-                            chainActive[lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight]->nTime > PBAAS_TESTFORK_TIME)
-                        {
-                            blocksPerCheckpoint = CPBaaSNotarization::GetBlocksPerCheckpoint(heightChange);
-                            proofState = EXPECT_CHECKPOINT;
-                        }
-                        else
-                        {
-                            validBasicEvidence = !challengeProofRoot.IsValid();
-                            proofState = validBasicEvidence ? EXPECT_NOTHING : EXPECT_COMMITMENT_PROOF;
-                        }
+                        validBasicEvidence = !challengeProofRoot.IsValid();
+                        proofState = validBasicEvidence ? EXPECT_NOTHING : EXPECT_COMMITMENT_PROOF;
                     }
                     else
                     {
@@ -4464,16 +4455,6 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     bool additionalEvidenceRequired = externalSystem.proofProtocol == externalSystem.PROOF_PBAASMMR &&
                                       externalSystem.notarizationProtocol != externalSystem.NOTARIZATION_NOTARY_CHAINID;
 
-    // proof of the last confirmed notarization must be present and match the one on this chain or
-    // prove the block 1 coinbase of the PBaaS chain
-    std::set<int> evidenceTypes;
-    evidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
-    CCrossChainProof autoProof(notaryEvidence.GetSelectEvidence(evidenceTypes));
-    if (additionalEvidenceRequired && !autoProof.chainObjects.size())
-    {
-        return state.Error(errorPrefix + "Missing evidence of prior notarization, required to accept submission");
-    }
-
     // create an accepted notarization based on the cross-chain notarization provided
     CPBaaSNotarization newNotarization = earnedNotarization;
 
@@ -4484,6 +4465,20 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     }
 
     LOCK(cs_main);
+    uint32_t height = chainActive.Height();
+
+    bool fullEvidence = !PBAAS_TESTMODE || chainActive.LastTip()->nTime > (PBAAS_TESTFORK_TIME - (20 * 60));
+
+    // proof of the last confirmed notarization must be present and match the one on this chain or
+    // prove the block 1 coinbase of the PBaaS chain
+    std::set<int> evidenceTypes;
+    evidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
+    CCrossChainProof autoProof(notaryEvidence.GetSelectEvidence(evidenceTypes));
+    if (additionalEvidenceRequired &&
+        !autoProof.chainObjects.size())
+    {
+        return state.Error(errorPrefix + "Missing evidence of prior notarization, required to accept submission");
+    }
 
     // now, we'll want to put our own proposer as the beneficiary of this notarization, if possible
     if (!VERUS_NOTARYID.IsNull())
@@ -4503,7 +4498,6 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         newNotarization.proposer.SetAuxDest(DestinationToTransferDestination(VERUS_DEFAULTID), 0);
     }
 
-    uint32_t height = chainActive.Height();
     CProofRoot ourRoot = newNotarization.proofRoots[ASSETCHAINS_CHAINID];
 
     CChainNotarizationData cnd;
@@ -4536,9 +4530,11 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     // proof of the current notarization by the first proof root mentioned above
     CTransaction outTx;
     bool isPartial = false;
-    uint256 txMMRRoot = ((CChainObject<CPartialTransactionProof> *)autoProof.chainObjects[0])->object.CheckPartialTransaction(outTx, &isPartial);
-    uint256 txHash = ((CChainObject<CPartialTransactionProof> *)autoProof.chainObjects[0])->object.TransactionHash();
+    uint256 txMMRRoot;
+    uint256 txHash;
 
+    txMMRRoot = ((CChainObject<CPartialTransactionProof> *)autoProof.chainObjects[0])->object.CheckPartialTransaction(outTx, &isPartial);
+    txHash = ((CChainObject<CPartialTransactionProof> *)autoProof.chainObjects[0])->object.TransactionHash();
     if (txMMRRoot != newNotarization.proofRoots[newNotarization.currencyID].stateRoot)
     {
         return state.Error(errorPrefix + "state root mismatch in prior notarization proof");
@@ -4625,7 +4621,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     }
 
     // challenge roots must include all UTXOs between our last agreed index and the end
-    int numChallenges = cnd.vtx.size() - (priorNotarizationIdx + 1);
+    int numChallenges = fullEvidence ? cnd.vtx.size() - (priorNotarizationIdx + 1) : 0;
     bool isChallengeStronger = false;
     CProofRoot strongestRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
     if (numChallenges)
@@ -4900,16 +4896,17 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     // add prior unspent accepted notarization as our input
     txBuilder.AddTransparentInput(CUTXORef(lastTxId, lastTxOutNum), lastTx.vout[lastTxOutNum].scriptPubKey, lastTx.vout[lastTxOutNum].nValue);
 
-    if ((height - priorNotarizationHeight) <
-            CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
-                                                              height - mapBlockIndex[txes[cnd.lastConfirmed].second]->GetHeight()))
+    uint32_t adjustedNotarizationModulo = (chainActive[height]->nTime > (PBAAS_TESTFORK_TIME - (20 * 60))) ?
+                            CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
+                                                                                height - mapBlockIndex[txes[cnd.lastConfirmed].second]->GetHeight()) :
+                            ConnectedChains.ThisChain().blockNotarizationModulo;
+
+    if ((height - priorNotarizationHeight) < adjustedNotarizationModulo)
     {
         LogPrint("notarization", "%s: cannot create accepted notarization earlier than %u blocks since the prior notarization it confirms\n",
-                 CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
-                                                           height - mapBlockIndex[txes[cnd.lastConfirmed].second]->GetHeight()));
+                 adjustedNotarizationModulo);
         return state.Error(errorPrefix + "cannot create accepted notarization earlier than " +
-                                            std::to_string(CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
-                                                           height - mapBlockIndex[txes[cnd.lastConfirmed].second]->GetHeight())) +
+                                            std::to_string(adjustedNotarizationModulo) +
                                             " blocks since the prior notarization it confirms");
     }
 
@@ -5064,10 +5061,10 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
                     }
                     if (inputSet.count(oneInput.txIn.prevout))
                     {
-                        if (LogAcceptCategory("notarization"))
+                        if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
                         {
-                            printf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
-                            LogPrintf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
+                            printf("%s: skipping duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
+                            LogPrintf("%s: skipping duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
                         }
                         continue;
                     }
@@ -5084,6 +5081,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
             {
                 if (!inputSet.count(oneInput.txIn.prevout) && !IsScriptTooLargeToSpend(oneInput.scriptPubKey))
                 {
+                    inputSet.insert(oneInput.txIn.prevout);
                     txBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
                 }
             }
@@ -5689,9 +5687,11 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 }
 
                 CBlockIndex *pConfirmedNotarizationIndex = mapBlockIndex[txes[0].second];
-                uint32_t adjustedNotarizationModulo = CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
+                uint32_t adjustedNotarizationModulo = (chainActive[height]->nTime > (PBAAS_TESTFORK_TIME - (20 * 60))) ?
+                                CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
                                                                                                         pCurNotarizationIndex->GetHeight() -
-                                                                                                            pConfirmedNotarizationIndex->GetHeight());
+                                                                                                            pConfirmedNotarizationIndex->GetHeight()) :
+                                ConnectedChains.ThisChain().blockNotarizationModulo;
                 int blockPeriodNumber = pCurNotarizationIndex->GetHeight() / adjustedNotarizationModulo;
                 int priorBlockPeriod = pPriorNotarizationIndex->GetHeight() / adjustedNotarizationModulo;
                 if (priorBlockPeriod >= blockPeriodNumber)
@@ -6350,10 +6350,11 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
         // first determine if the prior notarization we agree with would make this one moot, given the current
         // block notarization modulo
-        uint32_t adjustedNotarizationModulo = CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
-                                                                                                (height + 1) -
-                                                                                                mapBlockIndex[txes[cnd.lastConfirmed].second]->GetHeight());
-
+        uint32_t adjustedNotarizationModulo = (chainActive[height]->nTime > (PBAAS_TESTFORK_TIME - (20 * 60))) ?
+                                CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
+                                                                                (height + 1) - mapBlockIndex[txes[cnd.lastConfirmed].second]->GetHeight()) :
+                                ConnectedChains.ThisChain().blockNotarizationModulo;
+        
         int blockPeriodNumber = (height + 1) / adjustedNotarizationModulo;
         int priorBlockPeriod = mapBlockIt->second->GetHeight() / adjustedNotarizationModulo;
 
@@ -7518,25 +7519,33 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
         if (LogAcceptCategory("notarization"))
         {
-            for (int j = 0; j < spendsToClose.size(); j++)
+            if (LogAcceptCategory("verbose"))
             {
-                auto &oneEntrySpends = spendsToClose[j];
-                LogPrintf("%s: index #%d - %s\n", __func__, j, confirmedOutputNums.count(j) ? "confirmed" : invalidatedOutputNums.count(j) ? "rejected" : "pending");
-                for (auto &oneSpend : oneEntrySpends)
+                for (int j = 0; j < spendsToClose.size(); j++)
                 {
-                    UniValue scriptUni(UniValue::VOBJ);
-                    ScriptPubKeyToUniv(oneSpend.scriptPubKey, scriptUni, false, false);
-                    LogPrintf("txid: %s:%d, nValue: %ld\n", oneSpend.txIn.prevout.hash.GetHex().c_str(), oneSpend.txIn.prevout.n, oneSpend.nValue);
+                    auto &oneEntrySpends = spendsToClose[j];
+                    LogPrintf("%s: index #%d - %s\n", __func__, j, confirmedOutputNums.count(j) ? "confirmed" : invalidatedOutputNums.count(j) ? "rejected" : "pending");
+                    for (auto &oneSpend : oneEntrySpends)
+                    {
+                        UniValue scriptUni(UniValue::VOBJ);
+                        ScriptPubKeyToUniv(oneSpend.scriptPubKey, scriptUni, false, false);
+                        LogPrintf("txid: %s:%d, nValue: %ld\n", oneSpend.txIn.prevout.hash.GetHex().c_str(), oneSpend.txIn.prevout.n, oneSpend.nValue);
+                    }
+                }
+                for (int j = 0; j < evidenceVec.size(); j++)
+                {
+                    auto &oneEvidenceVec = evidenceVec[j];
+                    LogPrintf("evidence vector: index #%d\n", j);
+                    for (auto &oneEvidence : oneEvidenceVec)
+                    {
+                        LogPrintf("%s\n", oneEvidence.ToUniValue().write(1,2).c_str());
+                    }
                 }
             }
-            for (int j = 0; j < evidenceVec.size(); j++)
+            else
             {
-                auto &oneEvidenceVec = evidenceVec[j];
-                LogPrintf("evidence vector: index #%d\n", j);
-                for (auto &oneEvidence : oneEvidenceVec)
-                {
-                    LogPrintf("%s\n", oneEvidence.ToUniValue().write(1,2).c_str());
-                }
+                LogPrintf("spendsToClose size: %ld\n", spendsToClose.size());
+                LogPrintf("evidence vector size: %ld\n", evidenceVec.size());
             }
         }
 
@@ -7664,7 +7673,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                         if (!evidenceVec.size())
                         {
                             LogPrintf("%s: failed to package evidence for notarization of system %s\n", __func__, EncodeDestination(CIdentityID(cnd.vtx[0].second.currencyID)).c_str());
-                            return false;
+                            return state.Error(errorPrefix + "failed to package evidence for notarization");
                         }
                         for (auto &oneProof : evidenceVec)
                         {
@@ -7703,6 +7712,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
         {
             std::set<COutPoint> inputSet;
             std::vector<CInputDescriptor> nonEvidenceSpends;
+            std::vector<CInputDescriptor> notarizationSpends;
 
             for (auto &oneInput : spendsToClose[idx])
             {
@@ -7734,15 +7744,22 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                     inputSet.insert(oneInput.txIn.prevout);
                     txBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
                 }
+                else if (tP.IsValid() &&
+                         (tP.evalCode == EVAL_EARNEDNOTARIZATION ||
+                          tP.evalCode == EVAL_ACCEPTEDNOTARIZATION))
+                {
+                    notarizationSpends.push_back(oneInput);
+                }
                 else
                 {
                     nonEvidenceSpends.push_back(oneInput);
                 }
             }
-            for (auto &oneInput : nonEvidenceSpends)
+            for (auto &oneInput : notarizationSpends)
             {
                 if (!inputSet.count(oneInput.txIn.prevout) && !IsScriptTooLargeToSpend(oneInput.scriptPubKey))
                 {
+                    inputSet.insert(oneInput.txIn.prevout);
                     txBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
                 }
             }
@@ -7817,19 +7834,20 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                                 extraEvidenceSpends.push_back(oneInput);
                             }
                         }
-                        else if (LogAcceptCategory("notarization"))
+                        else if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
                         {
-                            printf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
-                            LogPrintf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
+                            printf("%s: skipping duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
+                            LogPrintf("%s: skipping duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
                         }
                     }
-                    for (auto &oneInput : extraEvidenceSpends)
+                    /* for (auto &oneInput : extraEvidenceSpends)
                     {
                         if (!IsScriptTooLargeToSpend(oneInput.scriptPubKey))
                         {
+                            // added to inputSet above already, so no need here
                             oneConfirmedBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
                         }
-                    }
+                    } */
 
                     if (makeInputTx)
                     {
@@ -7870,10 +7888,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                             oneInvalidatedBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
                         }
                     }
-                    else if (LogAcceptCategory("notarization"))
+                    else if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
                     {
-                        printf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
-                        LogPrintf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
+                        printf("%s: skipping duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
+                        LogPrintf("%s: skipping duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
                     }
                 }
 
@@ -8133,8 +8151,11 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         !(crosschainCND = CChainNotarizationData(result, true, &blockHashes, &counterEvidence, &evidence)).IsValid() ||
         (!externalSystem.chainDefinition.IsGateway() && !crosschainCND.IsConfirmed()))
     {
-        LogPrintf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-        printf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+        if (LogAcceptCategory("notarization"))
+        {
+            LogPrintf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+            printf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+        }
         return retVal;
     }
 
@@ -8293,6 +8314,11 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
         for (auto &oneProofRoot : oneNotarization.second.proofRoots)
         {
+            uint32_t adjustedNotarizationModulo = (chainActive[nHeight]->nTime > (PBAAS_TESTFORK_TIME - (20 * 60))) ?
+                                CPBaaSNotarization::GetAdjustedNotarizationModulo(externalSystem.chainDefinition.blockNotarizationModulo,
+                                        cnd.vtx[cnd.lastConfirmed].second.proofRoots[oneProofRoot.first].rootHeight - oneProofRoot.second.rootHeight) :
+                                externalSystem.chainDefinition.blockNotarizationModulo;
+
             if (oneProofRoot.first == ASSETCHAINS_CHAINID)
             {
                 if (oneProofRoot.second != CProofRoot::GetProofRoot(oneProofRoot.second.rootHeight))
@@ -8329,8 +8355,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                      oneProofRoot.first == systemID &&
                      (!cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(oneProofRoot.first) ||
                       (cnd.vtx[cnd.lastConfirmed].second.proofRoots[oneProofRoot.first].rootHeight - oneProofRoot.second.rootHeight) <
-                           CPBaaSNotarization::GetAdjustedNotarizationModulo(externalSystem.chainDefinition.blockNotarizationModulo,
-                                                                             cnd.vtx[cnd.lastConfirmed].second.proofRoots[oneProofRoot.first].rootHeight - oneProofRoot.second.rootHeight)))
+                           adjustedNotarizationModulo))
             {
                 LogPrint("notarization", "Skip submission - no new enough confirmed notarizations for %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
                 return retVal;
@@ -8449,8 +8474,11 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                    ConnectedChains.ThisChain().launchSystemID == externalSystem.chainDefinition.GetID()) ||
                    ::AsVector(newConfirmedNotarization) == ::AsVector(cnd.vtx[cnd.lastConfirmed].second)))
             {
-                LogPrintf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-                printf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                if (LogAcceptCategory("notarization"))
+                {
+                    LogPrintf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                    printf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                }
                 return retVal;
             }
             earnedNotarizationIndexEntry.first.blockHeight = 1;
@@ -8479,6 +8507,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         // if we have a cross-confirmed notarization to prove here, create a proof
         if (!earnedNotarizationIndexEntry.first.txhash.IsNull())
         {
+            allEvidence.output = cnd.vtx[cnd.lastConfirmed].first;
             UniValue proofRequests(UniValue::VARR);
             UniValue proofRequest(UniValue::VOBJ);
             proofRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::PrimaryProofKey())));
@@ -8498,7 +8527,6 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             {
                 proofRequest.pushKV("challengeroots", challengeRoots);
             }
-            allEvidence.output = cnd.vtx[cnd.lastConfirmed].first;
             proofRequest.pushKV("evidence", allEvidence.ToUniValue());
             proofRequest.pushKV("confirmnotarizationref", cnd.vtx[cnd.lastConfirmed].first.ToUniValue());
             proofRequest.pushKV("entropyhash", blockHashes[confirmingIdx].GetHex());
