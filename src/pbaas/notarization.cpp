@@ -1650,6 +1650,10 @@ CChainNotarizationData::CChainNotarizationData(UniValue &obj,
                         (pbn = CPBaaSNotarization(p.vData[0])).IsValid())
                     {
                         notarizationUni = pbn.ToUniValue();
+                        if (pBlockHash)
+                        {
+                            pBlockHash->push_back(blockHash);
+                        }
                     }
                     else
                     {
@@ -1663,16 +1667,16 @@ CChainNotarizationData::CChainNotarizationData(UniValue &obj,
                     return;
                 }
             }
-
-            vtx.push_back(make_pair(CUTXORef(uint256S(uni_get_str(find_value(o, "txid"))),
-                                             uni_get_int(find_value(o, "vout"))),
-                                    CPBaaSNotarization(notarizationUni)));
-            if (pBlockHash)
+            else if (pBlockHash)
             {
                 uint256 blockHash;
                 blockHash.SetHex(uni_get_str(find_value(o, "blockhash")));
                 pBlockHash->push_back(blockHash);
             }
+
+            vtx.push_back(make_pair(CUTXORef(uint256S(uni_get_str(find_value(o, "txid"))),
+                                             uni_get_int(find_value(o, "vout"))),
+                                    CPBaaSNotarization(notarizationUni)));
             if (pEvidence)
             {
                 pEvidence->resize(pEvidence->size() + 1);
