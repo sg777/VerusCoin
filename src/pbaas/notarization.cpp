@@ -2382,7 +2382,7 @@ std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> GetPriorReferen
 
         if (!autoProof.chainObjects.size())
         {
-            LogPrint("notarization", "%s: notarization block hash not found in block index or active chain");
+            LogPrint("notarization", "%s: notarization block hash proof type not found in block index or active chain at height \n", __func__);
             return retVal;
         }
 
@@ -5056,10 +5056,10 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
                     }
                     if (inputSet.count(oneInput.txIn.prevout))
                     {
-                        if (LogAcceptCategory("notarization"))
+                        if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
                         {
-                            printf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
-                            LogPrintf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
+                            printf("%s: skipping duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
+                            LogPrintf("%s: skipping duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
                         }
                         continue;
                     }
@@ -5076,6 +5076,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
             {
                 if (!inputSet.count(oneInput.txIn.prevout) && !IsScriptTooLargeToSpend(oneInput.scriptPubKey))
                 {
+                    inputSet.insert(oneInput.txIn.prevout);
                     txBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
                 }
             }
@@ -7513,25 +7514,33 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
         if (LogAcceptCategory("notarization"))
         {
-            for (int j = 0; j < spendsToClose.size(); j++)
+            if (LogAcceptCategory("verbose"))
             {
-                auto &oneEntrySpends = spendsToClose[j];
-                LogPrintf("%s: index #%d - %s\n", __func__, j, confirmedOutputNums.count(j) ? "confirmed" : invalidatedOutputNums.count(j) ? "rejected" : "pending");
-                for (auto &oneSpend : oneEntrySpends)
+                for (int j = 0; j < spendsToClose.size(); j++)
                 {
-                    UniValue scriptUni(UniValue::VOBJ);
-                    ScriptPubKeyToUniv(oneSpend.scriptPubKey, scriptUni, false, false);
-                    LogPrintf("txid: %s:%d, nValue: %ld\n", oneSpend.txIn.prevout.hash.GetHex().c_str(), oneSpend.txIn.prevout.n, oneSpend.nValue);
+                    auto &oneEntrySpends = spendsToClose[j];
+                    LogPrintf("%s: index #%d - %s\n", __func__, j, confirmedOutputNums.count(j) ? "confirmed" : invalidatedOutputNums.count(j) ? "rejected" : "pending");
+                    for (auto &oneSpend : oneEntrySpends)
+                    {
+                        UniValue scriptUni(UniValue::VOBJ);
+                        ScriptPubKeyToUniv(oneSpend.scriptPubKey, scriptUni, false, false);
+                        LogPrintf("txid: %s:%d, nValue: %ld\n", oneSpend.txIn.prevout.hash.GetHex().c_str(), oneSpend.txIn.prevout.n, oneSpend.nValue);
+                    }
+                }
+                for (int j = 0; j < evidenceVec.size(); j++)
+                {
+                    auto &oneEvidenceVec = evidenceVec[j];
+                    LogPrintf("evidence vector: index #%d\n", j);
+                    for (auto &oneEvidence : oneEvidenceVec)
+                    {
+                        LogPrintf("%s\n", oneEvidence.ToUniValue().write(1,2).c_str());
+                    }
                 }
             }
-            for (int j = 0; j < evidenceVec.size(); j++)
+            else
             {
-                auto &oneEvidenceVec = evidenceVec[j];
-                LogPrintf("evidence vector: index #%d\n", j);
-                for (auto &oneEvidence : oneEvidenceVec)
-                {
-                    LogPrintf("%s\n", oneEvidence.ToUniValue().write(1,2).c_str());
-                }
+                LogPrintf("spendsToClose size: %ld\n", spendsToClose.size());
+                LogPrintf("evidence vector size: %ld\n", evidenceVec.size());
             }
         }
 
@@ -7659,7 +7668,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                         if (!evidenceVec.size())
                         {
                             LogPrintf("%s: failed to package evidence for notarization of system %s\n", __func__, EncodeDestination(CIdentityID(cnd.vtx[0].second.currencyID)).c_str());
-                            return false;
+                            return state.Error(errorPrefix + "failed to package evidence for notarization");
                         }
                         for (auto &oneProof : evidenceVec)
                         {
@@ -7698,6 +7707,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
         {
             std::set<COutPoint> inputSet;
             std::vector<CInputDescriptor> nonEvidenceSpends;
+            std::vector<CInputDescriptor> notarizationSpends;
 
             for (auto &oneInput : spendsToClose[idx])
             {
@@ -7729,15 +7739,22 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                     inputSet.insert(oneInput.txIn.prevout);
                     txBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
                 }
+                else if (tP.IsValid() &&
+                         (tP.evalCode == EVAL_EARNEDNOTARIZATION ||
+                          tP.evalCode == EVAL_ACCEPTEDNOTARIZATION))
+                {
+                    notarizationSpends.push_back(oneInput);
+                }
                 else
                 {
                     nonEvidenceSpends.push_back(oneInput);
                 }
             }
-            for (auto &oneInput : nonEvidenceSpends)
+            for (auto &oneInput : notarizationSpends)
             {
                 if (!inputSet.count(oneInput.txIn.prevout) && !IsScriptTooLargeToSpend(oneInput.scriptPubKey))
                 {
+                    inputSet.insert(oneInput.txIn.prevout);
                     txBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
                 }
             }
@@ -7812,19 +7829,20 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                                 extraEvidenceSpends.push_back(oneInput);
                             }
                         }
-                        else if (LogAcceptCategory("notarization"))
+                        else if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
                         {
-                            printf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
-                            LogPrintf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
+                            printf("%s: skipping duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
+                            LogPrintf("%s: skipping duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
                         }
                     }
-                    for (auto &oneInput : extraEvidenceSpends)
+                    /* for (auto &oneInput : extraEvidenceSpends)
                     {
                         if (!IsScriptTooLargeToSpend(oneInput.scriptPubKey))
                         {
+                            // added to inputSet above already, so no need here
                             oneConfirmedBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
                         }
-                    }
+                    } */
 
                     if (makeInputTx)
                     {
@@ -7865,10 +7883,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                             oneInvalidatedBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
                         }
                     }
-                    else if (LogAcceptCategory("notarization"))
+                    else if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
                     {
-                        printf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
-                        LogPrintf("%s: duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
+                        printf("%s: skipping duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
+                        LogPrintf("%s: skipping duplicate input: %s\n", __func__, oneInput.txIn.prevout.ToString().c_str());
                     }
                 }
 
