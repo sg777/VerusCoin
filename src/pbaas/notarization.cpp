@@ -8502,6 +8502,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         // if we have a cross-confirmed notarization to prove here, create a proof
         if (!earnedNotarizationIndexEntry.first.txhash.IsNull())
         {
+            allEvidence.output = cnd.vtx[cnd.lastConfirmed].first;
             if (chainActive.LastTip()->nTime >= (PBAAS_TESTFORK_TIME - (20 * 60)))
             {
                 UniValue proofRequests(UniValue::VARR);
@@ -8523,7 +8524,6 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 {
                     proofRequest.pushKV("challengeroots", challengeRoots);
                 }
-                allEvidence.output = cnd.vtx[cnd.lastConfirmed].first;
                 proofRequest.pushKV("evidence", allEvidence.ToUniValue());
                 proofRequest.pushKV("confirmnotarizationref", cnd.vtx[cnd.lastConfirmed].first.ToUniValue());
                 proofRequest.pushKV("entropyhash", blockHashes[confirmingIdx].GetHex());
