@@ -4876,9 +4876,11 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                         }
                     }
 
+                    bool postTestFork = !PBAAS_TESTMODE || chainActive[nHeight]->nTime > (PBAAS_TESTFORK_TIME - (20 * 60));
+
                     // put the challenge proofs in first before the primary proof
                     CCrossChainProof challengeProof(CCrossChainProof::VERSION_INVALID);
-                    if (challengeRoots.size())
+                    if (postTestFork && challengeRoots.size())
                     {
                         CPrimaryProofDescriptor proofDescr(CPrimaryProofDescriptor::VERSION_CURRENT);
                         challengeProof.version = CCrossChainProof::VERSION_CURRENT;
@@ -4973,138 +4975,139 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                         }
                     }
 
-                    // EXPECT_FUTURE_PROOF_ROOT - future root to prove this notarization
-                    evidence.evidence << futureRoot;
-
-                    // if we have a notarization to prove, prove it and the finalization, otherwise, prove
-                    // a header
-                    if (confirmNotarization.IsValid())
+                    if (postTestFork)
                     {
-                        evidence.evidence << notarizationTxProof;
-                        evidence.evidence << CPartialTransactionProof(std::get<2>(finalizationToProve),
-                                                                      std::vector<int>(),
-                                                                      std::vector<int>({(int)std::get<1>(finalizationToProve).n}),
-                                                                      chainActive[std::get<0>(finalizationToProve)],
-                                                                      futureRoot.rootHeight);
-                    }
-                    else
-                    {
-                        // we are requested to prove the existence of this notarization on this chain
-                        // from the future root
-                        curMMV.resize(futureRoot.rootHeight + 1);
+                        // EXPECT_FUTURE_PROOF_ROOT - future root to prove this notarization
+                        evidence.evidence << futureRoot;
 
-                        CMMRProof headerProof;
-                        if (!chainActive.GetBlockProof(curMMV, headerProof, confirmRoot.rootHeight))
+                        // if we have a notarization to prove, prove it and the finalization, otherwise, prove
+                        // a header
+                        if (confirmNotarization.IsValid())
                         {
-                            oneRetObj.pushKV("error", "Cannot prove evidence for challenge");
-                            break;
+                            evidence.evidence << notarizationTxProof;
+                            evidence.evidence << CPartialTransactionProof(std::get<2>(finalizationToProve),
+                                                                        std::vector<int>(),
+                                                                        std::vector<int>({(int)std::get<1>(finalizationToProve).n}),
+                                                                        chainActive[std::get<0>(finalizationToProve)],
+                                                                        futureRoot.rootHeight);
                         }
-
-                        CBlockHeaderAndProof blockHeaderProof(headerProof, chainActive[confirmRoot.rootHeight]->GetBlockHeader());
-                        evidence.evidence << blockHeaderProof;
-
-                        // now prove any challenge proof related info from the notarization / root to confirm
-                        curMMV.resize(confirmRoot.rootHeight + 1);
-                    }
-
-                    uint32_t startHeight = priorNotarization.IsValid() && priorNotarization.proofRoots.count(ASSETCHAINS_CHAINID) ?
-                                                priorNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight :
-                                                priorRoot.IsValid() ? priorRoot.rootHeight : 1;
-
-                    uint32_t heightChange = futureRoot.rootHeight - startHeight;
-
-                    int blocksPerCheckpoint = CPBaaSNotarization::GetBlocksPerCheckpoint(heightChange);
-
-                    // unless we have another proof range sized chunk at the end, don't add another checkpoint
-                    int numCheckPoints = CPBaaSNotarization::GetNumCheckpoints(heightChange);
-
-                    // let any challengers know where we might diverge roots
-                    for (int i = 1; i <= numCheckPoints; i++)
-                    {
-                        evidence.evidence << CProofRoot::GetProofRoot(startHeight + (i * blocksPerCheckpoint));
-                    }
-
-                    bool provideFullEvidence = challengeProof.IsValid();
-
-                    if (provideFullEvidence)
-                    {
-                        uint32_t rangeStart = fromHeight;
-                        int32_t rangeLen = futureRoot.rootHeight - rangeStart;
-
-                        curMMV.resize(futureRoot.rootHeight + 1);
-
-                        std::vector<__uint128_t> blockCommitmentsSmall = GetBlockCommitments(rangeStart, futureRoot.rootHeight, entropyHash);
-                        if (!blockCommitmentsSmall.size())
+                        else
                         {
-                            oneRetObj.pushKV("error", "Cannot get block commitments for challenge");
-                            break;
-                        }
-                        evidence.evidence << CHashCommitments(blockCommitmentsSmall);
+                            // we are requested to prove the existence of this notarization on this chain
+                            // from the future root
+                            curMMV.resize(futureRoot.rootHeight + 1);
 
-                        std::vector<__uint128_t> checkSmallCommitments;
-                        auto checkTypes = ((CChainObject<CHashCommitments> *)evidence.evidence.chainObjects.back())->object.GetSmallCommitments(checkSmallCommitments);
-                        if (checkSmallCommitments != blockCommitmentsSmall)
-                        {
-                            LogPrintf("%s: ERROR - commitments evidence mismatch\n", __func__);
-                        }
-
-                        if (LogAcceptCategory("notarization"))
-                        {
-                            for (int currentOffset = 0; currentOffset < checkSmallCommitments.size(); currentOffset++)
-                            {
-                                LogPrintf("%s: reading small commitments\n", __func__);
-                                auto commitmentVec = UnpackBlockCommitment(checkSmallCommitments[currentOffset]);
-                                arith_uint256 powTarget, posTarget;
-                                powTarget.SetCompact(commitmentVec[1]);
-                                posTarget.SetCompact(commitmentVec[2]);
-                                LogPrintf("nHeight: %u, nTime: %u, PoW target: %s, PoS target: %s, isPoS: %u\n",
-                                            commitmentVec[3] >> 1,
-                                            commitmentVec[0],
-                                            powTarget.GetHex().c_str(),
-                                            posTarget.GetHex().c_str(),
-                                            commitmentVec[3] & 1);
-                            }
-                        }
-
-                        int loopNum = std::min(std::max(rangeLen / CPBaaSNotarization::NUM_HEADER_PROOF_RANGE_DIVISOR,
-                                                    (int)CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS),
-                                                (int)CPBaaSNotarization::MAX_HEADER_PROOFS_PER_PROOF);
-
-                        uint256 headerSelectionHash = entropyHash;
-                        if (LogAcceptCategory("notarization"))
-                        {
-                            LogPrintf("%s: creating evidence with entropyHash: %s\n", __func__, entropyHash.GetHex().c_str());
-                        }
-
-                        int headerLoop;
-                        for (headerLoop = 0; headerLoop < loopNum; headerLoop++)
-                        {
-                            int indexToProve = (UintToArith256(headerSelectionHash).GetLow64() % rangeLen);
-                            headerSelectionHash = ::GetHash(headerSelectionHash);
-                            uint32_t blockToProve = rangeStart + indexToProve;
                             CMMRProof headerProof;
-                            if (!chainActive.GetBlockProof(curMMV, headerProof, blockToProve))
+                            if (!chainActive.GetBlockProof(curMMV, headerProof, confirmRoot.rootHeight))
                             {
                                 oneRetObj.pushKV("error", "Cannot prove evidence for challenge");
                                 break;
                             }
-                            CBlockHeaderAndProof blockHeaderProof(headerProof, chainActive[blockToProve]->GetBlockHeader());
 
+                            CBlockHeaderAndProof blockHeaderProof(headerProof, chainActive[confirmRoot.rootHeight]->GetBlockHeader());
                             evidence.evidence << blockHeaderProof;
 
-                            if (blockHeaderProof.blockHeader.IsVerusPOSBlock())
+                            // now prove any challenge proof related info from the notarization / root to confirm
+                            curMMV.resize(confirmRoot.rootHeight + 1);
+                        }
+
+                        uint32_t startHeight = priorNotarization.IsValid() && priorNotarization.proofRoots.count(ASSETCHAINS_CHAINID) ?
+                                                    priorNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight :
+                                                    priorRoot.IsValid() ? priorRoot.rootHeight : 1;
+
+                        uint32_t heightChange = futureRoot.rootHeight - startHeight;
+
+                        int blocksPerCheckpoint = CPBaaSNotarization::GetBlocksPerCheckpoint(heightChange);
+
+                        // unless we have another proof range sized chunk at the end, don't add another checkpoint
+                        int numCheckPoints = CPBaaSNotarization::GetNumCheckpoints(heightChange);
+
+                        // let any challengers know where we might diverge roots
+                        for (int i = 1; i <= numCheckPoints; i++)
+                        {
+                            evidence.evidence << CProofRoot::GetProofRoot(startHeight + (i * blocksPerCheckpoint));
+                        }
+
+                        if (challengeProof.IsValid())
+                        {
+                            uint32_t rangeStart = fromHeight;
+                            int32_t rangeLen = futureRoot.rootHeight - rangeStart;
+
+                            curMMV.resize(futureRoot.rootHeight + 1);
+
+                            std::vector<__uint128_t> blockCommitmentsSmall = GetBlockCommitments(rangeStart, futureRoot.rootHeight, entropyHash);
+                            if (!blockCommitmentsSmall.size())
                             {
-                                CValidationState state;
-                                if (!ProvePosBlock(rangeStart, chainActive[blockToProve], evidence, state))
+                                oneRetObj.pushKV("error", "Cannot get block commitments for challenge");
+                                break;
+                            }
+                            evidence.evidence << CHashCommitments(blockCommitmentsSmall);
+
+                            std::vector<__uint128_t> checkSmallCommitments;
+                            auto checkTypes = ((CChainObject<CHashCommitments> *)evidence.evidence.chainObjects.back())->object.GetSmallCommitments(checkSmallCommitments);
+                            if (checkSmallCommitments != blockCommitmentsSmall)
+                            {
+                                LogPrintf("%s: ERROR - commitments evidence mismatch\n", __func__);
+                            }
+
+                            if (LogAcceptCategory("notarization"))
+                            {
+                                for (int currentOffset = 0; currentOffset < checkSmallCommitments.size(); currentOffset++)
                                 {
-                                    oneRetObj.pushKV("error", "Cannot prove primary evidence for PoS block");
-                                    break;
+                                    LogPrintf("%s: reading small commitments\n", __func__);
+                                    auto commitmentVec = UnpackBlockCommitment(checkSmallCommitments[currentOffset]);
+                                    arith_uint256 powTarget, posTarget;
+                                    powTarget.SetCompact(commitmentVec[1]);
+                                    posTarget.SetCompact(commitmentVec[2]);
+                                    LogPrintf("nHeight: %u, nTime: %u, PoW target: %s, PoS target: %s, isPoS: %u\n",
+                                                commitmentVec[3] >> 1,
+                                                commitmentVec[0],
+                                                powTarget.GetHex().c_str(),
+                                                posTarget.GetHex().c_str(),
+                                                commitmentVec[3] & 1);
                                 }
                             }
-                        }
-                        if (headerLoop < loopNum)
-                        {
-                            break;
+
+                            int loopNum = std::min(std::max(rangeLen / CPBaaSNotarization::NUM_HEADER_PROOF_RANGE_DIVISOR,
+                                                        (int)CPBaaSNotarization::EXPECT_MIN_HEADER_PROOFS),
+                                                    (int)CPBaaSNotarization::MAX_HEADER_PROOFS_PER_PROOF);
+
+                            uint256 headerSelectionHash = entropyHash;
+                            if (LogAcceptCategory("notarization"))
+                            {
+                                LogPrintf("%s: creating evidence with entropyHash: %s\n", __func__, entropyHash.GetHex().c_str());
+                            }
+
+                            int headerLoop;
+                            for (headerLoop = 0; headerLoop < loopNum; headerLoop++)
+                            {
+                                int indexToProve = (UintToArith256(headerSelectionHash).GetLow64() % rangeLen);
+                                headerSelectionHash = ::GetHash(headerSelectionHash);
+                                uint32_t blockToProve = rangeStart + indexToProve;
+                                CMMRProof headerProof;
+                                if (!chainActive.GetBlockProof(curMMV, headerProof, blockToProve))
+                                {
+                                    oneRetObj.pushKV("error", "Cannot prove evidence for challenge");
+                                    break;
+                                }
+                                CBlockHeaderAndProof blockHeaderProof(headerProof, chainActive[blockToProve]->GetBlockHeader());
+
+                                evidence.evidence << blockHeaderProof;
+
+                                if (blockHeaderProof.blockHeader.IsVerusPOSBlock())
+                                {
+                                    CValidationState state;
+                                    if (!ProvePosBlock(rangeStart, chainActive[blockToProve], evidence, state))
+                                    {
+                                        oneRetObj.pushKV("error", "Cannot prove primary evidence for PoS block");
+                                        break;
+                                    }
+                                }
+                            }
+                            if (headerLoop < loopNum)
+                            {
+                                break;
+                            }
                         }
                     }
 

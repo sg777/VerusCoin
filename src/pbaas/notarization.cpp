@@ -4455,16 +4455,6 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     bool additionalEvidenceRequired = externalSystem.proofProtocol == externalSystem.PROOF_PBAASMMR &&
                                       externalSystem.notarizationProtocol != externalSystem.NOTARIZATION_NOTARY_CHAINID;
 
-    // proof of the last confirmed notarization must be present and match the one on this chain or
-    // prove the block 1 coinbase of the PBaaS chain
-    std::set<int> evidenceTypes;
-    evidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
-    CCrossChainProof autoProof(notaryEvidence.GetSelectEvidence(evidenceTypes));
-    if (additionalEvidenceRequired && !autoProof.chainObjects.size())
-    {
-        return state.Error(errorPrefix + "Missing evidence of prior notarization, required to accept submission");
-    }
-
     // create an accepted notarization based on the cross-chain notarization provided
     CPBaaSNotarization newNotarization = earnedNotarization;
 
@@ -4475,6 +4465,20 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     }
 
     LOCK(cs_main);
+    uint32_t height = chainActive.Height();
+
+    bool fullEvidence = !PBAAS_TESTMODE || chainActive.LastTip()->nTime > (PBAAS_TESTFORK_TIME - (20 * 60));
+
+    // proof of the last confirmed notarization must be present and match the one on this chain or
+    // prove the block 1 coinbase of the PBaaS chain
+    std::set<int> evidenceTypes;
+    evidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
+    CCrossChainProof autoProof(notaryEvidence.GetSelectEvidence(evidenceTypes));
+    if (additionalEvidenceRequired &&
+        !autoProof.chainObjects.size())
+    {
+        return state.Error(errorPrefix + "Missing evidence of prior notarization, required to accept submission");
+    }
 
     // now, we'll want to put our own proposer as the beneficiary of this notarization, if possible
     if (!VERUS_NOTARYID.IsNull())
@@ -4494,7 +4498,6 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         newNotarization.proposer.SetAuxDest(DestinationToTransferDestination(VERUS_DEFAULTID), 0);
     }
 
-    uint32_t height = chainActive.Height();
     CProofRoot ourRoot = newNotarization.proofRoots[ASSETCHAINS_CHAINID];
 
     CChainNotarizationData cnd;
@@ -4527,9 +4530,11 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     // proof of the current notarization by the first proof root mentioned above
     CTransaction outTx;
     bool isPartial = false;
-    uint256 txMMRRoot = ((CChainObject<CPartialTransactionProof> *)autoProof.chainObjects[0])->object.CheckPartialTransaction(outTx, &isPartial);
-    uint256 txHash = ((CChainObject<CPartialTransactionProof> *)autoProof.chainObjects[0])->object.TransactionHash();
+    uint256 txMMRRoot;
+    uint256 txHash;
 
+    txMMRRoot = ((CChainObject<CPartialTransactionProof> *)autoProof.chainObjects[0])->object.CheckPartialTransaction(outTx, &isPartial);
+    txHash = ((CChainObject<CPartialTransactionProof> *)autoProof.chainObjects[0])->object.TransactionHash();
     if (txMMRRoot != newNotarization.proofRoots[newNotarization.currencyID].stateRoot)
     {
         return state.Error(errorPrefix + "state root mismatch in prior notarization proof");
@@ -4616,7 +4621,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     }
 
     // challenge roots must include all UTXOs between our last agreed index and the end
-    int numChallenges = cnd.vtx.size() - (priorNotarizationIdx + 1);
+    int numChallenges = fullEvidence ? cnd.vtx.size() - (priorNotarizationIdx + 1) : 0;
     bool isChallengeStronger = false;
     CProofRoot strongestRoot(CProofRoot::TYPE_PBAAS, CProofRoot::VERSION_INVALID);
     if (numChallenges)
@@ -8503,69 +8508,66 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         if (!earnedNotarizationIndexEntry.first.txhash.IsNull())
         {
             allEvidence.output = cnd.vtx[cnd.lastConfirmed].first;
-            if (chainActive.LastTip()->nTime >= (PBAAS_TESTFORK_TIME - (20 * 60)))
+            UniValue proofRequests(UniValue::VARR);
+            UniValue proofRequest(UniValue::VOBJ);
+            proofRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::PrimaryProofKey())));
+            proofRequest.pushKV("priornotarizationref", CUTXORef(earnedNotarizationIndexEntry.first.txhash,
+                                                                    earnedNotarizationIndexEntry.first.index).ToUniValue());
+
+            // any roots between our new notarization and the one we are agreeing to/confirming are challenge roots
+            UniValue challengeRoots(UniValue::VARR);
+            for (int challengeNum = confirmingIdx + 1; challengeNum < crosschainCND.vtx.size(); challengeNum++)
             {
-                UniValue proofRequests(UniValue::VARR);
-                UniValue proofRequest(UniValue::VOBJ);
-                proofRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::PrimaryProofKey())));
-                proofRequest.pushKV("priornotarizationref", CUTXORef(earnedNotarizationIndexEntry.first.txhash,
-                                                                        earnedNotarizationIndexEntry.first.index).ToUniValue());
-
-                // any roots between our new notarization and the one we are agreeing to/confirming are challenge roots
-                UniValue challengeRoots(UniValue::VARR);
-                for (int challengeNum = confirmingIdx + 1; challengeNum < crosschainCND.vtx.size(); challengeNum++)
-                {
-                    UniValue challengeRootObj(UniValue::VOBJ);
-                    challengeRootObj.pushKV("txout", crosschainCND.vtx[challengeNum].first.ToUniValue());
-                    challengeRootObj.pushKV("proofroot", crosschainCND.vtx[challengeNum].second.proofRoots[ASSETCHAINS_CHAINID].ToUniValue());
-                    challengeRoots.push_back(challengeRootObj);
-                }
-                if (challengeRoots.size())
-                {
-                    proofRequest.pushKV("challengeroots", challengeRoots);
-                }
-                proofRequest.pushKV("evidence", allEvidence.ToUniValue());
-                proofRequest.pushKV("confirmnotarizationref", cnd.vtx[cnd.lastConfirmed].first.ToUniValue());
-                proofRequest.pushKV("entropyhash", blockHashes[confirmingIdx].GetHex());
-                int64_t fromHeight = crosschainCND.vtx[confirmingIdx ? confirmingIdx - 1 : 0].second.proofRoots.count(ASSETCHAINS_CHAINID) ?
-                                        crosschainCND.vtx[confirmingIdx ? confirmingIdx - 1 : 0].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight :
-                                        1;
-                proofRequest.pushKV("fromheight", fromHeight);
-                proofRequest.pushKV("toheight", (int64_t)cnd.vtx[cnd.lastConfirmed].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight);
-                UniValue challengeRequests(UniValue::VARR);
-                challengeRequests.push_back(proofRequest);
-
-                if (LogAcceptCategory("notarization"))
-                {
-                    LogPrintf("%s: Sending proof request: %s\n", __func__, proofRequest.write(1,2).c_str());
-                }
-
-                // get primary proof, keep lock, since we're calling to our local function
-                params = UniValue(UniValue::VARR);
-                params.push_back(challengeRequests);
-                try
-                {
-                    proofRequest = getnotarizationproofs(params, false);
-                } catch (exception e)
-                {
-                    proofRequest = NullUniValue;
-                }
-                UniValue proofResult(UniValue::VNULL);
-                CNotaryEvidence preparedEvidence(CNotaryEvidence::TYPE_NOTARY_EVIDENCE, CNotaryEvidence::VERSION_INVALID);
-                if (proofRequest.isArray() && proofRequest.size())
-                {
-                    proofResult = find_value(proofRequest[0], "result");
-                    preparedEvidence = CNotaryEvidence(find_value(proofResult, "evidence"));
-                }
-                if (proofResult.isNull() ||
-                    !preparedEvidence.IsValid())
-                {
-                    // add valid evidence to submission
-                    LogPrint("notarization", "Unable to get valid evidence to submit notarization: %s\n", proofRequest[0].write().c_str());
-                    return retVal;
-                }
-                allEvidence.MergeEvidence(preparedEvidence);
+                UniValue challengeRootObj(UniValue::VOBJ);
+                challengeRootObj.pushKV("txout", crosschainCND.vtx[challengeNum].first.ToUniValue());
+                challengeRootObj.pushKV("proofroot", crosschainCND.vtx[challengeNum].second.proofRoots[ASSETCHAINS_CHAINID].ToUniValue());
+                challengeRoots.push_back(challengeRootObj);
             }
+            if (challengeRoots.size())
+            {
+                proofRequest.pushKV("challengeroots", challengeRoots);
+            }
+            proofRequest.pushKV("evidence", allEvidence.ToUniValue());
+            proofRequest.pushKV("confirmnotarizationref", cnd.vtx[cnd.lastConfirmed].first.ToUniValue());
+            proofRequest.pushKV("entropyhash", blockHashes[confirmingIdx].GetHex());
+            int64_t fromHeight = crosschainCND.vtx[confirmingIdx ? confirmingIdx - 1 : 0].second.proofRoots.count(ASSETCHAINS_CHAINID) ?
+                                    crosschainCND.vtx[confirmingIdx ? confirmingIdx - 1 : 0].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight :
+                                    1;
+            proofRequest.pushKV("fromheight", fromHeight);
+            proofRequest.pushKV("toheight", (int64_t)cnd.vtx[cnd.lastConfirmed].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight);
+            UniValue challengeRequests(UniValue::VARR);
+            challengeRequests.push_back(proofRequest);
+
+            if (LogAcceptCategory("notarization"))
+            {
+                LogPrintf("%s: Sending proof request: %s\n", __func__, proofRequest.write(1,2).c_str());
+            }
+
+            // get primary proof, keep lock, since we're calling to our local function
+            params = UniValue(UniValue::VARR);
+            params.push_back(challengeRequests);
+            try
+            {
+                proofRequest = getnotarizationproofs(params, false);
+            } catch (exception e)
+            {
+                proofRequest = NullUniValue;
+            }
+            UniValue proofResult(UniValue::VNULL);
+            CNotaryEvidence preparedEvidence(CNotaryEvidence::TYPE_NOTARY_EVIDENCE, CNotaryEvidence::VERSION_INVALID);
+            if (proofRequest.isArray() && proofRequest.size())
+            {
+                proofResult = find_value(proofRequest[0], "result");
+                preparedEvidence = CNotaryEvidence(find_value(proofResult, "evidence"));
+            }
+            if (proofResult.isNull() ||
+                !preparedEvidence.IsValid())
+            {
+                // add valid evidence to submission
+                LogPrint("notarization", "Unable to get valid evidence to submit notarization: %s\n", proofRequest[0].write().c_str());
+                return retVal;
+            }
+            allEvidence.MergeEvidence(preparedEvidence);
 
             // add valid signatures, and we should now have all we need to submit
             for (auto &oneEvidenceObj : evidenceVec)
