@@ -26,7 +26,7 @@
 static inline int64_t GetPerformanceCounter()
 {
     int64_t nCounter = 0;
-#ifdef WIN32
+#ifdef _WIN32
     QueryPerformanceCounter((LARGE_INTEGER*)&nCounter);
 #else
     timeval t;
