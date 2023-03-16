@@ -111,6 +111,20 @@ static const unsigned int DATABASE_FLUSH_INTERVAL = 24 * 60 * 60;
 /** Maximum length of reject messages. */
 static const unsigned int MAX_REJECT_MESSAGE_LENGTH = 111;
 static const int64_t DEFAULT_MAX_TIP_AGE = 24 * 60 * 60;
+/** Default for DEFAULT_WHITELISTRELAY. */
+static const bool DEFAULT_WHITELISTRELAY = true;
+/** Default for DEFAULT_WHITELISTFORCERELAY. */
+static const bool DEFAULT_WHITELISTFORCERELAY = true;
+/** Average delay between local address broadcasts in seconds. */
+static const unsigned int AVG_LOCAL_ADDRESS_BROADCAST_INTERVAL = 24 * 24 * 60;
+/** Average delay between peer address broadcasts in seconds. */
+static const unsigned int AVG_ADDRESS_BROADCAST_INTERVAL = 30;
+/** Average delay between trickled inventory transmissions in seconds.
+ *  Blocks and whitelisted receivers bypass this, outbound peers get half this delay. */
+static const unsigned int INVENTORY_BROADCAST_INTERVAL = 5;
+/** Maximum number of inventory items to send per transmission.
+ *  Limits the impact of low-fee transaction floods. */
+static const unsigned int INVENTORY_BROADCAST_MAX = 7 * INVENTORY_BROADCAST_INTERVAL;
 
 //static const bool DEFAULT_ADDRESSINDEX = false;
 //static const bool DEFAULT_SPENTINDEX = false;

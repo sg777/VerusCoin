@@ -654,7 +654,6 @@ public:
     bool WriteToDisk(CWalletDB *pwalletdb);
 
     int64_t GetTxTime() const;
-    int GetRequestCount() const;
 
     bool RelayWalletTransaction();
 
@@ -1371,22 +1370,7 @@ public:
 
     void UpdatedTransaction(const uint256 &hashTx);
 
-    void Inventory(const uint256 &hash)
-    {
-        {
-            LOCK(cs_wallet);
-            std::map<uint256, int>::iterator mi = mapRequestCount.find(hash);
-            if (mi != mapRequestCount.end())
-                (*mi).second++;
-        }
-    }
-
     void GetScriptForMining(boost::shared_ptr<CReserveScript> &script);
-    void ResetRequestCount(const uint256 &hash)
-    {
-        LOCK(cs_wallet);
-        mapRequestCount[hash] = 0;
-    };
 
     unsigned int GetKeyPoolSize()
     {

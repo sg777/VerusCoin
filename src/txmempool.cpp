@@ -26,7 +26,7 @@ using namespace std;
 
 CTxMemPoolEntry::CTxMemPoolEntry():
     nFee(0), nTxSize(0), nModSize(0), nUsageSize(0), nTime(0), dPriority(0.0),
-    hadNoDependencies(false), spendsCoinbase(false), hasReserve(false)
+    hadNoDependencies(false), spendsCoinbase(false), hasReserve(false), feeDelta(0)
 {
     nHeight = MEMPOOL_HEIGHT;
 }
@@ -34,14 +34,14 @@ CTxMemPoolEntry::CTxMemPoolEntry():
 CTxMemPoolEntry::CTxMemPoolEntry(const CTransaction& _tx, const CAmount& _nFee,
                                  int64_t _nTime, double _dPriority,
                                  unsigned int _nHeight, bool poolHasNoInputsOf,
-                                 bool _spendsCoinbase, uint32_t _nBranchId, bool hasreserve):
-    tx(_tx), nFee(_nFee), nTime(_nTime), dPriority(_dPriority), nHeight(_nHeight),
+                                 bool _spendsCoinbase, uint32_t _nBranchId, bool hasreserve, int64_t FeeDelta):
+    tx(std::make_shared<CTransaction>(_tx)), nFee(_nFee), nTime(_nTime), dPriority(_dPriority), nHeight(_nHeight),
     hadNoDependencies(poolHasNoInputsOf), hasReserve(hasreserve),
-    spendsCoinbase(_spendsCoinbase), nBranchId(_nBranchId)
+    spendsCoinbase(_spendsCoinbase), feeDelta(FeeDelta), nBranchId(_nBranchId)
 {
     nTxSize = ::GetSerializeSize(tx, SER_NETWORK, PROTOCOL_VERSION);
-    nModSize = tx.CalculateModifiedSize(nTxSize);
-    nUsageSize = RecursiveDynamicUsage(tx);
+    nModSize = _tx.CalculateModifiedSize(nTxSize);
+    nUsageSize = RecursiveDynamicUsage(*tx) + memusage::DynamicUsage(tx);
     feeRate = CFeeRate(nFee, nTxSize);
 }
 
@@ -53,13 +53,13 @@ CTxMemPoolEntry::CTxMemPoolEntry(const CTxMemPoolEntry& other)
 double
 CTxMemPoolEntry::GetPriority(unsigned int currentHeight) const
 {
-    CAmount nValueIn = tx.GetValueOut()+nFee;
+    CAmount nValueIn = tx->GetValueOut()+nFee;
     CCurrencyState currencyState;
     unsigned int lastHeight = currentHeight < 1 ? 0 : currentHeight - 1;
     AssertLockHeld(cs_main);
     if (hasReserve && (currencyState = ConnectedChains.GetCurrencyState(currentHeight - 1, false)).IsValid())
     {
-        nValueIn += currencyState.ReserveToNative(tx.GetReserveValueOut());
+        nValueIn += currencyState.ReserveToNative(tx->GetReserveValueOut());
     }
     double deltaPriority = ((double)(currentHeight-nHeight)*nValueIn)/nModSize;
     double dResult = dPriority + deltaPriority;
@@ -80,6 +80,21 @@ CTxMemPool::CTxMemPool(const CFeeRate& _minRelayFee) :
 CTxMemPool::~CTxMemPool()
 {
     delete minerPolicyEstimator;
+}
+
+bool CTxMemPool::CompareDepthAndScore(const uint256& hasha, const uint256& hashb)
+{
+    LOCK(cs);
+    indexed_transaction_set::const_iterator i = mapTx.find(hasha);
+    if (i == mapTx.end()) return false;
+    indexed_transaction_set::const_iterator j = mapTx.find(hashb);
+    if (j == mapTx.end()) return true;
+    // We don't actually compare by depth here because we haven't backported
+    // https://github.com/bitcoin/bitcoin/pull/6654
+    //
+    // But the method name is left as-is because renaming it is not worth the
+    // merge conflicts.
+    return CompareTxMemPoolEntryByScore()(*i, *j);
 }
 
 void CTxMemPool::pruneSpent(const uint256 &hashTx, CCoins &coins)
@@ -1085,6 +1100,24 @@ void CTxMemPool::queryHashes(vector<uint256>& vtxid)
     vtxid.reserve(mapTx.size());
     for (indexed_transaction_set::iterator mi = mapTx.begin(); mi != mapTx.end(); ++mi)
         vtxid.push_back(mi->GetTx().GetHash());
+}
+
+std::shared_ptr<const CTransaction> CTxMemPool::get(const uint256& hash) const
+{
+    LOCK(cs);
+    indexed_transaction_set::const_iterator i = mapTx.find(hash);
+    if (i == mapTx.end())
+        return nullptr;
+    return i->GetSharedTx();
+}
+
+TxMempoolInfo CTxMemPool::info(const uint256& hash) const
+{
+    LOCK(cs);
+    indexed_transaction_set::const_iterator i = mapTx.find(hash);
+    if (i == mapTx.end())
+        return TxMempoolInfo();
+    return TxMempoolInfo{i->GetSharedTx(), i->GetTime(), CFeeRate(i->GetFee(), i->GetTxSize())};
 }
 
 bool CTxMemPool::lookup(uint256 hash, CTransaction& result) const

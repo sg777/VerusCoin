@@ -386,8 +386,8 @@ std::string HelpMessage(HelpMessageMode mode)
     strUsage += HelpMessageOpt("-addressindex", strprintf(_("Maintain a full address index, used to query for the balance, txids and unspent outputs for addresses (default: %u)"), DEFAULT_ADDRESSINDEX));
     strUsage += HelpMessageOpt("-timestampindex", strprintf(_("Maintain a timestamp index for block hashes, used to query blocks hashes by a range of timestamps (default: %u)"), DEFAULT_TIMESTAMPINDEX));
     strUsage += HelpMessageOpt("-spentindex", strprintf(_("Maintain a full spent index, used to query the spending txid and input index for an outpoint (default: %u)"), DEFAULT_SPENTINDEX));
-    strUsage += HelpMessageOpt("-alwayssubmitnotarizations", strprintf(_("Submit notarizations to notary chain whenevever merge mining/staking and eligible (default = false, only as needed)"), DEFAULT_SPENTINDEX));
-    strUsage += HelpMessageOpt("-allowdelayednotarizations", strprintf(_("Do not notarize in order to prevent slower notarizations (default = false, notarize to prevent slowing down)"), DEFAULT_SPENTINDEX));
+    strUsage += HelpMessageOpt("-alwayssubmitnotarizations", strprintf(_("Submit notarizations to notary chain whenevever merge mining/staking and eligible (default = %u, only as needed)"), DEFAULT_SPENTINDEX));
+    strUsage += HelpMessageOpt("-allowdelayednotarizations", strprintf(_("Do not notarize in order to prevent slower notarizations (default = %u, notarize to prevent slowing down)"), DEFAULT_SPENTINDEX));
     strUsage += HelpMessageGroup(_("Connection options:"));
     strUsage += HelpMessageOpt("-addnode=<ip>", _("Add a node to connect to and attempt to keep the connection open"));
     strUsage += HelpMessageOpt("-banscore=<n>", strprintf(_("Threshold for disconnecting misbehaving peers (default: %u)"), 100));
@@ -526,7 +526,6 @@ std::string HelpMessage(HelpMessageMode mode)
     strUsage += HelpMessageOpt("-blocktime=<n>", strprintf(_("Set target block time (in seconds) for difficulty adjustment (default: %d)"), CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET));
     strUsage += HelpMessageOpt("-powaveragingwindow=<n>", strprintf(_("Set averaging window for PoW difficulty adjustment, in blocks (default: %d)"), CCurrencyDefinition::DEFAULT_AVERAGING_WINDOW));
     strUsage += HelpMessageOpt("-notarizationperiod=<n>", strprintf(_("Set minimum spacing consensus between cross-chain notarization, in blocks (default: %d, min 10 min)"), CCurrencyDefinition::BLOCK_NOTARIZATION_MODULO));
-    strUsage += HelpMessageOpt("-alwayssubmitnotarizations=<bool>", strprintf(_("Always submit cross-chain notarizations when allowed, even when not necessary (default: false)")));
     strUsage += HelpMessageOpt("-testnet", _("loads PBaaS network in testmode"));
 
     strUsage += HelpMessageGroup(_("Node relay options:"));
