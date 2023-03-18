@@ -2242,10 +2242,10 @@ public:
                                        int minConfirming,
                                        uint32_t checkHeight=0,
                                        uint32_t *pDecisionHeight=nullptr,
-                                       std::map<CIdentityID, CIdentitySignature> *pConfirmedAtHeight=nullptr,
-                                       std::map<CIdentityID, CIdentitySignature> *pRejectedAtHeight=nullptr,
-                                       std::map<CIdentityID, std::set<std::vector<unsigned char>>> *pNotarySetRejects=nullptr,
-                                       std::map<CIdentityID, std::set<std::vector<unsigned char>>> *pNotarySetConfirms=nullptr) const;
+                                       std::map<CIdentityID, CIdentitySignature> *pNotarySetRejects=nullptr,
+                                       std::map<CIdentityID, CIdentitySignature> *pNotarySetConfirms=nullptr,
+                                       std::map<uint32_t, std::map<CIdentityID, CIdentitySignature>> *pRejectsByHeight=nullptr,
+                                       std::map<uint32_t, std::map<CIdentityID, CIdentitySignature>> *pConfirmsByHeight=nullptr) const;
 
     static std::string NotarySignatureKeyName()
     {
