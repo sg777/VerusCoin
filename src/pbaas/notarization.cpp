@@ -6015,19 +6015,26 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                             submitParams.push_back(resultUni);
                         }
                     }
+                    else
+                    {
+                        LogPrint("notarization", "Error getting challenge evidence %s\n", submitParams.write(1,2).c_str());
+                    }
                 }
-                LogPrint("notarization", "Submitting challenges %s\n", submitParams.write(1,2).c_str());
-                UniValue challengeResult;
-                params = UniValue(UniValue::VARR);
-                params.push_back(submitParams);
-                try
+                if (submitParams.size())
                 {
-                    challengeResult = find_value(RPCCallRoot("submitchallenges", params), "result");
-                } catch (exception e)
-                {
-                    challengeResult = NullUniValue;
+                    LogPrint("notarization", "Submitting challenges %s\n", submitParams.write(1,2).c_str());
+                    UniValue challengeResult;
+                    params = UniValue(UniValue::VARR);
+                    params.push_back(submitParams);
+                    try
+                    {
+                        challengeResult = find_value(RPCCallRoot("submitchallenges", params), "result");
+                    } catch (exception e)
+                    {
+                        challengeResult = NullUniValue;
+                    }
+                    LogPrint("notarization", "Response from challenges %s\n", challengeResult.write(1,2).c_str());
                 }
-                LogPrint("notarization", "Response from challenges %s\n", challengeResult.write(1,2).c_str());
             }
         }
     }
@@ -6096,6 +6103,11 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     CProofRoot latestProofRoot = lastConfirmedProofRoot.IsValid() ? lastConfirmedProofRoot : lastStableProofRoot;
     if (externalSystem.chainDefinition.IsPBaaSChain() && cnd.vtx[notaryIdx].second.proofRoots.count(SystemID))
     {
+        notarizationEvidence = CNotaryEvidence(CNotaryEvidence::TYPE_NOTARY_EVIDENCE,
+                                                CNotaryEvidence::VERSION_CURRENT,
+                                                CNotaryEvidence::STATE_CONFIRMED,
+                                                SystemID);
+
         auto lastConfirmedRootIt = cnd.vtx[cnd.lastConfirmed].second.proofRoots.find(SystemID);
         if (lastConfirmedRootIt != cnd.vtx[cnd.lastConfirmed].second.proofRoots.end() &&
             latestProofRoot.rootHeight <= lastConfirmedRootIt->second.rootHeight)
@@ -6109,10 +6121,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             // request for proof along with challenges
             UniValue newProofRequest(UniValue::VOBJ);
 
-            notarizationEvidence = CNotaryEvidence(CNotaryEvidence::TYPE_NOTARY_EVIDENCE,
-                                                   CNotaryEvidence::VERSION_CURRENT,
-                                                   CNotaryEvidence::STATE_CONFIRMED,
-                                                   SystemID);
             notarizationEvidence.output = cnd.vtx[notaryIdx].first;
 
             newProofRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::PrimaryProofKey())));
