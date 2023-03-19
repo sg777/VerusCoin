@@ -166,7 +166,7 @@ CNotaryEvidence &CNotaryEvidence::MergeEvidence(const CNotaryEvidence &mergeWith
     return *this;
 }
 
-CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType)
+CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType, CNotaryEvidence *pNewSignatureEvidence)
 {
     if (!notarySet.count(signWithID))
     {
@@ -278,6 +278,15 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
 
         if (idSignature.signatures.size())
         {
+            if (pNewSignatureEvidence)
+            {
+                std::map<CIdentityID, CIdentitySignature> newSigMap;
+                newSigMap.insert(std::make_pair(signWithID, idSignature));
+                CNotarySignature newSignature(systemID, output, true, newSigMap);
+                CCrossChainProof sigProof;
+                sigProof << newSignature;
+                pNewSignatureEvidence->MergeEvidence(CNotaryEvidence(systemID, output, STATE_CONFIRMING, sigProof));
+            }
             AddToSignatures(notarySet, signWithID, idSignature, STATE_CONFIRMING);
         }
 
@@ -310,7 +319,8 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
                                                                          const CTransaction &txToConfirm,
                                                                          const CIdentityID &signWithID,
                                                                          uint32_t height,
-                                                                         CCurrencyDefinition::EHashTypes hashType)
+                                                                         CCurrencyDefinition::EHashTypes hashType,
+                                                                         CNotaryEvidence *pNewSignatureEvidence)
 {
     if (!notarySet.count(signWithID))
     {
@@ -438,6 +448,15 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
 
         if (idSignature.signatures.size())
         {
+            if (pNewSignatureEvidence)
+            {
+                std::map<CIdentityID, CIdentitySignature> newSigMap;
+                newSigMap.insert(std::make_pair(signWithID, idSignature));
+                CNotarySignature newSignature(systemID, output, true, newSigMap);
+                CCrossChainProof sigProof;
+                sigProof << newSignature;
+                pNewSignatureEvidence->MergeEvidence(CNotaryEvidence(systemID, output, STATE_REJECTING, sigProof));
+            }
             AddToSignatures(notarySet, signWithID, idSignature, STATE_REJECTING);
         }
 
@@ -7415,11 +7434,36 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                         printf("Signing notarization (%s:%u) to confirm for %s\n", mergedEvidence.output.hash.GetHex().c_str(), mergedEvidence.output.n, EncodeDestination(oneID).c_str());
                         LogPrint("notarization", "Signing notarization (%s:%u) to confirm for %s\n", mergedEvidence.output.hash.GetHex().c_str(), mergedEvidence.output.n, EncodeDestination(oneID).c_str());
 
-                        signResult = signatureEvidence.SignConfirmed(notarySet, minimumNotariesConfirm, *pWallet, txes[idx].first, oneID, signingHeight, hashType);
+                        CNotaryEvidence newSigEvidence;
+                        signResult = signatureEvidence.SignConfirmed(notarySet, minimumNotariesConfirm, *pWallet, txes[idx].first, oneID, signingHeight, hashType, &newSigEvidence);
 
                         if (signResult == CIdentitySignature::SIGNATURE_PARTIAL || signResult == CIdentitySignature::SIGNATURE_COMPLETE)
                         {
-                            newSigMap[oneID] = notarySetConfirms[oneID];
+                            if (newSigEvidence.evidence.chainObjects.size())
+                            {
+                                auto notarySignatures = newSigEvidence.GetNotarySignatures();
+                                if (notarySignatures.size() &&
+                                    notarySignatures[0].IsConfirmed() &&
+                                    notarySignatures[0].signatures.size())
+                                {
+                                    for (auto &oneSig : notarySignatures[0].signatures)
+                                    {
+                                        auto it = newSigMap.find(oneSig.first);
+                                        if (it == newSigMap.end())
+                                        {
+                                            newSigMap.insert(std::make_pair(oneID, oneSig.second));
+                                        }
+                                        else
+                                        {
+                                            for (auto &oneRawSig : it->second.signatures)
+                                            {
+                                                it->second.AddSignature(oneRawSig);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             // if our signatures altogether have provided a complete validation, we can early out
                             // check to see if this notarization now qualifies with signatures
                             if (signResult == CIdentitySignature::SIGNATURE_COMPLETE)
@@ -7445,13 +7489,9 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                 }
 
                 // if we've added any confirmations, add them to our evidence
-                if (confirmationResult == CNotaryEvidence::EStates::STATE_CONFIRMED)
-                {
-                    newSigMap = notarySetConfirms;
-                }
                 if (newSigMap.size())
                 {
-                    // add signatures needed to completely confirm
+                    // add new signatures needed
                     mergedEvidence.evidence << CNotarySignature(mergedEvidence.systemID, mergedEvidence.output, true, newSigMap);
 
                     CScript evidenceScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &mergedEvidence));
@@ -7479,8 +7519,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                     retVal = true;
                 }
             }
-
-            confirmationResult = signatureEvidence.CheckSignatureConfirmation(objHash, notarySet, minimumNotariesConfirm, signingHeight, &decisionHeight, &notarySetRejects, &notarySetConfirms);
         }
         else if (attemptAutoConfirm)
         {
@@ -11020,7 +11058,7 @@ bool CUTXORef::GetOutputTransaction(CTransaction &tx, uint256 &blockHash) const
 }
 
 // Sign the output object with an ID or signing authority of the ID from the wallet.
-CNotaryEvidence CObjectFinalization::SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EHashTypes hashType) const
+CNotaryEvidence CObjectFinalization::SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EHashTypes hashType, CNotaryEvidence *pNewSignatureEvidence) const
 {
     CNotaryEvidence retVal = CNotaryEvidence(ASSETCHAINS_CHAINID, output, CNotaryEvidence::STATE_CONFIRMING);
 
@@ -11030,12 +11068,12 @@ CNotaryEvidence CObjectFinalization::SignConfirmed(const std::set<uint160> &nota
     uint256 blockHash;
     if (GetOutputTransaction(initialTx, tx, blockHash))
     {
-        retVal.SignConfirmed(notarySet, minConfirming, *pWallet, tx, signatureID, signingHeight, hashType);
+        retVal.SignConfirmed(notarySet, minConfirming, *pWallet, tx, signatureID, signingHeight, hashType, pNewSignatureEvidence);
     }
     return retVal;
 }
 
-CNotaryEvidence CObjectFinalization::SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EHashTypes hashType) const
+CNotaryEvidence CObjectFinalization::SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EHashTypes hashType, CNotaryEvidence *pNewSignatureEvidence) const
 {
     CNotaryEvidence retVal = CNotaryEvidence(ASSETCHAINS_CHAINID, output, CNotaryEvidence::STATE_REJECTING);
 
@@ -11045,7 +11083,7 @@ CNotaryEvidence CObjectFinalization::SignRejected(const std::set<uint160> &notar
     uint256 blockHash;
     if (GetOutputTransaction(initialTx, tx, blockHash))
     {
-        retVal.SignRejected(notarySet, minConfirming, *pWallet, tx, signatureID, signingHeight, hashType);
+        retVal.SignRejected(notarySet, minConfirming, *pWallet, tx, signatureID, signingHeight, hashType, pNewSignatureEvidence);
     }
     return retVal;
 }

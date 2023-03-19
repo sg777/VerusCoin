@@ -246,8 +246,8 @@ public:
         GetFinalizationEvidence(const CTransaction &thisTx, int32_t outputNum, CValidationState &state, CTransaction *pOutputTx=nullptr) const;
 
     // Sign the output object with an ID or signing authority of the ID from the wallet.
-    CNotaryEvidence SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EHashTypes hashType) const;
-    CNotaryEvidence SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EHashTypes hashType) const;
+    CNotaryEvidence SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EHashTypes hashType, CNotaryEvidence *pNewSignatureEvidence=nullptr) const;
+    CNotaryEvidence SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CWallet *pWallet, const CTransaction &initialTx, const CIdentityID &signatureID, uint32_t signingHeight, CCurrencyDefinition::EHashTypes hashType, CNotaryEvidence *pNewSignatureEvidence=nullptr) const;
 
     static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentConfirmedFinalizations(const uint160 &currencyID);
     static std::vector<std::pair<uint32_t, CInputDescriptor>> GetUnspentPendingFinalizations(const uint160 &currencyID);
