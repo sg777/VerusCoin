@@ -223,9 +223,6 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
         return CIdentitySignature::ESignatureVerification::SIGNATURE_INVALID;
     }
 
-    // sign for anything we can that is not already in the confirmed set
-    int currentNumSigs = notarySetConfirms.size();
-
     // all signatures present for this ID are correct, so we recover all pub keys and IDs,
     // then see if we have any of the keys in our wallet that are in the ID and have not already
     // signed
@@ -262,7 +259,22 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignConfirmed(const 
             }
         }
 
-        int sigsToMake = std::min((int32_t)validKeys.size(), sigIdentity.minSigs);
+        // sign for anything we can that is not already in the confirmed set
+        int currentNumSigs = notarySetConfirms[signWithID].signatures.size();
+
+        if (currentNumSigs)
+        {
+            for (auto &oneSig : notarySetConfirms[signWithID].signatures)
+            {
+                CPubKey checkKey;
+                if (checkKey.RecoverCompact(signatureHash, oneSig))
+                {
+                    validKeys.erase(checkKey.GetID());
+                }
+            }
+        }
+
+        int sigsToMake = std::max(sigIdentity.minSigs - currentNumSigs, 0);
 
         // as long as we can continue to make new signatures, we do
         for (auto keyIT = validKeys.begin(); sigsToMake > 0 && keyIT != validKeys.end(); keyIT++)
@@ -378,9 +390,6 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
         return CIdentitySignature::ESignatureVerification::SIGNATURE_INVALID;
     }
 
-    // sign for anything we can that is not already in the rejectedAtHeight signature block if decisionHeight is our height
-    int currentNumSigs = (decisionHeight == height && rejectedAtHeight.count(signWithID)) ? rejectedAtHeight[signWithID].signatures.size() : 0;
-
     // all signatures present for this ID are correct, so we recover all pub keys and IDs,
     // then see if we have any of the keys in our wallet that are in the ID and have not already
     // signed
@@ -392,13 +401,6 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
     }
     else
     {
-        int sigsNeeded = std::max(sigIdentity.minSigs - currentNumSigs, 0);
-        if (!sigsNeeded)
-        {
-            LogPrint("notarization", "%s: Already signed with ID\n", __func__);
-            return CIdentitySignature::SIGNATURE_COMPLETE;
-        }
-
         CIdentitySignature idSignature(height, std::set<std::vector<unsigned char>>(), hashType);
 
         uint256 signatureHash = idSignature.IdentitySignatureHash(std::vector<uint160>({NotaryRejectedKey()}),
@@ -424,14 +426,26 @@ CIdentitySignature::ESignatureVerification CNotaryEvidence::SignRejected(const s
             }
         }
 
+        // sign for anything we can that is not already in the signature block
+        int currentNumSigs = rejectedAtHeight[signWithID].signatures.size();
+
         if (currentNumSigs)
         {
             for (auto &oneSig : rejectedAtHeight[signWithID].signatures)
             {
                 CPubKey checkKey;
-                checkKey.RecoverCompact(signatureHash, oneSig);
-                validKeys.erase(checkKey.GetID());
+                if (checkKey.RecoverCompact(signatureHash, oneSig))
+                {
+                    validKeys.erase(checkKey.GetID());
+                }
             }
+        }
+
+        int sigsNeeded = std::max(sigIdentity.minSigs - currentNumSigs, 0);
+        if (!sigsNeeded)
+        {
+            LogPrint("notarization", "%s: Already signed with ID\n", __func__);
+            return CIdentitySignature::SIGNATURE_COMPLETE;
         }
 
         // as long as we can continue to make new signatures, we do
@@ -504,6 +518,8 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
     std::map<CIdentityID, CIdentitySignature> _notarySetConfirms;
     std::map<CIdentityID, CIdentitySignature> &notarySetRejects = pNotarySetRejects ? *pNotarySetRejects : _notarySetRejects;
     std::map<CIdentityID, CIdentitySignature> &notarySetConfirms = pNotarySetConfirms ? *pNotarySetConfirms : _notarySetConfirms;
+    std::map<CIdentityID, CIdentitySignature> partialConfirms;
+    std::map<CIdentityID, CIdentitySignature> partialRejects;
 
     CNotaryEvidence::EStates retVal = CNotaryEvidence::EStates::STATE_CONFIRMING;
 
@@ -564,7 +580,7 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
                 if (!notarySet.count(oneIDSig.first))
                 {
                     LogPrint("notarization", "%s: unauthorized notary identity: %s\n", __func__, EncodeDestination(oneIDSig.first).c_str());
-                    return EStates::STATE_INVALID;
+                    continue;
                 }
 
                 CIdentity sigIdentity;
@@ -613,14 +629,35 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
                 if (result == oneIDSig.second.SIGNATURE_INVALID)
                 {
                     LogPrint("notarization", "%s: invalid notary signature: %s\n", __func__, EncodeDestination(oneIDSig.first).c_str());
+                    continue;
                 }
 
+                if (result == oneIDSig.second.SIGNATURE_COMPLETE)
+                {
+                    partialConfirms.insert(oneIDSig);
+                }
+                else if (result == oneIDSig.second.SIGNATURE_PARTIAL)
+                {
+                    auto it = partialConfirms.find(oneIDSig.first);
+                    if (it != partialConfirms.end() &&
+                        it->second.blockHeight == oneIDSig.second.blockHeight)
+                    {
+                        for (auto &oneSig : oneIDSig.second.signatures)
+                        {
+                            it->second.AddSignature(oneSig);
+                        }
+                    }
+                    else
+                    {
+                        partialConfirms.insert(oneIDSig);
+                    }
+                }
                 if (result != oneIDSig.second.SIGNATURE_COMPLETE)
                 {
                     // could store and return partial signatures here
                     continue;
                 }
-                notarySetConfirms[oneIDSig.first] = oneIDSig.second;
+                notarySetConfirms.insert(oneIDSig);
             }
         }
         else
@@ -667,7 +704,29 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
                     LogPrint("notarization", "%s: invalid notary signature for rejection: %s\n", __func__, EncodeDestination(oneIDSig.first).c_str());
                     continue;
                 }
-                else if (result != oneIDSig.second.SIGNATURE_COMPLETE)
+
+                if (result == oneIDSig.second.SIGNATURE_COMPLETE)
+                {
+                    partialRejects.insert(oneIDSig);
+                }
+                else if (result == oneIDSig.second.SIGNATURE_PARTIAL)
+                {
+                    auto it = partialRejects.find(oneIDSig.first);
+                    if (it != partialRejects.end() &&
+                        it->second.blockHeight == oneIDSig.second.blockHeight)
+                    {
+                        for (auto &oneSig : oneIDSig.second.signatures)
+                        {
+                            it->second.AddSignature(oneSig);
+                        }
+                    }
+                    else
+                    {
+                        partialRejects.insert(oneIDSig);
+                    }
+                }
+
+                if (result != oneIDSig.second.SIGNATURE_COMPLETE)
                 {
                     // partial signatures are in the by height maps
                     continue;
@@ -709,6 +768,8 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
 
     if (retVal != EStates::STATE_CONFIRMED && retVal != EStates::STATE_REJECTED)
     {
+        notarySetConfirms = partialConfirms;
+        notarySetRejects = partialRejects;
         if (lastHeight == checkHeight &&
             notarySetConfirms.size() >= notarySetRejects.size())
         {
