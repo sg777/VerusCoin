@@ -2062,9 +2062,16 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                 // if there is a finalization, we need to add it and its evidence,
                 if (existingFinalization.IsValid() && pEvidenceVec)
                 {
+                    CTransaction finalizeTx;
+                    uint256 finalizeBlockHash;
+                    if (!myGetTransaction(onePending.second.txIn.prevout.hash, finalizeTx, finalizeBlockHash))
+                    {
+                        LogPrintf("%s: LIKELY LOCAL STATE OR INDEX CORRUPTION. Bootstrap, reindex, or resync recommended\n", __func__);
+                        continue;
+                    }
                     CValidationState state;
                     std::vector<std::pair<CObjectFinalization, CNotaryEvidence>> finalizationEvidence =
-                        existingFinalization.GetFinalizationEvidence(txes[associatedIdx].first, onePending.second.txIn.prevout.n, state);
+                        existingFinalization.GetFinalizationEvidence(finalizeTx, onePending.second.txIn.prevout.n, state);
                     for (auto oneEvidenceItem : finalizationEvidence)
                     {
                         (*pEvidenceVec)[associatedIdx].push_back(oneEvidenceItem.second);
@@ -2166,7 +2173,7 @@ bool CChainNotarizationData::CorrelatedFinalizationSpends(const std::vector<std:
                 {
                     CValidationState state;
                     std::vector<std::pair<CObjectFinalization, CNotaryEvidence>> finalizationEvidence =
-                        confirmedFinalization.GetFinalizationEvidence(txes[associatedIdx].first, oneConfirmed.second.txIn.prevout.n, state);
+                        confirmedFinalization.GetFinalizationEvidence(checkTx, oneConfirmed.second.txIn.prevout.n, state);
                     for (auto oneEvidenceItem : finalizationEvidence)
                     {
                         (*pEvidenceVec)[associatedIdx].push_back(oneEvidenceItem.second);
@@ -5414,7 +5421,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     //    entropy hash, then submit it to this chain with our own notarization or independently
     //    if we don't qualify to notarize.
     //
-
     std::set<int> validCrossChainIndexSet;
     std::set<int> invalidCrossChainIndexSet;
     {
