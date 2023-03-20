@@ -6108,6 +6108,8 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                                                 CNotaryEvidence::STATE_CONFIRMED,
                                                 SystemID);
 
+        notarizationEvidence.output = cnd.vtx[notaryIdx].first;
+
         auto lastConfirmedRootIt = cnd.vtx[cnd.lastConfirmed].second.proofRoots.find(SystemID);
         if (lastConfirmedRootIt != cnd.vtx[cnd.lastConfirmed].second.proofRoots.end() &&
             latestProofRoot.rootHeight <= lastConfirmedRootIt->second.rootHeight)
@@ -6115,13 +6117,11 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
             // if there is no change in proof root, we need no evidence to support a new notarization
             latestProofRoot = lastConfirmedRootIt->second;
         }
-        else if (latestProofRoot.IsValid())
+        if (latestProofRoot.IsValid())
         {
             // if we have challenge roots, add them to our
             // request for proof along with challenges
             UniValue newProofRequest(UniValue::VOBJ);
-
-            notarizationEvidence.output = cnd.vtx[notaryIdx].first;
 
             newProofRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::PrimaryProofKey())));
             newProofRequest.pushKV("priorroot", cnd.vtx[notaryIdx].second.proofRoots[SystemID].ToUniValue());
