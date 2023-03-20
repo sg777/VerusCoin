@@ -1902,14 +1902,14 @@ CAmount GetAccountBalance(const string& strAccount, int nMinDepth, const isminef
     return GetAccountBalance(walletdb, strAccount, nMinDepth, filter);
 }
 
-UniValue cleanwallettransactions(const UniValue& params, bool fHelp)
+UniValue prunespentwallettransactions(const UniValue& params, bool fHelp)
 {
     if (!EnsureWalletIsAvailable(fHelp))
         return NullUniValue;
 
     if (fHelp || params.size() > 1 )
         throw runtime_error(
-            "cleanwallettransactions \"txid\"\n"
+            "prunespentwallettransactions \"txid\"\n"
             "\nRemove all txs that are spent. You can clear all txs bar one, by specifiying a txid.\n"
             "\nPlease backup your wallet.dat before running this command.\n"
             "\nArguments:\n"
@@ -1921,10 +1921,10 @@ UniValue cleanwallettransactions(const UniValue& params, bool fHelp)
             "  \"removed_transactions\" : n,       (numeric) The number of transactions removed.\n"
             "}\n"
             "\nExamples:\n"
-            + HelpExampleCli("cleanwallettransactions", "")
-            + HelpExampleCli("cleanwallettransactions","\"1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d\"")
-            + HelpExampleRpc("cleanwallettransactions", "")
-            + HelpExampleRpc("cleanwallettransactions","\"1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d\"")
+            + HelpExampleCli("prunespentwallettransactions", "")
+            + HelpExampleCli("prunespentwallettransactions","\"1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d\"")
+            + HelpExampleRpc("prunespentwallettransactions", "")
+            + HelpExampleRpc("prunespentwallettransactions","\"1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d\"")
         );
 
     LOCK2(cs_main, pwalletMain->cs_wallet);
