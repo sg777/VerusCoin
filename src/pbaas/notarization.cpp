@@ -7491,9 +7491,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
             // if we can still sign, do so and check confirmation
             if (myIDSet.size())
             {
-                cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
-                dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-
                 CIdentitySignature::ESignatureVerification signResult = CIdentitySignature::SIGNATURE_EMPTY;
                 CNotaryEvidence::EStates confirmationResult = CNotaryEvidence::EStates::STATE_REJECTING;
                 {
@@ -7569,6 +7566,8 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                     // add new signatures needed
                     mergedEvidence.evidence << CNotarySignature(mergedEvidence.systemID, mergedEvidence.output, true, newSigMap);
 
+                    cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
+                    dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
                     CScript evidenceScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &mergedEvidence));
 
                     // the value should be considered for reduction
