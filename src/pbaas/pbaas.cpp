@@ -4222,12 +4222,12 @@ void CConnectedChains::CheckOracleUpgrades()
         upgradeData.resize(upgradeData.size() + 1);
         std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[TestForkUpgradeKey()].GetHex());
     }
-    else if (oracleID.contentMap.count(PBaaSUpgradeKey()))
+    if (oracleID.contentMap.count(PBaaSUpgradeKey()))
     {
         upgradeData.resize(upgradeData.size() + 1);
         std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[PBaaSUpgradeKey()].GetHex());
     }
-    else if (oracleID.contentMap.count(OptionalPBaaSUpgradeKey()))
+    if (oracleID.contentMap.count(OptionalPBaaSUpgradeKey()))
     {
         upgradeData.resize(upgradeData.size() + 1);
         std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[OptionalPBaaSUpgradeKey()].GetHex());
@@ -4247,6 +4247,7 @@ void CConnectedChains::CheckOracleUpgrades()
         }
     }
 
+    auto upgradeTestNetEthContractIt = activeUpgradesByKey.find(TestForkUpgradeKey());
     auto upgradeTestForkIt = activeUpgradesByKey.find(TestForkUpgradeKey());
     auto upgradePBaaSIt = activeUpgradesByKey.find(PBaaSUpgradeKey());
 
