@@ -593,10 +593,8 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                             if (IsVerusActive() &&
                                 !IsVerusMainnetActive())
                             {
-                                // TODO: VNEXT retroactively hardcoded first testnet contract address, remove and ensure currency
-                                // definition is correct for vETH gateway on next testnet
                                 importFromDef.nativeCurrencyID.SetAuxDest(
-                                    CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(CTransferDestination::DecodeEthDestination("0x3fa3a60240ef59460f5b34e2ec5a06ab892a2d00"))),
+                                    CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(CTransferDestination::DecodeEthDestination(PBAAS_TEST_ETH_CONTRACT))),
                                     0);
                             }
                             else

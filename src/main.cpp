@@ -1431,7 +1431,7 @@ bool ContextualCheckTransaction(
                 if (isPBaaS &&
                     (!IsVerusActive() ||
                      IsVerusMainnetActive() ||
-                     chainActive[std::min((uint32_t)chainActive.Height(), (uint32_t)nHeight)]->nTime > PBAAS_TESTFORK_TIME) &&
+                     chainActive[std::min((uint32_t)chainActive.Height(), (uint32_t)nHeight)]->nTime > PBAAS_PREMAINNET_ACTIVATION) &&
                     p.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
                 {
                     if (LogAcceptCategory("notarization"))

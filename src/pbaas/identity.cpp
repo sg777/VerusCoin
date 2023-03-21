@@ -905,7 +905,7 @@ bool HasReferralRequired(const CIdentity &identity, const CTransaction &tx, int3
                     if (checkIdentity.IsValidUnrevoked() &&
                         (checkIdentity.parent == parentID ||
                          idID == parentID ||
-                         (chainActive[height]->nTime >= PBAAS_TESTFORK_TIME && !checkReferralID.IsNull() && idID == checkReferralID)))
+                         (chainActive[height]->nTime >= PBAAS_PREMAINNET_ACTIVATION && !checkReferralID.IsNull() && idID == checkReferralID)))
                     {
                         checkIdentities.push_back(checkIdentity);
                     }
@@ -1240,7 +1240,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
                 }
                 newIdentity = CIdentity(p.vData[0]);
                 if (newIdentity.parent.IsNull() &&
-                    chainActive[height - 1]->nTime > PBAAS_TESTFORK_TIME &&
+                    chainActive[height - 1]->nTime > PBAAS_PREMAINNET_ACTIVATION &&
                     !HasReferralRequired(newIdentity, tx, outNum, state, height, ConnectedChains.ThisChain()))
                 {
                     return state.Error("Cannot make identity without valid referral");
@@ -1878,7 +1878,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
                 newIdentity = CIdentity(p.vData[0]);
                 uint160 dummyParent;
                 valid = newIdentity.IsValid() &&
-                        (((chainActive.LastTip()->nTime < PBAAS_TESTFORK_TIME ||
+                        (((chainActive.LastTip()->nTime < PBAAS_PREMAINNET_ACTIVATION ||
                            burnSet.count(newIdentity.GetID())) &&
                           newIdentity.name == CleanName(newIdentity.name, dummyParent)) ||
                          newIdentity.name == CleanName(newIdentity.name, dummyParent, true)) &&

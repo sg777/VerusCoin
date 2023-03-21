@@ -29,6 +29,9 @@ static const uint32_t PBAAS_VERSION = 1;
 static const uint32_t PBAAS_VERSION_INVALID = 0;
 
 extern uint32_t PBAAS_TESTFORK_TIME;
+extern const uint32_t PBAAS_PREMAINNET_ACTIVATION;
+
+extern std::string PBAAS_TEST_ETH_CONTRACT;
 
 class CTransaction;
 class CScript;
@@ -1667,6 +1670,7 @@ public:
     }
 
     int GetType() const { return SER_GETHASH; }
+    CCurrencyDefinition::EHashTypes GetHashType() const { return nativeHashType; }
     int GetVersion() const { return PROTOCOL_VERSION; }
 
     template<typename T>

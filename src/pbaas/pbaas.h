@@ -1198,6 +1198,18 @@ public:
         return CCrossChainRPCData::GetConditionID(key, systemID);
     }
 
+    static std::string TestnetEthContractUpgradeKeyName()
+    {
+        return "vrsc::system.upgradedata.testnetethcontractupgrade";
+    }
+
+    static uint160 TestnetEthContractUpgradeKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF_Data::GetDataKey(TestnetEthContractUpgradeKeyName(), nameSpace);
+        return key;
+    }
+
     static std::string TestForkUpgradeKeyName()
     {
         return "vrsc::system.upgradedata.pbaastestfork";

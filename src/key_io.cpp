@@ -120,6 +120,12 @@ UniValue getvdxfid_internal(const UniValue& params)
         cleanName = CleanName(vdxfName, parentID);
         vdxfID = GetDestinationID(idDest);
     }
+    else if (vdxfName.substr(0,2) == "0x" && !(vdxfID = CTransferDestination::DecodeEthDestination(vdxfName)).IsNull())
+    {
+        parentIDName = "currencyaddresstype";
+        parentID = CIdentity::GetID("veth", parentID);
+        cleanName = vdxfName;
+    }
     else
     {
         isIndexKey = true;
