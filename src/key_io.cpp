@@ -127,6 +127,11 @@ UniValue getvdxfid_internal(const UniValue& params)
         vdxfID = CVDXF::GetDataKey(vdxfName, parentID);
         cleanName = vdxfName;
     }
+    if (vdxfID.IsNull())
+    {
+        // last ditch effort to decode as ETH address
+        vdxfID = CTransferDestination::DecodeEthDestination(vdxfName);
+    }
 
     if (vdxfID.IsNull())
     {
