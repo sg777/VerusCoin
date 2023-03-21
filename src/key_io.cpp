@@ -120,17 +120,17 @@ UniValue getvdxfid_internal(const UniValue& params)
         cleanName = CleanName(vdxfName, parentID);
         vdxfID = GetDestinationID(idDest);
     }
+    else if (vdxfName.substr(0,2) == "0x" && !(vdxfID = CTransferDestination::DecodeEthDestination(vdxfName)).IsNull())
+    {
+        parentIDName = "namespace";
+        parentID = CIdentity::GetID("veth", parentID);
+    }
     else
     {
         isIndexKey = true;
         parentIDName = "namespace";
         vdxfID = CVDXF::GetDataKey(vdxfName, parentID);
         cleanName = vdxfName;
-    }
-    if (vdxfID.IsNull())
-    {
-        // last ditch effort to decode as ETH address
-        vdxfID = CTransferDestination::DecodeEthDestination(vdxfName);
     }
 
     if (vdxfID.IsNull())
