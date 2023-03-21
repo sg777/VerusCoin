@@ -1668,6 +1668,7 @@ public:
     }
 
     int GetType() const { return SER_GETHASH; }
+    CCurrencyDefinition::EHashTypes GetHashType() const { return nativeHashType; }
     int GetVersion() const { return PROTOCOL_VERSION; }
 
     template<typename T>
