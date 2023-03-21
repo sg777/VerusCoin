@@ -4232,10 +4232,10 @@ void CConnectedChains::CheckOracleUpgrades()
         upgradeData.resize(upgradeData.size() + 1);
         std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[OptionalPBaaSUpgradeKey()].GetHex());
     }
-    if (PBAAS_TESTMODE && oracleID.contentMap.count(CConnectedChains::TestnetEthContractUpgradeKey()))
+    if (PBAAS_TESTMODE && oracleID.contentMap.count(TestnetEthContractUpgradeKey()))
     {
-        upgradeData.resize(upgradeData.size() + 1);
-        std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[OptionalPBaaSUpgradeKey()].GetHex());
+        LOCK(ConnectedChains.cs_mergemining);
+        activeUpgradesByKey.insert({TestnetEthContractUpgradeKey(), CUpgradeDescriptor(ParseHex(oracleID.contentMap[TestnetEthContractUpgradeKey()].GetHex()))});
     }
 
     CUpgradeDescriptor oneUpgrade;
