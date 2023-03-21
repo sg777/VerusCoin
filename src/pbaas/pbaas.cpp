@@ -4232,7 +4232,7 @@ void CConnectedChains::CheckOracleUpgrades()
         upgradeData.resize(upgradeData.size() + 1);
         std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[OptionalPBaaSUpgradeKey()].GetHex());
     }
-    if (oracleID.contentMap.count(CConnectedChains::TestnetEthContractUpgradeKey()))
+    if (PBAAS_TESTMODE && oracleID.contentMap.count(CConnectedChains::TestnetEthContractUpgradeKey()))
     {
         upgradeData.resize(upgradeData.size() + 1);
         std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[OptionalPBaaSUpgradeKey()].GetHex());
