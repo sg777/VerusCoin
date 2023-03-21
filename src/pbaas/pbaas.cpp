@@ -4300,10 +4300,10 @@ void CConnectedChains::CheckOracleUpgrades()
     }
     if (stoppingIt != activeUpgradesByKey.end())
     {
-        printf("%s: ERROR - THE NETWORK IS UPGRADING TO " + gracefulStop + " - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1);
+        printf("%s: ERROR - THE NETWORK IS UPGRADING TO %s - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, gracefulStop.c_str(), VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1);
         if (KOMODO_STOPAT == 0 || KOMODO_STOPAT > (upgradePBaaSIt->second.upgradeBlockHeight - 1))
         {
-            LogPrintf("%s: ERROR - THE NETWORK IS UPGRADING TO " + gracefulStop + " - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1);
+            LogPrintf("%s: ERROR - THE NETWORK IS UPGRADING TO %s - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, gracefulStop.c_str(), VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1);
             KOMODO_STOPAT = stoppingIt->second.upgradeBlockHeight - 1;
         }
     }
