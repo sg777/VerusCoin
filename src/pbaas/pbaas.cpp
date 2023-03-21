@@ -4232,6 +4232,11 @@ void CConnectedChains::CheckOracleUpgrades()
         upgradeData.resize(upgradeData.size() + 1);
         std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[OptionalPBaaSUpgradeKey()].GetHex());
     }
+    if (oracleID.contentMap.count(CConnectedChains::TestnetEthContractUpgradeKey()))
+    {
+        upgradeData.resize(upgradeData.size() + 1);
+        std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[OptionalPBaaSUpgradeKey()].GetHex());
+    }
 
     CUpgradeDescriptor oneUpgrade;
     if (upgradeData.size())
@@ -4247,9 +4252,12 @@ void CConnectedChains::CheckOracleUpgrades()
         }
     }
 
-    auto upgradeTestNetEthContractIt = activeUpgradesByKey.find(TestForkUpgradeKey());
-    auto upgradeTestForkIt = activeUpgradesByKey.find(TestForkUpgradeKey());
-    auto upgradePBaaSIt = activeUpgradesByKey.find(PBaaSUpgradeKey());
+    std::map<uint160, CUpgradeDescriptor>::iterator upgradeTestNetEthContractIt = activeUpgradesByKey.find(TestnetEthContractUpgradeKey());
+    std::map<uint160, CUpgradeDescriptor>::iterator upgradeTestForkIt = activeUpgradesByKey.find(TestForkUpgradeKey());
+    std::map<uint160, CUpgradeDescriptor>::iterator upgradePBaaSIt = activeUpgradesByKey.find(PBaaSUpgradeKey());
+    std::map<uint160, CUpgradeDescriptor>::iterator stoppingIt = activeUpgradesByKey.end();
+
+    std::string gracefulStop;
 
     if (upgradeTestForkIt != activeUpgradesByKey.end() &&
         upgradeTestForkIt->second.minDaemonVersion <= GetVerusVersion())
@@ -4264,12 +4272,39 @@ void CConnectedChains::CheckOracleUpgrades()
         }
         else
         {
-            printf("%s: ERROR - THE NETWORK IS UPGRADING TO PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VersionString(upgradePBaaSIt->second.minDaemonVersion).c_str(), upgradePBaaSIt->second.upgradeBlockHeight - 1);
-            if (KOMODO_STOPAT == 0 || KOMODO_STOPAT > (upgradePBaaSIt->second.upgradeBlockHeight - 1))
+            stoppingIt = upgradePBaaSIt;
+            gracefulStop = "PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0";
+        }
+    }
+    if (upgradeTestNetEthContractIt != activeUpgradesByKey.end())
+    {
+        if (upgradeTestNetEthContractIt->second.minDaemonVersion <= GetVerusVersion())
+        {
+            std::string oldVal = PBAAS_TEST_ETH_CONTRACT;
+            PBAAS_TEST_ETH_CONTRACT = CTransferDestination::EncodeEthDestination(upgradeTestNetEthContractIt->second.upgradeID);
+            if (oldVal != PBAAS_TEST_ETH_CONTRACT &&
+                LogAcceptCategory("ethbridge"))
             {
-                LogPrintf("%s: ERROR - THE NETWORK IS UPGRADING TO PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0 - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VersionString(upgradePBaaSIt->second.minDaemonVersion).c_str(), upgradePBaaSIt->second.upgradeBlockHeight - 1);
-                KOMODO_STOPAT = upgradePBaaSIt->second.upgradeBlockHeight - 1;
+                printf("Prior Ethereum bridge contract id was %s\n, upgraded to: %s\n", oldVal.c_str(), PBAAS_TEST_ETH_CONTRACT.c_str());
+                LogPrintf("Prior Ethereum bridge contract id was %s\n, upgraded to: %s\n", oldVal.c_str(), PBAAS_TEST_ETH_CONTRACT.c_str());
             }
+        }
+        else
+        {
+            if (stoppingIt == activeUpgradesByKey.end() || stoppingIt->second.upgradeBlockHeight > upgradeTestNetEthContractIt->second.upgradeBlockHeight)
+            {
+                stoppingIt = upgradeTestNetEthContractIt;
+                gracefulStop = "UPGRADED TESTNET ETHEREUM BRIDGE CONTRACTS";
+            }
+        }
+    }
+    if (stoppingIt != activeUpgradesByKey.end())
+    {
+        printf("%s: ERROR - THE NETWORK IS UPGRADING TO " + gracefulStop + " - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1);
+        if (KOMODO_STOPAT == 0 || KOMODO_STOPAT > (upgradePBaaSIt->second.upgradeBlockHeight - 1))
+        {
+            LogPrintf("%s: ERROR - THE NETWORK IS UPGRADING TO " + gracefulStop + " - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1);
+            KOMODO_STOPAT = stoppingIt->second.upgradeBlockHeight - 1;
         }
     }
 }

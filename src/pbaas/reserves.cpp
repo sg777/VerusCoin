@@ -593,30 +593,8 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                             if (IsVerusActive() &&
                                 !IsVerusMainnetActive())
                             {
-                                static std::vector<unsigned char> convertedEthDest = ::AsVector(CTransferDestination::DecodeEthDestination("0x3fa3a60240ef59460f5b34e2ec5a06ab892a2d00"));
-                                static CTransferDestination ethTestBridgeContract(CTransferDestination::DEST_ETH, convertedEthDest);
-                                // TODO: HARDENING & VNEXT retroactively hardcoded first testnet contract address, remove and ensure currency
-                                // definition is correct for vETH gateway on next testnet
-                                // until then, we enable testnet rerouting of currency address via oracle for last upgrade to need that
-                                // remove contract upgrade code before mainnet release and bind to then current testnet
-                                //
-                                // check for a specific oracle upgrade
-                                if (!PBAAS_NOTIFICATION_ORACLE.IsNull() &&
-                                    ethTestBridgeContract.destination == convertedEthDest)
-                                {
-                                    CIdentity oracleID = CIdentity::LookupIdentity(PBAAS_NOTIFICATION_ORACLE, nHeight);
-                                    CUpgradeDescriptor contractUpgradeDescr;
-
-                                    if (oracleID.contentMap.count(CConnectedChains::TestnetEthContractUpgradeKey()))
-                                    {
-                                        contractUpgradeDescr = ParseHex(oracleID.contentMap[CConnectedChains::TestnetEthContractUpgradeKey()].GetHex());
-                                        ethTestBridgeContract = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(contractUpgradeDescr.upgradeID));
-                                        LogPrintf("Upgrading testnet Ethereum bridge contract reference to %s\n", ethTestBridgeContract.EncodeEthDestination(contractUpgradeDescr.upgradeID).c_str());
-                                    }
-                                }
-
                                 importFromDef.nativeCurrencyID.SetAuxDest(
-                                    CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(CTransferDestination::DecodeEthDestination("0x3fa3a60240ef59460f5b34e2ec5a06ab892a2d00"))),
+                                    CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(CTransferDestination::DecodeEthDestination(PBAAS_TEST_ETH_CONTRACT))),
                                     0);
                             }
                             else
