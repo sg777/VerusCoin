@@ -1968,7 +1968,8 @@ UniValue prunespentwallettransactions(const UniValue& params, bool fHelp)
         // listunspent call... this gets us all the txids that are unspent, we search this list for the oldest tx,
         vector<COutput> vecOutputs;
         assert(pwalletMain != NULL);
-        pwalletMain->AvailableCoins(vecOutputs, false, NULL, true);
+        // include all coins, even immature
+        pwalletMain->AvailableCoins(vecOutputs, false, NULL, true, true, true, true, true, true);
         int32_t oldestTxDepth = 0;
         BOOST_FOREACH(const COutput& out, vecOutputs)
         {
