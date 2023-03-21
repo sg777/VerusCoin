@@ -64,6 +64,8 @@ uint160 VERUS_CHAINID;
 std::string VERUS_CHAINNAME = "VRSC";
 
 uint32_t PBAAS_TESTFORK_TIME = 1679072400;
+const uint32_t PBAAS_PREMAINNET_ACTIVATION = 1679072400; // already activated, so harden with immutable value
+std::string PBAAS_TEST_ETH_CONTRACT = "0x3fa3a60240ef59460f5b34e2ec5a06ab892a2d00";
 
 bool PARAMS_LOADED = false;
 uint16_t ASSETCHAINS_P2PPORT, ASSETCHAINS_RPCPORT;

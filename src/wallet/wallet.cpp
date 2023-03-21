@@ -1871,7 +1871,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                     ((txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) &&
                     extendedStake &&
                     canSpend) ||
-                    (!p.IsValid() && (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH) && ::IsMine(*this, destinations[0]))))
+                    (!p.IsValid() && (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH) && ::IsMine(*this, destinations[0]) == ISMINE_SPENDABLE)))
                 {
                     uint256 txHash = txout.tx->GetHash();
                     checkStakeTx.vin.push_back(CTxIn(COutPoint(txHash, txout.i)));
@@ -1883,28 +1883,32 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                         {
                             bool isValid = true;
                             // after PBaaS activation,
-                            // we can't stake an output that is to an ID, which has been modified more recently than stakeage
-                            if (whichType == txnouttype::TX_CRYPTOCONDITION &&
-                                isPBaaS &&
-                                (chainActive.Height() >= (nHeight - 1) ?
-                                    chainActive[nHeight - 1]->nTime > PBAAS_TESTFORK_TIME :
-                                    chainActive.LastTip()->nTime > PBAAS_TESTFORK_TIME))
+                            // we can't stake an output that has a destination to an ID,
+                            // which has been modified more recently than stakeage
+                            if (whichType == txnouttype::TX_CRYPTOCONDITION && isPBaaS)
                             {
                                 for (auto &oneDest : destinations)
                                 {
                                     if (oneDest.which() == COptCCParams::ADDRTYPE_ID)
                                     {
                                         uint256 idTxId;
-                                        std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
-                                        if (!GetIdentity(CIdentityID(GetDestinationID(oneDest)), keyAndIdentity) ||
-                                            (nHeight - keyAndIdentity.first.blockHeight) < VERUS_MIN_STAKEAGE)
+                                        CIdentity destIdentity;
+                                        uint32_t idHeight;
+                                        if (!(destIdentity = CIdentity::LookupIdentity(GetDestinationID(oneDest), 0, &idHeight)).IsValid() ||
+                                            (nHeight - idHeight) < VERUS_MIN_STAKEAGE)
                                         {
-                                            if (LogAcceptCategory("staking") && !keyAndIdentity.second.IsValid())
+                                            if (LogAcceptCategory("staking"))
                                             {
-                                                LogPrintf("%s: Do not have ID %s in wallet\n", __func__, EncodeDestination(CIdentityID(GetDestinationID(oneDest))).c_str());
+                                                if (!destIdentity.IsValid())
+                                                {
+                                                    LogPrintf("%s: Invalid ID %s as UTXO destination\n", __func__, EncodeDestination(CIdentityID(GetDestinationID(oneDest))).c_str());
+                                                }
+                                                else
+                                                {
+                                                    LogPrintf("%s: Identity that has been updated more recently than minimum stake age (%d) blocks renders UTXO ineligible to stake\n", __func__, EncodeDestination(CIdentityID(GetDestinationID(oneDest))).c_str(), VERUS_MIN_STAKEAGE);
+                                                }
                                             }
                                             isValid = false;
-                                            break;
                                         }
                                     }
                                 }

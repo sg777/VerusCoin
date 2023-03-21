@@ -1111,9 +1111,6 @@ public:
         return signatureKey;
     }
 
-    CIdentitySignature::ESignatureVerification SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType);
-    CIdentitySignature::ESignatureVerification SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType);
-
     bool IsConfirmed() const
     {
         return confirmed;
@@ -2238,14 +2235,15 @@ public:
     }
 
     EStates CheckSignatureConfirmation(const uint256 &objHash,
+                                       CCurrencyDefinition::EHashTypes hashType,
                                        const std::set<uint160> &notarySet,
                                        int minConfirming,
                                        uint32_t checkHeight=0,
                                        uint32_t *pDecisionHeight=nullptr,
-                                       std::map<CIdentityID, CIdentitySignature> *pConfirmedAtHeight=nullptr,
-                                       std::map<CIdentityID, CIdentitySignature> *pRejectedAtHeight=nullptr,
-                                       std::map<CIdentityID, std::set<std::vector<unsigned char>>> *pNotarySetRejects=nullptr,
-                                       std::map<CIdentityID, std::set<std::vector<unsigned char>>> *pNotarySetConfirms=nullptr) const;
+                                       std::map<CIdentityID, CIdentitySignature> *pNotarySetRejects=nullptr,
+                                       std::map<CIdentityID, CIdentitySignature> *pNotarySetConfirms=nullptr,
+                                       std::map<uint32_t, std::map<CIdentityID, CIdentitySignature>> *pRejectsByHeight=nullptr,
+                                       std::map<uint32_t, std::map<CIdentityID, CIdentitySignature>> *pConfirmsByHeight=nullptr) const;
 
     static std::string NotarySignatureKeyName()
     {
@@ -2365,8 +2363,8 @@ public:
         return proofKey;
     }
 
-    CIdentitySignature::ESignatureVerification SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType);
-    CIdentitySignature::ESignatureVerification SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType);
+    CIdentitySignature::ESignatureVerification SignConfirmed(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType, CNotaryEvidence *pNewSignatures=nullptr);
+    CIdentitySignature::ESignatureVerification SignRejected(const std::set<uint160> &notarySet, int minConfirming, const CKeyStore &keyStore, const CTransaction &txToConfirm, const CIdentityID &signWithID, uint32_t height, CCurrencyDefinition::EHashTypes hashType, CNotaryEvidence *pNewSignatures=nullptr);
 
     bool IsMultipartProof() const
     {
