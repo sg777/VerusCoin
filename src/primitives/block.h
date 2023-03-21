@@ -2235,6 +2235,7 @@ public:
     }
 
     EStates CheckSignatureConfirmation(const uint256 &objHash,
+                                       CCurrencyDefinition::EHashTypes hashType,
                                        const std::set<uint160> &notarySet,
                                        int minConfirming,
                                        uint32_t checkHeight=0,
