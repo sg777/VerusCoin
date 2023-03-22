@@ -5278,6 +5278,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     std::string errorPrefix(strprintf("%s: ", __func__));
 
     uint32_t height;
+    uint32_t curChainTipTime;
     uint160 SystemID;
     const CCurrencyDefinition &systemDef = externalSystem.chainDefinition;
     SystemID = systemDef.GetID();
@@ -5289,6 +5290,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     {
         LOCK2(cs_main, mempool.cs);
         height = chainActive.Height();
+        curChainTipTime = chainActive[height]->nTime;
 
         // we can only create an earned notarization for a notary chain, so there must be a notary chain and a network connection to it
         // we also need to ensure that our notarization would be the first notarization in this notary block period  with which we agree.
@@ -5549,7 +5551,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 }
 
                 CBlockIndex *pConfirmedNotarizationIndex = mapBlockIndex[txes[0].second];
-                uint32_t adjustedNotarizationModulo = (chainActive[height]->nTime > (PBAAS_TESTFORK_TIME - (20 * 60))) ?
+                uint32_t adjustedNotarizationModulo = (curChainTipTime > (PBAAS_TESTFORK_TIME - (20 * 60))) ?
                                 CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
                                                                                                         pCurNotarizationIndex->GetHeight() -
                                                                                                             pConfirmedNotarizationIndex->GetHeight()) :
