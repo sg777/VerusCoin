@@ -861,7 +861,9 @@ public:
                        int32_t &evidenceOutStart,
                        int32_t &evidenceOutEnd,
                        std::vector<CReserveTransfer> &reserveTransfers,
-                       CValidationState &state) const;
+                       CValidationState &state,
+                       bool deepCheck=false) const;
+
     bool GetImportInfo(const CTransaction &importTx,
                        uint32_t nHeight,
                        int numImportOut,
@@ -872,7 +874,8 @@ public:
                        int32_t &importNotarizationOut,
                        int32_t &evidenceOutStart,
                        int32_t &evidenceOutEnd,
-                       std::vector<CReserveTransfer> &reserveTransfers) const;
+                       std::vector<CReserveTransfer> &reserveTransfers,
+                       bool deepCheck=false) const;
 
     // ensures that all import rules were properly followed to create
     // the import inputs and outputs on this transaction

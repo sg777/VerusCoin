@@ -2905,8 +2905,11 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         // to prevent forced rescans, don't rescan anything that has too many UTXOs
                                         // unless this is a real rescan, and above a very small threshold, only dynamically scan
                                         // if this wallet holds revoke and recover as well
-                                        if (!isRescan &&
-                                            unspentOutputs.size() > MAX_UTXOS_ID_RESCAN)
+                                        CRating identityTrust = GetIdentityTrust(idID);
+                                        if ((ONLY_ADD_WHITELISTED_UTXOS_ID_RESCAN &&
+                                             !(identityTrust.IsValid() && identityTrust.trustLevel == identityTrust.TRUST_APPROVED)) ||
+                                            (!isRescan &&
+                                             unspentOutputs.size() > MAX_UTXOS_ID_RESCAN))
                                         {
                                             if (unspentOutputs.size() > MAX_OUR_UTXOS_ID_RESCAN)
                                             {
