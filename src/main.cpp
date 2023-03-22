@@ -4355,8 +4355,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 cci.importCurrencyID == cbCurID &&
                                 (cbCurID == ASSETCHAINS_CHAINID || cbCurID == ConnectedChains.ThisChain().GatewayConverterID()) &&
                                 cci.GetImportInfo(tx, 1, j, ccx,
-                                                dummySysCCI, sysCCIOut,
-                                                importNotarization, notarizationOut, evidenceStart, evidenceEnd, reserveTransfers, state) &&
+                                                  dummySysCCI, sysCCIOut,
+                                                  importNotarization, notarizationOut, evidenceStart, evidenceEnd, reserveTransfers, state) &&
                                 importNotarization.IsValid() &&
                                 importNotarization.currencyState.IsValid())
                             {

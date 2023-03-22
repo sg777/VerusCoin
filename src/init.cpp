@@ -1277,6 +1277,12 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
 
     MAX_OUR_UTXOS_ID_RESCAN = GetArg("-maxourutxosidrescan", MAX_OUR_UTXOS_ID_RESCAN);
     MAX_UTXOS_ID_RESCAN = GetArg("-maxutxosidrescan", std::min(MAX_UTXOS_ID_RESCAN, MAX_OUR_UTXOS_ID_RESCAN));
+    ONLY_ADD_WHITELISTED_UTXOS_ID_RESCAN = GetBoolArg("-onlyaddwhitelistidutxos", ONLY_ADD_WHITELISTED_UTXOS_ID_RESCAN);
+    if (ONLY_ADD_WHITELISTED_UTXOS_ID_RESCAN)
+    {
+        MAX_OUR_UTXOS_ID_RESCAN = 0;
+        MAX_UTXOS_ID_RESCAN = 0;
+    }
 
     // get default IDs and addresses
     auto chainUpgradeOracle = DecodeDestination(GetArg("-notificationoracle", IsVerusActive() ? PBAAS_DEFAULT_NOTIFICATION_ORACLE : EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
