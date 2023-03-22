@@ -324,7 +324,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
         p.vData.size() > 1 &&
         p.IsEvalPKOut() &&
         (cci = CCrossChainImport(p.vData[0])).IsValid() &&
-        cci.GetImportInfo(tx, height, outNum, ccx, sysCCI, sysOutNum, notarization, notarizationOut, evidenceOutStart, evidenceOutEnd, reserveTransfers, state))
+        cci.GetImportInfo(tx, height, outNum, ccx, sysCCI, sysOutNum, notarization, notarizationOut, evidenceOutStart, evidenceOutEnd, reserveTransfers, state, true))
     {
         // if this is a source system cci, get the base
         if (cci.IsSourceSystemImport())
