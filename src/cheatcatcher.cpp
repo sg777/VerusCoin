@@ -25,19 +25,19 @@ uint32_t CCheatList::Prune(uint32_t height)
 {
     uint32_t count = 0;
     pair<multimap<const uint32_t, CTxHolder>::iterator, multimap<const uint32_t, CTxHolder>::iterator> range;
-    vector<CTxHolder *> toPrune;
+    vector<CTxHolder> toPrune;
 
     if (height > 0 && Params().GetConsensus().NetworkUpgradeActive(height, Consensus::UPGRADE_SAPLING))
     {
         LOCK(cs_cheat);
         for (auto it = orderedCheatCandidates.begin(); it != orderedCheatCandidates.end() && it->second.height <= height; it++)
         {
-            toPrune.push_back(&it->second);
+            toPrune.push_back(it->second);
         }
         count = toPrune.size();
-        for (auto ptxHolder : toPrune)
+        for (auto &ptxHolder : toPrune)
         {
-            Remove(*ptxHolder);
+            Remove(ptxHolder);
         }
     }
     return count;   // return how many removed
