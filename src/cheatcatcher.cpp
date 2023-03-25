@@ -139,11 +139,9 @@ void CCheatList::Add(const CTxHolder &txh)
 
 void CCheatList::Remove(const CTxHolder &txh)
 {
-    // first narrow by source tx, then compare with tx hash
     uint32_t count;
     vector<multimap<const uint256, CTxHolder *>::iterator> utxoPrune;
     vector<multimap<const int32_t, CTxHolder>::iterator> heightPrune;
-    uint256 hash = txh.tx.GetHash();
 
     {
         LOCK(cs_cheat);
@@ -151,18 +149,31 @@ void CCheatList::Remove(const CTxHolder &txh)
         auto it = range.first;
         for ( ; it != range.second; it++)
         {
-            if (hash == it->second->tx.GetHash() && txh.utxo == it->second->utxo)
+            // if the one found is at less than or equal to the height provided, then it is either the same one or
+            // if less than, may have been an orphan and can also be removed
+            uint32_t startHeight = txh.height;
+            uint32_t endHeight = txh.height;
+            for (; it != range.second; it++)
             {
-                utxoPrune.push_back(it);
+                if (it->second->height <= txh.height)
+                {
+                    if (it->second->height < startHeight)
+                    {
+                        startHeight = it->second->height;
+                    }
+                    utxoPrune.push_back(it);
+                }
             }
-        }
-        auto hrange = orderedCheatCandidates.equal_range(it->second->height);
-        for (auto hit = hrange.first; hit != hrange.second; hit++)
-        {
-            if (hit->second.tx.GetHash() == hash && hit->second.utxo == it->second->utxo)
+            // remove those we removed from the height list as well
+            auto orderedIt = orderedCheatCandidates.lower_bound(startHeight);
+            auto upperIt = orderedCheatCandidates.upper_bound(endHeight);
+            for (; orderedIt != upperIt; orderedIt++)
             {
-                // add and remove them together
-                heightPrune.push_back(hit);
+                if (orderedIt->second.utxo == txh.utxo)
+                {
+                    // add and remove them together
+                    heightPrune.push_back(orderedIt);
+                }
             }
         }
 
