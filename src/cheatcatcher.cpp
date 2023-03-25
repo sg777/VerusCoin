@@ -144,36 +144,35 @@ void CCheatList::Remove(const CTxHolder &txh)
     vector<multimap<const int32_t, CTxHolder>::iterator> heightPrune;
 
     {
+        // if the one found is at less than or equal to the height provided, then it is either the same one or
+        // if less than, may have been an orphan and can also be removed
+        uint32_t startHeight = txh.height;
+        uint32_t endHeight = txh.height;
+
         LOCK(cs_cheat);
         auto range = indexedCheatCandidates.equal_range(txh.utxo);
         auto it = range.first;
         for ( ; it != range.second; it++)
         {
-            // if the one found is at less than or equal to the height provided, then it is either the same one or
-            // if less than, may have been an orphan and can also be removed
-            uint32_t startHeight = txh.height;
-            uint32_t endHeight = txh.height;
-            for (; it != range.second; it++)
+            if (it->second->height <= txh.height)
             {
-                if (it->second->height <= txh.height)
+                if (it->second->height < startHeight)
                 {
-                    if (it->second->height < startHeight)
-                    {
-                        startHeight = it->second->height;
-                    }
-                    utxoPrune.push_back(it);
+                    startHeight = it->second->height;
                 }
+                utxoPrune.push_back(it);
             }
-            // remove those we removed from the height list as well
-            auto orderedIt = orderedCheatCandidates.lower_bound(startHeight);
-            auto upperIt = orderedCheatCandidates.upper_bound(endHeight);
-            for (; orderedIt != upperIt; orderedIt++)
+        }
+
+        // remove those we removed from the height list as well
+        auto orderedIt = orderedCheatCandidates.lower_bound(startHeight);
+        auto upperIt = orderedCheatCandidates.upper_bound(endHeight);
+        for (; orderedIt != upperIt; orderedIt++)
+        {
+            if (orderedIt->second.utxo == txh.utxo)
             {
-                if (orderedIt->second.utxo == txh.utxo)
-                {
-                    // add and remove them together
-                    heightPrune.push_back(orderedIt);
-                }
+                // add and remove them together
+                heightPrune.push_back(orderedIt);
             }
         }
 
