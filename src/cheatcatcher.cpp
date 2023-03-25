@@ -1,12 +1,12 @@
 /********************************************************************
  * (C) 2018 Michael Toutonghi
- * 
+ *
  * Distributed under the MIT software license, see the accompanying
  * file COPYING or http://www.opensource.org/licenses/mit-license.php.
- * 
+ *
  * This supports code to catch nothing at stake cheaters who stake
  * on multiple forks.
- * 
+ *
  */
 
 #include "cc/StakeGuard.h"
@@ -151,29 +151,18 @@ void CCheatList::Remove(const CTxHolder &txh)
         auto it = range.first;
         for ( ; it != range.second; it++)
         {
-            if (hash == it->second->tx.GetHash())
+            if (hash == it->second->tx.GetHash() && txh.utxo == it->second->utxo)
             {
                 utxoPrune.push_back(it);
             }
-            // if we haven't yet looked at this height, look, otherwise skip
-            int dupHeight = -1;
-            for (auto iter : utxoPrune)
+        }
+        auto hrange = orderedCheatCandidates.equal_range(it->second->height);
+        for (auto hit = hrange.first; hit != hrange.second; hit++)
+        {
+            if (hit->second.tx.GetHash() == hash && hit->second.utxo == it->second->utxo)
             {
-                if (iter->second->height == it->second->height)
-                    dupHeight++;
-            }
-            // only remove matching entries by height once
-            if (!dupHeight)
-            {
-                auto hrange = orderedCheatCandidates.equal_range(it->second->height);
-                for (auto hit = hrange.first; hit != hrange.second; hit++)
-                {
-                    if (hit->second.tx.GetHash() == hash && hit->second.utxo == it->second->utxo)
-                    {
-                        // add and remove them together
-                        heightPrune.push_back(hit);
-                    }
-                }
+                // add and remove them together
+                heightPrune.push_back(hit);
             }
         }
 
