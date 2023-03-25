@@ -986,7 +986,7 @@ UniValue decodescript(const UniValue& params, bool fHelp)
     } else {
         // Empty scripts are valid
     }
-    ScriptPubKeyToJSON(script, r, false);
+    ScriptPubKeyToUniv(script, r, false);
 
     r.push_back(Pair("p2sh", EncodeDestination(CScriptID(script))));
     return r;
