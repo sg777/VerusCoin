@@ -4189,6 +4189,13 @@ UniValue CUpgradeDescriptor::ToUniValue() const
     uni.pushKV("version", (int64_t)version);
     uni.pushKV("upgradeid", EncodeDestination(CIdentityID(upgradeID)));
     uni.pushKV("minimumdaemonversion", (int64_t)minDaemonVersion);
+    uint8_t minorVer = ((minDaemonVersion >> 8) & 0xff);
+    uint8_t subMinorVer = (minDaemonVersion & 0xff);
+    uni.pushKV("minimumdaemonversionstr", std::to_string((minDaemonVersion >> 24) & 0xff) +
+                                          std::string(".") +
+                                          std::to_string((minDaemonVersion >> 16) & 0xff) +
+                                          ((minorVer || subMinorVer) ? std::string(".") + std::to_string(minorVer) : std::string()) +
+                                          (subMinorVer ? std::string("-") + std::to_string(subMinorVer) : std::string()));
     uni.pushKV("activationheight", (int64_t)upgradeBlockHeight);
     uni.pushKV("activationtargettime", (int64_t)upgradeTargetTime);
     return uni;
@@ -4215,14 +4222,30 @@ void CConnectedChains::CheckOracleUpgrades()
     std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>> upgradeData;
     if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) >= CActivationHeight::ACTIVATE_PBAAS)
     {
-        upgradeData = CIdentity::GetIdentityContentByKey(PBAAS_NOTIFICATION_ORACLE, UpgradeDataKey(ASSETCHAINS_CHAINID), IsVerusMainnetActive() ? APPROX_RELEASE_HEIGHT : 0, 0, false, false, 0, true);
+        upgradeData = CIdentity::GetIdentityContentByKey(PBAAS_NOTIFICATION_ORACLE, UpgradeDataKey(ASSETCHAINS_CHAINID), 0, 0, false, false, 0, true);
     }
-    CIdentity oracleID = CIdentity::LookupIdentity(PBAAS_NOTIFICATION_ORACLE, chainActive.Height());
+    uint32_t foundIDAt;
+    CTxIn txInDesc;
+    CIdentity oracleID = CIdentity::LookupIdentity(PBAAS_NOTIFICATION_ORACLE, chainActive.Height(), &foundIDAt, &txInDesc);
+    if (LogAcceptCategory("oracles"))
+    {
+        LogPrintf("%s: oracle ID (%s) found at height %u in transaction %s output: %u\n",
+                  __func__,
+                  ConnectedChains.GetFriendlyIdentityName(oracleID).c_str(),
+                  foundIDAt,
+                  txInDesc.prevout.hash.GetHex().c_str(),
+                  txInDesc.prevout.n);
+    }
 
     if (oracleID.contentMap.count(TestForkUpgradeKey()))
     {
         upgradeData.resize(upgradeData.size() + 1);
         std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[TestForkUpgradeKey()].GetHex());
+        if (LogAcceptCategory("oracles"))
+        {
+            CUpgradeDescriptor upgradeDescr(std::get<0>(*upgradeData.rbegin()));
+            LogPrintf("Testfork oracle notification: %s\nhex: %s\n", upgradeDescr.ToUniValue().write(1,2).c_str(), HexBytes(&(std::get<0>(*upgradeData.rbegin())[0]), std::get<0>(*upgradeData.rbegin()).size()));
+        }
     }
     if (oracleID.contentMap.count(PBaaSUpgradeKey()))
     {
@@ -4237,7 +4260,8 @@ void CConnectedChains::CheckOracleUpgrades()
     if (PBAAS_TESTMODE && IsVerusActive() && oracleID.contentMap.count(TestnetEthContractUpgradeKey()))
     {
         LOCK(ConnectedChains.cs_mergemining);
-        activeUpgradesByKey.insert({TestnetEthContractUpgradeKey(), CUpgradeDescriptor(ParseHex(oracleID.contentMap[TestnetEthContractUpgradeKey()].GetHex()))});
+        activeUpgradesByKey.insert({TestnetEthContractUpgradeKey(), CUpgradeDescriptor(std::vector<unsigned char>(oracleID.contentMap[TestnetEthContractUpgradeKey()].begin(),
+                                                                                                                  oracleID.contentMap[TestnetEthContractUpgradeKey()].end()))});
     }
 
     CUpgradeDescriptor oneUpgrade;
@@ -4249,7 +4273,7 @@ void CConnectedChains::CheckOracleUpgrades()
             if (upgrade.IsValid())
             {
                 LOCK(ConnectedChains.cs_mergemining);
-                activeUpgradesByKey.insert({upgrade.upgradeID, upgrade});
+                activeUpgradesByKey[upgrade.upgradeID] = upgrade;
             }
         }
     }
@@ -4262,7 +4286,8 @@ void CConnectedChains::CheckOracleUpgrades()
     std::string gracefulStop;
 
     if (upgradeTestForkIt != activeUpgradesByKey.end() &&
-        upgradeTestForkIt->second.minDaemonVersion <= GetVerusVersion())
+        upgradeTestForkIt->second.minDaemonVersion <= GetVerusVersion() &&
+        PBAAS_TESTFORK_TIME != upgradeTestForkIt->second.upgradeTargetTime)
     {
         PBAAS_TESTFORK_TIME = upgradeTestForkIt->second.upgradeTargetTime;
     }

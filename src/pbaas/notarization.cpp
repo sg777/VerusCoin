@@ -8827,7 +8827,7 @@ bool IsNotarizationDescendent(const CPBaaSNotarization &checkNotarization,
     }
     if (!isDescendent)
     {
-        return state.Error("Invalid accepted notarization does not derive from last confirmed");
+        return state.Error("Notarization does not derive from last recognized confirmed");
     }
     return true;
 }
