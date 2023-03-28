@@ -1688,7 +1688,7 @@ bool COptCCParams::IsValid(bool strict, uint32_t nHeight) const
                     {
                         return false;
                     }
-                    break;
+                    return true;
                 }
                 case EVAL_NONE:
                 {
