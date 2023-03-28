@@ -1623,6 +1623,18 @@ bool COptCCParams::IsValid(bool strict, uint32_t nHeight) const
                 }
                 switch (oneParam.evalCode)
                 {
+                    case EVAL_STAKEGUARD:
+                    {
+                        // alternate spend
+                        // spendable to public key
+                        if (vData.size() != 3 ||
+                            oneParam.vData.size() ||
+                            oneParam.vKeys.size() != 1)
+                        {
+                            return false;
+                        }
+                        break;
+                    }
                     case EVAL_NONE:
                     case EVAL_IDENTITY_RECOVER:
                     case EVAL_IDENTITY_REVOKE:
@@ -1631,6 +1643,7 @@ bool COptCCParams::IsValid(bool strict, uint32_t nHeight) const
                         {
                             return false;
                         }
+                        break;
                     }
                     case EVAL_NOTARY_EVIDENCE:
                     {
@@ -1643,6 +1656,7 @@ bool COptCCParams::IsValid(bool strict, uint32_t nHeight) const
                         {
                             return false;
                         }
+                        break;
                     }
                     default:
                     {
@@ -1665,7 +1679,28 @@ bool COptCCParams::IsValid(bool strict, uint32_t nHeight) const
         {
             switch (evalCode)
             {
+                case EVAL_STAKEGUARD:
+                {
+                    if (vData.size() ||
+                        vKeys.size() != 1)
+                    {
+                        return false;
+                    }
+                    break;
+                }
                 case EVAL_NONE:
+                {
+                    if (vData.size() == 1)
+                    {
+                        COptCCParams master = COptCCParams(vData.back());
+                        if (!master.IsValid() ||
+                            master.evalCode != EVAL_NONE)
+                        {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
                 case EVAL_IDENTITY_RECOVER:
                 case EVAL_IDENTITY_REVOKE:
                 {
