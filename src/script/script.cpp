@@ -1564,6 +1564,136 @@ std::vector<CTxDestination> COptCCParams::GetDestinations() const
     return destinations;
 }
 
+bool COptCCParams::IsValid(bool strict, uint32_t nHeight) const
+{
+    // verify that the output is spendable as a normal smart transaction output with all known combinations and no others
+    // that may not be spendable
+    uint32_t solutionVer = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
+    bool isPBaaS = solutionVer >= CActivationHeight::ACTIVATE_PBAAS;
+    bool isVault = solutionVer >= CActivationHeight::ACTIVATE_VERUSVAULT;
+
+    bool versionInRange = (!isPBaaS && (version == VERSION_V1 || version == VERSION_V2 || version == VERSION_V3)) || (isPBaaS && version == VERSION_V3);
+    if (!(isPBaaS || (isVault && strict)) ||
+        !versionInRange)
+    {
+        return versionInRange;
+    }
+    else
+    {
+        if (m > n ||
+            n != vKeys.size())
+        {
+            return false;
+        }
+        for (auto &oneDest : vKeys)
+        {
+            if (oneDest.which() != ADDRTYPE_ID &&
+                oneDest.which() != ADDRTYPE_PK &&
+                oneDest.which() != ADDRTYPE_PKH)
+            {
+                return false;
+            }
+        }
+
+        if (vData.size() > 1)
+        {
+            // back must be a valid master, and if we have more than 2, each must be a valid condition
+            // no subconditions can contain objects or funds in their scripts
+            COptCCParams master = COptCCParams(vData.back());
+            if (!master.IsValid() ||
+                master.evalCode != EVAL_NONE ||
+                master.m > master.n ||
+                master.n > 4 ||
+                master.n != (vData.size() - 1) ||
+                master.vData.size())
+            {
+                return false;
+            }
+            for (int i = 1; i < (vData.size() - 1); i++)
+            {
+                COptCCParams oneParam(vData[i]);
+                if (!oneParam.IsValid())
+                {
+                    return false;
+                }
+                if (oneParam.m > oneParam.n ||
+                    oneParam.n > oneParam.vKeys.size())
+                {
+                    return false;
+                }
+                switch (oneParam.evalCode)
+                {
+                    case EVAL_NONE:
+                    case EVAL_IDENTITY_RECOVER:
+                    case EVAL_IDENTITY_REVOKE:
+                    {
+                        if (oneParam.vData.size())
+                        {
+                            return false;
+                        }
+                    }
+                    case EVAL_NOTARY_EVIDENCE:
+                    {
+                        if (oneParam.vData.size() != 1)
+                        {
+                            return false;
+                        }
+                        CNotaryEvidence evidence(vData[0]);
+                        if (!evidence.IsValid())
+                        {
+                            return false;
+                        }
+                    }
+                    default:
+                    {
+                        return false;
+                    }
+                }
+                for (auto &oneDest : vKeys)
+                {
+                    if (oneDest.which() != ADDRTYPE_ID &&
+                        oneDest.which() != ADDRTYPE_PK &&
+                        oneDest.which() != ADDRTYPE_PKH)
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+        else
+        {
+            switch (evalCode)
+            {
+                case EVAL_NONE:
+                case EVAL_IDENTITY_RECOVER:
+                case EVAL_IDENTITY_REVOKE:
+                {
+                    if (vData.size())
+                    {
+                        return false;
+                    }
+                    return true;
+                }
+                case EVAL_NOTARY_EVIDENCE:
+                {
+                    if (vData.size() != 1)
+                    {
+                        return false;
+                    }
+                    CNotaryEvidence evidence(vData[0]);
+                    if (!evidence.IsValid())
+                    {
+                        return false;
+                    }
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 bool COptCCParams::IsEvalPKOut() const
 {
     if (evalCode > EVAL_LAST)
