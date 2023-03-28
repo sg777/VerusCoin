@@ -1688,7 +1688,17 @@ bool COptCCParams::IsValid(bool strict, uint32_t nHeight) const
                     {
                         return false;
                     }
-                    return true;
+                    CCcontract_info CC;
+                    CCcontract_info *cp;
+
+                    cp = CCinit(&CC, evalCode);
+                    uint160 evalPKH = CPubKey(ParseHex(CC.CChexstr)).GetID();
+
+                    if ((vKeys[0].which() == ADDRTYPE_PK || vKeys[0].which() == ADDRTYPE_PKH) && GetDestinationID(vKeys[0]) == evalPKH)
+                    {
+                        return true;
+                    }
+                    return false;
                 }
                 case EVAL_NONE:
                 {
