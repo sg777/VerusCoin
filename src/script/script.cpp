@@ -1604,7 +1604,9 @@ bool COptCCParams::IsValid(bool strict, uint32_t nHeight) const
                 master.evalCode != EVAL_NONE ||
                 master.m > master.n ||
                 master.n > 4 ||
-                master.n != (vData.size() - 1) ||
+                (master.n != (vData.size() - 1) &&
+                 !(vData.size() == 2 &&
+                   master.n == std::max((int)master.vKeys.size(), 1))) ||
                 master.vData.size())
             {
                 return false;
