@@ -1601,7 +1601,7 @@ bool COptCCParams::IsValid(bool strict, uint32_t nHeight) const
             // no subconditions can contain objects or funds in their scripts
             COptCCParams master = COptCCParams(vData.back());
             if (!master.IsValid() ||
-                master.evalCode != EVAL_NONE ||
+                !(master.evalCode == EVAL_NONE || master.evalCode == EVAL_STAKEGUARD) ||
                 master.m > master.n ||
                 master.n > 4 ||
                 (master.n != (vData.size() - 1) &&
