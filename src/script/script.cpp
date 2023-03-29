@@ -1573,7 +1573,7 @@ bool COptCCParams::IsValid(bool strict, uint32_t nHeight) const
     bool isVault = solutionVer >= CActivationHeight::ACTIVATE_VERUSVAULT;
 
     bool versionInRange = (!isPBaaS && (version == VERSION_V1 || version == VERSION_V2 || version == VERSION_V3)) || (isPBaaS && version == VERSION_V3);
-    if (!(isPBaaS || (isVault && strict)) ||
+    if (!((isPBaaS || isVault) && strict) ||
         !versionInRange)
     {
         return versionInRange;
@@ -1614,7 +1614,7 @@ bool COptCCParams::IsValid(bool strict, uint32_t nHeight) const
             for (int i = 1; i < (vData.size() - 1); i++)
             {
                 COptCCParams oneParam(vData[i]);
-                if (!oneParam.IsValid())
+                if (!oneParam.IsValid(true, nHeight))
                 {
                     return false;
                 }
