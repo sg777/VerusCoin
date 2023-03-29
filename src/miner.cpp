@@ -2414,8 +2414,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
 
             CAmount delayedFee = 0;
 
-            CValidationState state;
-
             // first, eliminate conflicts at the output level, then we can verify inputs
             if (isReserve)
             {
