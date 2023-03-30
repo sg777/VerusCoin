@@ -2389,13 +2389,18 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             ? nMedianTimePast
             : pblock->GetBlockTime();
 
-            if (tx.IsCoinBase() || !IsFinalTx(tx, nHeight, nLockTimeCutoff) || IsExpiredTx(tx, nHeight))
+            CValidationState state;
+
+            if (!IsFinalTx(tx, nHeight, nLockTimeCutoff))
             {
-                //fprintf(stderr,"coinbase.%d finaltx.%d expired.%d\n",tx.IsCoinBase(),IsFinalTx(tx, nHeight, nLockTimeCutoff),IsExpiredTx(tx, nHeight));
-                if (tx.IsCoinBase() || IsExpiredTx(tx, nHeight))
-                {
-                    txesToRemove.push_back(tx);
-                }
+                continue;
+            }
+            if (tx.IsCoinBase() ||
+                IsExpiredTx(tx, nHeight) ||
+                (mi->GetHeight() != nHeight &&
+                 !ContextualCheckTransaction(tx, state, Params(), nHeight, 0)))
+            {
+                txesToRemove.push_back(tx);
                 continue;
             }
 
@@ -2408,8 +2413,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             bool isReserve = mempool.IsKnownReserveTransaction(hash, rtxd);
 
             CAmount delayedFee = 0;
-
-            CValidationState state;
 
             // first, eliminate conflicts at the output level, then we can verify inputs
             if (isReserve)

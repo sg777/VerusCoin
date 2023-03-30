@@ -1714,15 +1714,6 @@ int TransactionSignatureChecker::CheckCryptoCondition(
             }
             if (!success || !condBinary.size())
             {
-                /*
-                char *jsonCondStr = cc_conditionToJSONString(outputCC);
-                if (jsonCondStr)
-                {
-                    printf("Signed condition: %s\n", jsonCondStr);
-                    cJSON_free(jsonCondStr);
-                }
-                */
-
                 cc_free(outputCC);
                 condBinary.clear();
             }
@@ -1765,45 +1756,6 @@ int TransactionSignatureChecker::CheckCryptoCondition(
         }
         return -1;
     }
-
-    /*
-    char *jsonCondStr = cc_conditionToJSONString(cond);
-    if (jsonCondStr)
-    {
-        printf("Fulfillment condition: %s\n", jsonCondStr);
-        cJSON_free(jsonCondStr);
-        uint8_t buf[2000];
-        int ccLen = cc_conditionBinary(cond, buf, 2000);
-        if (ccLen)
-        {
-            CC *transformedCC = cc_readConditionBinary(buf, ccLen);
-            if (transformedCC)
-            {
-                jsonCondStr = cc_conditionToJSONString(transformedCC);
-                if (jsonCondStr)
-                {
-                    printf("Converted fulfillment condition: %s\n", jsonCondStr);
-                    cJSON_free(jsonCondStr);
-                }
-                cc_free(transformedCC);
-            }
-        }
-    }
-    if (condBinary.size())
-    {
-        CC *transformedCC = cc_readConditionBinary(condBinary.data(), condBinary.size());
-        if (transformedCC)
-        {
-            jsonCondStr = cc_conditionToJSONString(transformedCC);
-            if (jsonCondStr)
-            {
-                printf("Binary condition reconstructed: %s\n", jsonCondStr);
-                cJSON_free(jsonCondStr);
-            }
-            cc_free(transformedCC);
-        }
-    }
-    */
 
     if (!IsSupportedCryptoCondition(cond, p.IsValid() ? p.evalCode : 0) || !IsSignedCryptoCondition(cond))
     {
