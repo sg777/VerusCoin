@@ -8055,8 +8055,8 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
                     if (!isExpiringSoon) {
                         // Send stream from relay memory
                         MapRelay::iterator mi;
+                        LOCK(cs_mapRelay);
                         {
-                            LOCK(cs_mapRelay);
                             mi = mapRelay.find(inv.hash);
                             if (mi != mapRelay.end()) {
                                 pfrom->PushMessage(inv.GetCommand(), *(*mi).second);
