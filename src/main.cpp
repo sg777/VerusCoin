@@ -1402,15 +1402,14 @@ bool ContextualCheckTransaction(
     }
 
     // precheck all crypto conditions
-    bool invalid = false;
     for (int i = 0; i < tx.vout.size(); i++)
     {
         COptCCParams p;
         if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p))
         {
-            if (!p.IsValid())
+            if (!p.IsValid(isPBaaS, nHeight) && isPBaaS)
             {
-                invalid = true;
+                return state.DoS(10, error(state.GetRejectReason().c_str()), REJECT_INVALID, "bad-txns-failed-params-precheck");
             }
             if (p.evalCode == EVAL_NONE)
             {
@@ -1424,7 +1423,7 @@ bool ContextualCheckTransaction(
                 CCcontract_info CC;
                 CCcontract_info *cp;
                 if (!((p.evalCode <= EVAL_LAST) &&
-                    (cp = CCinit(&CC, p.evalCode))))
+                      (cp = CCinit(&CC, p.evalCode))))
                 {
                     return state.DoS(100, error("ContextualCheckTransaction(): Invalid smart transaction eval code"), REJECT_INVALID, "bad-txns-evalcode-invalid");
                 }
@@ -8056,8 +8055,8 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
                     if (!isExpiringSoon) {
                         // Send stream from relay memory
                         MapRelay::iterator mi;
+                        LOCK(cs_mapRelay);
                         {
-                            LOCK(cs_mapRelay);
                             mi = mapRelay.find(inv.hash);
                             if (mi != mapRelay.end()) {
                                 pfrom->PushMessage(inv.GetCommand(), *(*mi).second);
