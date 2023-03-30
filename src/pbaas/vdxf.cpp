@@ -185,7 +185,7 @@ std::vector<std::string> CVDXF::ParseSubNames(const std::string &Name, std::stri
 
     std::vector<std::string> retNames;
     boost::split(retNames, nameCopy, boost::is_any_of("@"));
-    if (!retNames.size() || retNames.size() > 2)
+    if (!retNames.size() || retNames.size() > 2 || (retNames.size() > 1 && TrimSpaces(retNames[1]) != retNames[1]))
     {
         return std::vector<std::string>();
     }
