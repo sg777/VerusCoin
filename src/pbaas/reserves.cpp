@@ -2745,9 +2745,13 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         CCoinbaseCurrencyState newState;
 
                         // if clear launch, don't set launch complete beforehand to match outputs
-                        if (ccx.IsClearLaunch() && ccx.sourceSystemID == importCurrencyDef.launchSystemID)
+                        if ((ccx.IsClearLaunch() && ccx.sourceSystemID == importCurrencyDef.launchSystemID))
                         {
                             checkState.SetLaunchCompleteMarker(false);
+                        }
+                        else if (checkState.IsLaunchConfirmed() && !checkState.IsLaunchCompleteMarker() && checkState.preConvertedOut)
+                        {
+                            checkState.supply -= checkState.preConvertedOut;
                         }
 
                         checkState.RevertReservesAndSupply();
