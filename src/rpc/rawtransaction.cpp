@@ -176,7 +176,8 @@ void TxToJSONExpanded(const CTransaction& tx, const uint256 hashBlock, UniValue&
             in.push_back(Pair("vout", (int64_t)txin.prevout.n));
             {
                 uint256 hash; CTransaction txFrom;
-                if (GetTransaction(txin.prevout.hash,txFrom,hash,false))
+                if (GetTransaction(txin.prevout.hash, txFrom, hash, false) &&
+                    txFrom.vout.size() > txin.prevout.n)
                 {
                     COptCCParams p;
                     BlockMap::iterator blockIdxIt = mapBlockIndex.find(hash);
@@ -184,7 +185,6 @@ void TxToJSONExpanded(const CTransaction& tx, const uint256 hashBlock, UniValue&
                         blockIdxIt != mapBlockIndex.end() &&
                         LogAcceptCategory("signaturehash") &&
                         chainActive.Contains(blockIdxIt->second) &&
-                        txFrom.vout.size() > txin.prevout.n &&
                         txFrom.vout[txin.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
                         p.IsValid())
                     {
