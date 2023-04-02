@@ -612,9 +612,13 @@ void CTxMemPool::removeForReorg(const CCoinsViewCache *pcoins, unsigned int nMem
                         break;
                     }
 
-                    // TODO: HARDENING - we need to make it so that once a transaction is proven as valid,
+                    // TODO: POST HARDENING - we need to make it so that once a transaction is proven as valid,
                     // its proof remains valid, even when the blockchain is unwound backwards to the point
                     // where that transaction originally exists on chain
+                    // this is an optimization, not hardening issue pre-PBaaS, and may possibly be addressed as easily
+                    // as calling ContextualCheckTransaction on the transaction without all of this.
+                    // currently, transactions rendered invalid by reorgs will end up removed at block creation and are
+                    // not accepted when relayed once invalid.
                     case EVAL_NOTARY_EVIDENCE:
                     case EVAL_FINALIZE_NOTARIZATION:
                     case EVAL_RESERVE_TRANSFER:

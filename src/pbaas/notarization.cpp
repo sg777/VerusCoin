@@ -9763,7 +9763,7 @@ bool PreCheckNotaryEvidence(const CTransaction &tx, int32_t outNum, CValidationS
             COptCCParams multiP;
             CNotaryEvidence multiEvidence;
             int multiStart = (outNum - ((CChainObject<CEvidenceData> *)(currentEvidence.evidence.chainObjects[0]))->object.md.index);
-            if (multiStart > 0 && // TODO: HARDENING - put into next consensus update ">="
+            if (multiStart >= 0 &&
                 tx.vout[multiStart].scriptPubKey.IsPayToCryptoCondition(multiP) &&
                 multiP.IsValid() &&
                 multiP.evalCode == EVAL_NOTARY_EVIDENCE &&
