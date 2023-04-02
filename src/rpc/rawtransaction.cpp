@@ -184,6 +184,7 @@ void TxToJSONExpanded(const CTransaction& tx, const uint256 hashBlock, UniValue&
                         blockIdxIt != mapBlockIndex.end() &&
                         LogAcceptCategory("signaturehash") &&
                         chainActive.Contains(blockIdxIt->second) &&
+                        txFrom.vout.size() > txin.prevout.n &&
                         txFrom.vout[txin.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
                         p.IsValid())
                     {
