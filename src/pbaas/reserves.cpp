@@ -2770,7 +2770,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             checkState.SetLaunchClear();
                         }
 
-                        CReserveTransactionDescriptor rtxd;
+                        CReserveTransactionDescriptor rtxd = *this;
 
                         if (!rtxd.AddReserveTransferImportOutputs(sourceSystemDef,
                                                                   ConnectedChains.thisChain,
@@ -2809,13 +2809,18 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         newState.reserveOut = importNotarization.currencyState.reserveOut;
                         newState.primaryCurrencyIn = importNotarization.currencyState.primaryCurrencyIn;
 
-                        if (::AsVector(importNotarization.currencyState) != ::AsVector(newState) &&
-                            (LogAcceptCategory("crosschain") || LogAcceptCategory("defi")))
+                        if (::AsVector(importNotarization.currencyState) != ::AsVector(newState))
                         {
-                            LogPrintf("%s: calculated currency state:\n%s\ndoes not match notarization currency state:\n%s\n",
-                                      __func__,
-                                      newState.ToUniValue().write(1,2).c_str(),
-                                      importNotarization.currencyState.ToUniValue().write(1,2).c_str());
+                            if (LogAcceptCategory("crosschain") || LogAcceptCategory("defi"))
+                            {
+                                LogPrintf("%s: calculated currency state:\n%s\ndoes not match notarization currency state:\n%s\n",
+                                        __func__,
+                                        newState.ToUniValue().write(1,2).c_str(),
+                                        importNotarization.currencyState.ToUniValue().write(1,2).c_str());
+                            }
+                            flags &= ~IS_VALID;
+                            flags |= IS_REJECT;
+                            return;
                         }
 
                         // validate that all outputs match calculated outputs
@@ -2859,6 +2864,9 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                             LogPrintf("actual output:\n%s\nnativeout: %ld\n", scriptJson2.write(1,2).c_str(), tx.vout[loop + startingOutput].nValue);
                                         }
                                     }
+                                    flags &= ~IS_VALID;
+                                    flags |= IS_REJECT;
+                                    return;
                                 }
                             }
                         }
@@ -3421,7 +3429,10 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             // check for collisions and if not present, make an ID output
             bool idCollision = false, currencyCollision = false;
 
-            CIdentity preexistingID = CIdentity::LookupIdentity(importedID.GetID());
+            uint32_t idCollisionHeightOut = 0;
+            CTxIn idCollisionTxIn;
+            CIdentity preexistingID = CIdentity::LookupIdentity(importedID.GetID(), height, &idCollisionHeightOut, &idCollisionTxIn);
+            // if it's valid and not just us, it's a collision
             if (preexistingID.IsValid() &&
                 (boost::to_lower_copy(importedID.name) != boost::to_lower_copy(preexistingID.name) ||
                  importedID.parent != preexistingID.parent ||

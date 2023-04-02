@@ -1202,7 +1202,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                     printf("%s: Invalid export with sourceHeightEnd greater than or equal to height of block\n", __func__);
                     LogPrintf("%s: Invalid export with sourceHeightEnd greater than or equal to height of block\n", __func__);
                 }
-                return false;
+                return state.Error("Invalid export with sourceHeightEnd greater than or equal to height of block");
             }
 
             std::set<uint32_t> blockLottery;
@@ -1234,7 +1234,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                         printf("%s: Unable to read block from disk for fee recipient\n", __func__);
                         LogPrintf("%s: Unable to read block from disk for fee recipient\n", __func__);
                     }
-                    return false;
+                    return state.Error("Unable to determine fee recipient");
                 }
 
                 std::vector<CTxDestination> addresses;
@@ -1279,7 +1279,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                             printf("%s: Invalid fee recipient for export\n", __func__);
                             LogPrintf("%s: Invalid fee recipient for export\n", __func__);
                         }
-                        return false;
+                        return state.Error("Invalid fee recipient for export " + ccx.ToUniValue().write());
                     }
                 }
             }
