@@ -2744,21 +2744,25 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         CCoinbaseCurrencyState checkState = importNotarization.currencyState;
                         CCoinbaseCurrencyState newState;
 
+                        bool isClearLaunch = (ccx.IsClearLaunch() && ccx.sourceSystemID == importCurrencyDef.launchSystemID);
+
                         // if clear launch, don't set launch complete beforehand to match outputs
-                        if ((ccx.IsClearLaunch() && ccx.sourceSystemID == importCurrencyDef.launchSystemID))
+                        if (isClearLaunch)
                         {
                             checkState.SetLaunchCompleteMarker(false);
-                        }
-                        else if (checkState.IsLaunchConfirmed() && !checkState.IsLaunchCompleteMarker() && checkState.preConvertedOut)
-                        {
-                            checkState.supply -= checkState.preConvertedOut;
                         }
 
                         checkState.RevertReservesAndSupply();
 
-                        if (importNotarization.currencyState.supply == checkState.supply && checkState.preConvertedOut)
+                        // between clear launch and complete, we need to adjust supply for verification
+                        if (!checkState.IsFractional() &&
+                            !checkState.IsPrelaunch() &&
+                            checkState.IsLaunchConfirmed() &&
+                            !checkState.IsLaunchCompleteMarker() &&
+                            importNotarization.currencyState.supply == checkState.supply &&
+                            checkState.preConvertedOut)
                         {
-                            LogPrint("defi", "Checking preconverted out\nnotarization: %s\nexport: %s\nimport: %s\n", importNotarization.ToUniValue().write(1,2).c_str(), ccx.ToUniValue().write(1,2).c_str(), cci.ToUniValue().write(1,2).c_str());
+                            checkState.supply -= checkState.preConvertedOut;
                         }
 
                         if (!cci.IsPostLaunch() && cci.IsInitialLaunchImport())
@@ -6189,7 +6193,8 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply()
             }
         }
     }
-    // between prelaunch and launch complete phases, we have accumulation of reserves
+    // between prelaunch and launch complete phases of non-fractional, we have accumulation of reserves
+    // and must also remove preConvertedOut from supply
     else if (processingPreconverts)
     {
         CCurrencyValueMap negativePreReserves(currencies, reserveIn);
@@ -6203,7 +6208,7 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply()
 
     // if this is the last launch clear pre-launch, it will emit and create the correct supply starting
     // from the initial supply, which was more for display. reset to initial supply as a starting point
-    if (IsPrelaunch())
+    if (IsPrelaunch() || (processingPreconverts && !IsFractional() && !IsRefunding()))
     {
         supply -= primaryCurrencyOut;
     }
