@@ -846,8 +846,8 @@ UniValue createrawtransaction(const UniValue& params, bool fHelp)
                 throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("Invalid parameter, duplicated address: ") + name_);
             }
 
-            CScript scriptPubKey = GetScriptForDestination(destination);
-            CAmount nAmount = AmountFromValue(sendTo[name_]);
+            CScript scriptPubKey;
+            CAmount nAmount = 0;
 
             UniValue sendVal = find_value(sendTo, name_);
             if (sendVal.isObject())
