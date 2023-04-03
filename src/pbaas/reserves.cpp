@@ -2843,13 +2843,17 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             }
 
                             // TODO: POST HARDENING - cleanup with PBAAS_TESTFORK_TIME
+                            // These transactions got through due to reorgs making
                             static uint256 exemptTestTxId1 = uint256S("04fb5fc582768485ff84df39574d1eabc152ec8e059f2597647bc0c4a4c429ff");
                             static uint256 exemptTestTxId2 = uint256S("a2070bb46854cf39dce385c830ea2cfe21fd6909a00dc17a33a772b6ab100436");
+                            static uint256 exemptTestTxId3 = uint256S("3690e186320d8f2abd11dc1dd97f4f5b4d7257658aae7eb663baa8065b12d889");
 
                             for (int loop = 0; loop < checkOutputs.size(); loop++)
                             {
                                 if ((tx.vout.size() <= (loop + startingOutput) || checkOutputs[loop] != tx.vout[loop + startingOutput]) &&
-                                    (tx.GetHash() != exemptTestTxId1 && tx.GetHash() != exemptTestTxId2))
+                                    !(tx.GetHash() == exemptTestTxId1 ||
+                                      tx.GetHash() == exemptTestTxId2 ||
+                                      tx.GetHash() == exemptTestTxId3))
                                 {
                                     if (LogAcceptCategory("crosschain") || LogAcceptCategory("defi"))
                                     {
