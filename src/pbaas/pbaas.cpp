@@ -5655,6 +5655,14 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             }
         }
 
+        if (LogAcceptCategory("defi"))
+        {
+            LogPrintf("Using lastNotarization.currencyID: %s, nextHeight: %u, expectedEntropyHash: %s\n",
+                        EncodeDestination(CIdentityID(lastNotarization.currencyID)).c_str(),
+                        nextHeight,
+                        EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), nextHeight, lastNotarization.currencyID).GetHex().c_str());
+        }
+
         // after the last clear launch export is imported, we have completed launch
         if (ccx.IsClearLaunch())
         {

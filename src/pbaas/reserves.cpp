@@ -2771,6 +2771,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         }
 
                         CReserveTransactionDescriptor rtxd = *this;
+                        uint256 weakEntropyHash = EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), importNotarization.notarizationHeight, importCurrencyDef.GetID());
 
                         if (!rtxd.AddReserveTransferImportOutputs(sourceSystemDef,
                                                                   ConnectedChains.thisChain,
@@ -2785,7 +2786,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                                                   &newState,
                                                                   ccx.exporter,
                                                                   importNotarization.proposer,
-                                                                  EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), importNotarization.notarizationHeight, importCurrencyDef.GetID())))
+                                                                  weakEntropyHash))
                         {
                             flags &= ~IS_VALID;
                             flags |= IS_REJECT;
@@ -2811,7 +2812,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
                         if (::AsVector(importNotarization.currencyState) != ::AsVector(newState))
                         {
-                            if (LogAcceptCategory("crosschain") || LogAcceptCategory("defi"))
+                            if (LogAcceptCategory("defi"))
                             {
                                 LogPrintf("%s: calculated currency state:\n%s\ndoes not match notarization currency state:\n%s\n",
                                         __func__,
@@ -2855,9 +2856,13 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                       tx.GetHash() == exemptTestTxId2 ||
                                       tx.GetHash() == exemptTestTxId3))
                                 {
-                                    if (LogAcceptCategory("crosschain") || LogAcceptCategory("defi"))
+                                    if (LogAcceptCategory("defi"))
                                     {
-                                        LogPrintf("%s: calculated output #%d does not match import transaction\n", __func__, loop + startingOutput);
+                                        LogPrintf("%s: calculated output #%d does not match import transaction\nentropy hash: %s\n",
+                                                  __func__,
+                                                  loop + startingOutput,
+                                                  weakEntropyHash.GetHex().c_str());
+
                                         int outputLoop = loop;
                                         for (; outputLoop < checkOutputs.size(); outputLoop++)
                                         {
