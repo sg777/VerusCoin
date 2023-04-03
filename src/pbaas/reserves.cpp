@@ -2881,9 +2881,9 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                             LogPrintf("actual output:\n%s\nnativeout: %ld\n", scriptJson2.write(1,2).c_str(), tx.vout[outputLoop].nValue);
                                         }
                                     }
-                                    //flags &= ~IS_VALID;
-                                    //flags |= IS_REJECT;
-                                    //return;
+                                    flags &= ~IS_VALID;
+                                    flags |= IS_REJECT;
+                                    return;
                                 }
                             }
                         }
