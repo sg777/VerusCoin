@@ -2756,6 +2756,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
                         // between clear launch and complete, we need to adjust supply for verification
                         if (!checkState.IsFractional() &&
+                            checkState.GetID() != ASSETCHAINS_CHAINID &&
                             !checkState.IsPrelaunch() &&
                             checkState.IsLaunchConfirmed() &&
                             !checkState.IsLaunchCompleteMarker() &&
