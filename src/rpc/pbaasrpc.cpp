@@ -900,124 +900,6 @@ void GetCurrencyDefinitions(const uint160 &systemIDQualifier,
     }
 }
 
-bool CConnectedChains::GetNotaryCurrencies(const CRPCChainData notaryChain,
-                                           const std::set<uint160> &currencyIDs,
-                                           std::map<uint160, std::pair<CCurrencyDefinition,CPBaaSNotarization>> &currencyDefs)
-{
-    for (auto &curID : currencyIDs)
-    {
-        CCurrencyDefinition oneDef;
-        UniValue params(UniValue::VARR);
-        params.push_back(EncodeDestination(CIdentityID(curID)));
-
-        UniValue result;
-        try
-        {
-            result = find_value(RPCCallRoot("getcurrency", params), "result");
-        } catch (exception e)
-        {
-            result = NullUniValue;
-        }
-
-        if (!result.isNull())
-        {
-            oneDef = CCurrencyDefinition(result);
-        }
-
-        if (!oneDef.IsValid())
-        {
-            // no matter what happens, we should be able to get a valid currency state of some sort, if not, fail
-            LogPrintf("Unable to get currency definition for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
-            printf("Unable to get currency definition for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
-            return false;
-        }
-
-        {
-            CChainNotarizationData cnd;
-            UniValue result;
-            try
-            {
-                result = find_value(RPCCallRoot("getnotarizationdata", params), "result");
-            } catch (exception e)
-            {
-                result = NullUniValue;
-            }
-
-            if (!result.isNull())
-            {
-                cnd = CChainNotarizationData(result);
-            }
-
-            if (!cnd.IsValid())
-            {
-                // no matter what happens, we should be able to get a valid currency state of some sort, if not, fail
-                LogPrintf("Invalid notarization data for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
-                printf("Invalid notarization data for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
-                return false;
-            }
-            LOCK(cs_mergemining);
-            currencyDefs[oneDef.GetID()].first = oneDef;
-            if (cnd.IsConfirmed())
-            {
-                currencyDefs[oneDef.GetID()].second = cnd.vtx[cnd.lastConfirmed].second;
-                currencyDefs[oneDef.GetID()].second.SetBlockOneNotarization();
-            }
-        }
-    }
-    return true;
-}
-
-bool CConnectedChains::GetNotaryIDs(const CRPCChainData notaryChain, const std::set<uint160> &idIDs, std::map<uint160, CIdentity> &identities)
-{
-    for (auto &curID : idIDs)
-    {
-        CIdentity oneDef;
-        UniValue params(UniValue::VARR);
-        params.push_back(EncodeDestination(CIdentityID(curID)));
-
-        UniValue result;
-        try
-        {
-            result = find_value(RPCCallRoot("getidentity", params), "result");
-        } catch (exception e)
-        {
-            result = NullUniValue;
-        }
-
-        if (!result.isNull())
-        {
-            oneDef = CIdentity(find_value(result, "identity"));
-        }
-
-        if (!oneDef.IsValid())
-        {
-            // no matter what happens, we should be able to get a valid currency state of some sort, if not, fail
-            LogPrintf("Unable to get identity for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
-            printf("Unable to get identity for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
-            return false;
-        }
-
-        {
-            identities[oneDef.GetID()] = oneDef;
-        }
-    }
-
-    // if we have a currency converter, create a new ID as a clone of the main chain ID with revocation and recovery as main chain ID
-    if (!ConnectedChains.ThisChain().GatewayConverterID().IsNull())
-    {
-        CIdentity newConverterIdentity = identities[ASSETCHAINS_CHAINID];
-        assert(newConverterIdentity.IsValid());
-        newConverterIdentity.parent = ASSETCHAINS_CHAINID;
-        newConverterIdentity.systemID = ASSETCHAINS_CHAINID;
-        newConverterIdentity.name = ConnectedChains.ThisChain().gatewayConverterName;
-        newConverterIdentity.contentMap.clear();
-        newConverterIdentity.contentMultiMap.clear();
-        newConverterIdentity.revocationAuthority = newConverterIdentity.recoveryAuthority = ASSETCHAINS_CHAINID;
-        identities[ConnectedChains.ThisChain().GatewayConverterID()] = newConverterIdentity;
-    }
-    return true;
-}
-
 bool CConnectedChains::GetLastImport(const uint160 &currencyID,
                                      CTransaction &lastImport,
                                      int32_t &outputNum)
@@ -14232,6 +14114,158 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     {
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Identity not found");
     }
+}
+
+bool CConnectedChains::GetNotaryCurrencies(const CRPCChainData notaryChain,
+                                           const std::set<uint160> &currencyIDs,
+                                           std::map<uint160, std::pair<CCurrencyDefinition, CPBaaSNotarization>> &currencyDefs,
+                                           uint32_t untilHeight)
+{
+    for (auto &curID : currencyIDs)
+    {
+        CCurrencyDefinition oneDef;
+        UniValue params(UniValue::VARR);
+        UniValue result, error;
+        params.push_back(EncodeDestination(CIdentityID(curID)));
+
+        if (notaryChain.GetID() == ASSETCHAINS_CHAINID)
+        {
+            try
+            {
+                UniValue rpcResult = getcurrency(params, false);
+                result = find_value(rpcResult, "result");
+            } catch (std::exception e)
+            {
+                result = NullUniValue;
+            }
+        }
+        else
+        {
+            try
+            {
+                result = find_value(RPCCallRoot("getcurrency", params), "result");
+            } catch (exception e)
+            {
+                result = NullUniValue;
+            }
+        }
+
+        if (!result.isNull())
+        {
+            oneDef = CCurrencyDefinition(result);
+        }
+
+        if (!oneDef.IsValid())
+        {
+            // no matter what happens, we should be able to get a valid currency state of some sort, if not, fail
+            LogPrintf("Unable to get currency definition for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
+            printf("Unable to get currency definition for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
+            return false;
+        }
+
+        {
+            CChainNotarizationData cnd;
+            UniValue result;
+            try
+            {
+                result = find_value(RPCCallRoot("getnotarizationdata", params), "result");
+            } catch (exception e)
+            {
+                result = NullUniValue;
+            }
+
+            if (!result.isNull())
+            {
+                cnd = CChainNotarizationData(result);
+            }
+
+            if (!cnd.IsValid())
+            {
+                // no matter what happens, we should be able to get a valid currency state of some sort, if not, fail
+                LogPrintf("Invalid notarization data for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
+                printf("Invalid notarization data for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
+                return false;
+            }
+            LOCK(cs_mergemining);
+            currencyDefs[oneDef.GetID()].first = oneDef;
+            if (cnd.IsConfirmed())
+            {
+                currencyDefs[oneDef.GetID()].second = cnd.vtx[cnd.lastConfirmed].second;
+                currencyDefs[oneDef.GetID()].second.SetBlockOneNotarization();
+            }
+        }
+    }
+    return true;
+}
+
+bool CConnectedChains::GetNotaryIDs(const CRPCChainData notaryChain,
+                                    const CCurrencyDefinition &pbaasChain,
+                                    const std::set<uint160> &idIDs,
+                                    std::map<uint160, CIdentity> &identities,
+                                    uint32_t untilHeight)
+{
+    for (auto &curID : idIDs)
+    {
+        CIdentity oneDef;
+        UniValue params(UniValue::VARR);
+        UniValue result;
+        params.push_back(EncodeDestination(CIdentityID(curID)));
+        params.push_back((int64_t)untilHeight);
+
+        if (notaryChain.GetID() == ASSETCHAINS_CHAINID)
+        {
+            try
+            {
+                UniValue rpcResult = getidentity(params, false);
+                result = find_value(rpcResult, "result");
+            } catch (std::exception e)
+            {
+                result = NullUniValue;
+            }
+        }
+        else
+        {
+            try
+            {
+                result = find_value(RPCCallRoot("getidentity", params), "result");
+            } catch (exception e)
+            {
+                result = NullUniValue;
+            }
+        }
+
+        if (!result.isNull())
+        {
+            oneDef = CIdentity(find_value(result, "identity"));
+        }
+
+        if (!oneDef.IsValid())
+        {
+            // no matter what happens, we should be able to get a valid currency state of some sort, if not, fail
+            LogPrintf("Unable to get identity for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
+            printf("Unable to get identity for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
+            return false;
+        }
+
+        {
+            identities[oneDef.GetID()] = oneDef;
+        }
+    }
+
+    // if we have a currency converter, create a new ID as a clone of the main chain ID with revocation and recovery as main chain ID
+    if (!pbaasChain.GatewayConverterID().IsNull())
+    {
+        CIdentity newConverterIdentity = identities[ASSETCHAINS_CHAINID];
+        assert(newConverterIdentity.IsValid());
+        newConverterIdentity.parent = ASSETCHAINS_CHAINID;
+        newConverterIdentity.systemID = ASSETCHAINS_CHAINID;
+        newConverterIdentity.name = pbaasChain.gatewayConverterName;
+        newConverterIdentity.contentMap.clear();
+        newConverterIdentity.contentMultiMap.clear();
+        newConverterIdentity.revocationAuthority = newConverterIdentity.recoveryAuthority = ASSETCHAINS_CHAINID;
+        identities[pbaasChain.GatewayConverterID()] = newConverterIdentity;
+    }
+    return true;
 }
 
 UniValue getidentityhistory(const UniValue& params, bool fHelp)

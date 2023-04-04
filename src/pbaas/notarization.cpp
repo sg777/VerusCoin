@@ -10718,7 +10718,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     {
                         return state.Error("insufficient evidence from notary system to reject finalization");
                     }
-                    // TODO: HARDENING can check for an invalidating rejection, which can also pass
+                    // TODO: HARDENING check for an invalidating rejection, which can also pass
                 }
             }
         }
@@ -11067,7 +11067,7 @@ bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const 
             COptCCParams p;
             // we can accept only one finalization of this notarization as an output, find it and reject more than one
 
-            // TODO: HARDENING - ensure that the output of the finalization we are spending is either a confirmed, earlier
+            // ensure that the output of the finalization we are spending is either a confirmed, earlier
             // output or invalidated alternate to the one we are finalizing
             if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.IsValid() &&

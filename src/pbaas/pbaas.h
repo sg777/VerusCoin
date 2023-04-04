@@ -1182,9 +1182,14 @@ public:
 
     bool GetNotaryCurrencies(const CRPCChainData notaryChain,
                              const std::set<uint160> &currencyIDs,
-                             std::map<uint160, std::pair<CCurrencyDefinition,CPBaaSNotarization>> &currencyDefs);
+                             std::map<uint160, std::pair<CCurrencyDefinition,CPBaaSNotarization>> &currencyDefs,
+                             uint32_t untilHeight);
 
-    bool GetNotaryIDs(const CRPCChainData notaryChain, const std::set<uint160> &idIDs, std::map<uint160,CIdentity> &identities);
+    bool GetNotaryIDs(const CRPCChainData notaryChain,
+                      const CCurrencyDefinition &pbaasChain,
+                      const std::set<uint160> &idIDs,
+                      std::map<uint160,CIdentity> &identities,
+                      uint32_t untilHeight);
 
     static std::string UpgradeDataKeyName()
     {

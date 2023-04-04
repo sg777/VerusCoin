@@ -2030,7 +2030,7 @@ UniValue getaddressutxos(const UniValue& params, bool fHelp)
             "      ,...\n"
             "    ],\n"
             "  \"chaininfo\"    (boolean) Include chain info with results\n"
-            "  \"friendlynames\" (boolean) Include additional array of friendly names keyed by currency i-addresses\n"
+            "  \"friendlynames\" (boolean, optional default=false) Include additional array of friendly names keyed by currency i-addresses\n"
             "  \"verbosity\"    (number) (default == 0), if 1, include output information for spends, including all reserve amounts and destinations\n"
             "}\n"
             "\nResult\n"
