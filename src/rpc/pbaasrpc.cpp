@@ -13402,7 +13402,10 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
     CIdentity revocationAuth = newID.revocationAuthority == newIDID ? newID : newID.LookupIdentity(newID.revocationAuthority);
     CIdentity recoveryAuth = newID.recoveryAuthority == newIDID ? newID : newID.LookupIdentity(newID.recoveryAuthority);
 
-    if ((!revocationAuth.IsValid() || !recoveryAuth.IsValid()) && !newID.HasTokenizedControl())
+    bool isRevocationMutation = oldID.IsRevocation(newID) || oldID.IsRevocationMutation(newID, nHeight + 1);
+    bool isRecoveryMutation = oldID.IsRecovery(newID) || oldID.IsRecoveryMutation(newID, nHeight + 1);
+
+    if (((isRevocationMutation && !revocationAuth.IsValid()) || (isRecoveryMutation && !recoveryAuth.IsValid())) && !newID.HasTokenizedControl())
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid revocation or recovery authority without tokenized ID control");
     }
@@ -14163,36 +14166,43 @@ bool CConnectedChains::GetNotaryCurrencies(const CRPCChainData notaryChain,
             return false;
         }
 
+        // get launch notarization from notary chain if on the notary chain or pre-block 1, and from block 1 if on
+        // the PBaaS chain after it has been confirmed
+        if (notaryChain.GetID() == ASSETCHAINS_CHAINID || chainActive.Height() > 0)
         {
-            CChainNotarizationData cnd;
-            UniValue result;
             try
             {
-                result = find_value(RPCCallRoot("getnotarizationdata", params), "result");
+                UniValue rpcResult = getlaunchinfo(params, false);
+                result = find_value(rpcResult, "result");
+            } catch (std::exception e)
+            {
+                result = NullUniValue;
+            }
+        }
+        else
+        {
+            try
+            {
+                result = find_value(RPCCallRoot("getlaunchinfo", params), "result");
             } catch (exception e)
             {
                 result = NullUniValue;
             }
+        }
 
-            if (!result.isNull())
-            {
-                cnd = CChainNotarizationData(result);
-            }
+        CPBaaSNotarization launchNotarization;
+        if (result.isNull() || !(launchNotarization = CPBaaSNotarization(find_value(result, "launchnotarization"))).IsValid())
+        {
+            LogPrintf("Unable to get notarization for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
+            printf("Unable to get notarization for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
+            return false;
+        }
 
-            if (!cnd.IsValid())
-            {
-                // no matter what happens, we should be able to get a valid currency state of some sort, if not, fail
-                LogPrintf("Invalid notarization data for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
-                printf("Invalid notarization data for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
-                return false;
-            }
+        {
             LOCK(cs_mergemining);
             currencyDefs[oneDef.GetID()].first = oneDef;
-            if (cnd.IsConfirmed())
-            {
-                currencyDefs[oneDef.GetID()].second = cnd.vtx[cnd.lastConfirmed].second;
-                currencyDefs[oneDef.GetID()].second.SetBlockOneNotarization();
-            }
+            currencyDefs[oneDef.GetID()].second = launchNotarization;
+            currencyDefs[oneDef.GetID()].second.SetBlockOneNotarization();
         }
     }
     return true;

@@ -3263,9 +3263,26 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                                                                                         0,
                                                                                         lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight,
                                                                                         &lastNotarizationAddressEntry) &&
-                                            lastLocalNotarization.IsPreLaunch()))
+                                              lastLocalNotarization.IsPreLaunch()))
                                         {
                                             lastNotarization = CPBaaSNotarization();
+                                        }
+                                        else
+                                        {
+                                            // final check is to be sure that the entire
+                                            // coinbase output is valid
+                                            bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &outputs,
+                                                                        const CRPCChainData &launchChain,
+                                                                        const CCurrencyDefinition &newChainCurrency,
+                                                                        CValidationState &state);
+                                            CValidationState state;
+                                            if (!IsValidBlockOneCoinbase(outTx.vout,
+                                                                         CRPCChainData(ConnectedChains.ThisChain(), "", ConnectedChains.GetThisChainPort(), ""),
+                                                                         externalSystem,
+                                                                         state))
+                                            {
+                                                lastNotarization = CPBaaSNotarization();
+                                            }
                                         }
                                     }
                                     else if (chainActive[lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight]->nTime >= PBAAS_TESTFORK_TIME)
