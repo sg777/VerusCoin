@@ -14166,36 +14166,39 @@ bool CConnectedChains::GetNotaryCurrencies(const CRPCChainData notaryChain,
             return false;
         }
 
+        CPBaaSNotarization launchNotarization;
+
         // get launch notarization from notary chain if on the notary chain or pre-block 1, and from block 1 if on
         // the PBaaS chain after it has been confirmed
-        if (notaryChain.GetID() == ASSETCHAINS_CHAINID || chainActive.Height() > 0)
+        if ((oneDef.IsPBaaSChain() || oneDef.IsGatewayConverter()) && oneDef.launchSystemID == notaryChain.GetID())
         {
-            try
+            if (notaryChain.GetID() == ASSETCHAINS_CHAINID || chainActive.Height() > 0)
             {
-                UniValue rpcResult = getlaunchinfo(params, false);
-                result = find_value(rpcResult, "result");
-            } catch (std::exception e)
-            {
-                result = NullUniValue;
+                try
+                {
+                    UniValue rpcResult = getlaunchinfo(params, false);
+                    result = find_value(rpcResult, "result");
+                } catch (std::exception e)
+                {
+                    result = NullUniValue;
+                }
             }
-        }
-        else
-        {
-            try
+            else
             {
-                result = find_value(RPCCallRoot("getlaunchinfo", params), "result");
-            } catch (exception e)
-            {
-                result = NullUniValue;
+                try
+                {
+                    result = find_value(RPCCallRoot("getlaunchinfo", params), "result");
+                } catch (exception e)
+                {
+                    result = NullUniValue;
+                }
             }
-        }
-
-        CPBaaSNotarization launchNotarization;
-        if (result.isNull() || !(launchNotarization = CPBaaSNotarization(find_value(result, "launchnotarization"))).IsValid())
-        {
-            LogPrintf("Unable to get notarization for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
-            printf("Unable to get notarization for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
-            return false;
+            if (result.isNull() || !(launchNotarization = CPBaaSNotarization(find_value(result, "launchnotarization"))).IsValid())
+            {
+                LogPrintf("Unable to get notarization for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
+                printf("Unable to get notarization for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
+                return false;
+            }
         }
 
         {

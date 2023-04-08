@@ -2037,7 +2037,7 @@ void komodo_args(char *argv0)
 
     if ( (KOMODO_REWIND= GetArg("-rewind",0)) != 0 )
     {
-        printf("KOMODO_REWIND %d\n",KOMODO_REWIND);
+        printf("SET TO REWIND TO: %d\n",KOMODO_REWIND);
     }
 
     if ( name.size() )
