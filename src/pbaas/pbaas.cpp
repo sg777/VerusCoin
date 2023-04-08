@@ -8809,8 +8809,8 @@ void CConnectedChains::SubmissionThread()
             uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
 
             // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
-            if (height > ConnectedChains.ThisChain().GetMinBlocksToStartNotarization() &&
-                IsNotaryAvailable(true) &&
+            if (IsNotaryAvailable(true) &&
+                height > ConnectedChains.ThisChain().GetMinBlocksToStartNotarization() &&
                 lastImportTime < (GetAdjustedTime() - 30))
             {
                 // check for exports on this chain that we should send to the notary and do so
@@ -8925,6 +8925,7 @@ void CConnectedChains::SubmissionThread()
 
 void CConnectedChains::SubmissionThreadStub()
 {
+    RenameThread("verus-submission");
     ConnectedChains.SubmissionThread();
 }
 

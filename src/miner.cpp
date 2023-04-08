@@ -837,8 +837,8 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
     if (_newChain.launchSystemID == newCurID ||
         (newCurrency.systemID == newChainID &&
         (newCurrency.IsFractional() ||
-        newCurrency.systemID == newCurID ||
-        (newCurrency.IsGateway() && newCurrency.GetID() == newCurrency.gatewayID))))
+         newCurrency.systemID == newCurID ||
+         (newCurrency.IsGateway() && newCurrency.GetID() == newCurrency.gatewayID))))
     {
         uint160 firstNotaryID = _launchChain.chainDefinition.GetID();
 
@@ -1154,7 +1154,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
         ccx = CCrossChainExport(newChainID, 1, 1, newCurrency.systemID, newCurID, 0, CCurrencyValueMap(), CCurrencyValueMap(), uint256());
         outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx))));
     }
-    else
+    else if (newNotarization.IsValid())
     {
         cp = CCinit(&CC, EVAL_EARNEDNOTARIZATION);
         dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});

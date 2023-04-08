@@ -653,7 +653,7 @@ void CleanupBlockRevFiles()
 void ThreadImport(std::vector<boost::filesystem::path> vImportFiles)
 {
     const CChainParams& chainparams = Params();
-    RenameThread("zcash-loadblk");
+    RenameThread("verus-loadblk");
     // -reindex
     if (fReindex) {
         CImportingNow imp;
