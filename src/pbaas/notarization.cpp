@@ -5568,13 +5568,21 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                 }
 
                 CBlockIndex *pConfirmedNotarizationIndex = mapBlockIndex[txes[0].second];
+
                 uint32_t adjustedNotarizationModulo = (curChainTipTime > (PBAAS_TESTFORK_TIME - (20 * 60))) ?
                                 CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
                                                                                                         pCurNotarizationIndex->GetHeight() -
                                                                                                             pConfirmedNotarizationIndex->GetHeight()) :
                                 ConnectedChains.ThisChain().blockNotarizationModulo;
-                int blockPeriodNumber = pCurNotarizationIndex->GetHeight() / adjustedNotarizationModulo;
-                int priorBlockPeriod = pPriorNotarizationIndex->GetHeight() / adjustedNotarizationModulo;
+
+                int blockPeriodNumber = cnd.vtx[unchallengedForks[j][k]].second.proofRoots.count(ASSETCHAINS_CHAINID) ?
+                        cnd.vtx[unchallengedForks[j][k]].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight / adjustedNotarizationModulo :
+                        0;
+
+                int priorBlockPeriod = cnd.vtx[unchallengedForks[j][k - 1]].second.proofRoots.count(ASSETCHAINS_CHAINID) ?
+                        cnd.vtx[unchallengedForks[j][k - 1]].second.proofRoots[ASSETCHAINS_CHAINID].rootHeight / adjustedNotarizationModulo :
+                        0;
+
                 if (priorBlockPeriod >= blockPeriodNumber)
                 {
                     validIndexSet.erase(unchallengedForks[j][k]);
@@ -6244,8 +6252,10 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                                                                                 (height + 1) - mapBlockIndex[txes[cnd.lastConfirmed].second]->GetHeight()) :
                                 ConnectedChains.ThisChain().blockNotarizationModulo;
 
-        int blockPeriodNumber = (height + 1) / adjustedNotarizationModulo;
-        int priorBlockPeriod = mapBlockIt->second->GetHeight() / adjustedNotarizationModulo;
+        int blockPeriodNumber = height / adjustedNotarizationModulo;
+        int priorBlockPeriod = priorNotarization.proofRoots.count(ASSETCHAINS_CHAINID) ?
+                                priorNotarization.proofRoots.find(ASSETCHAINS_CHAINID)->second.rootHeight / adjustedNotarizationModulo :
+                                0;
 
         // for decentralized notarization, we must alternate between proof of stake and proof of work blocks
         // to confirm a prior earned notarization
