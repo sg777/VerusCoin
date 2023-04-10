@@ -4090,8 +4090,9 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
     if (unspentFinalizations.size())
     {
         std::pair<uint32_t, CInputDescriptor> firstUnspentFinalization;
-        bool error = false;
-        // make sure we can retrieve it
+        bool present = false;
+
+        // make sure we can retrieve it and get the latest
         for (auto &oneFinalization : unspentFinalizations)
         {
             CTransaction checkTx;
@@ -4100,18 +4101,20 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
             if (myGetTransaction(oneFinalization.second.txIn.prevout.hash, checkTx, checkBlockHash) &&
                 checkTx.vout.size() > oneFinalization.second.txIn.prevout.n &&
                 checkTx.vout[oneFinalization.second.txIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(checkP) &&
-                checkP.IsValid())
+                checkP.IsValid() &&
+                (!present ||
+                 oneFinalization.first == 0 ||
+                 firstUnspentFinalization.first < oneFinalization.first))
             {
                 firstUnspentFinalization = oneFinalization;
-                error = false;
-                break;
+                present = true;
+                continue;
             }
-            error = true;
         }
 
         CObjectFinalization priorOf;
 
-        while (!error && (firstUnspentFinalization.first == 0 || firstUnspentFinalization.first > height))
+        while (present && (firstUnspentFinalization.first == 0 || firstUnspentFinalization.first > height))
         {
             // get the transaction and go backwards to get the finalized notarization it spends
             CTransaction checkTx;
@@ -4154,7 +4157,7 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                         }
                     }
 
-                    error = true;
+                    present = false;
                     foundNotarization = CPBaaSNotarization();
                     break;
                 }
@@ -4192,7 +4195,7 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                             if (blockIt == mapBlockIndex.end() ||
                                 !chainActive.Contains(blockIt->second))
                             {
-                                error = true;
+                                present = false;
                             }
                             firstUnspentFinalization.first = blockIt->second->GetHeight();
                             if (firstUnspentFinalization.first > height)
@@ -4204,9 +4207,9 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                     }
                     foundNotarization = CPBaaSNotarization();
                 }
-                if (!found || error)
+                if (!found || !present)
                 {
-                    error = true;
+                    present = false;
                     foundNotarization = CPBaaSNotarization();
                     break;
                 }
@@ -4216,7 +4219,7 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                 foundNotarization = CPBaaSNotarization();
             }
         }
-        if (!error &&
+        if (present &&
             firstUnspentFinalization.first > 0 &&
             firstUnspentFinalization.first <= height)
         {
@@ -4268,10 +4271,10 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                         if (blockIt == mapBlockIndex.end() ||
                             !chainActive.Contains(blockIt->second))
                         {
-                            error = true;
+                            present = false;
                         }
                         firstUnspentFinalization.first = blockIt->second->GetHeight();
-                        if (firstUnspentFinalization.first > height)
+                        if (!present || firstUnspentFinalization.first > height)
                         {
                             firstUnspentFinalization.first = 0;
                             foundNotarization = CPBaaSNotarization();
@@ -7728,38 +7731,35 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                     for (auto &oneInput : spendsToClose[oneConfirmedIdx])
                     {
                         COptCCParams tP;
+                        CObjectFinalization tPOF;
                         if (oneInput.scriptPubKey.IsPayToCryptoCondition(tP) &&
                             tP.IsValid() &&
-                            tP.evalCode == EVAL_NOTARY_EVIDENCE || tP.evalCode == EVAL_FINALIZE_NOTARIZATION)
+                            tP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                            tP.vData.size() &&
+                            (tPOF = CObjectFinalization(tP.vData[0])).IsValid() &&
+                            tPOF.IsConfirmed() &&
+                            ((tPOF.output.hash.IsNull() &&
+                                oneInput.txIn.prevout.hash == cnd.vtx[oneConfirmedIdx].first.hash &&
+                                tPOF.output.n == cnd.vtx[oneConfirmedIdx].first.n) ||
+                                tPOF.output == cnd.vtx[oneConfirmedIdx].first))
                         {
                             // if our evidence include an already confirmed finalization for the same output,
-                            // abort with nothing to do
-                            CObjectFinalization tPOF;
-                            if (tP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
-                                tP.vData.size() &&
-                                (tPOF = CObjectFinalization(tP.vData[0])).IsValid() &&
-                                tPOF.IsConfirmed() &&
-                                ((tPOF.output.hash.IsNull() &&
-                                    oneInput.txIn.prevout.hash == cnd.vtx[oneConfirmedIdx].first.hash &&
-                                    tPOF.output.n == cnd.vtx[oneConfirmedIdx].first.n) ||
-                                    tPOF.output == cnd.vtx[oneConfirmedIdx].first))
-                            {
-                                isConfirmed = true;
-                                makeInputTx = false;
-                            }
+                            // don't make a separate input transaction
+                            isConfirmed = true;
+                            makeInputTx = false;
                         }
 
                         if (!inputSet.count(oneInput.txIn.prevout))
                         {
                             inputSet.insert(oneInput.txIn.prevout);
-                            if (tP.evalCode == EVAL_FINALIZE_NOTARIZATION)
+                            if (tP.evalCode == EVAL_NOTARY_EVIDENCE)
                             {
-                                evidenceInputs.push_back(oneConfirmedBuilder.mtx.vin.size());
-                                oneConfirmedBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
+                                extraEvidenceSpends.push_back(oneInput);
                             }
                             else
                             {
-                                extraEvidenceSpends.push_back(oneInput);
+                                evidenceInputs.push_back(oneConfirmedBuilder.mtx.vin.size());
+                                oneConfirmedBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
                             }
                         }
                         else if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
