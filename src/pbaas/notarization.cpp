@@ -7811,7 +7811,11 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
                     if (!inputSet.count(oneInput.txIn.prevout))
                     {
                         inputSet.insert(oneInput.txIn.prevout);
-                        if (!IsScriptTooLargeToSpend(oneInput.scriptPubKey))
+                        COptCCParams checkP;
+                        if (!IsScriptTooLargeToSpend(oneInput.scriptPubKey) &&
+                            oneInput.scriptPubKey.IsPayToCryptoCondition(checkP) &&
+                            checkP.IsValid() &&
+                            checkP.evalCode != EVAL_NOTARY_EVIDENCE)
                         {
                             oneInvalidatedBuilder.AddTransparentInput(oneInput.txIn.prevout, oneInput.scriptPubKey, oneInput.nValue);
                         }
