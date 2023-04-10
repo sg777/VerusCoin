@@ -6263,9 +6263,9 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         // for decentralized notarization, we must alternate between proof of stake and proof of work blocks
         // to confirm a prior earned notarization
         if (blockPeriodNumber <= priorBlockPeriod ||
-            (height > CPBaaSNotarization::BlocksBeforeAlternateStakeEnforcement() &&
+            (height >= CPBaaSNotarization::BlocksBeforeAlternateStakeEnforcement() &&
              (ConnectedChains.ThisChain().notarizationProtocol == CCurrencyDefinition::NOTARIZATION_AUTO &&
-             ((isStake && mapBlockIt->second->IsVerusPOSBlock()) || (!isStake && !mapBlockIt->second->IsVerusPOSBlock())))))
+              isStake == mapBlockIt->second->IsVerusPOSBlock())))
         {
             if (LogAcceptCategory("notarization"))
             {
