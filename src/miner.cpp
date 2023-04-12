@@ -630,13 +630,27 @@ bool GetBlockOneLaunchNotarization(const CRPCChainData &notarySystem,
                 !notarizationProof.IsValid() ||
                 !notaryNotarization.IsValid())
             {
-                LogPrintf("%s: invalid launch notarization for currency %s\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
-                printf("%s: invalid launch notarization for currency %s\ncurrencydefinition: %s\nnotarization: %s\ntransactionproof: %s\n",
-                    __func__,
-                    EncodeDestination(CIdentityID(currencyID)).c_str(),
-                    currency.ToUniValue().write(1,2).c_str(),
-                    notarization.ToUniValue().write(1,2).c_str(),
-                    notarizationProof.ToUniValue().write(1,2).c_str());
+                if (LogAcceptCategory("notarization"))
+                {
+                    LogPrintf("%s: invalid launch notarization for currency %s\nerror: %s\ncurrencydefinition: %s\nnotarization: %s\ntransactionproof: %s\n",
+                        __func__,
+                        error.write().c_str(),
+                        EncodeDestination(CIdentityID(currencyID)).c_str(),
+                        currency.ToUniValue().write(1,2).c_str(),
+                        notarization.ToUniValue().write(1,2).c_str(),
+                        notarizationProof.ToUniValue().write(1,2).c_str());
+                    printf("%s: invalid launch notarization for currency %s\nerror: %s\ncurrencydefinition: %s\nnotarization: %s\ntransactionproof: %s\n",
+                        __func__,
+                        error.write().c_str(),
+                        EncodeDestination(CIdentityID(currencyID)).c_str(),
+                        currency.ToUniValue().write(1,2).c_str(),
+                        notarization.ToUniValue().write(1,2).c_str(),
+                        notarizationProof.ToUniValue().write(1,2).c_str());
+                }
+                else
+                {
+                    LogPrintf("%s: invalid launch notarization for currency %s\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
+                }
             }
             else
             {
