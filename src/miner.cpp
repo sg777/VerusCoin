@@ -1422,13 +1422,25 @@ bool BlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
 // as a result, it provides maximum security and assurance of block 1 authenticity to have at least one notarization
 // confirmed on the launch chain, and/or to be connected to a notary chain node when syncing to the beginning of a
 // PBaaS chain.
-bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &outputs,
+bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
                              const CRPCChainData &launchChain,
                              const CCurrencyDefinition &newChainCurrency,
                              CValidationState &state)
 {
     uint160 launchChainID = launchChain.GetID();
     uint160 newChainID = newChainCurrency.GetID();
+
+    std::vector<CTxOut> __outputs;
+
+    // we have no opinion about OpRets, and they are allowed in a block one coinbase, so if there is one,
+    // copy the outputs and remove it before checking
+    bool removeOpRet = _outputs.size() && _outputs.back().scriptPubKey.IsOpReturn();
+    if (removeOpRet)
+    {
+        __outputs = _outputs;
+        __outputs.pop_back();
+    }
+    const std::vector<CTxOut> &outputs = removeOpRet ? __outputs : _outputs;
 
     // if we are on the notary chain, get our version of the block one outputs and remove those that must match,
     // allowing for variation of things that could change with block height but nothing else
