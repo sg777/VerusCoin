@@ -14135,8 +14135,7 @@ bool CConnectedChains::GetNotaryCurrencies(const CRPCChainData notaryChain,
         {
             try
             {
-                UniValue rpcResult = getcurrency(params, false);
-                result = find_value(rpcResult, "result");
+                result = getcurrency(params, false);
             } catch (std::exception e)
             {
                 result = NullUniValue;
@@ -14176,8 +14175,7 @@ bool CConnectedChains::GetNotaryCurrencies(const CRPCChainData notaryChain,
             {
                 try
                 {
-                    UniValue rpcResult = getlaunchinfo(params, false);
-                    result = find_value(rpcResult, "result");
+                    result = getlaunchinfo(params, false);
                 } catch (std::exception e)
                 {
                     result = NullUniValue;
@@ -14229,8 +14227,7 @@ bool CConnectedChains::GetNotaryIDs(const CRPCChainData notaryChain,
         {
             try
             {
-                UniValue rpcResult = getidentity(params, false);
-                result = find_value(rpcResult, "result");
+                result = getidentity(params, false);
             } catch (std::exception e)
             {
                 result = NullUniValue;
@@ -14268,14 +14265,15 @@ bool CConnectedChains::GetNotaryIDs(const CRPCChainData notaryChain,
     // if we have a currency converter, create a new ID as a clone of the main chain ID with revocation and recovery as main chain ID
     if (!pbaasChain.GatewayConverterID().IsNull())
     {
-        CIdentity newConverterIdentity = identities[ASSETCHAINS_CHAINID];
+        uint160 pbaasID = pbaasChain.GetID();
+        CIdentity newConverterIdentity = identities[pbaasID];
         assert(newConverterIdentity.IsValid());
-        newConverterIdentity.parent = ASSETCHAINS_CHAINID;
-        newConverterIdentity.systemID = ASSETCHAINS_CHAINID;
+        newConverterIdentity.parent = pbaasID;
+        newConverterIdentity.systemID = pbaasID;
         newConverterIdentity.name = pbaasChain.gatewayConverterName;
         newConverterIdentity.contentMap.clear();
         newConverterIdentity.contentMultiMap.clear();
-        newConverterIdentity.revocationAuthority = newConverterIdentity.recoveryAuthority = ASSETCHAINS_CHAINID;
+        newConverterIdentity.revocationAuthority = newConverterIdentity.recoveryAuthority = pbaasID;
         identities[pbaasChain.GatewayConverterID()] = newConverterIdentity;
     }
     return true;

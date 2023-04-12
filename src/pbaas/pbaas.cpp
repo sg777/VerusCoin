@@ -1349,32 +1349,6 @@ bool IsCrossChainImportInput(const CScript &scriptSig)
     return true;
 }
 
-bool ValidateFinalizeExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
-{
-    // TODO: HARDENING - must be spent by either the next export, if this is for an export offchain
-    // or a matching import if same chain
-    return true;
-}
-
-bool IsFinalizeExportInput(const CScript &scriptSig)
-{
-    return false;
-}
-
-bool PreCheckFinalizeExport(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
-{
-    // TODO: HARDENING - ensure that this finalization represents an export that is either the clear launch beacon of
-    // the currency or a same-chain export to be spent by the matching import
-    COptCCParams p;
-    if (!(tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
-          p.IsValid() &&
-          p.IsEvalPKOut()))
-    {
-        return state.Error("Invalid export finalization output");
-    }
-    return true;
-}
-
 std::tuple<bool, uint32_t, CTransaction, COptCCParams> GetPriorOutputTx(const CTransaction &spendingTx, uint32_t nIn)
 {
     std::tuple<bool, uint32_t, CTransaction, COptCCParams> retVal({false, 0, CTransaction(), COptCCParams()});
@@ -1400,6 +1374,47 @@ std::tuple<bool, uint32_t, CTransaction, COptCCParams> GetPriorOutputTx(const CT
         }
     }
     return retVal;
+}
+
+bool ValidateFinalizeExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
+{
+    // TODO: HARDENING - must be spent by either the next export, if this is for an export offchain
+    // or a matching import if same chain
+    if (LogAcceptCategory("crosschainexports"))
+    {
+        auto priorTxInfo = GetPriorOutputTx(tx, nIn);
+        UniValue scriptUni(UniValue::VOBJ);
+        ScriptPubKeyToUniv(std::get<2>(priorTxInfo).vout[nIn].scriptPubKey, scriptUni, false, false);
+        UniValue jsonTx(UniValue::VOBJ);
+        TxToUniv(tx, uint256(), jsonTx);
+        LogPrintf("%s: spending finalize export:\n%s\n with tx:\n%s\n\n", __func__, scriptUni.write(1,2).c_str(), jsonTx.write(1,2).c_str());
+    }
+    return true;
+}
+
+bool IsFinalizeExportInput(const CScript &scriptSig)
+{
+    return false;
+}
+
+bool PreCheckFinalizeExport(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
+{
+    // TODO: HARDENING - ensure that this finalization represents an export that is either the clear launch beacon of
+    // the currency or a same-chain export to be spent by the matching import
+    COptCCParams p;
+    if (!(tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+          p.IsValid() &&
+          p.IsEvalPKOut()))
+    {
+        return state.Error("Invalid export finalization output");
+    }
+    if (LogAcceptCategory("crosschainexports"))
+    {
+        UniValue scriptUni(UniValue::VOBJ);
+        ScriptPubKeyToUniv(tx.vout[outNum].scriptPubKey, scriptUni, false, false);
+        LogPrintf("%s: precheck export finalization:\n%s\n in tx:\n%s\n\n", __func__, scriptUni.write(1,2).c_str(), tx.GetHash().GetHex().c_str());
+    }
+    return true;
 }
 
 // Validate notary evidence
@@ -6421,9 +6436,7 @@ bool CConnectedChains::GetLaunchNotarization(const CCurrencyDefinition &curDef,
             {
                 CChainNotarizationData cnd;
                 if ((launchNotarization = CPBaaSNotarization(notarizationTx.vout[idx.first.index].scriptPubKey)).IsValid() &&
-                     GetNotarizationData(ASSETCHAINS_CHAINID, cnd) &&
-                     cnd.IsConfirmed() &&
-                     (notaryNotarization.IsValid() || (notaryNotarization = cnd.vtx[cnd.lastConfirmed].second).IsValid()))
+                     (notaryNotarization.IsValid() || (notaryNotarization = launchNotarization).IsValid()))
                 {
                     auto blockIt = mapBlockIndex.find(blkHash);
                     if (blockIt != mapBlockIndex.end() &&

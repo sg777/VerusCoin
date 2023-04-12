@@ -1596,7 +1596,8 @@ public:
                                              bool &feesConverted,
                                              CCurrencyValueMap &liquidityFees,
                                              CCurrencyValueMap &convertedFees) const;
-    void RevertReservesAndSupply();
+
+    void RevertReservesAndSupply(const uint160 &systemID=ASSETCHAINS_CHAINID);
 
     template <typename NUMBERVECTOR>
     static NUMBERVECTOR AddVectors(const NUMBERVECTOR &a, const NUMBERVECTOR &b)

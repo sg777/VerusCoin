@@ -360,8 +360,6 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
     // but we must either be holding the lock to enter here or in service of a smart transaction at this point.
     LOCK(mempool.cs);
 
-    uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
-
     CCrossChainImport altImport;
     const CCrossChainImport *pBaseImport = this;
 
@@ -380,7 +378,8 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
     CCurrencyDefinition importFromDef = ConnectedChains.GetCachedCurrency(pBaseImport->sourceSystemID);
 
     bool isPBaaSDefinitionOrLaunch = (pBaseImport->IsInitialLaunchImport() &&
-                                      pBaseImport->sourceSystemID == ConnectedChains.ThisChain().launchSystemID) ||
+                                      (nHeight == 1 ||
+                                       pBaseImport->sourceSystemID == ConnectedChains.ThisChain().launchSystemID)) ||
                                      (pBaseImport->IsDefinitionImport() && pBaseImport->sourceSystemID != ASSETCHAINS_CHAINID);
 
     importNotarizationOut = numImportOut + 1;
@@ -499,7 +498,10 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
         }
         else
         {
-            if (pBaseImport->IsInitialLaunchImport() && !(importFromDef.IsValid() && ConnectedChains.ThisChain().launchSystemID != importFromDef.GetID()))
+            if (pBaseImport->IsInitialLaunchImport() &&
+                !(importFromDef.IsValid() &&
+                  importCurDef.IsValid() &&
+                  importCurDef.launchSystemID != importFromDef.GetID()))
             {
                 if (LogAcceptCategory("crosschainimports"))
                 {
@@ -518,9 +520,9 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                 // initial launch import occurs when launching a gateway or
                 // on currencies launched in block 1 of a PBaaS chain co-launching with the chain
                 passedCheck = importCurDef.IsValid() &&
-                              importCurDef.launchSystemID == ConnectedChains.ThisChain().launchSystemID &&
+                              importCurDef.launchSystemID == importFromDef.GetID() &&
                               ((importCurDef.IsGateway() && importCurDef.SystemOrGatewayID() == importCurDef.GetID()) ||
-                               importCurDef.systemID == ASSETCHAINS_CHAINID);
+                               (isPBaaSDefinitionOrLaunch && (importCurDef.IsPBaaSChain() || importCurDef.IsGatewayConverter())));
             }
             else
             {
@@ -6180,18 +6182,18 @@ CCurrencyValueMap CCoinbaseCurrencyState::CalculateConvertedFees(const std::vect
     return originalFees;
 }
 
-void CCoinbaseCurrencyState::RevertReservesAndSupply()
+void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID)
 {
     bool processingPreconverts = !IsLaunchCompleteMarker() && !IsPrelaunch();
     if (IsFractional())
     {
         // between prelaunch and postlaunch, we only revert fees since preConversions are accounted for differently
         auto reserveMap = GetReserveMap();
-        if (IsLaunchClear() && !IsPrelaunch() && reserveMap.count(ASSETCHAINS_CHAINID) && reserves[reserveMap[ASSETCHAINS_CHAINID]])
+        if (IsLaunchClear() && !IsPrelaunch() && reserveMap.count(systemID) && reserves[reserveMap[systemID]])
         {
             // leave all currencies in
             // revert only fees at launch pricing
-            RevertFees(viaConversionPrice, viaConversionPrice, ASSETCHAINS_CHAINID);
+            RevertFees(viaConversionPrice, viaConversionPrice, systemID);
         }
         else
         {

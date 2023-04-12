@@ -1125,8 +1125,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     newNotarization.prevHeight = newNotarization.notarizationHeight;
     newNotarization.notarizationHeight = notaHeight;
 
-    uint32_t currentHeight = chainActive.Height() + 1;
-
     // if we are communicating with an external system that uses a different hash, use it for everything
     CCurrencyDefinition::EHashTypes hashType = CCurrencyDefinition::EHashTypes::HASH_BLAKE2BMMR;
 
@@ -1159,6 +1157,16 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             }
         }
     }
+
+    bool isBlockOnePBaaSLaunchNotarization = notaHeight == 1 &&
+                                             IsPreLaunch() &&
+                                             IsLaunchConfirmed() &&
+                                             (destCurrency.IsPBaaSChain() || destCurrency.IsGatewayConverter()) &&
+                                             destCurrency.systemID != destCurrency.launchSystemID;
+
+    uint32_t currentHeight = IsPreLaunch() && IsLaunchConfirmed() && destCurrency.SystemOrGatewayID() == externalSystemID ?
+                                1 :
+                                chainActive.Height() + 1;
 
     CTransferDestination notaryPayee;
 
@@ -1194,6 +1202,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         {
             reserveTransfer = reserveTransfer.GetRefundTransfer();
         }
+
         // ensure that any pre-conversions or conversions are all valid, based on mined height and
         // maximum pre-conversions
         else if (reserveTransfer.IsPreConversion())
@@ -1255,13 +1264,11 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
     if (destCurrency.launchSystemID == sourceSystemID &&
         destCurrency.startBlock &&
-        ((thisIsLaunchSys && notaHeight <= (destCurrency.startBlock - 1)) ||
-         (!thisIsLaunchSys &&
-          destCurrency.systemID == ASSETCHAINS_CHAINID &&
-          notaHeight == 1)))
+        ((!isBlockOnePBaaSLaunchNotarization && thisIsLaunchSys && notaHeight <= (destCurrency.startBlock - 1)) ||
+         isBlockOnePBaaSLaunchNotarization))
     {
         // we get one pre-launch coming through here, initial supply is set and ready for pre-convert
-        if (((thisIsLaunchSys && notaHeight == (destCurrency.startBlock - 1)) || sourceSystemID != ASSETCHAINS_CHAINID) &&
+        if (((thisIsLaunchSys && notaHeight == (destCurrency.startBlock - 1)) || isBlockOnePBaaSLaunchNotarization) &&
             newNotarization.IsPreLaunch())
         {
             // the first block executes the second time through
@@ -1270,7 +1277,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 newNotarization.SetPreLaunch(false);
                 newNotarization.currencyState.SetLaunchClear();
                 newNotarization.currencyState.SetPrelaunch(false);
-                newNotarization.currencyState.RevertReservesAndSupply();
+                newNotarization.currencyState.RevertReservesAndSupply(destCurrency.systemID);
             }
             else
             {
@@ -3034,26 +3041,13 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
     evidenceTypes.insert(CHAINOBJ_HEADER_REF);
     CCrossChainProof autoProof(evidence.GetSelectEvidence(evidenceTypes));
 
-    if (autoProof.chainObjects.size() < 3)
+    auto notaRootIT = expectedNotarization.proofRoots.find(ASSETCHAINS_CHAINID);
+    if (!IsVerusMainnetActive() &&
+        notaRootIT != expectedNotarization.proofRoots.end() &&
+        IsPreTestnetFork(notaRootIT->second.blockHash) &&
+        autoProof.chainObjects.size() < 3)
     {
-        if (IsVerusMainnetActive())
-        {
-            return CPBaaSNotarization();
-        }
-
-        auto notaRootIT = expectedNotarization.proofRoots.find(ASSETCHAINS_CHAINID);
-        if (notaRootIT == expectedNotarization.proofRoots.end())
-        {
-            return expectedNotarization;
-        }
-        if (IsPreTestnetFork(notaRootIT->second.blockHash))
-        {
-            return expectedNotarization;
-        }
-        else
-        {
-            return CPBaaSNotarization();
-        }
+        return expectedNotarization;
     }
 
     enum EProofState {
@@ -4593,7 +4587,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     // if we have a prior > 1, this acceptance may approve a prior notarization.
     // we'll assume the submission is not malicious via the RPC interface, and if we have conflicting
     // or not enough evidence, even a signed notarization won't get approved.
-    if (priorNotarizationIdx && additionalEvidenceRequired)
+    if (additionalEvidenceRequired)
     {
         uint256 entropyHash;
         if (!IsValidPrimaryChainEvidence(externalSystem,

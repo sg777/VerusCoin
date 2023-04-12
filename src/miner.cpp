@@ -565,25 +565,26 @@ bool GetBlockOneLaunchNotarization(const CRPCChainData &notarySystem,
     UniValue result, error;
     bool retVal = false;
 
+    uint160 notarySystemID = notarySystem.GetID();
+
     UniValue params(UniValue::VARR);
     params.push_back(EncodeDestination(CIdentityID(currencyID)));
 
     // VRSC and VRSCTEST do not start with a notary chain
-    if (notarySystem.GetID() == ASSETCHAINS_CHAINID || (!IsVerusActive() && ConnectedChains.IsNotaryAvailable()))
+    if (notarySystemID == ASSETCHAINS_CHAINID || (!IsVerusActive() && ConnectedChains.IsNotaryAvailable()))
     {
         // we are starting a PBaaS chain. We only assume that our chain definition and the first notary chain, if there is one, are setup
         // in ConnectedChains. All other currencies and identities necessary to start have not been populated and must be in block 1 by
         // getting the information from the notary chain
         bool notaryCallResult = false;
-        if (notarySystem.GetID() == ASSETCHAINS_CHAINID)
+        if (notarySystemID == ASSETCHAINS_CHAINID)
         {
             UniValue getlaunchinfo(const UniValue& params, bool fHelp);
 
             try
             {
-                UniValue rpcResult = getlaunchinfo(params, false);
-                result = find_value(rpcResult, "result");
-                error = find_value(rpcResult, "error");
+                result = getlaunchinfo(params, false);
+                notaryCallResult = result.isObject();
             } catch (std::exception e)
             {
                 error = strprintf("Failed to connect to %s chain, error: %s\n", notarySystem.chainDefinition.name.c_str(), e.what());
@@ -642,9 +643,11 @@ bool GetBlockOneLaunchNotarization(const CRPCChainData &notarySystem,
                 //printf("%s: proofroot: %s\n", __func__, latestProofRoot.ToUniValue().write(1,2).c_str());
                 curDef = currency;
                 launchNotarization = notarization;
-                launchNotarization.proofRoots = notaryNotarization.proofRoots;
-                notaryNotarization.proofRoots[ASSETCHAINS_CHAINID] = CProofRoot::GetProofRoot(0);
-                notaryNotarization.currencyStates[ASSETCHAINS_CHAINID] = launchNotarization.currencyState;
+                if (notaryNotarization.proofRoots.size() && !notaryNotarization.proofRoots.count(curDef.systemID))
+                {
+                    notaryNotarization.proofRoots[curDef.systemID] = CProofRoot::GetProofRoot(0);
+                    notaryNotarization.proofRoots[curDef.systemID].systemID = curDef.systemID; // all share block 0
+                }
                 notarizationOutputProof = std::make_pair(notarizationUtxo, notarizationProof);
                 exportOutputProof = std::make_pair(exportUtxo, exportProof);
                 retVal = true;
@@ -723,11 +726,11 @@ bool GetBlockOneImports(const CRPCChainData &notarySystem, const CPBaaSNotarizat
     UniValue result, error;
 
     UniValue params(UniValue::VARR);
-    params.push_back(EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)));
+    params.push_back(EncodeDestination(CIdentityID(launchNotarization.currencyID)));
     params.push_back((int)0);
-    if (launchNotarization.proofRoots.count(ConnectedChains.ThisChain().launchSystemID))
+    if (launchNotarization.proofRoots.count(notarySystem.GetID()))
     {
-        params.push_back((int64_t)launchNotarization.proofRoots.find(ConnectedChains.ThisChain().launchSystemID)->second.rootHeight);
+        params.push_back((int64_t)launchNotarization.proofRoots.find(notarySystem.GetID())->second.rootHeight);
     }
 
     if (notarySystem.GetID() == ASSETCHAINS_CHAINID || (!IsVerusActive() && ConnectedChains.IsNotaryAvailable()))
@@ -742,9 +745,7 @@ bool GetBlockOneImports(const CRPCChainData &notarySystem, const CPBaaSNotarizat
             UniValue getexports(const UniValue& params, bool fHelp);
             try
             {
-                UniValue rpcResult = getexports(params, false);
-                result = find_value(rpcResult, "result");
-                error = find_value(rpcResult, "error");
+                result = getexports(params, false);
             } catch (std::exception e)
             {
                 error = strprintf("Failed to connect to %s chain, error: %s\n", notarySystem.chainDefinition.name.c_str(), e.what());
@@ -810,6 +811,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
 {
     uint160 newCurID = newCurrency.GetID();
     uint160 newChainID = _newChain.GetID();
+    uint160 firstNotaryID = _launchChain.GetID();
 
     CPBaaSNotarization newNotarization = lastNotarization;
     newNotarization.prevNotarization = CUTXORef();
@@ -832,16 +834,13 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
         ConnectedChains.UpdateCachedCurrency(newCurrency, 1);
     }
 
-    // import / export capable currencies include the main currency, fractional currencies on any system,
-    // gateway currencies. the launch system, and non-token currencies. they also get an import / export thread
-    if (_newChain.launchSystemID == newCurID ||
+    // import / export capable currencies include the main currency, and converter, they also get an import / export thread
+    if (newCurID == newChainID ||
+        newCurID == firstNotaryID ||
         (newCurrency.systemID == newChainID &&
-        (newCurrency.IsFractional() ||
-         newCurrency.systemID == newCurID ||
-         (newCurrency.IsGateway() && newCurrency.GetID() == newCurrency.gatewayID))))
+         newCurrency.IsFractional() &&
+         newCurrency.IsGatewayConverter()))
     {
-        uint160 firstNotaryID = _launchChain.chainDefinition.GetID();
-
         // first, put evidence of the notarization pre-import
         int notarizationIdx = -1;
         if (pLaunchProof)
@@ -918,7 +917,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 newNotarization.currencyState.CalculateConvertedFees(
                     newNotarization.currencyState.viaConversionPrice,
                     newNotarization.currencyState.viaConversionPrice,
-                    ASSETCHAINS_CHAINID,
+                    newChainID,
                     feesConverted,
                     liquidityFees,
                     additionalFees);
@@ -1334,7 +1333,7 @@ bool BlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
     // which is the only currency that can be considered a gateway deposit at launch. this can
     // be used for native currency fee conversions
     CCurrencyValueMap gatewayDeposits;
-    launchNotarization.proofRoots[newChainCurrency.GetID()] = notaryNotarization.proofRoots[newChainCurrency.GetID()];
+    launchNotarization.proofRoots = notaryNotarization.proofRoots;
     bool success = AddOneCurrencyImport(newChainCurrency,
                                         launchNotarization,
                                         &launchNotarizationProof,
@@ -1342,13 +1341,15 @@ bool BlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
                                         launchExportTransfers,
                                         gatewayDeposits,
                                         outputs,
-                                        additionalFees);
+                                        additionalFees,
+                                        _launchChain,
+                                        _newChainCurrency);
 
     // now, the converter
     if (success && converterCurDef.IsValid())
     {
         CCurrencyValueMap converterDeposits;
-        converterNotarization.proofRoots[newChainCurrency.GetID()] = notaryConverterNotarization.proofRoots[newChainCurrency.GetID()];
+        converterNotarization.proofRoots = notaryConverterNotarization.proofRoots;
         success = AddOneCurrencyImport(converterCurDef,
                                        converterNotarization,
                                        &converterNotarizationProof,
@@ -1356,7 +1357,9 @@ bool BlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
                                        converterExportTransfers,
                                        converterDeposits,
                                        outputs,
-                                       additionalFees);
+                                       additionalFees,
+                                       _launchChain,
+                                       _newChainCurrency);
     }
 
     if (success)
@@ -1366,6 +1369,19 @@ bool BlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
         // now, add the rest of necessary currencies
         for (auto &oneCurrency : currencyImports)
         {
+            if (oneCurrency.second.first.GetID() == newChainCurrency.launchSystemID)
+            {
+                oneCurrency.second.second = notaryNotarization;
+                if (!oneCurrency.second.second.SetMirror())
+                {
+                    success = false;
+                    break;
+                }
+            }
+            else
+            {
+                oneCurrency.second.second = CPBaaSNotarization();
+            }
             success = AddOneCurrencyImport(oneCurrency.second.first,
                                            oneCurrency.second.second,
                                            nullptr,
@@ -1373,7 +1389,9 @@ bool BlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
                                            std::vector<CReserveTransfer>(),
                                            gatewayDeposits,
                                            outputs,
-                                           additionalFees);
+                                           additionalFees,
+                                           _launchChain,
+                                           _newChainCurrency);
             if (!success)
             {
                 break;
@@ -1412,7 +1430,7 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &outputs,
 
     // if we are on the PBaaS chain itself, we can only reject a valid block 1 if it does not
     // match the one that would be created using the notary chain as a guide
-    if ((newChainCurrency.GetID() != ASSETCHAINS_CHAINID && launchChain.GetID() == ASSETCHAINS_CHAINID) ||
+    if ((newChainCurrency.GetID() != ASSETCHAINS_CHAINID && launchChainID == ASSETCHAINS_CHAINID) ||
         (newChainCurrency.GetID() == ASSETCHAINS_CHAINID && ConnectedChains.IsNotaryAvailable()))
     {
         bool validOutputs = BlockOneCoinbaseOutputs(checkOutputs, launchNotarization, additionalFees, launchChain, newChainCurrency);
@@ -1422,12 +1440,12 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &outputs,
             return state.Error("Unable to make comparison outputs");
         }
 
-        // add fee pool
-        if (VERUS_CHAINID != newChainID && additionalFees.valueMap.count(VERUS_CHAINID))
+        // setup fee pool
+        if (additionalFees.valueMap.count(launchChainID))
         {
-            feePool.reserveValues.valueMap[VERUS_CHAINID] = additionalFees.valueMap[VERUS_CHAINID];
-            additionalFees.valueMap.erase(VERUS_CHAINID);
+            feePool.reserveValues.valueMap[launchChainID] = additionalFees.valueMap[launchChainID];
         }
+
         if (additionalFees.valueMap.count(newChainID))
         {
             feePool.reserveValues.valueMap[newChainID] = additionalFees.valueMap[newChainID];
@@ -1435,15 +1453,15 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &outputs,
         }
 
         CFeePool oneFeeShare = feePool.OneFeeShare();
+        feePool.reserveValues = (feePool.reserveValues - oneFeeShare.reserveValues).CanonicalMap();
 
-        CAmount rewardFees = oneFeeShare.reserveValues.valueMap[newChainID];
-        feePool.reserveValues.valueMap[newChainID] -= rewardFees;
-
-        CAmount verusFees = 0;
-        if (newChainID != VERUS_CHAINID && oneFeeShare.reserveValues.valueMap.count(VERUS_CHAINID))
+        expectedMinerRewards = oneFeeShare.reserveValues;
+        CAmount blockReward = (newChainCurrency.rewards.size() ? newChainCurrency.rewards[0] : 0);
+        if (blockReward)
         {
-            expectedMinerRewards.valueMap[VERUS_CHAINID] = oneFeeShare.reserveValues.valueMap[VERUS_CHAINID];
-            feePool.reserveValues.valueMap[VERUS_CHAINID] -= verusFees;
+            // matching fee pool should be capping the outputs, then we should match the check outputs
+            // until emission of the indicated rewards
+            expectedMinerRewards.valueMap[newChainID] += blockReward;
         }
 
         CCcontract_info CC;
@@ -1452,19 +1470,32 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &outputs,
         CPubKey pkCC = CPubKey(ParseHex(CC.CChexstr));
         checkOutputs.push_back(CTxOut(0,MakeMofNCCScript(CConditionObj<CFeePool>(EVAL_FEE_POOL, {pkCC.GetID()}, 1, &feePool))));
 
-        // matching fee pool should be capping the outputs, then we should match the check outputs
-        // until emission of the indicated rewards
-        expectedMinerRewards.valueMap[newChainID] = (newChainCurrency.rewards.size() ? newChainCurrency.rewards[0] : 0) + rewardFees;
-
         // check all outputs and total additional verus fees and rewardtotal
         // all outputs must be present and rewards + fees must match
+        if (LogAcceptCategory("launchnotarization"))
+        {
+            // display import outputs
+            CMutableTransaction debugTxOut;
+            debugTxOut.vout = outputs;
+            UniValue jsonTxOut1(UniValue::VOBJ);
+            UniValue jsonTxOut2(UniValue::VOBJ);
+            TxToUniv(debugTxOut, uint256(), jsonTxOut1);
+            debugTxOut.vout = checkOutputs;
+            TxToUniv(debugTxOut, uint256(), jsonTxOut2);
+            LogPrintf("%s: launch outputs: %s\ncheck outputs: %s\n", __func__, jsonTxOut1.write(1,2).c_str(), jsonTxOut2.write(1,2).c_str());
+        }
     }
 
     // now, use the outputs themselves as the source of IDs and currencies, determining
     // which ones are allowed and checking available proofs
-    std::set<uint160> blockOneCurrencies;
+    std::set<uint160> blockOneCurrencies = {newChainCurrency.GetID()};
     std::set<uint160> blockOneIDs = {newChainCurrency.GetID()};
     uint160 converterCurrencyID = newChainCurrency.GatewayConverterID();
+    std::set<uint160> removedCurrencies;
+    if (!converterCurrencyID.IsNull())
+    {
+        blockOneCurrencies.insert(converterCurrencyID);
+    }
 
     blockOneCurrencies.insert(launchChainID);
     blockOneIDs.insert(launchChain.chainDefinition.notaries.begin(), launchChain.chainDefinition.notaries.end());
@@ -1611,7 +1642,19 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &outputs,
                         {
                             return state.Error("Duplicate currency definition in block one coinbase");
                         }
+                        if (oneID == converterCurrencyID)
+                        {
+                            // if it is the converterID, first, add all currencies in it to those we should have and have not yet deleted
+                            for (auto &oneCurrencyID : oneCurrency.currencies)
+                            {
+                                if (!removedCurrencies.count(oneCurrencyID))
+                                {
+                                    blockOneCurrencies.insert(oneCurrencyID);
+                                }
+                            }
+                        }
                         blockOneCurrencies.erase(oneID);
+                        removedCurrencies.insert(oneID);
                         currencyImports[oneID] = std::make_pair(oneCurrency, CPBaaSNotarization());
                     }
                     else
@@ -1688,7 +1731,7 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &outputs,
                         UniValue uniScript2(UniValue::VOBJ);
                         ScriptPubKeyToUniv(outputs[i].scriptPubKey, uniScript1, false, false);
                         ScriptPubKeyToUniv(checkOutputs[i - firstPBaaSOut].scriptPubKey, uniScript2, false, false);
-                        LogPrintf("%s: mismatched block one outputs, values - actual: %ld\nexpected: %ld\nscripts - actual: %s\nexpected: %s\n",
+                        LogPrintf("%s: mismatched block one outputs, values:\nactual: %ld\nexpected: %ld\nscripts:\nactual: %s\nexpected: %s\n",
                                   __func__,
                                   outputs[i].nValue,
                                   checkOutputs[i - firstPBaaSOut].nValue,
@@ -1706,14 +1749,32 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &outputs,
 
     if (checkOutputs.size())
     {
+        if (outputs.size() < checkOutputs.size())
+        {
+            return state.Error("Invalid coinbase output count");
+        }
+
         // check that we have correct miner rewards
         if (blockOneMinerFunds != expectedMinerRewards)
         {
             return state.Error("Invalid miner outputs");
         }
+
         if (cbFeePool.reserveValues != feePool.reserveValues.CanonicalMap())
         {
             return state.Error("Invalid fee pool output");
+        }
+
+        auto revOutputIt = outputs.rbegin();
+        int mismatchCount = 0;
+        for (auto revCheckOutputIt = checkOutputs.rbegin(); revCheckOutputIt != checkOutputs.rend(); revCheckOutputIt++, revOutputIt++)
+        {
+            if (::AsVector(*revCheckOutputIt) != ::AsVector(*revOutputIt))
+            {
+                mismatchCount++;
+                LogPrint("notarization", "%s: mismatch block one coinbase output:\nexpected: %s\nactual: %s\n", __func__, revCheckOutputIt->ToString().c_str(), revCheckOutputIt->ToString().c_str());
+            }
+            LogPrint("notarization", "Matched %d/%d outputs for block 1 coinbase\n", (int)checkOutputs.size() - mismatchCount, (int)checkOutputs.size());
         }
     }
     else
@@ -1722,7 +1783,7 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &outputs,
         // if we did not get full checkoutputs, we could still double check that we have
         // correct preallocations,
         // correct notary funds distributed
-        // reserve deposits expected
+        // expected reserve deposits
         //
         // numbers are already checked for consistency, but check that all numbers match here
     }
