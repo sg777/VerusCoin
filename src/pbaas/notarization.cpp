@@ -577,6 +577,7 @@ CNotaryEvidence::EStates CNotaryEvidence::CheckSignatureConfirmation(const uint2
                 }
 
                 CIdentity sigIdentity;
+
                 // TODO: POST HARDENING - height from alternate chain was used
                 // initially on testnet, remove this if there is ever a testnet reset after v0.9.9
                 // be sure to initialize sigIdentity when removing
