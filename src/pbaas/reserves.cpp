@@ -476,6 +476,14 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                 printf("%s: invalid importTx:\n%s\n", __func__, jsonTx.write(1,2).c_str());
             }
         }
+        else
+        {
+            importCurDef = ConnectedChains.GetCachedCurrency(pBaseImport->importCurrencyID);
+        }
+        if (!importCurDef.IsValid())
+        {
+            return state.Error(strprintf("%s: invalid or cannot find import currency", __func__));
+        }
 
         if (!GetNotarizationFromOutput(importTx, importNotarizationOut, state, importNotarization))
         {
@@ -483,13 +491,12 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
             return false;
         }
 
-        bool passedCheck = isPBaaSDefinitionOrLaunch && !pBaseImport->IsInitialLaunchImport() && importCurDef.IsValid();
+        bool passedCheck = isPBaaSDefinitionOrLaunch && !pBaseImport->IsInitialLaunchImport();
 
         // ensure that the definition case is checked
         if (passedCheck)
         {
-            if (!importCurDef.IsValid() ||
-                !pBaseImport->exportTxId.IsNull() ||
+            if (!pBaseImport->exportTxId.IsNull() ||
                 (pBaseImport->sourceSystemID != importCurDef.launchSystemID && pBaseImport->sourceSystemID != importCurDef.systemID) ||
                 !pBaseImport->hashReserveTransfers.IsNull())
             {
@@ -500,7 +507,6 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
         {
             if (pBaseImport->IsInitialLaunchImport() &&
                 !(importFromDef.IsValid() &&
-                  importCurDef.IsValid() &&
                   importCurDef.launchSystemID != importFromDef.GetID()))
             {
                 if (LogAcceptCategory("crosschainimports"))
@@ -519,8 +525,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                 }
                 // initial launch import occurs when launching a gateway or
                 // on currencies launched in block 1 of a PBaaS chain co-launching with the chain
-                passedCheck = importCurDef.IsValid() &&
-                              importCurDef.launchSystemID == importFromDef.GetID() &&
+                passedCheck = importCurDef.launchSystemID == importFromDef.GetID() &&
                               ((importCurDef.IsGateway() && importCurDef.SystemOrGatewayID() == importCurDef.GetID()) ||
                                (isPBaaSDefinitionOrLaunch && (importCurDef.IsPBaaSChain() || importCurDef.IsGatewayConverter())));
             }
