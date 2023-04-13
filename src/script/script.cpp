@@ -669,6 +669,11 @@ bool CScript::IsPayToCryptoCondition(COptCCParams &ccParams) const
     CScript subScript;
     std::vector<std::vector<unsigned char>> vParams;
 
+    if (!size() || size() > MAX_SCRIPT_SIZE)
+    {
+        return false;
+    }
+
     if (IsPayToCryptoCondition(&subScript, vParams))
     {
         if (!vParams.empty())
