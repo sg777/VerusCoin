@@ -1408,7 +1408,7 @@ bool PreCheckFinalizeExport(const CTransaction &tx, int32_t outNum, CValidationS
     {
         return state.Error("Invalid export finalization output");
     }
-    if (LogAcceptCategory("crosschainexports"))
+    if (LogAcceptCategory("finalizeexports"))
     {
         UniValue scriptUni(UniValue::VOBJ);
         ScriptPubKeyToUniv(tx.vout[outNum].scriptPubKey, scriptUni, false, false);
@@ -1845,11 +1845,6 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                                  evidenceOutEnd,
                                  reserveTransfers))
     {
-        // TODO: HARDENING - confirm that all checks are complete
-        // now, check all inputs of the transaction, and if we are the first in the array spent from
-        // deposits controlled by this currency, be sure that all input is accounted for by valid reserves out
-        // and/or gateway deposits, and/or change
-
         LOCK(mempool.cs);
 
         CCoinsView dummy;
@@ -2415,8 +2410,6 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
         return false;
     }
 
-    // TODO: HARDENING - confirm that we handle all gateway and PBaaS converter and reserve definition verifications
-
     // ensure that the currency definition follows all rules of currency definition, meaning:
     // 1) it is defined by an identity that controls the currency for the first time
     // 2) it is imported by another system that controls the currency for the first time
@@ -2532,8 +2525,8 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
             try
             {
                 std::map<uint160, std::string> requiredDefinitions = newDefinitions;
-                // TODO: HARDENING - Need to prepare to validate all newly mapped and defined supporting currencies
-                // skips the case where we are defining a new mapped currency, need to cover that
+
+                // TODO: HARDENING - TEST making a blockchain currency definition that depends on currencies, which must be defined, but are not
                 if (!ValidateNewUnivalueCurrencyDefinition(newCurrency.ToUniValue(), height - 1, ASSETCHAINS_CHAINID, requiredDefinitions, false).IsValid())
                 {
                     LogPrint("currencydefinition", "%s: Currency definition in output violates current definition rules.\n%s\n", __func__, newCurrency.ToUniValue().write(1,2).c_str());
@@ -3000,8 +2993,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
     uint32_t chainHeight = chainActive.Height();
     bool haveFullChain = height <= chainHeight + 1;
-
-    // TODO: HARDENING - ensure that destinations and nested destinations are valid for the target system
 
     if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
         p.IsValid() &&

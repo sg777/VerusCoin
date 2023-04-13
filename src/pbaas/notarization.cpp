@@ -2856,9 +2856,7 @@ CProofRoot IsValidChallengeEvidence(const CCurrencyDefinition &externalSystem,
                             }
                         }
 
-
                         // TODO: HARDENING - now verify the stake tx signature, even if it spends an ID
-
 
                         // after confirming stakeguard, we either have another header proof, or we're done
                         validCounterEvidence = (++numHeaderProofs >= expectNumHeaderProofs);
@@ -5654,10 +5652,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                                     // EXPECT_SKIPPED_NOTARIZATION_REF - this is the notarization it should not have skipped
                                     fraudProof.evidence << CEvidenceData(CVDXF_Data::UTXORefKey(), ::AsVector(cnd.vtx[unchallengedForks[j][k]].first));
 
-                                    // TODO: HARDENING - confirm that in precheck notarization, if a notarization that skips has the same
-                                    // proofroot as any prior notarization that it does not refer to, it cannot pass precheck. that is easy to check,
-                                    // may already be checked as of this note, and eliminates the need for an equality proof.
-
                                     int64_t proveHeight = std::min(cnd.vtx[unchallengedForks[j][k]].second.proofRoots[SystemID].rootHeight,
                                                                     cnd.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight);
 
@@ -5868,10 +5862,6 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
                                     // EXPECT_SKIPPED_NOTARIZATION_REF - this is the notarization it should not have skipped
                                     fraudProof.evidence << CEvidenceData(CVDXF_Data::UTXORefKey(), ::AsVector(crosschainCND.vtx[unchallengedForks[j][k]].first));
-
-                                    // TODO: HARDENING - confirm that in precheck notarization, if a notarization has the same proofroot as
-                                    // any prior notarization, whether it refers to it or not, it cannot pass precheck. that is easy to check,
-                                    // may already be checked as of this note, and eliminates the need for an equality proof.
 
                                     int64_t proveHeight = std::min(crosschainCND.vtx[unchallengedForks[j][k]].second.proofRoots[SystemID].rootHeight,
                                                                     crosschainCND.vtx[unchallengedForks[forkToChallenge][k]].second.proofRoots[SystemID].rootHeight);
@@ -9161,9 +9151,6 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                         CObjectFinalization priorLastConfirmedF;
                         CAddressIndexDbEntry priorLastConfirmedAddressIndexKey;
 
-
-
-
                         bool foundPriorLocalCrossConfirmed =
                             CPBaaSNotarization::FindFinalizedIndexByVDXFKey(notarizationIdxKey, priorLastConfirmedF, priorLastConfirmedAddressIndexKey);
 
@@ -9175,12 +9162,6 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                         {
                             return state.Error("Invalid progression of prior cross-notarization hash");
                         }
-
-                        // TODO: HARDENING - in the case where this happens, we agree with the notarization, but it has not
-                        // been finalized on this chain, we should have posted challenge evidence to the other chain with an alternate
-                        // future proof root, which will force the next notarization over that one to prove itself
-                        // !lastConfirmedF.IsConfirmed() ||
-
 
                         // now, ensure that this still derives from the last confirmed on this chain by traveling backwards
                         // from this one until we either pass last confirmed and prove this invalid, or hit last confirmed
@@ -9227,8 +9208,6 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                                 }
                             }
 
-                            // TODO: POST HARDENING - need another double check on finalization that the work/stake
-                            // alternation wasn't violated
                             if (pLastIndex->IsVerusPOSBlock() == isStake &&
                                 PBAAS_TESTMODE &&
                                 pLastIndex->nTime > PBAAS_TESTFORK_TIME)
@@ -9536,7 +9515,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                     }
                 }
 
-                // TODO: HARDENING - verify transitions
+                // verify transitions
                 if (std::get<0>(priorNotarizationInfo))
                 {
                     if (std::get<3>(priorNotarizationInfo).IsPreLaunch() &&
@@ -9547,7 +9526,12 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                         LogPrintf("%s: Launch clear confirmed or refunding must be first non-prelaunch notarization %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(currentNotarization.currencyID).c_str());
                         return false;
                     }
-                    if (std::get<3>(priorNotarizationInfo).IsRefunding() && !currentNotarization.IsRefunding())
+                    if (std::get<3>(priorNotarizationInfo).IsRefunding() && !(currentNotarization.currencyState.IsRefunding() && currentNotarization.IsRefunding()))
+                    {
+                        LogPrintf("%s: Cannot change refunding state for %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(currentNotarization.currencyID).c_str());
+                        return false;
+                    }
+                    else if (std::get<3>(priorNotarizationInfo).IsLaunchConfirmed() && (currentNotarization.currencyState.IsRefunding() || currentNotarization.IsRefunding()))
                     {
                         LogPrintf("%s: Cannot change refunding state for %s\n", __func__, ConnectedChains.GetFriendlyCurrencyName(currentNotarization.currencyID).c_str());
                         return false;
