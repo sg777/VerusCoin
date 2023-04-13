@@ -20,6 +20,10 @@
 #include "txdb.h"
 
 extern CTxMemPool mempool;
+bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &outputs,
+                            const CRPCChainData &launchChain,
+                            const CCurrencyDefinition &newChainCurrency,
+                            CValidationState &state);
 
 CCommitmentHash::CCommitmentHash(const CTransaction &tx)
 {
@@ -2715,8 +2719,6 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
         }
     }
 
-    // TODO: HARDENING - ensure that the block one coinbase only mints the IDs it is supposed to mint
-    // this may be a redundant note and may be removed when block one coinbase is fully checked
     if (isPBaaS)
     {
         if (height == 1)
@@ -2724,7 +2726,20 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
             // for block one IDs, ensure they are valid as per the launch parameters
             if (tx.IsCoinBase())
             {
-                return true;
+                // we only check coinbase on the first identity
+                int i;
+                for (i = 0; i < tx.vout.size(); i++)
+                {
+                    if (CIdentity(tx.vout[i].scriptPubKey).IsValid())
+                    {
+                        break;
+                    }
+                }
+                if (i == outNum)
+                {
+                    return ConnectedChains.FirstNotaryChain().IsValid() &&
+                           IsValidBlockOneCoinbase(tx.vout, ConnectedChains.FirstNotaryChain(), ConnectedChains.ThisChain(), state);
+                }
             }
             else
             {

@@ -5429,10 +5429,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                                                    CTxIn(lastImportTxID, notarizationOutNum));
 
             // verify that the current export from the source system spends the prior export from the source system
-
-            // TODO: HARDENING - ensure that we enforce in order export and in order import of exports, should be covered, but ensure it is
-            // all that remains is to ensure that state transitions are not out of order
-
             if (useProofs &&
                 !(ccx.IsChainDefinition() ||
                   lastSourceCCI.exportTxId.IsNull() ||

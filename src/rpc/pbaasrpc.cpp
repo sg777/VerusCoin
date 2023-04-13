@@ -14613,8 +14613,8 @@ UniValue listidentities(const UniValue& params, bool fHelp)
             "\nResult:\n"
 
             "\nExamples:\n"
-            + HelpExampleCli("listidentities", "\'{\"name\" : \"myname\"}\'")
-            + HelpExampleRpc("listidentities", "\'{\"name\" : \"myname\"}\'")
+            + HelpExampleCli("listidentities", "true")
+            + HelpExampleRpc("listidentities", "true")
         );
     }
 
