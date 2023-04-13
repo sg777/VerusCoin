@@ -1429,10 +1429,11 @@ bool BlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
 // PBaaS chain.
 bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
                              const CRPCChainData &launchChain,
-                             const CCurrencyDefinition &newChainCurrency,
+                             const CCurrencyDefinition &_newChainCurrency,
                              CValidationState &state)
 {
     uint160 launchChainID = launchChain.GetID();
+    CCurrencyDefinition newChainCurrency = _newChainCurrency;
     uint160 newChainID = newChainCurrency.GetID();
 
     std::vector<CTxOut> __outputs;
@@ -1458,6 +1459,8 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
     std::map<uint160, std::pair<CCurrencyDefinition, CPBaaSNotarization>> currencyImports;
     std::map<uint160, CIdentity> identityImports;
     CFeePool feePool;
+
+    CCurrencyDefinition converterDef;
 
     // if we are on the PBaaS chain itself, we can only reject a valid block 1 if it does not
     // match the one that would be created using the notary chain as a guide
@@ -1516,6 +1519,24 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
             LogPrintf("%s: launch outputs: %s\ncheck outputs: %s\n", __func__, jsonTxOut1.write(1,2).c_str(), jsonTxOut2.write(1,2).c_str());
         }
     }
+    else
+    {
+        // get our initial currency definition from the outputs
+        const std::vector<CTxOut> &findCurrencyOuts = checkOutputs.size() ? checkOutputs : outputs;
+        for (auto &oneOut : findCurrencyOuts)
+        {
+            if ((newChainCurrency = CCurrencyDefinition(oneOut.scriptPubKey)).IsValid() &&
+                newChainCurrency.GetID() == newChainID)
+            {
+                break;
+            }
+            newChainCurrency = CCurrencyDefinition();
+        }
+        if (!newChainCurrency.IsValid())
+        {
+            return state.Error("Cannot find primary currency in block 1 coinbase");
+        }
+    }
 
     // now, use the outputs themselves as the source of IDs and currencies, determining
     // which ones are allowed and checking available proofs
@@ -1523,7 +1544,6 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
     std::set<uint160> blockOneIDs = {newChainCurrency.GetID()};
     uint160 converterCurrencyID = newChainCurrency.GatewayConverterID();
     std::set<uint160> removedCurrencies;
-    CCurrencyDefinition converterDef;
     if (!converterCurrencyID.IsNull())
     {
         blockOneCurrencies.insert(converterCurrencyID);
@@ -1793,6 +1813,14 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
             }
         }
     }
+
+    // TODO: HARDENING - blockOneIDs can be non-zero for old testnet here, remove after sync with old net is
+    // unimportant
+    if (IsVerusActive() && !IsVerusMainnetActive())
+    {
+        blockOneIDs.clear();
+    }
+
     if (blockOneIDs.size() || blockOneCurrencies.size())
     {
         return state.Error("Invalid block one coinbase identity and/or currency outputs");
