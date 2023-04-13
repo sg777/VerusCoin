@@ -4228,7 +4228,7 @@ void CConnectedChains::CheckOracleUpgrades()
     std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>> upgradeData;
     if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) >= CActivationHeight::ACTIVATE_PBAAS)
     {
-        upgradeData = CIdentity::GetIdentityContentByKey(PBAAS_NOTIFICATION_ORACLE, UpgradeDataKey(ASSETCHAINS_CHAINID), 0, 0, false, false, 0, true);
+        upgradeData = CIdentity::GetIdentityContentByKey(PBAAS_NOTIFICATION_ORACLE, UpgradeDataKey(ASSETCHAINS_CHAINID), 0, 0, false, false, 0);
     }
     uint32_t foundIDAt;
     CTxIn txInDesc;
@@ -4304,21 +4304,23 @@ void CConnectedChains::CheckOracleUpgrades()
         // disabling all DeFi, both cross-chain protocols, or just gateways
         if (disableDeFiIt != activeUpgradesByKey.end())
         {
-            // disable DeFi
+            // pause DeFi
             pauseDeFi = true;
+            CUpgradeDescriptor waterfallDescriptor(disableDeFiIt->second);
+            waterfallDescriptor.upgradeID = DisablePBaaSCrossChainKey();
+            activeUpgradesByKey[DisablePBaaSCrossChainKey()] = waterfallDescriptor;
             disablePBaaSCrossChainIt = disableDeFiIt;
         }
         if (disablePBaaSCrossChainIt != activeUpgradesByKey.end())
         {
-            // disable PBaaS
+            // pause cross chain PBaaS
             pausePBaaS = true;
+            CUpgradeDescriptor waterfallDescriptor(disablePBaaSCrossChainIt->second);
+            waterfallDescriptor.upgradeID = DisableGatewayCrossChainKey();
+            activeUpgradesByKey[DisableGatewayCrossChainKey()] = waterfallDescriptor;
             disableGatewayCrossChainIt = disablePBaaSCrossChainIt;
         }
-        if (disableGatewayCrossChainIt->second.minDaemonVersion <= GetVerusVersion())
-        {
-            // disable gateways
-        }
-        else
+        if (disableGatewayCrossChainIt->second.minDaemonVersion > GetVerusVersion())
         {
             stoppingIt = upgradePBaaSIt;
             gracefulStop = pauseDeFi ? "CRITICAL TEMPORARY PAUSE ALL CROSS CHAIN AND DEFI FUNCTIONS ISSUED FROM ORACLE" :

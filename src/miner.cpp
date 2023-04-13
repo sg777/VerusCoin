@@ -1851,7 +1851,7 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
             if (::AsVector(*revCheckOutputIt) != ::AsVector(*revOutputIt))
             {
                 mismatchCount++;
-                LogPrint("notarization", "%s: mismatch block one coinbase output:\nexpected: %s\nactual: %s\n", __func__, revCheckOutputIt->ToString().c_str(), revCheckOutputIt->ToString().c_str());
+                LogPrint("notarization", "%s: mismatch block one coinbase output:\nexpected: %s\nactual: %s\n", __func__, revCheckOutputIt->ToString().c_str(), revOutputIt->ToString().c_str());
             }
             LogPrint("notarization", "Matched %d/%d outputs for block 1 coinbase\n", (int)checkOutputs.size() - mismatchCount, (int)checkOutputs.size());
         }
