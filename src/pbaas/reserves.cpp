@@ -5400,7 +5400,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         {
             extraPreconverted = newCurrencyState.preConvertedOut;
             // if this is our launch currency issue any necessary pre-converted supply and add it to reserve deposits
-            if (importCurrencyID == ASSETCHAINS_CHAINID &&
+            if (importCurrencyID == systemDestID &&
                 importCurrencyState.reserveIn.size())
             {
                 for (int i = 0; i < importCurrencyState.reserveIn.size(); i++)
@@ -6204,6 +6204,11 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID)
         {
             // reverse last changes
             auto currencyMap = GetReserveMap();
+
+            if (processingPreconverts)
+            {
+                RevertFees(conversionPrice, viaConversionPrice, systemID);
+            }
 
             // revert changes in reserves and supply to pre conversion state, add reserve outs and subtract reserve ins
             for (auto &oneCur : currencyMap)
