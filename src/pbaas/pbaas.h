@@ -1239,6 +1239,42 @@ public:
         return key;
     }
 
+    static std::string DisableDeFiKeyName()
+    {
+        return "vrsc::system.upgradedata.disabledefi";
+    }
+
+    static uint160 DisableDeFiKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF_Data::GetDataKey(DisableDeFiKeyName(), nameSpace);
+        return key;
+    }
+
+    static std::string DisablePBaaSCrossChainKeyName()
+    {
+        return "vrsc::system.upgradedata.disablepbaascrosschain";
+    }
+
+    static uint160 DisablePBaaSCrossChainKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF_Data::GetDataKey(DisablePBaaSCrossChainKeyName(), nameSpace);
+        return key;
+    }
+
+    static std::string DisableGatewayCrossChainKeyName()
+    {
+        return "vrsc::system.upgradedata.disablegatewaycrosschain";
+    }
+
+    static uint160 DisableGatewayCrossChainKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF_Data::GetDataKey(DisableGatewayCrossChainKeyName(), nameSpace);
+        return key;
+    }
+
     static std::string PBaaSUpgradeKeyName()
     {
         return "vrsc::system.upgradedata.pbaasupgrade";

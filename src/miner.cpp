@@ -1296,6 +1296,11 @@ bool BlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
         {
             blockOneCurrencies.insert(oneCurrency);
         }
+
+        for (auto &onePrealloc : converterCurDef.preAllocation)
+        {
+            blockOneIDs.insert(onePrealloc.first);
+        }
     }
 
     // Now, add block 1 imports, which provide a foundation of all IDs and currencies needed to launch the
@@ -1518,9 +1523,21 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
     std::set<uint160> blockOneIDs = {newChainCurrency.GetID()};
     uint160 converterCurrencyID = newChainCurrency.GatewayConverterID();
     std::set<uint160> removedCurrencies;
+    CCurrencyDefinition converterDef;
     if (!converterCurrencyID.IsNull())
     {
         blockOneCurrencies.insert(converterCurrencyID);
+        // find it in the outputs or checkOutputs, whichever we have, and add converter preallocation IDs
+        const std::vector<CTxOut> &findConverterOuts = checkOutputs.size() ? checkOutputs : outputs;
+        for (auto &oneOut : findConverterOuts)
+        {
+            if ((converterDef = CCurrencyDefinition(oneOut.scriptPubKey)).IsValid() &&
+                converterDef.GetID() == converterCurrencyID)
+            {
+                break;
+            }
+            converterDef = CCurrencyDefinition();
+        }
     }
 
     blockOneCurrencies.insert(launchChainID);
@@ -1529,6 +1546,14 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
     for (auto &oneCurrency : newChainCurrency.currencies)
     {
         blockOneCurrencies.insert(oneCurrency);
+    }
+
+    if (converterDef.IsValid())
+    {
+        for (auto &onePrealloc : converterDef.preAllocation)
+        {
+            blockOneIDs.insert(onePrealloc.first);
+        }
     }
 
     for (auto &onePrealloc : newChainCurrency.preAllocation)
