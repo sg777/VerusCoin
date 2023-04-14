@@ -1597,7 +1597,7 @@ public:
                                              CCurrencyValueMap &liquidityFees,
                                              CCurrencyValueMap &convertedFees) const;
 
-    void RevertReservesAndSupply(const uint160 &systemID=ASSETCHAINS_CHAINID);
+    void RevertReservesAndSupply(const uint160 &systemID=ASSETCHAINS_CHAINID, bool pbaasInitialChainCurrency=false);
 
     template <typename NUMBERVECTOR>
     static NUMBERVECTOR AddVectors(const NUMBERVECTOR &a, const NUMBERVECTOR &b)

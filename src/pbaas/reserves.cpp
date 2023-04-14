@@ -2759,7 +2759,9 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             checkState.SetLaunchCompleteMarker(false);
                         }
 
-                        checkState.RevertReservesAndSupply();
+                        checkState.RevertReservesAndSupply(ASSETCHAINS_CHAINID,
+                                                           (importCurrencyDef.IsGatewayConverter() && importCurrencyDef.gatewayID == ASSETCHAINS_CHAINID) ||
+                                                           (!IsVerusActive() && importCurrencyDef.GetID() == ASSETCHAINS_CHAINID));
 
                         // between clear launch and complete, we need to adjust supply for verification
                         if (!checkState.IsFractional() &&
@@ -6187,14 +6189,16 @@ CCurrencyValueMap CCoinbaseCurrencyState::CalculateConvertedFees(const std::vect
     return originalFees;
 }
 
-void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID)
+void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID, bool pbaasInitialChainCurrency)
 {
     bool processingPreconverts = !IsLaunchCompleteMarker() && !IsPrelaunch();
     if (IsFractional())
     {
         // between prelaunch and postlaunch, we only revert fees since preConversions are accounted for differently
         auto reserveMap = GetReserveMap();
-        if (processingPreconverts && reserveMap.count(systemID) && reserves[reserveMap[systemID]])
+        if (((processingPreconverts && pbaasInitialChainCurrency) ||
+             (IsLaunchClear() && !IsPrelaunch())) &&
+             reserveMap.count(systemID) && reserves[reserveMap[systemID]])
         {
             // leave all currencies in
             // revert only fees at launch pricing

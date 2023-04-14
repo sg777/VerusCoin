@@ -709,7 +709,9 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 CCurrencyDefinition systemSource = ConnectedChains.GetCachedCurrency(cci.sourceSystemID);
                 CCoinbaseCurrencyState importState = notarization.currencyState;
                 CCoinbaseCurrencyState dummyState;
-                importState.RevertReservesAndSupply();
+                importState.RevertReservesAndSupply(ASSETCHAINS_CHAINID,
+                                                    (importingToDef.IsGatewayConverter() && importingToDef.gatewayID == ASSETCHAINS_CHAINID) ||
+                                                    (!IsVerusActive() && importingToDef.GetID() == ASSETCHAINS_CHAINID));
 
                 std::vector<CTxOut> vOutputs;
                 CCurrencyValueMap importedCurrency, gatewayDepositsIn, spentCurrencyOut;
@@ -1904,7 +1906,6 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         CCoinbaseCurrencyState checkState = importNotarization.currencyState;
         CCoinbaseCurrencyState newCurState;
 
-        checkState.RevertReservesAndSupply();
         CReserveTransactionDescriptor rtxd;
 
         CCurrencyDefinition sourceSysDef = ConnectedChains.GetCachedCurrency(ccxSource.sourceSystemID);
@@ -1915,6 +1916,10 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         {
             return eval->Error(std::string(__func__) + ": invalid currencies in export: " + ccxSource.ToUniValue().write(1,2));
         }
+
+        checkState.RevertReservesAndSupply(ASSETCHAINS_CHAINID,
+                                           (destCurDef.IsGatewayConverter() && destCurDef.gatewayID == ASSETCHAINS_CHAINID) ||
+                                           (!IsVerusActive() && destCurDef.GetID() == ASSETCHAINS_CHAINID));
 
         std::vector<CTxOut> vOutputs;
         CCurrencyValueMap importedCurrency, gatewayCurrencyUsed, spentCurrencyOut;
