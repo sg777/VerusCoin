@@ -6372,7 +6372,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
     auto changeAddressStr = TrimSpaces(uni_get_str(find_value(params[1], "changeaddress")));
     if (changeAddressStr.empty() || (changeDestination = ValidateDestination(changeAddressStr)).which() == COptCCParams::ADDRTYPE_INVALID)
     {
-        throw JSONRPCError(RPC_INVALID_PARAMETER, "changeaddress must be valid");
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "changeaddress must be valid, transparent address, for privacy use fresh address");
     }
 
     if (find_value(forValue, "name").isNull())
@@ -6408,7 +6408,7 @@ UniValue makeoffer(const UniValue& params, bool fHelp)
             }
         }
 
-        auto destStr = TrimSpaces(uni_get_str(find_value(forValue, "address")), true);
+        auto destStr = TrimSpaces(uni_get_str(find_value(forValue, "address")), true, "\\/*?\"<>|");
 
         fundsDestination = ValidateDestination(destStr);
         CTransferDestination dest;
@@ -8889,7 +8889,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
             auto opRetHex = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "opret")));
             CAmount sourceAmount = AmountFromValue(find_value(uniOutputs[i], "amount"));
-            auto destStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "address")));
+            auto destStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "address")), true, "\\/*?\"<>|");
             auto exportId = uni_get_bool(find_value(uniOutputs[i], "exportid"));
             auto exportCurrency = uni_get_bool(find_value(uniOutputs[i], "exportcurrency"));
             auto refundToStr = TrimSpaces(uni_get_str(find_value(uniOutputs[i], "refundto")));
