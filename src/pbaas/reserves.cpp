@@ -6194,7 +6194,7 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID)
     {
         // between prelaunch and postlaunch, we only revert fees since preConversions are accounted for differently
         auto reserveMap = GetReserveMap();
-        if (IsLaunchClear() && !IsPrelaunch() && reserveMap.count(systemID) && reserves[reserveMap[systemID]])
+        if (processingPreconverts && reserveMap.count(systemID) && reserves[reserveMap[systemID]])
         {
             // leave all currencies in
             // revert only fees at launch pricing
@@ -6204,11 +6204,6 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID)
         {
             // reverse last changes
             auto currencyMap = GetReserveMap();
-
-            if (processingPreconverts)
-            {
-                RevertFees(conversionPrice, viaConversionPrice, systemID);
-            }
 
             // revert changes in reserves and supply to pre conversion state, add reserve outs and subtract reserve ins
             for (auto &oneCur : currencyMap)

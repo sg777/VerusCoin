@@ -5697,8 +5697,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
         if (LogAcceptCategory("defi"))
         {
-            LogPrintf("Using lastNotarization.currencyID: %s, nextHeight: %u, expectedEntropyHash: %s\n",
-                        EncodeDestination(CIdentityID(lastNotarization.currencyID)).c_str(),
+            LogPrintf("Using lastNotarization: %s, nextHeight: %u, expectedEntropyHash: %s\n",
+                        lastNotarization.ToUniValue().write(1,2).c_str(),
                         nextHeight,
                         EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), nextHeight, lastNotarization.currencyID).GetHex().c_str());
         }
