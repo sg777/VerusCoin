@@ -2982,7 +2982,7 @@ CProofRoot IsValidChallengeEvidence(const CCurrencyDefinition &externalSystem,
 bool IsPreTestnetFork(const uint256 &blockHash)
 {
     auto notaIndexIT = mapBlockIndex.find(blockHash);
-    return notaIndexIT->second->nTime < PBAAS_TESTFORK_TIME;
+    return (notaIndexIT != mapBlockIndex.end() ? notaIndexIT->second->nTime : chainActive[chainActive.Height()]->nTime) < PBAAS_TESTFORK_TIME;
 }
 
 CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &externalSystem,
