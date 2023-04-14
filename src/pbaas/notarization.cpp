@@ -3355,8 +3355,8 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                                                           std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization>(
                                                             {(uint32_t)0, CTransaction(), CUTXORef(), CPBaaSNotarization()}) :
                                                           GetPriorReferencedNotarization(lastNotarizationTx,
-                                                                                        expectedNotarization.prevNotarization.n,
-                                                                                        lastNotarization);
+                                                                                         expectedNotarization.prevNotarization.n,
+                                                                                         lastNotarization);
                             if (lastNotarization.IsBlockOneNotarization() || std::get<0>(priorReferencedNotarization))
                             {
                                 proofState = EXPECT_FUTURE_PROOF_ROOT;
@@ -9072,7 +9072,8 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                 if ((curDef.IsPBaaSChain() || curDef.IsGateway()) &&
                      curDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
                 {
-                    if (!currentNotarization.proofRoots.count(currentNotarization.currencyID) ||
+                    if (currentNotarization.IsMirror() || 
+                        !currentNotarization.proofRoots.count(currentNotarization.currencyID) ||
                         (currentNotarization.IsBlockOneNotarization() &&
                          currentNotarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
                          currentNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight != 0) ||

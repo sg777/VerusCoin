@@ -746,6 +746,17 @@ public:
     // both sets the mirror flag and also transforms the notarization
     // between mirror states. returns false if could not change state to requested.
     bool SetMirror(bool setTrue=true);
+    bool SetMirrorFlag(bool setTrue=true)
+    {
+        if (setTrue)
+        {
+            flags |= FLAG_ACCEPTED_MIRROR;
+        }
+        else
+        {
+            flags &= ~FLAG_ACCEPTED_MIRROR;
+        }
+    }
 
     bool IsDefinitionNotarization() const
     {

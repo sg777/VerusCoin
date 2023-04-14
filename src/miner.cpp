@@ -1114,6 +1114,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             newNotarization.SetLaunchConfirmed();
             newNotarization.SetLaunchComplete();
             newNotarization.SetBlockOneNotarization();
+
             outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &newNotarization))));
 
             CReserveTransactionDescriptor rtxd;
@@ -1166,24 +1167,6 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
 
         ccx = CCrossChainExport(newChainID, 1, 1, newCurrency.systemID, newCurID, 0, CCurrencyValueMap(), CCurrencyValueMap(), uint256());
         outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CCrossChainExport>(EVAL_CROSSCHAIN_EXPORT, dests, 1, &ccx))));
-    }
-    else if (newNotarization.IsValid())
-    {
-        cp = CCinit(&CC, EVAL_EARNEDNOTARIZATION);
-        dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
-
-        // we notarize our notary chain here, not ourselves
-        if (newNotarization.currencyID == newChainID)
-        {
-            if (!newNotarization.SetMirror())
-            {
-                LogPrintf("Cannot mirror our notarization from notary chain\n");
-                printf("Cannot mirror our notarization from notary chain\n");
-                return false;
-            }
-        }
-        newNotarization.SetBlockOneNotarization();
-        outputs.push_back(CTxOut(0, MakeMofNCCScript(CConditionObj<CPBaaSNotarization>(EVAL_EARNEDNOTARIZATION, dests, 1, &newNotarization))));
     }
     return true;
 }
@@ -1396,6 +1379,7 @@ bool BlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
                     success = false;
                     break;
                 }
+                oneCurrency.second.second.SetMirrorFlag(false);
             }
             else
             {

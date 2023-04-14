@@ -918,9 +918,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         return state.Error("Multi-currency operation before PBaaS activation");
     }
 
-    // TODO: HARDENING - ensure that we have confirmed all totals and fees are correct, especially cross-chain fees
-    // then convert all warnings to errors
-    // ensure that this transaction has the appropriate finalization outputs, as required
+    // TODO: HARDENING - ensure that this transaction has necessary finalization & notarization outputs, as required
     // - create parameter to add a currency to the wallet black/broken list if a bridge is clearly blocked by an error
     // when rolling up an export, or blocked at import to prevent continuously trying to process transactions on a failed bridge
     // do not roll up or import currencies with broken bridges
@@ -1450,10 +1448,9 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
     CCrossChainImport cci, nextCCI;
 
     // if it's an import proof, we need to be spent to the next import
-    // TODO: HARDENING - handle multipart and import proof types
     if (thisEvidence.type == thisEvidence.TYPE_MULTIPART_DATA)
     {
-        // if the first of a multipart, get it and validate, if not, ensure that the first is spent to the same tx
+        // TODO: HARDENING - if the first of a multipart, get it and validate, if not, ensure that the first is spent to the same tx
         return true;
     }
     if (thisEvidence.type == thisEvidence.TYPE_IMPORT_PROOF)
@@ -2531,11 +2528,26 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
             {
                 std::map<uint160, std::string> requiredDefinitions = newDefinitions;
 
-                // TODO: HARDENING - TEST making a blockchain currency definition that depends on currencies, which must be defined, but are not
                 if (!ValidateNewUnivalueCurrencyDefinition(newCurrency.ToUniValue(), height - 1, ASSETCHAINS_CHAINID, requiredDefinitions, false).IsValid())
                 {
                     LogPrint("currencydefinition", "%s: Currency definition in output violates current definition rules.\n%s\n", __func__, newCurrency.ToUniValue().write(1,2).c_str());
                     return state.Error("Currency definition in output violates current definition rules");
+                }
+
+
+                // TODO: HARDENING - TEST making a blockchain currency definition that depends on currencies, which must be defined, but are not
+                // ensure that either the required definitions are on this transaction, such as a PBaaS chain and its converter or mapped currencies
+                // on the same definition
+                if (newCurrency.IsFractional())
+                {
+                    // if fractional, make sure that the following is true:
+                    // 1) if this is a currency converter then:
+                    //   a) the system or gateway it is a converter currency for must be defined with this currency
+                    //   b) if this is a PBaaS chain, all other currencies in its reserves must be already defined, or
+                    //      if this is a gateway currency, it may also include currencies mapped from the gateway
+                    // 2) if not a currency converter, all reserves must be already defined
+                    // 3) all reserve currencies must have completed their launches successfully without refunding,
+                    //    excepttions are PBaaS or gateway currencies that may be co-launching with the converter
                 }
             }
             catch(const UniValue &e)
