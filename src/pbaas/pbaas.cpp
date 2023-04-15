@@ -1455,6 +1455,7 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
     if (thisEvidence.type == thisEvidence.TYPE_MULTIPART_DATA)
     {
         CNotaryEvidence oneEvidencePart;
+
         int i;
         for (i = tx.vin[nIn].prevout.n - 1; i >= 0; i--)
         {
@@ -1470,11 +1471,16 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
         }
         i++;
 
-        int32_t nextOutputNum;
-        thisEvidence = CNotaryEvidence(std::get<2>(sourceTx), i, nextOutputNum);
-        if (!thisEvidence.IsValid())
+        int32_t nextOutputNum = 0;
+        while (nextOutputNum < nIn)
         {
-            return eval->state.Error("Invalid evidence");
+            thisEvidence = CNotaryEvidence(std::get<2>(sourceTx), i, nextOutputNum);
+
+            if (nextOutputNum == i || !thisEvidence.IsValid())
+            {
+                return eval->state.Error("Invalid evidence");
+            }
+            i = nextOutputNum;
         }
     }
 
