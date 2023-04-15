@@ -1672,7 +1672,14 @@ UniValue signdata(const UniValue& params, bool fHelp)
                     statements.push_back(oneHash);
                 }
 
-                identitySig.AddSignature(identity, vdxfCodes, vdxfCodeNames, statements, ASSETCHAINS_CHAINID, identitySig.blockHeight, strPrefix, msgHash, pwalletMain);
+                CIdentitySignature::ESignatureVerification sigResult =
+                    identitySig.AddSignature(identity, vdxfCodes, vdxfCodeNames, statements, ASSETCHAINS_CHAINID, identitySig.blockHeight, strPrefix, msgHash, pwalletMain);
+
+                if (sigResult == CIdentitySignature::ESignatureVerification::SIGNATURE_EMPTY ||
+                    sigResult == CIdentitySignature::ESignatureVerification::SIGNATURE_INVALID)
+                {
+                    throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("This wallet does not contain valid signing keys for ") + ConnectedChains.GetFriendlyIdentityName(identity));
+                }
 
                 vector<unsigned char> vchSig = ::AsVector(identitySig);
 
