@@ -2401,6 +2401,11 @@ public:
                !systemID.IsNull() &&
                output.IsValid();
     }
+
+    bool HasEvidence() const
+    {
+        return IsValid() && evidence.chainObjects.size();
+    }
 };
 
 #endif // BITCOIN_PRIMITIVES_BLOCK_H

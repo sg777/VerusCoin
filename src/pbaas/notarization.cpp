@@ -6468,7 +6468,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
                             (GetAdjustedTime() + (60 * 20)) < PBAAS_TESTFORK_TIME;
 
         std::vector<int32_t> evidenceOuts;
-        if (!skipEvidence && notarizationEvidence.IsValid())
+        if (!skipEvidence && notarizationEvidence.HasEvidence())
         {
             notarizationEvidence.output = CUTXORef(uint256(), notarizationOutNum);
             // now add the notary evidence and finalization that uses it to assert validity
@@ -7503,7 +7503,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
             if (myIDSet.size())
             {
                 CIdentitySignature::ESignatureVerification signResult = CIdentitySignature::SIGNATURE_EMPTY;
-                CNotaryEvidence::EStates confirmationResult = CNotaryEvidence::EStates::STATE_REJECTING;
+                confirmationResult = CNotaryEvidence::EStates::STATE_REJECTING;
                 {
                     LOCK(pWallet->cs_wallet);
                     // sign with all IDs under our control that are eligible for this currency
@@ -7583,6 +7583,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
             confirmationResult != CNotaryEvidence::EStates::STATE_REJECTED &&
             pNotaryCurrency->notarizationProtocol == pNotaryCurrency->NOTARIZATION_AUTO &&
             pNotaryCurrency->proofProtocol == pNotaryCurrency->PROOF_PBAASMMR &&
+            confirmIfAuto > 0 &&
             chainActive.LastTip()->nTime >= PBAAS_TESTFORK_TIME) // not confirmed or rejected - see if we can auto-confirm
         {
             idx = confirmIfAuto;
