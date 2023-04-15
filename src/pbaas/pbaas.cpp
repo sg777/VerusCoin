@@ -1380,7 +1380,7 @@ bool ValidateFinalizeExport(struct CCcontract_info *cp, Eval* eval, const CTrans
 {
     // TODO: HARDENING - must be spent by either the next export, if this is for an export offchain
     // or a matching import if same chain
-    if (LogAcceptCategory("crosschainexports"))
+    if (LogAcceptCategory("finalizeexports"))
     {
         auto priorTxInfo = GetPriorOutputTx(tx, nIn);
         UniValue scriptUni(UniValue::VOBJ);
@@ -1455,8 +1455,8 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
     if (thisEvidence.type == thisEvidence.TYPE_MULTIPART_DATA)
     {
         CNotaryEvidence oneEvidencePart;
-        int i = -1;
-        for (i = tx.vin[nIn].prevout.n; i >= 0; i--)
+        int i;
+        for (i = tx.vin[nIn].prevout.n - 1; i >= 0; i--)
         {
             if (std::get<2>(sourceTx).vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.evalCode == EVAL_NOTARY_EVIDENCE &&
@@ -1468,16 +1468,13 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
             }
             break;
         }
-        // if we went off the backend, 0 is the multipart to start with
-        if (i < 0)
-        {
-            i++;
-        }
+        i++;
+
         int32_t nextOutputNum;
         thisEvidence = CNotaryEvidence(std::get<2>(sourceTx), i, nextOutputNum);
         if (!thisEvidence.IsValid())
         {
-            return false;
+            return eval->state.Error("Invalid evidence");
         }
     }
 
