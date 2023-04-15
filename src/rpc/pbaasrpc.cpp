@@ -11059,6 +11059,13 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Fractional currency requires a reserve of " + std::string(ASSETCHAINS_SYMBOL) + " in addition to any other reserves");
         }
+        if (newCurrency.IsGatewayConverter())
+        {
+            if (!(currencySet.count(newCurrency.launchSystemID) && currencySet.count(newCurrency.gatewayID)))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid gateway converter does not contain both launch chain and new PBaaS chain or gateway's native currencies");
+            }
+        }
     }
     return newCurrency;
 }

@@ -1431,6 +1431,10 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
     {
         return eval->state.Error("Cannot retrieve prior output transaction");
     }
+    if (tx.vin[nIn].prevout.n >= std::get<2>(sourceTx).vout.size())
+    {
+        return eval->state.Error("Invalid output number in prior transaction");
+    }
 
     COptCCParams p;
 
@@ -1450,13 +1454,36 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
     // if it's an import proof, we need to be spent to the next import
     if (thisEvidence.type == thisEvidence.TYPE_MULTIPART_DATA)
     {
-        // TODO: HARDENING - if the first of a multipart, get it and validate, if not, ensure that the first is spent to the same tx
-        return true;
+        CNotaryEvidence oneEvidencePart;
+        int i = -1;
+        for (i = tx.vin[nIn].prevout.n; i >= 0; i--)
+        {
+            if (std::get<2>(sourceTx).vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.evalCode == EVAL_NOTARY_EVIDENCE &&
+                p.vData.size() &&
+                (oneEvidencePart = CNotaryEvidence(p.vData[0])).IsValid() &&
+                oneEvidencePart.type == oneEvidencePart.TYPE_MULTIPART_DATA)
+            {
+                continue;
+            }
+            break;
+        }
+        // if we went off the backend, 0 is the multipart to start with
+        if (i < 0)
+        {
+            i++;
+        }
+        int32_t nextOutputNum;
+        thisEvidence = CNotaryEvidence(std::get<2>(sourceTx), i, nextOutputNum);
+        if (!thisEvidence.IsValid())
+        {
+            return false;
+        }
     }
+
     if (thisEvidence.type == thisEvidence.TYPE_IMPORT_PROOF)
     {
-        // ensure that this is only spent by the next import
-        //
+        // the protocol can deal with spent or not
         return true;
     }
     else if (thisEvidence.type == thisEvidence.TYPE_NOTARY_EVIDENCE)
@@ -2534,8 +2561,6 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                     return state.Error("Currency definition in output violates current definition rules");
                 }
 
-
-                // TODO: HARDENING - TEST making a blockchain currency definition that depends on currencies, which must be defined, but are not
                 // ensure that either the required definitions are on this transaction, such as a PBaaS chain and its converter or mapped currencies
                 // on the same definition
                 if (newCurrency.IsFractional())
@@ -2547,7 +2572,42 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                     //      if this is a gateway currency, it may also include currencies mapped from the gateway
                     // 2) if not a currency converter, all reserves must be already defined
                     // 3) all reserve currencies must have completed their launches successfully without refunding,
-                    //    excepttions are PBaaS or gateway currencies that may be co-launching with the converter
+                    //    exceptions are PBaaS or gateway currencies that may be co-launching with the converter
+                    auto currencyMap = newCurrency.GetCurrenciesMap();
+                    for (auto &oneNewCurrency : currencyDefs)
+                    {
+                        uint160 oneCurID = oneNewCurrency.GetID();
+                        if (currencyMap.count(oneCurID))
+                        {
+                            // NFTs not yet supported as reserves, and any co-defined
+                            // reserves must be alternate gateways or PBaaS chains
+                            if (oneNewCurrency.IsNFTToken() ||
+                                (!isBlockOneDefinition &&
+                                 oneNewCurrency.SystemOrGatewayID() == ASSETCHAINS_CHAINID))
+                            {
+                                return state.Error("Tokenized ID control tokens (NFTs) may not yet be used as reserve currencies in a basket");
+                            }
+                            currencyMap.erase(oneCurID);
+                        }
+                    }
+                    for (auto &oneCurID : currencyMap)
+                    {
+                        CCurrencyDefinition oneReserveCur = ConnectedChains.GetCachedCurrency(oneCurID.first);
+                        if (!oneReserveCur.IsValid())
+                        {
+                            return state.Error("Invalid reserve currency");
+                        }
+                        if (oneReserveCur.launchSystemID == ASSETCHAINS_CHAINID)
+                        {
+                            std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> lastNotarization = GetLastConfirmedNotarization(oneCurID.first, height - 1);
+                            if (std::get<0>(lastNotarization) &&
+                                (!std::get<2>(lastNotarization).IsLaunchConfirmed() ||
+                                    !std::get<2>(lastNotarization).IsLaunchComplete()))
+                            {
+                                return state.Error("Invalid reserve currencies must have completed their launch before being used in a fractional currency");
+                            }
+                        }
+                    }
                 }
             }
             catch(const UniValue &e)

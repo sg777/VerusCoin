@@ -1188,7 +1188,10 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                         }
                     }
                 }
-                else if (notarization.IsBlockOneNotarization() && (notarization.currencyState.IsLaunchClear() || notarization.IsLaunchConfirmed()))
+                else if (notarization.IsBlockOneNotarization() &&
+                         (notarization.currencyState.IsLaunchClear() ||
+                          notarization.IsLaunchConfirmed() ||
+                          notarization.currencyID == ConnectedChains.ThisChain().launchSystemID))
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::LaunchNotarizationKey())));
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchConfirmKey())));
