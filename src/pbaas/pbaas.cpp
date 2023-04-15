@@ -1384,7 +1384,7 @@ bool ValidateFinalizeExport(struct CCcontract_info *cp, Eval* eval, const CTrans
     {
         auto priorTxInfo = GetPriorOutputTx(tx, nIn);
         UniValue scriptUni(UniValue::VOBJ);
-        ScriptPubKeyToUniv(std::get<2>(priorTxInfo).vout[nIn].scriptPubKey, scriptUni, false, false);
+        ScriptPubKeyToUniv(std::get<2>(priorTxInfo).vout[tx.vin[nIn].prevout.n].scriptPubKey, scriptUni, false, false);
         UniValue jsonTx(UniValue::VOBJ);
         TxToUniv(tx, uint256(), jsonTx);
         LogPrintf("%s: spending finalize export:\n%s\n with tx:\n%s\n\n", __func__, scriptUni.write(1,2).c_str(), jsonTx.write(1,2).c_str());
