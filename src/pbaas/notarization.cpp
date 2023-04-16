@@ -8229,7 +8229,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
         for (auto &oneProofRoot : oneNotarization.second.proofRoots)
         {
-            uint32_t adjustedNotarizationModulo = (chainActive[nHeight]->nTime > (PBAAS_TESTFORK_TIME - (20 * 60))) ?
+            uint32_t adjustedNotarizationModulo = (chainActive[std::min((uint32_t)chainActive.Height(), nHeight)]->nTime > (PBAAS_TESTFORK_TIME - (20 * 60))) ?
                                 CPBaaSNotarization::GetAdjustedNotarizationModulo(externalSystem.chainDefinition.blockNotarizationModulo,
                                         cnd.vtx[cnd.lastConfirmed].second.proofRoots[oneProofRoot.first].rootHeight - oneProofRoot.second.rootHeight) :
                                 externalSystem.chainDefinition.blockNotarizationModulo;
@@ -8972,6 +8972,13 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
             // the same transaction
             if (currentNotarization.IsDefinitionNotarization() || currentNotarization.IsBlockOneNotarization())
             {
+                if (height == 1)
+                {
+                    if (currentNotarization.IsPreLaunch())
+                    {
+                        return state.Error("Block one notarizations may not be in the pre-launch state");
+                    }
+                }
                 COptCCParams defP;
                 for (auto &oneOut : tx.vout)
                 {

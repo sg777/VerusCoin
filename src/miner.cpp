@@ -1082,22 +1082,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             // otherwise, it is being imported from another chain and requires an import fee
             CCurrencyValueMap registrationFees;
             CAmount registrationAmount = 0;
-            if (newCurrency.systemID == newChainID)
-            {
-                if (newCurrency.launchSystemID != newChainID)
-                {
-                    registrationFees = CCurrencyValueMap(std::vector<uint160>({newCurrency.launchSystemID}),
-                                        std::vector<int64_t>({_launchChain.chainDefinition.currencyRegistrationFee}));
-                }
-                else
-                {
-                    registrationAmount = _newChain.currencyRegistrationFee;
-                }
-            }
-            else
-            {
-                registrationAmount = 0;
-            }
+            registrationAmount = 0;
 
             CCrossChainImport cci = CCrossChainImport(_newChain.launchSystemID,
                                                       1,
@@ -1380,6 +1365,7 @@ bool BlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
                     break;
                 }
                 oneCurrency.second.second.SetMirrorFlag(false);
+                oneCurrency.second.second.SetPreLaunch(false);
             }
             else
             {
