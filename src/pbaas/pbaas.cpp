@@ -2424,7 +2424,7 @@ bool ValidateCurrencyDefinition(struct CCcontract_info *cp, Eval* eval, const CT
     return eval->Error("cannot spend currency definition output in current protocol");
 }
 
-bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, CValidationState &state, uint32_t height)
+bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
     if (IsVerusMainnetActive())
     {
@@ -2458,7 +2458,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
     // 1. Currency defined on this system by an ID on this system
     // 2. Imported currency controlled by or launched from another system defined on block 1's coinbase
     // 3. Imported currency from another system on an import from a system, which controls the imported currency
-    bool isBlockOneDefinition = spendingTx.IsCoinBase() && height == 1;
+    bool isBlockOneDefinition = tx.IsCoinBase() && height == 1;
     bool isImportDefinition = false;
 
     CIdentity oldIdentity;
@@ -2472,7 +2472,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
 
     CCurrencyDefinition newCurrency;
     COptCCParams currencyOptParams;
-    if (!(spendingTx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(currencyOptParams) &&
+    if (!(tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(currencyOptParams) &&
           currencyOptParams.IsValid() &&
           currencyOptParams.evalCode == EVAL_CURRENCY_DEFINITION &&
           currencyOptParams.vData.size() > 1 &&
@@ -2499,9 +2499,9 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
         // if this is an imported currency definition,
         // just be sure that it is part of an import and can be imported from the source
         // if so, it is fine
-        for (int i = 0; i < spendingTx.vout.size(); i++)
+        for (int i = 0; i < tx.vout.size(); i++)
         {
-            const CTxOut &oneOut = spendingTx.vout[i];
+            const CTxOut &oneOut = tx.vout[i];
             COptCCParams p;
             if (i < outNum &&
                 oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -2511,7 +2511,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                 (cci = CCrossChainImport(p.vData[0])).IsValid())
             {
                 if (cci.sourceSystemID != ASSETCHAINS_CHAINID &&
-                    cci.GetImportInfo(spendingTx, height, i, ccx, sysCCI, sysCCIOut, pbn, notarizationOut, eOutStart, eOutEnd, transfers) &&
+                    cci.GetImportInfo(tx, height, i, ccx, sysCCI, sysCCIOut, pbn, notarizationOut, eOutStart, eOutEnd, transfers) &&
                     pbn.IsValid() &&
                     pbn.IsLaunchConfirmed() &&
                     pbn.IsLaunchComplete() &&
@@ -2531,7 +2531,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
         CCurrencyDefinition newSystem;
         if (!isImportDefinition)
         {
-            std::vector<CCurrencyDefinition> currencyDefs = CCurrencyDefinition::GetCurrencyDefinitions(spendingTx);
+            std::vector<CCurrencyDefinition> currencyDefs = CCurrencyDefinition::GetCurrencyDefinitions(tx);
 
             LOCK(mempool.cs);
 
@@ -2607,7 +2607,15 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                                 (!std::get<2>(lastNotarization).IsLaunchConfirmed() ||
                                     !std::get<2>(lastNotarization).IsLaunchComplete()))
                             {
-                                return state.Error("Invalid reserve currencies must have completed their launch before being used in a fractional currency");
+                                // TODO: HARDENING - remove this conditional to remove old testnet sync
+                                if (tx.GetHash() != uint256S("8f2ef203caeae87dd0183d24208cf2cd0073ba4280d2c9917bfc62a53187b635") &&
+                                    tx.GetHash() != uint256S("f190c94afb3f88dca38bb2d1d051b9be57a41272aa66369498a3a0fe2cfb91c8") &&
+                                    tx.GetHash() != uint256S("a4c9c5ca12949dda8e31a72b953f421228a7395e2ab8b11ce9be9e0736e2ef91") &&
+                                    tx.GetHash() != uint256S("b9eed5ae9dcdb0485f7b553d80fce0e91061c4d49e2d5f67fca34fdb89274d26"))
+                                {
+                                    LogPrintf("%s: txid to exempt from prelaunch reserve check: %s\n", __func__, tx.GetHash().GetHex().c_str());
+                                    // return state.Error("Invalid reserve currencies must have completed their launch before being used in a fractional currency");
+                                }
                             }
                         }
                     }
@@ -2620,7 +2628,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                 return state.Error("Currency definition in output violates current definition rules");
             }
 
-            for (auto &input : spendingTx.vin)
+            for (auto &input : tx.vin)
             {
                 COptCCParams p;
                 // first time through may be null
@@ -2647,7 +2655,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, 
                 return state.Error("Identity already has used its one-time ability to define a currency");
             }
             CIdentity newIdentity;
-            for (auto &oneOut : spendingTx.vout)
+            for (auto &oneOut : tx.vout)
             {
                 COptCCParams p;
                 if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -5903,7 +5911,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             int serSize = GetSerializeSize(ds, evidence);
 
             COptCCParams chkP;
-            if (!MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence)).IsPayToCryptoCondition(chkP))
+            if (!MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &evidence)).IsPayToCryptoCondition(chkP, false))
             {
                 LogPrintf("%s: failed to package import evidence from system %s\n", __func__, EncodeDestination(CIdentityID(destCurID)).c_str());
                 return false;

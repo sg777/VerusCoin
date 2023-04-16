@@ -3939,6 +3939,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                    nHeight < 1800000)))
             {
                 LogPrintf("%s: ERROR: %s\nBlock %s rejected\n", __func__, state.GetRejectReason().c_str(), block.GetHash().GetHex().c_str());
+                InvalidBlockFound(pindex, state, Params());
                 return false; // Failure reason has been set in validation state object
             }
             state = CValidationState();

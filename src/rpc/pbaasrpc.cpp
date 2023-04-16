@@ -5285,7 +5285,7 @@ UniValue submitchallenges(const UniValue& params, bool fHelp)
                 COptCCParams chkP;
 
                 // the value should be considered for reduction
-                if (evidenceScript.IsPayToCryptoCondition(chkP) &&
+                if (evidenceScript.IsPayToCryptoCondition(chkP, false) &&
                     chkP.IsValid() &&
                     chkP.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
                 {

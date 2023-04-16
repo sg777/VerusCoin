@@ -4855,7 +4855,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     std::vector<int32_t> confirmedEvidenceIns;
 
     COptCCParams chkP;
-    if (!MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &notaryEvidence)).IsPayToCryptoCondition(chkP))
+    if (!MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &notaryEvidence)).IsPayToCryptoCondition(chkP, false))
     {
         LogPrintf("%s: failed to package evidence script from system %s\n", __func__, EncodeDestination(CIdentityID(SystemID)).c_str());
         return false;
@@ -6478,7 +6478,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
             COptCCParams chkP;
             CScript evidenceOutScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &notarizationEvidence));
-            if (!evidenceOutScript.IsPayToCryptoCondition(chkP))
+            if (!evidenceOutScript.IsPayToCryptoCondition(chkP, false))
             {
                 LogPrintf("%s: failed to package evidence script from system %s\n", __func__, EncodeDestination(CIdentityID(SystemID)).c_str());
                 return false;
@@ -6872,7 +6872,7 @@ int CChainNotarizationData::BestConfirmedNotarization(const CCurrencyDefinition 
     if (notarizingSystem.IsPBaaSChain())
     {
         // no conflict from greater work chain since last notarization
-        if (!(vtx.size() >= 2 &&
+        if (!(vtx.size() >= 1 &&
               *forks[bestChain].rbegin() == (vtx.size() - 1)))
         {
             // if we do have a conflict, make sure it's not a chain with more power, and if so, can't confirm

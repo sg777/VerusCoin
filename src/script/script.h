@@ -772,7 +772,7 @@ public:
     bool IsOpReturn() const { return size() > 0 && (*this)[0] == OP_RETURN; }
     bool GetOpretData(std::vector<std::vector<unsigned char>>& vData) const;
 
-    bool IsPayToCryptoCondition(COptCCParams &ccParams) const;
+    bool IsPayToCryptoCondition(COptCCParams &ccParams, bool doSizeCheck=true) const;
     bool IsPayToCryptoCondition(CScript *ccSubScript, std::vector<std::vector<unsigned char>> &vParams, COptCCParams &optParams) const;
     bool IsPayToCryptoCondition(CScript *ccSubScript, std::vector<std::vector<unsigned char>> &vParams) const;
     bool IsPayToCryptoCondition(CScript *ccSubScript) const;
