@@ -1461,7 +1461,7 @@ bool GetStakeParams(const CTransaction &stakeTx, CStakeParams &stakeParams);
 bool ValidateMatchingStake(const CTransaction &ccTx, uint32_t voutNum, const CTransaction &stakeTx, bool &cheating, bool slowValidation=true);
 bool ValidateStakeTransaction(const CTransaction &stakeTx, CStakeParams &stakeParams, bool validateSig = true);
 
-// for now, we will ignore slowFlag in the interest of keeping success/fail simpler for security purposes
+// slowFlag == false early outs for performance
 bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
 {
     CBlockIndex *pastBlockIndex;
@@ -1817,7 +1817,7 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                                                 }
                                             }
                                         }
-                                        else if ( voutDestID == destID && ( destID == cbDestID || (height < 17840)) )
+                                        else if (voutDestID == destID && (destID == cbDestID || (IsVerusMainnetActive() && height < 17840)))
                                         {
                                             isPOS = true;
                                         }
