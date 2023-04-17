@@ -4801,7 +4801,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
     std::set<int> invalidatedOutputNums;
 
     // if we expect to confirm a new notarization, prepare for spends
-    if (notarizationIdxToConfirm > 0 || (!notarizationIdxToConfirm && lastUnspentNotarization.IsPreLaunch()))
+    if (notarizationIdxToConfirm > 0)
     {
         std::vector<std::vector<CNotaryEvidence>> evidenceVec;
         if (!cnd.CorrelatedFinalizationSpends(txes, spendsToClose, extraSpends, &evidenceVec))
@@ -4885,7 +4885,7 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
         txBuilder.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &notaryEvidence)), 0);
     }
 
-    // now make 1 or two finalization outputs
+    // now make 1 or 2 finalization outputs
     cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
     dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
 
@@ -4899,8 +4899,13 @@ bool CPBaaSNotarization::CreateAcceptedNotarization(const CCurrencyDefinition &e
 
     // if we have nothing or agree with 0, which is always already confirmed for accepted notarizations,
     // we do not need to spend evidence or finalizations, nor do we need to make new finalization outputs
-    if (notarizationIdxToConfirm > 0 || (!notarizationIdxToConfirm && lastUnspentNotarization.IsPreLaunch()))
+    if (notarizationIdxToConfirm > 0 || ((notarizationIdxToConfirm == -1 || !notarizationIdxToConfirm) && lastUnspentNotarization.IsPreLaunch()))
     {
+        if (notarizationIdxToConfirm == -1 || !notarizationIdxToConfirm)
+        {
+            notarizationIdxToConfirm = 0;
+        }
+
         // if there are outputs to close for this entry, it will first be
         // a finalization, then evidence
 
@@ -9460,6 +9465,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                         auto lastConfirmedNotarizationInfo = GetLastConfirmedNotarization(normalizedNotarization.currencyID, height - 1);
                         if (!std::get<0>(lastConfirmedNotarizationInfo))
                         {
+                            lastConfirmedNotarizationInfo = GetLastConfirmedNotarization(normalizedNotarization.currencyID, height - 1);
                             return state.Error("Unable to get prior confirmed accepted notarization");
                         }
 

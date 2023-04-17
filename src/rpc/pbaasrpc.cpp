@@ -5565,7 +5565,6 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
         LOCK2(smartTransactionCS, mempool.cs);
         std::list<CTransaction> removed;
         mempool.removeConflicts(newTx, removed);
-
         // add to mem pool and relay
         relayTx = myAddtomempool(newTx);
     }
@@ -14225,23 +14224,17 @@ bool CConnectedChains::GetNotaryIDs(const CRPCChainData notaryChain,
     for (auto &curID : idIDs)
     {
         CIdentity oneDef;
-        UniValue params(UniValue::VARR);
-        UniValue result;
-        params.push_back(EncodeDestination(CIdentityID(curID)));
-        params.push_back((int64_t)untilHeight);
 
         if (notaryChain.GetID() == ASSETCHAINS_CHAINID)
         {
-            try
-            {
-                result = getidentity(params, false);
-            } catch (std::exception e)
-            {
-                result = NullUniValue;
-            }
+            oneDef = CIdentity::LookupIdentity(curID, untilHeight);
         }
         else
         {
+            UniValue params(UniValue::VARR);
+            UniValue result;
+            params.push_back(EncodeDestination(CIdentityID(curID)));
+            params.push_back((int64_t)untilHeight);
             try
             {
                 result = find_value(RPCCallRoot("getidentity", params), "result");
@@ -14249,19 +14242,17 @@ bool CConnectedChains::GetNotaryIDs(const CRPCChainData notaryChain,
             {
                 result = NullUniValue;
             }
-        }
-
-        if (!result.isNull())
-        {
-            oneDef = CIdentity(find_value(result, "identity"));
-        }
-
-        if (!oneDef.IsValid())
-        {
-            // no matter what happens, we should be able to get a valid currency state of some sort, if not, fail
-            LogPrintf("Unable to get identity for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
-            printf("Unable to get identity for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
-            return false;
+            if (!result.isNull())
+            {
+                oneDef = CIdentity(find_value(result, "identity"));
+            }
+            if (!oneDef.IsValid())
+            {
+                // no matter what happens, we should be able to get a valid currency state of some sort, if not, fail
+                LogPrintf("Unable to get identity for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
+                printf("Unable to get identity for %s\n", EncodeDestination(CIdentityID(curID)).c_str());
+                return false;
+            }
         }
 
         {
