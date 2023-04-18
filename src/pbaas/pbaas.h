@@ -298,10 +298,10 @@ public:
     }
 
     static int32_t GetAdjustedNotarizationModuloExp(int64_t notarizationBlockModulo,
-                                                           int64_t fromHeight,
-                                                           int64_t untilHeight,
-                                                           int64_t notarizationsBeforeModuloExtension,
-                                                           int64_t notarizationCount=0);
+                                                    int64_t fromHeight,
+                                                    int64_t untilHeight,
+                                                    int64_t notarizationsBeforeModuloExtension,
+                                                    int64_t notarizationCount=0);
 
     inline static int32_t GetAdjustedNotarizationModulo(uint32_t notarizationBlockModulo, uint32_t fromHeight, uint32_t untilHeight, int32_t notarizationCount=0)
     {

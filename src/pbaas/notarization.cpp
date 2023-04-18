@@ -2578,7 +2578,7 @@ int32_t CPBaaSNotarization::GetAdjustedNotarizationModuloExp(int64_t notarizatio
                                                              int64_t fromHeight,
                                                              int64_t untilHeight,
                                                              int64_t notarizationsBeforeModuloExtension,
-                                                             int64_t notarizationCount=0)
+                                                             int64_t notarizationCount)
 {
     auto resetIt = ConnectedChains.activeUpgradesByKey.find(ConnectedChains.ResetNotarizationModuloKey());
     int64_t heightChange = std::max((int64_t)0,
