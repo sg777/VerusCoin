@@ -3531,6 +3531,8 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
             return DISCONNECT_FAILED;
         }
     }
+    // unwind any consensus upgrades that may have been removed in the block
+    ConnectedChains.CheckOracleUpgrades();
     return fClean ? DISCONNECT_OK : DISCONNECT_UNCLEAN;
 }
 

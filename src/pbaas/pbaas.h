@@ -252,6 +252,7 @@ public:
         MIN_BLOCKS_TO_SIGNCONFIRM = 15,                 // we cannot sign confirm a notarization < 15 blocks old
 
         MAX_HEADER_PROOFS_PER_PROOF = 25,               // don't use more than this many header proofs in an alternate chain proof tx
+        MAX_HEADER_PROOFS_SIZE = 200000,                // never require more than 200K of evidence for any reason
         MAX_BLOCKS_PER_COMMITMENT_RANGE = 256,          // up to 256 blocks per commitment range
         MAX_BLOCK_RANGES_PER_PROOF = 5,                 // no more than 5 randomly selected ranges to cover any gap length
         NUM_COMMITMENT_BLOCKS_START_OFFSET = 100,       // commitment blocks start this far before the actual start or at 1
@@ -1259,6 +1260,18 @@ public:
     {
         static uint160 nameSpace;
         static uint160 key = CVDXF_Data::GetDataKey(DisableDeFiKeyName(), nameSpace);
+        return key;
+    }
+
+    static std::string DisableMiningKeyName()
+    {
+        return "vrsc::system.upgradedata.disablemining";
+    }
+
+    static uint160 DisableMiningKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF_Data::GetDataKey(DisableMiningKeyName(), nameSpace);
         return key;
     }
 

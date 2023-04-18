@@ -4313,6 +4313,8 @@ void CConnectedChains::CheckOracleUpgrades()
     uint32_t startHeight = 0;
     uint32_t delta = std::max((1440 * 60) / ConnectedChains.ThisChain().blockTime, (uint32_t)1440);
 
+    ConnectedChains.activeUpgradesByKey.clear();
+
     std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>> upgradeData;
     if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) >= CActivationHeight::ACTIVATE_PBAAS)
     {
@@ -4340,6 +4342,11 @@ void CConnectedChains::CheckOracleUpgrades()
             CUpgradeDescriptor upgradeDescr(std::get<0>(*upgradeData.rbegin()));
             LogPrintf("Testfork oracle notification: %s\nhex: %s\n", upgradeDescr.ToUniValue().write(1,2).c_str(), HexBytes(&(std::get<0>(*upgradeData.rbegin())[0]), std::get<0>(*upgradeData.rbegin()).size()));
         }
+    }
+    if (oracleID.contentMap.count(DisableMiningKey()))
+    {
+        upgradeData.resize(upgradeData.size() + 1);
+        std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[DisableMiningKey()].GetHex());
     }
     if (oracleID.contentMap.count(PBaaSUpgradeKey()))
     {
@@ -4375,6 +4382,7 @@ void CConnectedChains::CheckOracleUpgrades()
     std::map<uint160, CUpgradeDescriptor>::iterator upgradeTestNetEthContractIt = activeUpgradesByKey.find(TestnetEthContractUpgradeKey());
     std::map<uint160, CUpgradeDescriptor>::iterator upgradeTestForkIt = activeUpgradesByKey.find(TestForkUpgradeKey());
     std::map<uint160, CUpgradeDescriptor>::iterator upgradePBaaSIt = activeUpgradesByKey.find(PBaaSUpgradeKey());
+    std::map<uint160, CUpgradeDescriptor>::iterator disableMiningIt = activeUpgradesByKey.find(DisableMiningKey());
     std::map<uint160, CUpgradeDescriptor>::iterator disableDeFiIt = activeUpgradesByKey.find(DisableDeFiKey());
     std::map<uint160, CUpgradeDescriptor>::iterator disablePBaaSCrossChainIt = activeUpgradesByKey.find(DisablePBaaSCrossChainKey());
     std::map<uint160, CUpgradeDescriptor>::iterator disableGatewayCrossChainIt = activeUpgradesByKey.find(DisableGatewayCrossChainKey());
@@ -7758,6 +7766,16 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
 
         LOCK(cs_main);
 
+        // if we are paused on cross-chain, return error until enabled
+        if (ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisableDeFiKey()))
+        {
+            if (LogAcceptCategory("defi"))
+            {
+                LogPrintf("%s: DeFi functions temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+            }
+            return;
+        }
+
         uint160 thisChainID = ConnectedChains.ThisChain().GetID();
 
         uint32_t nHeight = chainActive.Height();
@@ -7917,6 +7935,23 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                 }
 
                 bool isSameChain = destDef.SystemOrGatewayID() == thisChainID;
+
+                if (ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisablePBaaSCrossChainKey()))
+                {
+                    if (LogAcceptCategory("crosschainexports"))
+                    {
+                        LogPrintf("%s: Cross-chain functions temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+                    }
+                    return;
+                }
+                if (systemDef.IsGateway() && ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisableGatewayCrossChainKey()))
+                {
+                    if (LogAcceptCategory("crosschainexports"))
+                    {
+                        LogPrintf("%s: Cross-chain function for non-PBaaS gateways temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+                    }
+                    return;
+                }
 
                 // when we get here, we have a consecutive number of transfer outputs to consume in txInputs
                 // we need an unspent export output to export, or use the last one of it is an export to the same
@@ -8529,127 +8564,6 @@ void CConnectedChains::ProcessLocalImports()
             }
         }
     }
-
-    /*
-    if (GetAddressUnspent(finalizeExportKey, CScript::P2IDX, unspentOutputs))
-    {
-        LOCK2(smartTransactionCS, mempool.cs);
-
-        std::map<uint160, std::map<uint32_t, std::pair<std::pair<CInputDescriptor,CTransaction>,CCrossChainExport>>>
-            orderedExportsToFinalize;
-        for (auto &oneFinalization : unspentOutputs)
-        {
-            COptCCParams p;
-            CObjectFinalization of;
-            CCrossChainExport ccx;
-            CCrossChainImport cci;
-            CTransaction scratchTx;
-            int32_t importOutputNum;
-            uint256 hashBlock;
-            if (oneFinalization.second.script.IsPayToCryptoCondition(p) &&
-                p.IsValid() &&
-                p.evalCode == EVAL_FINALIZE_EXPORT &&
-                p.vData.size() &&
-                (of = CObjectFinalization(p.vData[0])).IsValid() &&
-                myGetTransaction(of.output.hash.IsNull() ? oneFinalization.first.txhash : of.output.hash, scratchTx, hashBlock) &&
-                scratchTx.vout.size() > of.output.n &&
-                scratchTx.vout[of.output.n].scriptPubKey.IsPayToCryptoCondition(p) &&
-                p.IsValid() &&
-                p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
-                p.vData.size() &&
-                (ccx = CCrossChainExport(p.vData[0])).IsValid())
-            {
-                orderedExportsToFinalize[ccx.destCurrencyID].insert(
-                    std::make_pair(ccx.sourceHeightStart,
-                                   std::make_pair(std::make_pair(CInputDescriptor(scratchTx.vout[of.output.n].scriptPubKey,
-                                                                                  scratchTx.vout[of.output.n].nValue,
-                                                                                  CTxIn(of.output.hash.IsNull() ? oneFinalization.first.txhash : of.output.hash,
-                                                                                  of.output.n)),
-                                                                 scratchTx),
-                                                  ccx)));
-            }
-        }
-        // now, we have a map of all currencies with ordered exports that have work to do and if pre-launch, may have more from this chain
-        // export finalizations are either on the same transaction as the export, or in the case of a clear launch export,
-        // there may be any number of pre-launch exports still to process prior to spending it
-        for (auto &oneCurrencyExports : orderedExportsToFinalize)
-        {
-            CCrossChainExport &ccx = oneCurrencyExports.second.begin()->second.second;
-            COptCCParams p;
-            CCrossChainImport cci;
-            CTransaction scratchTx;
-            int32_t importOutputNum;
-            uint256 hashBlock;
-            if (GetLastImport(ccx.destCurrencyID, scratchTx, importOutputNum) &&
-                scratchTx.vout.size() > importOutputNum &&
-                scratchTx.vout[importOutputNum].scriptPubKey.IsPayToCryptoCondition(p) &&
-                p.IsValid() &&
-                p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
-                p.vData.size() &&
-                (cci = CCrossChainImport(p.vData[0])).IsValid() &&
-                (cci.IsPostLaunch() || cci.IsDefinitionImport() || cci.sourceSystemID == ASSETCHAINS_CHAINID))
-            {
-                // if not post launch, we are launching from this chain and need to get exports after the last import's source height
-                if (ccx.IsClearLaunch())
-                {
-                    std::vector<std::pair<std::pair<CInputDescriptor,CPartialTransactionProof>,std::vector<CReserveTransfer>>> exportsFound;
-                    if (GetCurrencyExports(ccx.destCurrencyID, exportsFound, cci.sourceSystemHeight, nHeight))
-                    {
-                        uint256 cciExportTxHash = cci.exportTxId.IsNull() ? scratchTx.GetHash() : cci.exportTxId;
-                        if (exportsFound.size())
-                        {
-                            // make sure we start from the first export not imported and skip the rest
-                            auto startingIt = exportsFound.begin();
-                            for ( ; startingIt != exportsFound.end(); startingIt++)
-                            {
-                                // if this is the first. then the first is the one we will always use
-                                if (cci.IsDefinitionImport())
-                                {
-                                    break;
-                                }
-                                if (startingIt->first.first.txIn.prevout.hash == cciExportTxHash && startingIt->first.first.txIn.prevout.n == cci.exportTxOutNum)
-                                {
-                                    startingIt++;
-                                    break;
-                                }
-                            }
-                            exportsOut.insert(exportsOut.end(), startingIt, exportsFound.end());
-                        }
-                        currenciesProcessed.insert(ccx.destCurrencyID);
-                    }
-                    continue;
-                }
-                else
-                {
-                    // import all entries that are present, since that is the correct set
-                    for (auto &oneExport : oneCurrencyExports.second)
-                    {
-                        int primaryExportOutNumOut;
-                        int32_t nextOutput;
-                        CPBaaSNotarization exportNotarization;
-                        std::vector<CReserveTransfer> reserveTransfers;
-
-                        if (!oneExport.second.second.GetExportInfo(oneExport.second.first.second,
-                                                                   oneExport.second.first.first.txIn.prevout.n,
-                                                                   primaryExportOutNumOut,
-                                                                   nextOutput,
-                                                                   exportNotarization,
-                                                                   reserveTransfers))
-                        {
-                            printf("%s: Invalid export output %s : output - %u\n",
-                                __func__,
-                                oneExport.second.first.first.txIn.prevout.hash.GetHex().c_str(),
-                                oneExport.second.first.first.txIn.prevout.n);
-                            break;
-                        }
-                        exportsOut.push_back(std::make_pair(std::make_pair(oneExport.second.first.first, CPartialTransactionProof()),
-                                                            reserveTransfers));
-                    }
-                }
-            }
-        }
-    }
-    */
 
     std::map<uint160, std::vector<std::pair<int, CTransaction>>> newImports;
     if (exportsOut.size())
