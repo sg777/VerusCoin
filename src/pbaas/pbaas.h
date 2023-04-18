@@ -297,23 +297,15 @@ public:
         return MIN_EARNED_FOR_AUTO << 1 + MIN_EARNED_FOR_AUTO;
     }
 
-    inline static int32_t GetAdjustedNotarizationModuloExp(int64_t notarizationBlockModulo,
-                                                           int64_t heightChange,
+    static int32_t GetAdjustedNotarizationModuloExp(int64_t notarizationBlockModulo,
+                                                           int64_t fromHeight,
+                                                           int64_t untilHeight,
                                                            int64_t notarizationsBeforeModuloExtension,
-                                                           int64_t notarizationCount=0)
-    {
-        if (heightChange <= GetBlocksBeforeModuloExtension(notarizationBlockModulo) && notarizationCount <= notarizationsBeforeModuloExtension)
-        {
-            return notarizationBlockModulo;
-        }
-        int32_t nextCheckModulo = notarizationBlockModulo * MODULO_EXTENSION_MULTIPLIER;
-        int32_t nextCheckNotarizationBeforeModulo = notarizationsBeforeModuloExtension << 1;
-        return GetAdjustedNotarizationModuloExp(nextCheckModulo, heightChange, nextCheckNotarizationBeforeModulo, notarizationCount);
-    }
+                                                           int64_t notarizationCount=0);
 
-    inline static int32_t GetAdjustedNotarizationModulo(uint32_t notarizationBlockModulo, uint32_t heightChange, int32_t notarizationCount=0)
+    inline static int32_t GetAdjustedNotarizationModulo(uint32_t notarizationBlockModulo, uint32_t fromHeight, uint32_t untilHeight, int32_t notarizationCount=0)
     {
-        return GetAdjustedNotarizationModuloExp(notarizationBlockModulo, heightChange, NotarizationsBeforeModuloExtension(), notarizationCount);
+        return GetAdjustedNotarizationModuloExp(notarizationBlockModulo, fromHeight, untilHeight, NotarizationsBeforeModuloExtension(), notarizationCount);
     }
 
     enum FLAGS
@@ -1263,15 +1255,15 @@ public:
         return key;
     }
 
-    static std::string DisableMiningKeyName()
+    static std::string ResetNotarizationModuloKeyName()
     {
-        return "vrsc::system.upgradedata.disablemining";
+        return "vrsc::system.upgradedata.resetnotarizationmodulo";
     }
 
-    static uint160 DisableMiningKey()
+    static uint160 ResetNotarizationModuloKey()
     {
         static uint160 nameSpace;
-        static uint160 key = CVDXF_Data::GetDataKey(DisableMiningKeyName(), nameSpace);
+        static uint160 key = CVDXF_Data::GetDataKey(ResetNotarizationModuloKeyName(), nameSpace);
         return key;
     }
 

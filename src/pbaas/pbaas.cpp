@@ -4343,11 +4343,6 @@ void CConnectedChains::CheckOracleUpgrades()
             LogPrintf("Testfork oracle notification: %s\nhex: %s\n", upgradeDescr.ToUniValue().write(1,2).c_str(), HexBytes(&(std::get<0>(*upgradeData.rbegin())[0]), std::get<0>(*upgradeData.rbegin()).size()));
         }
     }
-    if (oracleID.contentMap.count(DisableMiningKey()))
-    {
-        upgradeData.resize(upgradeData.size() + 1);
-        std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[DisableMiningKey()].GetHex());
-    }
     if (oracleID.contentMap.count(PBaaSUpgradeKey()))
     {
         upgradeData.resize(upgradeData.size() + 1);
@@ -4382,7 +4377,6 @@ void CConnectedChains::CheckOracleUpgrades()
     std::map<uint160, CUpgradeDescriptor>::iterator upgradeTestNetEthContractIt = activeUpgradesByKey.find(TestnetEthContractUpgradeKey());
     std::map<uint160, CUpgradeDescriptor>::iterator upgradeTestForkIt = activeUpgradesByKey.find(TestForkUpgradeKey());
     std::map<uint160, CUpgradeDescriptor>::iterator upgradePBaaSIt = activeUpgradesByKey.find(PBaaSUpgradeKey());
-    std::map<uint160, CUpgradeDescriptor>::iterator disableMiningIt = activeUpgradesByKey.find(DisableMiningKey());
     std::map<uint160, CUpgradeDescriptor>::iterator disableDeFiIt = activeUpgradesByKey.find(DisableDeFiKey());
     std::map<uint160, CUpgradeDescriptor>::iterator disablePBaaSCrossChainIt = activeUpgradesByKey.find(DisablePBaaSCrossChainKey());
     std::map<uint160, CUpgradeDescriptor>::iterator disableGatewayCrossChainIt = activeUpgradesByKey.find(DisableGatewayCrossChainKey());
