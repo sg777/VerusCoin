@@ -598,15 +598,14 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                         if (deepCheck)
                         {
                             CMMRProof &EthProof = ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.txProof;
-                            if (importFromDef.nativeCurrencyID.AuxDestCount() == 0 ||
-                                importFromDef.nativeCurrencyID.TypeNoFlags() != importFromDef.nativeCurrencyID.DEST_ETH)
+                            if (importFromDef.nativeCurrencyID.TypeNoFlags() != importFromDef.nativeCurrencyID.DEST_ETH)
                             {
                                 return state.Error(strprintf("%s: missing contract address in currency definition", __func__));
                             }
-                            if (uint160(importFromDef.nativeCurrencyID.GetAuxDest(0).destination) != EthProof.GetNativeAddress())
+                            if (uint160(importFromDef.nativeCurrencyID.destination) != EthProof.GetNativeAddress())
                             {
                                 LogPrintf("%s: Invalid ETH storage address, Found: %s in AuxDest, got %s from proof", __func__,
-                                CTransferDestination::EncodeEthDestination(uint160(importFromDef.nativeCurrencyID.GetAuxDest(0).destination)),
+                                CTransferDestination::EncodeEthDestination(uint160(importFromDef.nativeCurrencyID.destination)),
                                 CTransferDestination::EncodeEthDestination(EthProof.GetNativeAddress()));
                                 return state.Error(strprintf("%s: invalid ETH storage address", __func__));
                             }
