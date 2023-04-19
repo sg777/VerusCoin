@@ -1252,6 +1252,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5, 1053660);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5_1, 1053660);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV6, 1796400);
+            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV7, 2546600);
         }
         else if (IsVerusActive())
         {
