@@ -346,6 +346,21 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             return true;
         }
 
+        for (int i = outNum + 1; i < tx.vout.size(); i++)
+        {
+            COptCCParams dupP;
+            CCrossChainImport dupCCI;
+            if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(dupP) &&
+                dupP.IsValid() &&
+                dupP.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                dupP.vData.size() &&
+                (dupCCI = CCrossChainImport(dupP.vData[0])).IsValid() &&
+                dupCCI.importCurrencyID == cci.importCurrencyID)
+            {
+                return state.Error("Duplicate import output");
+            }
+        }
+
         if (cci.IsDefinitionImport())
         {
             // validate this belongs on a definition and is correct
@@ -962,6 +977,21 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         return state.Error("Export source height is too high for current height");
     }
 
+    for (int i = outNum + 1; i < tx.vout.size(); i++)
+    {
+        COptCCParams dupP;
+        CCrossChainExport dupCCX;
+        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(dupP) &&
+            dupP.IsValid() &&
+            dupP.evalCode == EVAL_CROSSCHAIN_EXPORT &&
+            dupP.vData.size() &&
+            (dupCCX = CCrossChainExport(dupP.vData[0])).IsValid() &&
+            dupCCX.destCurrencyID == ccx.destCurrencyID)
+        {
+            return state.Error("Duplicate export output");
+        }
+    }
+
     // all of the input descriptors and no others should be in the export's reserve transfers
     CCurrencyValueMap totalCurrencyExported;
 
@@ -1492,8 +1522,7 @@ bool PreCheckFinalizeExport(const CTransaction &tx, int32_t outNum, CValidationS
             dupP.evalCode == EVAL_FINALIZE_EXPORT &&
             dupP.vData.size() &&
             (dupOf = CObjectFinalization(dupP.vData[0])).IsValid() &&
-            dupOf.output.hash.IsNull() &&
-            dupOf.output.n == of.output.n)
+            dupOf.output == of.output)
         {
             return state.Error("Duplicate export finalization output");
         }
@@ -3757,7 +3786,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             auto ourLastRoot = std::get<2>(lastConfirmed).proofRoots.find(ASSETCHAINS_CHAINID);
             if (!(!haveFullChain || chainActive[height - 1]->nTime <= PBAAS_TESTFORK_TIME) &&
                 (ourLastRoot == std::get<2>(lastConfirmed).proofRoots.end() ||
-                 (height - ourLastRoot->second.rootHeight) > 
+                 (height - ourLastRoot->second.rootHeight) >
                     ((CPBaaSNotarization::MAX_NOTARIZATION_DELAY_BEFORE_CROSSCHAIN_PAUSE * 60) / ConnectedChains.ThisChain().blockTime)))
             {
                 return state.Error("Confirmed notarizations for destination system are lagging behind, cannot send: " + rt.ToUniValue().write(1,2));

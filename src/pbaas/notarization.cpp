@@ -8709,6 +8709,25 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
         return state.Error("Contract upgrade request requires that miner/staker provide contract address for upgrade");
     }
 
+    for (int i = 0; i < tx.vout.size(); i++)
+    {
+        if (i == outNum)
+        {
+            continue;
+        }
+        COptCCParams dupP;
+        CPBaaSNotarization dupNotarization;
+        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(dupP) &&
+            dupP.IsValid() &&
+            (dupP.evalCode == EVAL_ACCEPTEDNOTARIZATION || dupP.evalCode == EVAL_EARNEDNOTARIZATION) &&
+            dupP.vData.size() &&
+            (dupNotarization = CPBaaSNotarization(dupP.vData[0])).IsValid() &&
+            dupNotarization.currencyID == currentNotarization.currencyID)
+        {
+            return state.Error("Duplicate export finalization output");
+        }
+    }
+
     // ensure that we never accept an invalid proofroot for this chain in a notarization
     if (currentNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
     {
@@ -8866,7 +8885,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                 if ((curDef.IsPBaaSChain() || curDef.IsGateway()) &&
                      curDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID)
                 {
-                    if (currentNotarization.IsMirror() || 
+                    if (currentNotarization.IsMirror() ||
                         !currentNotarization.proofRoots.count(currentNotarization.currencyID) ||
                         (currentNotarization.IsBlockOneNotarization() &&
                          currentNotarization.proofRoots.count(ASSETCHAINS_CHAINID) &&
@@ -9857,9 +9876,9 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         return state.Error("Invalid notarization output for finalization");
     }
 
-    for (int i = 0; i < tx.vout.size(); i++)
+    for (int i = outNum + 1; i < tx.vout.size(); i++)
     {
-        if (i == outNum || i == currentFinalization.output.n)
+        if (i == currentFinalization.output.n)
         {
             continue;
         }
@@ -9867,11 +9886,10 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         CObjectFinalization dupOf;
         if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(dupP) &&
             dupP.IsValid() &&
-            dupP.evalCode == EVAL_FINALIZE_EXPORT &&
+            dupP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
             dupP.vData.size() &&
             (dupOf = CObjectFinalization(dupP.vData[0])).IsValid() &&
-            dupOf.output.hash.IsNull() &&
-            dupOf.output.n == currentFinalization.output.n)
+            dupOf.output == currentFinalization.output)
         {
             return state.Error("Duplicate notarization finalization output");
         }
