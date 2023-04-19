@@ -721,20 +721,6 @@ bool CScript::IsPayToCryptoCondition(uint32_t *ecode) const
     return false;
 }
 
-CScript &CScript::ReplaceCCParams(const COptCCParams &params)
-{
-    CScript subScript;
-    std::vector<std::vector<unsigned char>> vParams;
-    COptCCParams p;
-    if (this->IsPayToCryptoCondition(&subScript, vParams, p) || p.evalCode != params.evalCode)
-    {
-        // add the object to the end of the script
-        *this = subScript;
-        *this << params.AsVector() << OP_DROP;
-    }
-    return *this;
-}
-
 bool CScript::IsSpendableOutputType(const COptCCParams &p) const
 {
     bool isSpendable = true;
@@ -744,16 +730,23 @@ bool CScript::IsSpendableOutputType(const COptCCParams &p) const
     }
     switch (p.evalCode)
     {
-        case EVAL_CURRENCYSTATE:
+        case EVAL_CURRENCY_DEFINITION:
+        case EVAL_NOTARY_EVIDENCE:
+        case EVAL_EARNEDNOTARIZATION:
+        case EVAL_ACCEPTEDNOTARIZATION:
+        case EVAL_FINALIZE_NOTARIZATION:
         case EVAL_RESERVE_TRANSFER:
         case EVAL_IDENTITY_ADVANCEDRESERVATION:
         case EVAL_RESERVE_DEPOSIT:
+        case EVAL_CROSSCHAIN_EXPORT:
+        case EVAL_FINALIZE_EXPORT:
         case EVAL_CROSSCHAIN_IMPORT:
         case EVAL_IDENTITY_COMMITMENT:
         case EVAL_IDENTITY_PRIMARY:
         case EVAL_IDENTITY_REVOKE:
         case EVAL_IDENTITY_RECOVER:
         case EVAL_IDENTITY_RESERVATION:
+        case EVAL_FEE_POOL:
         {
             isSpendable = false;
             break;

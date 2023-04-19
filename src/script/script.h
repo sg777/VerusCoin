@@ -780,7 +780,6 @@ public:
     bool IsPayToCryptoCondition(CScript *ccSubScript) const;
     bool IsPayToCryptoCondition(uint32_t *ecode) const;
     bool IsPayToCryptoCondition() const;
-    CScript &ReplaceCCParams(const COptCCParams &params);
 
     bool IsSpendableOutputType(const COptCCParams &p) const;
     bool IsSpendableOutputType() const;
