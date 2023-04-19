@@ -8971,7 +8971,10 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                             return false;
                         }
 
-                        int64_t priorHeight = mapBlockIndex[hashBlock]->GetHeight();
+                        int64_t priorHeight = priorNotarization.proofRoots.count(ASSETCHAINS_CHAINID) ?
+                                priorNotarization.proofRoots.find(ASSETCHAINS_CHAINID)->second.rootHeight :
+                                0;
+
                         int64_t blockModulo = CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
                                                                                                 priorHeight,
                                                                                                 height);
