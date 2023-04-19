@@ -598,19 +598,10 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                         if (deepCheck)
                         {
                             CMMRProof &EthProof = ((CChainObject<CPartialTransactionProof> *)transactionProof.evidence.chainObjects[0])->object.txProof;
-                            if (importFromDef.nativeCurrencyID.AuxDestCount() == 0)
+                            if (importFromDef.nativeCurrencyID.AuxDestCount() == 0 ||
+                                importFromDef.nativeCurrencyID.TypeNoFlags() != importFromDef.nativeCurrencyID.DEST_ETH)
                             {
-                                if (IsVerusActive() &&
-                                    !IsVerusMainnetActive())
-                                {
-                                    importFromDef.nativeCurrencyID.SetAuxDest(
-                                        CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(CTransferDestination::DecodeEthDestination(PBAAS_TEST_ETH_CONTRACT))),
-                                        0);
-                                }
-                                else
-                                {
-                                    return state.Error(strprintf("%s: missing contract address in currency definition", __func__));
-                                }
+                                return state.Error(strprintf("%s: missing contract address in currency definition", __func__));
                             }
                             if (uint160(importFromDef.nativeCurrencyID.GetAuxDest(0).destination) != EthProof.GetNativeAddress())
                             {
@@ -2853,18 +2844,9 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 return;
                             }
 
-                            // TODO: POST HARDENING - cleanup with PBAAS_TESTFORK_TIME
-                            // These transactions got through due to reorgs making
-                            static uint256 exemptTestTxId1 = uint256S("04fb5fc582768485ff84df39574d1eabc152ec8e059f2597647bc0c4a4c429ff");
-                            static uint256 exemptTestTxId2 = uint256S("a2070bb46854cf39dce385c830ea2cfe21fd6909a00dc17a33a772b6ab100436");
-                            static uint256 exemptTestTxId3 = uint256S("3690e186320d8f2abd11dc1dd97f4f5b4d7257658aae7eb663baa8065b12d889");
-
                             for (int loop = 0; loop < checkOutputs.size(); loop++)
                             {
-                                if ((tx.vout.size() <= (loop + startingOutput) || checkOutputs[loop] != tx.vout[loop + startingOutput]) &&
-                                    !(tx.GetHash() == exemptTestTxId1 ||
-                                      tx.GetHash() == exemptTestTxId2 ||
-                                      tx.GetHash() == exemptTestTxId3))
+                                if (tx.vout.size() <= (loop + startingOutput) || checkOutputs[loop] != tx.vout[loop + startingOutput])
                                 {
                                     if (LogAcceptCategory("defi"))
                                     {

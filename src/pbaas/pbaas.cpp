@@ -2095,7 +2095,7 @@ bool ValidateNotaryEvidence(struct CCcontract_info *cp, Eval* eval, const CTrans
                 continue;
             }
         }
-        return chainActive.LastTip()->nTime <= PBAAS_TESTFORK_TIME ? true : finalizeSpends.count(thisEvidence.output) == 1 ?
+        return finalizeSpends.count(thisEvidence.output) == 1 ?
                 true :
                 eval->state.Error("Must spend exactly one matching finalization to spend notary evidence output, spending: " + std::to_string(finalizeSpends.count(thisEvidence.output)));
     }
@@ -3793,7 +3793,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 return state.Error("Cannot get notarization data for destination system of transfer: " + rt.ToUniValue().write(1,2));
             }
             auto ourLastRoot = std::get<2>(lastConfirmed).proofRoots.find(ASSETCHAINS_CHAINID);
-            if (!(!haveFullChain || chainActive[height - 1]->nTime <= PBAAS_TESTFORK_TIME) &&
+            if (haveFullChain &&
                 (ourLastRoot == std::get<2>(lastConfirmed).proofRoots.end() ||
                  (height - ourLastRoot->second.rootHeight) >
                     ((CPBaaSNotarization::MAX_NOTARIZATION_DELAY_BEFORE_CROSSCHAIN_PAUSE * 60) / ConnectedChains.ThisChain().blockTime)))
@@ -4686,8 +4686,7 @@ bool CConnectedChains::CheckVerusPBaaSAvailable(UniValue &chainInfoUni, UniValue
     if (chainInfoUni.isObject() && chainDefUni.isObject())
     {
         std::string versionStr = uni_get_str(find_value(chainInfoUni, "VRSCversion"));
-        if ((IsVerusActive() && !IsVerusMainnetActive() && GetTime() < PBAAS_TESTFORK_TIME) ||
-            (((GetVerusVersion() & 0xffff0000) == (ParseVersion(versionStr) & 0xffff0000)) &&
+        if ((((GetVerusVersion() & 0xffff0000) == (ParseVersion(versionStr) & 0xffff0000)) &&
              uni_get_str(find_value(chainInfoUni, "chainid")) == EncodeDestination(CIdentityID(ConnectedChains.FirstNotaryChain().GetID()))))
         {
             LOCK(cs_mergemining);
@@ -4884,16 +4883,6 @@ void CConnectedChains::CheckOracleUpgrades()
                   txInDesc.prevout.n);
     }
 
-    if (oracleID.contentMap.count(TestForkUpgradeKey()))
-    {
-        upgradeData.resize(upgradeData.size() + 1);
-        std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[TestForkUpgradeKey()].GetHex());
-        if (LogAcceptCategory("oracles"))
-        {
-            CUpgradeDescriptor upgradeDescr(std::get<0>(*upgradeData.rbegin()));
-            LogPrintf("Testfork oracle notification: %s\nhex: %s\n", upgradeDescr.ToUniValue().write(1,2).c_str(), HexBytes(&(std::get<0>(*upgradeData.rbegin())[0]), std::get<0>(*upgradeData.rbegin()).size()));
-        }
-    }
     if (oracleID.contentMap.count(PBaaSUpgradeKey()))
     {
         upgradeData.resize(upgradeData.size() + 1);
@@ -4903,12 +4892,6 @@ void CConnectedChains::CheckOracleUpgrades()
     {
         upgradeData.resize(upgradeData.size() + 1);
         std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[OptionalPBaaSUpgradeKey()].GetHex());
-    }
-    if (PBAAS_TESTMODE && IsVerusActive() && oracleID.contentMap.count(TestnetEthContractUpgradeKey()))
-    {
-        LOCK(ConnectedChains.cs_mergemining);
-        activeUpgradesByKey.insert({TestnetEthContractUpgradeKey(), CUpgradeDescriptor(std::vector<unsigned char>(oracleID.contentMap[TestnetEthContractUpgradeKey()].begin(),
-                                                                                                                  oracleID.contentMap[TestnetEthContractUpgradeKey()].end()))});
     }
 
     CUpgradeDescriptor oneUpgrade;
@@ -4925,8 +4908,6 @@ void CConnectedChains::CheckOracleUpgrades()
         }
     }
 
-    std::map<uint160, CUpgradeDescriptor>::iterator upgradeTestNetEthContractIt = activeUpgradesByKey.find(TestnetEthContractUpgradeKey());
-    std::map<uint160, CUpgradeDescriptor>::iterator upgradeTestForkIt = activeUpgradesByKey.find(TestForkUpgradeKey());
     std::map<uint160, CUpgradeDescriptor>::iterator upgradePBaaSIt = activeUpgradesByKey.find(PBaaSUpgradeKey());
     std::map<uint160, CUpgradeDescriptor>::iterator disableDeFiIt = activeUpgradesByKey.find(DisableDeFiKey());
     std::map<uint160, CUpgradeDescriptor>::iterator disablePBaaSCrossChainIt = activeUpgradesByKey.find(DisablePBaaSCrossChainKey());
@@ -4963,19 +4944,13 @@ void CConnectedChains::CheckOracleUpgrades()
         }
         if (disableGatewayCrossChainIt->second.minDaemonVersion > GetVerusVersion())
         {
-            stoppingIt = upgradePBaaSIt;
+            stoppingIt = disableGatewayCrossChainIt;
             gracefulStop = pauseDeFi ? "CRITICAL TEMPORARY PAUSE ALL CROSS CHAIN AND DEFI FUNCTIONS ISSUED FROM ORACLE" :
                            (pausePBaaS ? "CRITICAL TEMPORARY PAUSE ALL CROSS CHAIN FUNCTIONS ISSUED FROM ORACLE" :
                                          "CRITICAL TEMPORARY PAUSE ALL NON-PBAAS CROSS CHAIN FUNCTIONS ISSUED FROM ORACLE");
         }
     }
 
-    if (upgradeTestForkIt != activeUpgradesByKey.end() &&
-        upgradeTestForkIt->second.minDaemonVersion <= GetVerusVersion() &&
-        PBAAS_TESTFORK_TIME != upgradeTestForkIt->second.upgradeTargetTime)
-    {
-        PBAAS_TESTFORK_TIME = upgradeTestForkIt->second.upgradeTargetTime;
-    }
     if (upgradePBaaSIt != activeUpgradesByKey.end())
     {
         if (upgradePBaaSIt->second.minDaemonVersion <= GetVerusVersion())
@@ -4986,28 +4961,6 @@ void CConnectedChains::CheckOracleUpgrades()
         {
             stoppingIt = upgradePBaaSIt;
             gracefulStop = "PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0";
-        }
-    }
-    if (upgradeTestNetEthContractIt != activeUpgradesByKey.end())
-    {
-        if (upgradeTestNetEthContractIt->second.minDaemonVersion <= GetVerusVersion())
-        {
-            std::string oldVal = PBAAS_TEST_ETH_CONTRACT;
-            PBAAS_TEST_ETH_CONTRACT = CTransferDestination::EncodeEthDestination(upgradeTestNetEthContractIt->second.upgradeID);
-            if (oldVal != PBAAS_TEST_ETH_CONTRACT &&
-                LogAcceptCategory("ethbridge"))
-            {
-                printf("Prior Ethereum bridge contract id was %s\n, upgraded to: %s\n", oldVal.c_str(), PBAAS_TEST_ETH_CONTRACT.c_str());
-                LogPrintf("Prior Ethereum bridge contract id was %s\n, upgraded to: %s\n", oldVal.c_str(), PBAAS_TEST_ETH_CONTRACT.c_str());
-            }
-        }
-        else
-        {
-            if (stoppingIt == activeUpgradesByKey.end() || stoppingIt->second.upgradeBlockHeight > upgradeTestNetEthContractIt->second.upgradeBlockHeight)
-            {
-                stoppingIt = upgradeTestNetEthContractIt;
-                gracefulStop = "UPGRADED TESTNET ETHEREUM BRIDGE CONTRACTS";
-            }
         }
     }
     if (stoppingIt != activeUpgradesByKey.end())

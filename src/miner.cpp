@@ -1784,13 +1784,6 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
         }
     }
 
-    // TODO: HARDENING - blockOneIDs can be non-zero for old testnet here, remove after sync with old net is
-    // unimportant
-    if (PBAAS_TESTMODE && blockOneIDs.size() == 1)
-    {
-        blockOneIDs.clear();
-    }
-
     if (blockOneIDs.size() || blockOneCurrencies.size())
     {
         return state.Error("Invalid block one coinbase identity and/or currency outputs");

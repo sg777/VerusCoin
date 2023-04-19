@@ -294,7 +294,6 @@ void *chainparams_commandline(void *ptr)
             mainParams.consensus.fCoinbaseMustBeProtected = true;
         }
 
-        // only require coinbase protection on Verus from the Komodo family of coins
         if (_IsVerusMainnetActive())
         {
             mainParams.vSeeds.push_back(CDNSSeedData("verus.io", "seeds.verus.io"));

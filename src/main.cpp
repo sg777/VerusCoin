@@ -1436,11 +1436,7 @@ bool ContextualCheckTransaction(
                 {
                     return state.DoS(100, error("ContextualCheckTransaction(): Invalid smart transaction eval code"), REJECT_INVALID, "bad-txns-evalcode-invalid");
                 }
-                if (isPBaaS &&
-                    (!IsVerusActive() ||
-                     IsVerusMainnetActive() ||
-                     chainActive[std::min((uint32_t)chainActive.Height(), (uint32_t)nHeight)]->nTime > PBAAS_PREMAINNET_ACTIVATION) &&
-                    p.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
+                if (isPBaaS && p.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
                 {
                     if (LogAcceptCategory("notarization"))
                     {
@@ -6288,8 +6284,11 @@ bool ContextualCheckBlock(
         {
             if (IsVerusMainnetActive() && nHeight < 1564700)
             {
-                printf("%s: Invalid POS block at height %u - %s\n", __func__, nHeight, block.GetHash().GetHex().c_str());
-                LogPrintf("%s: Invalid POS block at height %u - %s\n", __func__, nHeight, block.GetHash().GetHex().c_str());
+                if (LogAcceptCategory("pos"))
+                {
+                    printf("%s: Invalid POS block at height %u - %s\n", __func__, nHeight, block.GetHash().GetHex().c_str());
+                    LogPrintf("%s: Invalid POS block at height %u - %s\n", __func__, nHeight, block.GetHash().GetHex().c_str());
+                }
             }
             else
             {
