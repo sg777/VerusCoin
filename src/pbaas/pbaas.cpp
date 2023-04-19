@@ -3794,6 +3794,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             }
             auto ourLastRoot = std::get<2>(lastConfirmed).proofRoots.find(ASSETCHAINS_CHAINID);
             if (haveFullChain &&
+                !(std::get<2>(lastConfirmed).IsPreLaunch() && !std::get<2>(lastConfirmed).IsLaunchCleared() && rt.IsPreConversion()) &&
                 (ourLastRoot == std::get<2>(lastConfirmed).proofRoots.end() ||
                  (height - ourLastRoot->second.rootHeight) >
                     ((CPBaaSNotarization::MAX_NOTARIZATION_DELAY_BEFORE_CROSSCHAIN_PAUSE * 60) / ConnectedChains.ThisChain().blockTime)))
