@@ -1404,7 +1404,7 @@ bool ValidateFinalizeExport(struct CCcontract_info *cp, Eval* eval, const CTrans
         return eval->Error("Invalid export output from finalization");
     }
 
-    if (LogAcceptCategory("finalizeexports"))
+    if (LogAcceptCategory("finalizeexports") && LogAcceptCategory("verbose"))
     {
         UniValue scriptUni(UniValue::VOBJ);
         ScriptPubKeyToUniv(std::get<2>(priorTxInfo).vout[tx.vin[nIn].prevout.n].scriptPubKey, scriptUni, false, false);
@@ -1474,9 +1474,29 @@ bool PreCheckFinalizeExport(const CTransaction &tx, int32_t outNum, CValidationS
         exportTx.GetHash() != tx.GetHash() ||
         exportTx.vout.size() <= of.output.n ||
         !(ccx = CCrossChainExport(exportTx.vout[of.output.n].scriptPubKey)).IsValid() ||
-        ccx.destSystemID != of.currencyID)
+        ccx.destSystemID != of.currencyID ||
+        !(ccx.IsClearLaunch() || (ccx.IsPostlaunch() && ccx.IsSameChain())))
     {
-        return state.Error("Cannot get export output from finalization");
+        return state.Error("Invalid export output from finalization");
+    }
+    for (int i = 0; i < tx.vout.size(); i++)
+    {
+        if (i == outNum || i == of.output.n)
+        {
+            continue;
+        }
+        COptCCParams dupP;
+        CObjectFinalization dupOf;
+        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(dupP) &&
+            dupP.IsValid() &&
+            dupP.evalCode == EVAL_FINALIZE_EXPORT &&
+            dupP.vData.size() &&
+            (dupOf = CObjectFinalization(dupP.vData[0])).IsValid() &&
+            dupOf.output.hash.IsNull() &&
+            dupOf.output.n == of.output.n)
+        {
+            return state.Error("Duplicate export finalization output");
+        }
     }
     if (LogAcceptCategory("finalizeexports"))
     {
@@ -3735,9 +3755,10 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 return state.Error("Cannot get notarization data for destination system of transfer: " + rt.ToUniValue().write(1,2));
             }
             auto ourLastRoot = std::get<2>(lastConfirmed).proofRoots.find(ASSETCHAINS_CHAINID);
-            if (ourLastRoot == std::get<2>(lastConfirmed).proofRoots.end() ||
-                (height - ourLastRoot->second.rootHeight) > 
-                    ((CPBaaSNotarization::MAX_NOTARIZATION_DELAY_BEFORE_CROSSCHAIN_PAUSE * 60) / ConnectedChains.ThisChain().blockTime))
+            if (!(!haveFullChain || chainActive[height - 1]->nTime <= PBAAS_TESTFORK_TIME) &&
+                (ourLastRoot == std::get<2>(lastConfirmed).proofRoots.end() ||
+                 (height - ourLastRoot->second.rootHeight) > 
+                    ((CPBaaSNotarization::MAX_NOTARIZATION_DELAY_BEFORE_CROSSCHAIN_PAUSE * 60) / ConnectedChains.ThisChain().blockTime)))
             {
                 return state.Error("Confirmed notarizations for destination system are lagging behind, cannot send: " + rt.ToUniValue().write(1,2));
             }

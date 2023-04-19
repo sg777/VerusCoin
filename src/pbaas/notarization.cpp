@@ -9857,6 +9857,26 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         return state.Error("Invalid notarization output for finalization");
     }
 
+    for (int i = 0; i < tx.vout.size(); i++)
+    {
+        if (i == outNum || i == currentFinalization.output.n)
+        {
+            continue;
+        }
+        COptCCParams dupP;
+        CObjectFinalization dupOf;
+        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(dupP) &&
+            dupP.IsValid() &&
+            dupP.evalCode == EVAL_FINALIZE_EXPORT &&
+            dupP.vData.size() &&
+            (dupOf = CObjectFinalization(dupP.vData[0])).IsValid() &&
+            dupOf.output.hash.IsNull() &&
+            dupOf.output.n == currentFinalization.output.n)
+        {
+            return state.Error("Duplicate notarization finalization output");
+        }
+    }
+
     if (p.evalCode == EVAL_EARNEDNOTARIZATION &&
         !ConnectedChains.notarySystems.count(notarization.currencyID))
     {
@@ -10529,7 +10549,6 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     {
                         return state.Error("insufficient evidence from notary system to reject finalization");
                     }
-                    // TODO: HARDENING check for an invalidating rejection, which can also pass
                 }
             }
         }
