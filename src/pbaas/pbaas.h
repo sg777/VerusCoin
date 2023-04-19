@@ -250,6 +250,7 @@ public:
         MODULO_EXTENSION_MULTIPLIER = 10,               // notarization rate drops to 1/10 when not confirmed on time
         MIN_BLOCKS_TO_AUTOCONFIRM = 100,                // we cannot autoconfirm (signature-free) a notarization < 200 blocks old
         MIN_BLOCKS_TO_SIGNCONFIRM = 15,                 // we cannot sign confirm a notarization < 15 blocks old
+        MAX_NOTARIZATION_DELAY_BEFORE_CROSSCHAIN_PAUSE = 1000, // if we go 1000 minutes with no notarization, cross-chain to that chani is paused
 
         MAX_HEADER_PROOFS_PER_PROOF = 25,               // don't use more than this many header proofs in an alternate chain proof tx
         MAX_HEADER_PROOFS_SIZE = 200000,                // never require more than 200K of evidence for any reason

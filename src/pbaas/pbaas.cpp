@@ -1379,18 +1379,71 @@ std::tuple<bool, uint32_t, CTransaction, COptCCParams> GetPriorOutputTx(const CT
 
 bool ValidateFinalizeExport(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled)
 {
-    // TODO: HARDENING - must be spent by either the next export, if this is for an export offchain
-    // or a matching import if same chain
+    auto priorTxInfo = GetPriorOutputTx(tx, nIn);
+    if (!std::get<0>(priorTxInfo))
+    {
+        return eval->Error("Cannot retrieve spent export finalization");
+    }
+
+    CObjectFinalization of(std::get<2>(priorTxInfo).vout[tx.vin[nIn].prevout.n].scriptPubKey);
+    if (!of.IsValid())
+    {
+        return eval->Error("Invalid output to spend");
+    }
+
+    CTransaction exportTx;
+    uint256 blockHash;
+    if (!of.GetOutputTransaction(std::get<2>(priorTxInfo), exportTx, blockHash) ||
+        exportTx.vout.size() <= of.output.n)
+    {
+        return eval->Error("Cannot get export output from finalization");
+    }
+    CCrossChainExport ccx(exportTx.vout[of.output.n].scriptPubKey);
+    if (!ccx.IsValid())
+    {
+        return eval->Error("Invalid export output from finalization");
+    }
+
     if (LogAcceptCategory("finalizeexports"))
     {
-        auto priorTxInfo = GetPriorOutputTx(tx, nIn);
         UniValue scriptUni(UniValue::VOBJ);
         ScriptPubKeyToUniv(std::get<2>(priorTxInfo).vout[tx.vin[nIn].prevout.n].scriptPubKey, scriptUni, false, false);
         UniValue jsonTx(UniValue::VOBJ);
         TxToUniv(tx, uint256(), jsonTx);
         LogPrintf("%s: spending finalize export:\n%s\n with tx:\n%s\n\n", __func__, scriptUni.write(1,2).c_str(), jsonTx.write(1,2).c_str());
     }
-    return true;
+
+    if (of.currencyID == ASSETCHAINS_CHAINID)
+    {
+        // ensure that we have an import to match the export
+        // this will be a same chain export and import
+        int i;
+        COptCCParams p;
+        CCrossChainImport cci;
+
+        for (i = 0; i < tx.vout.size(); i++)
+        {
+            if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                p.vData.size() &&
+                (cci = CCrossChainImport(p.vData[0])).IsValid() &&
+                cci.exportTxId == exportTx.GetHash())
+            {
+                return true;
+            }
+        }
+    }
+
+    if (LogAcceptCategory("finalizeexports"))
+    {
+        UniValue scriptUni(UniValue::VOBJ);
+        ScriptPubKeyToUniv(std::get<2>(priorTxInfo).vout[tx.vin[nIn].prevout.n].scriptPubKey, scriptUni, false, false);
+        UniValue jsonTx(UniValue::VOBJ);
+        TxToUniv(tx, uint256(), jsonTx);
+        LogPrintf("%s: failed spending finalize export:\n%s\n with tx:\n%s\n\n", __func__, scriptUni.write(1,2).c_str(), jsonTx.write(1,2).c_str());
+    }
+    return false;
 }
 
 bool IsFinalizeExportInput(const CScript &scriptSig)
@@ -1403,11 +1456,27 @@ bool PreCheckFinalizeExport(const CTransaction &tx, int32_t outNum, CValidationS
     // TODO: HARDENING - ensure that this finalization represents an export that is either the clear launch beacon of
     // the currency or a same-chain export to be spent by the matching import
     COptCCParams p;
+    CObjectFinalization of;
     if (!(tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
           p.IsValid() &&
-          p.IsEvalPKOut()))
+          p.IsEvalPKOut() &&
+          p.vData.size() &&
+          (of = CObjectFinalization(p.vData[0])).IsValid() &&
+          of.FinalizationType() == CObjectFinalization::EFinalizationType::FINALIZE_EXPORT))
     {
         return state.Error("Invalid export finalization output");
+    }
+
+    CTransaction exportTx;
+    uint256 blockHash;
+    CCrossChainExport ccx;
+    if (!of.GetOutputTransaction(tx, exportTx, blockHash) ||
+        exportTx.GetHash() != tx.GetHash() ||
+        exportTx.vout.size() <= of.output.n ||
+        !(ccx = CCrossChainExport(exportTx.vout[of.output.n].scriptPubKey)).IsValid() ||
+        ccx.destSystemID != of.currencyID)
+    {
+        return state.Error("Cannot get export output from finalization");
     }
     if (LogAcceptCategory("finalizeexports"))
     {
@@ -3658,16 +3727,26 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         // ensure that we have enough fees for the currency definition import
         CAmount adjustedImportFee = 0;
 
-        if (systemDest.proofProtocol == systemDest.PROOF_ETHNOTARIZATION)
+        if (systemDestID != ASSETCHAINS_CHAINID)
         {
-            CChainNotarizationData cnd;
-            if (!GetNotarizationData(systemDestID, cnd) || !cnd.IsConfirmed() || !cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(systemDestID))
+            std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> lastConfirmed = GetLastConfirmedNotarization(systemDestID, height - 1);
+            if (!std::get<0>(lastConfirmed))
             {
                 return state.Error("Cannot get notarization data for destination system of transfer: " + rt.ToUniValue().write(1,2));
             }
-            adjustedImportFee = cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice.size() ?
-                cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice[0] :
-                cnd.vtx[cnd.lastConfirmed].second.proofRoots[systemDestID].gasPrice;
+            auto ourLastRoot = std::get<2>(lastConfirmed).proofRoots.find(ASSETCHAINS_CHAINID);
+            if (ourLastRoot == std::get<2>(lastConfirmed).proofRoots.end() ||
+                (height - ourLastRoot->second.rootHeight) > 
+                    ((CPBaaSNotarization::MAX_NOTARIZATION_DELAY_BEFORE_CROSSCHAIN_PAUSE * 60) / ConnectedChains.ThisChain().blockTime))
+            {
+                return state.Error("Confirmed notarizations for destination system are lagging behind, cannot send: " + rt.ToUniValue().write(1,2));
+            }
+            if (systemDest.proofProtocol == systemDest.PROOF_ETHNOTARIZATION)
+            {
+                adjustedImportFee = std::get<2>(lastConfirmed).currencyState.conversionPrice.size() ?
+                    std::get<2>(lastConfirmed).currencyState.conversionPrice[0] :
+                    std::get<2>(lastConfirmed).proofRoots[systemDestID].gasPrice;
+            }
         }
 
         CReserveTransactionDescriptor rtxd;

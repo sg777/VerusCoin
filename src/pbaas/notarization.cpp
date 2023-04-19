@@ -9833,7 +9833,8 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
           p.evalCode == EVAL_FINALIZE_NOTARIZATION &&
           p.vData.size() &&
           (currentFinalization = CObjectFinalization(p.vData[0])).IsValid()) &&
-          p.IsEvalPKOut())
+          p.IsEvalPKOut() &&
+          currentFinalization.FinalizationType() == CObjectFinalization::EFinalizationType::FINALIZE_NOTARIZATION)
     {
         return state.Error("Invalid finalization for notarization output");
     }
