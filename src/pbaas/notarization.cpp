@@ -8129,11 +8129,11 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         }
 
         // if we have a cross-confirmed notarization to prove here, create a proof
+        allEvidence.output = cnd.vtx[cnd.lastConfirmed].first;
+        CNotaryEvidence signatureEvidence = allEvidence;
+
         if (!earnedNotarizationIndexEntry.first.txhash.IsNull())
         {
-            allEvidence.output = cnd.vtx[cnd.lastConfirmed].first;
-            CNotaryEvidence signatureEvidence = allEvidence;
-
             UniValue proofRequests(UniValue::VARR);
             UniValue proofRequest(UniValue::VOBJ);
             proofRequest.pushKV("type", EncodeDestination(CIdentityID(CNotaryEvidence::PrimaryProofKey())));
@@ -8194,37 +8194,37 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 return retVal;
             }
             allEvidence.MergeEvidence(preparedEvidence);
+        }
 
-            // add valid signatures, and we should now have all we need to submit
-            for (auto &oneEvidenceObj : evidenceVec)
+        // add valid signatures, and we should now have all we need to submit
+        for (auto &oneEvidenceObj : evidenceVec)
+        {
+            auto notarySignatures = oneEvidenceObj.second.GetNotarySignatures();
+            for (auto &oneSig : notarySignatures)
             {
-                auto notarySignatures = oneEvidenceObj.second.GetNotarySignatures();
-                for (auto &oneSig : notarySignatures)
-                {
-                    signatureEvidence.evidence << oneSig;
-                }
+                signatureEvidence.evidence << oneSig;
             }
-            if (signatureEvidence.evidence.chainObjects.size())
-            {
-                CCurrencyDefinition::EHashTypes hashType = (CCurrencyDefinition::EHashTypes)externalSystem.chainDefinition.proofProtocol;
-                CNativeHashWriter hw(hashType);
-                // we are earned notarizations, so it will not be mirrored and can be used as is
-                uint256 objHash = (hw << cnd.vtx[cnd.lastConfirmed].second).GetHash();
+        }
+        if (signatureEvidence.evidence.chainObjects.size())
+        {
+            CCurrencyDefinition::EHashTypes hashType = (CCurrencyDefinition::EHashTypes)externalSystem.chainDefinition.proofProtocol;
+            CNativeHashWriter hw(hashType);
+            // we are earned notarizations, so it will not be mirrored and can be used as is
+            uint256 objHash = (hw << cnd.vtx[cnd.lastConfirmed].second).GetHash();
 
-                uint32_t decisionHeight;
-                std::map<CIdentityID, CIdentitySignature> notaryRejects;
-                std::map<CIdentityID, CIdentitySignature> notaryConfirms;
-                if (signatureEvidence.CheckSignatureConfirmation(objHash,
-                                                                 hashType,
-                                                                 pNotaryCurrency->GetNotarySet(),
-                                                                 pNotaryCurrency->MinimumNotariesConfirm(),
-                                                                 nHeight,
-                                                                 &decisionHeight,
-                                                                 &notaryRejects,
-                                                                 &notaryConfirms) == CNotaryEvidence::EStates::STATE_CONFIRMED)
-                {
-                    allEvidence.evidence << CNotarySignature(allEvidence.systemID, allEvidence.output, true, notaryConfirms);
-                }
+            uint32_t decisionHeight;
+            std::map<CIdentityID, CIdentitySignature> notaryRejects;
+            std::map<CIdentityID, CIdentitySignature> notaryConfirms;
+            if (signatureEvidence.CheckSignatureConfirmation(objHash,
+                                                                hashType,
+                                                                pNotaryCurrency->GetNotarySet(),
+                                                                pNotaryCurrency->MinimumNotariesConfirm(),
+                                                                nHeight,
+                                                                &decisionHeight,
+                                                                &notaryRejects,
+                                                                &notaryConfirms) == CNotaryEvidence::EStates::STATE_CONFIRMED)
+            {
+                allEvidence.evidence << CNotarySignature(allEvidence.systemID, allEvidence.output, true, notaryConfirms);
             }
         }
     }
