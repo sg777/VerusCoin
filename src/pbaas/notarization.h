@@ -564,6 +564,12 @@ bool PreCheckNotaryEvidence(const CTransaction &tx, int32_t outNum, CValidationS
 bool ValidateFinalizeNotarization(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsFinalizeNotarizationInput(const CScript &scriptSig);
 bool IsNotaryEvidenceInput(const CScript &scriptSig);
+std::vector<unsigned char> CreatePoSBlockProof(ChainMerkleMountainView &mmrView,
+                                               const CBlock &checkBlock,
+                                               const CTransaction &stakeSource,
+                                               int outNum,
+                                               uint32_t sourceBlockNum,
+                                               uint32_t height);
 bool ProvePosBlock(uint32_t lastProofRootHeight, const CBlockIndex *pindex, CNotaryEvidence &evidence, CValidationState &state, int32_t *proofSize=nullptr);
 std::vector<__uint128_t> GetBlockCommitments(uint32_t lastNotarizationHeight, uint32_t currentNotarizationHeight, const uint256 &entropy);
 

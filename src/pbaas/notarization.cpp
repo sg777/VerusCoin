@@ -2594,6 +2594,122 @@ int32_t CPBaaSNotarization::GetAdjustedNotarizationModuloExp(int64_t notarizatio
     return GetAdjustedNotarizationModuloExp(nextCheckModulo, fromHeight, untilHeight, nextCheckNotarizationBeforeModulo, notarizationCount);
 }
 
+std::vector<unsigned char> CreatePoSBlockProof(ChainMerkleMountainView &mmrView,
+                                               const CBlock &checkBlock,
+                                               const CTransaction &stakeSource,
+                                               int outNum,
+                                               uint32_t sourceBlockNum,
+                                               uint32_t height)
+{
+    std::vector<unsigned char> emptyVec;
+
+    // we get these sources of entropy to prove all sources in the header
+    int posHeight = -1, powHeight = -1, altHeight = -1;
+    uint256 pastHash;
+    {
+        LOCK(cs_main);
+        pastHash = chainActive.GetVerusEntropyHash(height, &posHeight, &powHeight, &altHeight);
+        if (altHeight == -1 && (powHeight == -1 || posHeight == -1))
+        {
+            printf("Error retrieving entropy hash at height %d, posHeight: %d, powHeight: %d, altHeight: %d\n", height, posHeight, powHeight, altHeight);
+            LogPrintf("Error retrieving entropy hash at height %d, posHeight: %d, powHeight: %d, altHeight: %d\n", height, posHeight, powHeight, altHeight);
+            return emptyVec;
+        }
+    }
+
+    // secondBlockHeight is either less than first or -1 if there isn't one
+    int pastBlockHeight2 = altHeight != -1 ?
+                                altHeight :
+                                posHeight == -1 ?
+                                    posHeight :
+                                    powHeight == -1 ?
+                                        powHeight :
+                                        (posHeight > powHeight ?
+                                            powHeight :
+                                            posHeight);
+
+    int pastBlockHeight1 = posHeight > pastBlockHeight2 ? posHeight : ((powHeight == -1) ? posHeight : powHeight);
+
+    // get map and MMR for stake source transaction
+    CTransactionMap txMap(stakeSource);
+    TransactionMMView txView(txMap.transactionMMR);
+    uint256 txRoot = txView.GetRoot();
+
+    std::vector<CTransactionComponentProof> txProofVec;
+    txProofVec.push_back(CTransactionComponentProof(txView, txMap, stakeSource, CTransactionHeader::TX_HEADER, 0));
+    txProofVec.push_back(CTransactionComponentProof(txView, txMap, stakeSource, CTransactionHeader::TX_OUTPUT, outNum));
+
+    // now, both the header and stake output are dependent on the transaction MMR root being provable up
+    // through the block MMR, and since we don't cache the new MMR proof for transactions yet, we need the block to create the proof.
+    // when we switch to the new MMR in place of a merkle tree, we can keep that in the wallet as well
+    CBlock block;
+    if (!ReadBlockFromDisk(block, chainActive[sourceBlockNum], Params().GetConsensus(), false))
+    {
+        LogPrintf("%s: ERROR: could not read block number  %u from disk\n", __func__, sourceBlockNum);
+        return emptyVec;
+    }
+
+    BlockMMRange blockMMR(block.GetBlockMMRTree());
+    BlockMMView blockView(blockMMR);
+
+    int txIndexPos;
+    for (txIndexPos = 0; txIndexPos < blockMMR.size(); txIndexPos++)
+    {
+        uint256 txRootHashFromMMR = blockMMR[txIndexPos].hash;
+        if (txRootHashFromMMR == txRoot)
+        {
+            //printf("tx with root %s found in block\n", txRootHashFromMMR.GetHex().c_str());
+            break;
+        }
+    }
+
+    if (txIndexPos == blockMMR.size())
+    {
+        LogPrintf("%s: ERROR: could not find source transaction root in block %u\n", __func__, sourceBlockNum);
+        return emptyVec;
+    }
+
+    // prove the tx up to the MMR root, which also contains the block hash
+    CMMRProof txRootProof;
+    if (!blockView.GetProof(txRootProof, txIndexPos))
+    {
+        LogPrintf("%s: ERROR: could not create proof of source transaction in block %u\n", __func__, sourceBlockNum);
+        return emptyVec;
+    }
+
+    CDataStream headerStream = CDataStream(SER_NETWORK, PROTOCOL_VERSION);
+
+    if (mmrView.mmr.size() < height - 1)
+    {
+        LogPrintf("%s: ERROR: Invalid height %u\n", __func__, height);
+        return emptyVec;
+    }
+
+    mmrView.resize(pastBlockHeight1 + 1);
+    chainActive.GetMerkleProof(mmrView, txRootProof, sourceBlockNum);
+
+    headerStream << CPartialTransactionProof(txRootProof, txProofVec);
+
+    CMMRProof blockHeaderProof1;
+    if (!chainActive.GetBlockProof(mmrView, blockHeaderProof1, pastBlockHeight1))
+    {
+        LogPrintf("%s: ERROR: could not create block proof for block %u\n", __func__, sourceBlockNum);
+        return emptyVec;
+    }
+    headerStream << CBlockHeaderProof(blockHeaderProof1, chainActive[pastBlockHeight1]->GetBlockHeader());
+
+    CMMRProof blockHeaderProof2;
+    if (!chainActive.GetBlockProof(mmrView, blockHeaderProof2, pastBlockHeight2))
+    {
+        LogPrintf("%s: ERROR: could not create block proof for second entropy source block %u\n", __func__, sourceBlockNum);
+        chainActive.GetBlockProof(mmrView, blockHeaderProof2, pastBlockHeight2); // repeat for debugging
+        return emptyVec;
+    }
+    headerStream << CBlockHeaderProof(blockHeaderProof2, chainActive[pastBlockHeight2]->GetBlockHeader());
+
+    return std::vector<unsigned char>(headerStream.begin(), headerStream.end());
+}
+
 CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &externalSystem,
                                                const CNotaryEvidence &evidence,
                                                const CPBaaSNotarization &expectedNotarization,

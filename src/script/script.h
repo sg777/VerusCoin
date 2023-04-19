@@ -476,6 +476,8 @@ public:
     std::map<uint160, uint32_t> GetIndexHeightOffsets(uint32_t height) const;
     std::vector<CTxDestination> GetDestinations() const;
 
+    bool IsInstantSpendOrUnspendable() const;
+
     bool IsEvalPKOut() const;
 };
 

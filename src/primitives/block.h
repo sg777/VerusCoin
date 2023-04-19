@@ -105,9 +105,10 @@ public:
     }
 
     // return a vector of bytes that contains the internal data for this solution vector
-    void GetExtraData(std::vector<unsigned char> &dataVec)
+    void GetExtraData(std::vector<unsigned char> &dataVec) const
     {
-        CVerusSolutionVector(nSolution).GetExtraData(dataVec);
+        std::vector<unsigned char> writeSolution = nSolution;
+        CVerusSolutionVector(writeSolution).GetExtraData(dataVec);
     }
 
     // set the extra data with a pointer to bytes and length

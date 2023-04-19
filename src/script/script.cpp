@@ -1053,6 +1053,25 @@ uint160 CScript::AddressHash() const
     return addressHash;
 }
 
+bool COptCCParams::IsInstantSpendOrUnspendable() const
+{
+    bool isInstantSpend = false;
+    if (version >= VERSION_V3)
+    {
+        if (evalCode == EVAL_EARNEDNOTARIZATION ||
+            evalCode == EVAL_NOTARY_EVIDENCE ||
+            evalCode == EVAL_FINALIZE_NOTARIZATION ||
+            evalCode == EVAL_FINALIZE_EXPORT ||
+            evalCode == EVAL_CROSSCHAIN_IMPORT ||
+            evalCode == EVAL_CROSSCHAIN_EXPORT ||
+            evalCode == EVAL_FEE_POOL)
+        {
+            isInstantSpend = true;
+        }
+    }
+    return isInstantSpend;
+}
+
 std::set<CIndexID> COptCCParams::GetIndexKeys() const
 {
     std::set<CIndexID> destinations;
