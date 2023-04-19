@@ -3657,6 +3657,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         uint160 gatewayConverterID;
 
         CCoinbaseCurrencyState importState;
+        std::map<uint160, CPBaaSNotarization> notarizationsOnTx;
 
         if (!(importCurrencyDef.IsValid() && (importState = ConnectedChains.GetCurrencyState(importCurrencyID, height - 1, true)).IsValid()))
         {
@@ -3695,9 +3696,14 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                                 if ((p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
                                     p.vData.size() &&
                                     (oneNotarization = CPBaaSNotarization(p.vData[0])).IsValid() &&
-                                    oneNotarization.currencyID == importCurrencyID)
+                                    (oneNotarization.currencyID == importCurrencyID ||
+                                     oneNotarization.currencyID == systemDestID))
                                 {
-                                    importState = oneNotarization.currencyState;
+                                    notarizationsOnTx[oneNotarization.currencyID] = oneNotarization;
+                                    if (oneNotarization.currencyID == importCurrencyID)
+                                    {
+                                        importState = oneNotarization.currencyState;
+                                    }
                                 }
                                 else if ((p.evalCode == EVAL_CURRENCY_DEFINITION) &&
                                             p.vData.size() &&
@@ -3778,7 +3784,10 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
         if (systemDestID != ASSETCHAINS_CHAINID)
         {
-            std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> lastConfirmed = GetLastConfirmedNotarization(systemDestID, height - 1);
+            std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> lastConfirmed =
+                notarizationsOnTx.count(systemDestID) ?
+                    std::tuple<uint32_t, CUTXORef, CPBaaSNotarization>({1, CUTXORef(), notarizationsOnTx[systemDestID]}) :
+                    GetLastConfirmedNotarization(systemDestID, height - 1);
             if (!std::get<0>(lastConfirmed))
             {
                 return state.Error("Cannot get notarization data for destination system of transfer: " + rt.ToUniValue().write(1,2));
