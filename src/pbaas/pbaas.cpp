@@ -3137,15 +3137,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                                 (!std::get<2>(lastNotarization).IsLaunchConfirmed() ||
                                     !std::get<2>(lastNotarization).IsLaunchComplete()))
                             {
-                                // TODO: HARDENING - remove this conditional to remove old testnet sync
-                                if (tx.GetHash() != uint256S("8f2ef203caeae87dd0183d24208cf2cd0073ba4280d2c9917bfc62a53187b635") &&
-                                    tx.GetHash() != uint256S("f190c94afb3f88dca38bb2d1d051b9be57a41272aa66369498a3a0fe2cfb91c8") &&
-                                    tx.GetHash() != uint256S("a4c9c5ca12949dda8e31a72b953f421228a7395e2ab8b11ce9be9e0736e2ef91") &&
-                                    tx.GetHash() != uint256S("b9eed5ae9dcdb0485f7b553d80fce0e91061c4d49e2d5f67fca34fdb89274d26"))
-                                {
-                                    LogPrintf("%s: txid to exempt from prelaunch reserve check: %s\n", __func__, tx.GetHash().GetHex().c_str());
-                                    // return state.Error("Invalid reserve currencies must have completed their launch before being used in a fractional currency");
-                                }
+                                LogPrintf("%s: txid to exempt from prelaunch reserve check: %s\n", __func__, tx.GetHash().GetHex().c_str());
                             }
                         }
                     }
