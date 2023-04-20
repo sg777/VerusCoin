@@ -3688,7 +3688,6 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         std::set<uint160> validExportCurrencies;
 
         CCoinbaseCurrencyState importState;
-        std::map<uint160, CPBaaSNotarization> notarizationsOnTx;
         std::map<uint160, std::pair<CCurrencyDefinition, CPBaaSNotarization>> currenciesAndNotarizations;
 
         if (!(importCurrencyDef.IsValid() && (importState = ConnectedChains.GetCurrencyState(importCurrencyID, height - 1, true)).IsValid()))
@@ -3797,9 +3796,9 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
         if (systemDestID != ASSETCHAINS_CHAINID)
         {
-            std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> lastConfirmed =
-                notarizationsOnTx.count(systemDestID) ?
-                    std::tuple<uint32_t, CUTXORef, CPBaaSNotarization>({1, CUTXORef(), notarizationsOnTx[systemDestID]}) :
+            CPBaaSNotarization lastConfirmedNotarization = currenciesAndNotarizations[systemDestID].second;
+            std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> lastConfirmed = lastConfirmedNotarization.IsValid() ?
+                    std::tuple<uint32_t, CUTXORef, CPBaaSNotarization>({1, CUTXORef(), lastConfirmedNotarization}) :
                     GetLastConfirmedNotarization(systemDestID, height - 1);
             if (!std::get<0>(lastConfirmed))
             {
