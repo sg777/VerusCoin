@@ -10833,7 +10833,17 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
             "         \"notarizationreward\" : \"xx.xx\", (value,  required) default VRSC notarization reward total for first billing period\n"
             "         \"billingperiod\" : n,            (int,    optional) number of blocks in each billing period\n"
             "         \"proofprotocol\" : n,            (int,    optional) if 2, currency can be minted by whoever controls the ID\n"
-
+            "                                                           1 = PROOF_PBAASMMR - Verus MMR proof, no notaries required\n"
+            "                                                           2 = PROOF_CHAINID - non-native only - currency has centralized control, and\n"
+            "                                                                               can mint/burn & change weights\n"
+            "                                                           3 = PROOF_ETHNOTARIZATION - ETH & PATRICIA TRIE proof (do not attempt without\n"
+            "                                                                                       full understanding + C++, JavaScript & Solidity dev(s))\n"
+            "\n"
+            "         \"notarizationprotocol\" : n,            (int,    optional) if 2, currency can be minted by whoever controls the ID\n"
+            "                                                           1 = PROOF_PBAASMMR - Verus MMR proof, no notaries required\n"
+            "                                                           2 = PROOF_CHAINID - chain ID is sole notary for proof, no evidence required\n"
+            "                                                           3 = PROOF_ETHNOTARIZATION - Ethereum notarization & PATRICIA TRIE proof\n"
+            "\n"
             "         \"startblock\"    : n,            (int,    optional) VRSC block must be notarized into block 1 of PBaaS chain, default curheight + 15\n"
             "         \"endblock\"      : n,            (int,    optional) chain or currency intended to end life after this height, 0 = no end\n"
 
