@@ -3671,15 +3671,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         uint160 systemDestID, importCurrencyID;
         CCurrencyDefinition systemDest, importCurrencyDef;
 
-        if (rt.IsImportToSource())
-        {
-            importCurrencyID = rt.FirstCurrency();
-        }
-        else
-        {
-            importCurrencyID = rt.destCurrencyID;
-        }
-
+        importCurrencyID = rt.GetImportCurrency();
         importCurrencyDef = ConnectedChains.GetCachedCurrency(importCurrencyID);
 
         // if we are an initial contribution for a currency definition, make sure we include the new currencies when checking
@@ -3690,45 +3682,39 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         CCoinbaseCurrencyState importState;
         std::map<uint160, std::pair<CCurrencyDefinition, CPBaaSNotarization>> currenciesAndNotarizations;
 
-        if (!(importCurrencyDef.IsValid() && (importState = ConnectedChains.GetCurrencyState(importCurrencyID, height - 1, true)).IsValid()))
+        if (rt.IsPreConversion())
         {
-            // only pre-conversion gets this benefit
-            if (rt.IsPreConversion())
+            if (rt.IsCurrencyExport() || rt.HasNextLeg() || rt.IsIdentityExport())
             {
-                if (rt.IsCurrencyExport() || rt.HasNextLeg() || rt.IsIdentityExport())
-                {
-                    return state.Error("Invalid preconversion reserve transfer " + rt.ToUniValue().write(1,2));
-                }
+                return state.Error("Invalid preconversion reserve transfer " + rt.ToUniValue().write(1,2));
+            }
 
-                // false is error, empty is not false
-                if (!CurrenciesAndNotarizations(tx, currenciesAndNotarizations))
-                {
-                    return state.Error("Invalid outputs with reserve transfer " + rt.ToUniValue().write(1,2));
-                }
+            std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> lastConfirmedForImport = GetLastConfirmedNotarization(importCurrencyID, height - 1);
 
-                if (currenciesAndNotarizations.count(importCurrencyID))
-                {
-                    importCurrencyDef = currenciesAndNotarizations[importCurrencyID].first;
-                    if (importCurrencyDef.IsValid())
-                    {
-                        importState = currenciesAndNotarizations[importCurrencyID].second.currencyState;
-                        systemDestID = importCurrencyDef.systemID;
-                        if (systemDestID.IsNull())
-                        {
-                            return state.Error("Invalid currency with reserve transfer " + rt.ToUniValue().write(1,2));
-                        }
-                        if (currenciesAndNotarizations.count(systemDestID))
-                        {
-                            systemDest = currenciesAndNotarizations[systemDestID].first;
-                        }
-                    }
-                }
+            // if pre-conversion, we may find definitions on the transaction
+            // false is error, empty is not false
+            if (!std::get<0>(lastConfirmedForImport) &&
+                (!CurrenciesAndNotarizations(tx, currenciesAndNotarizations) ||
+                 !currenciesAndNotarizations.size()))
+            {
+                return state.Error("Invalid outputs with reserve transfer " + rt.ToUniValue().write(1,2));
+            }
 
-                // the only case this is ok is if we are part of a currency definition and this is to a new currency
-                // if that is the case, importCurrencyDef will always be invalid
-                validExportCurrencies.insert(ASSETCHAINS_CHAINID);
+            if (currenciesAndNotarizations.count(importCurrencyID))
+            {
+                importCurrencyDef = currenciesAndNotarizations[importCurrencyID].first;
                 if (importCurrencyDef.IsValid())
                 {
+                    importState = currenciesAndNotarizations[importCurrencyID].second.currencyState;
+                    systemDestID = importCurrencyDef.systemID;
+                    if (systemDestID.IsNull())
+                    {
+                        return state.Error("Invalid currency with reserve transfer " + rt.ToUniValue().write(1,2));
+                    }
+                    if (currenciesAndNotarizations.count(systemDestID))
+                    {
+                        systemDest = currenciesAndNotarizations[systemDestID].first;
+                    }
                     for (auto &oneVEID : importCurrencyDef.currencies)
                     {
                         // we can export all but a new system
@@ -3742,12 +3728,18 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                         }
                         validExportCurrencies.insert(oneVEID);
                     }
-                }
-                if (!validExportCurrencies.count(rt.FirstCurrency()))
-                {
-                    return state.Error("Invalid currency preconversion in reserve transfer " + rt.ToUniValue().write(1,2));
+                    if (!validExportCurrencies.count(rt.FirstCurrency()))
+                    {
+                        return state.Error("Invalid currency preconversion in reserve transfer " + rt.ToUniValue().write(1,2));
+                    }
                 }
             }
+        }
+
+        // we may have skipped the above, and even if not, we may not have gotten the import state
+        if (!importState.IsValid())
+        {
+            importState = ConnectedChains.GetCurrencyState(importCurrencyID, height - 1, true);
         }
 
         if (!(importCurrencyDef.IsValid() && importState.IsValid()))
