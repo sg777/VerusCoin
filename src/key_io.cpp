@@ -28,6 +28,7 @@ extern std::string VERUS_CHAINNAME;
 CIdentityID VERUS_DEFAULTID;
 CIdentityID VERUS_NOTARYID;
 CIdentityID PBAAS_NOTIFICATION_ORACLE;                                  // an identity that can be used to coordinate on-chain actions or upgrades
+CTransferDestination APPROVE_CONTRACT_UPGRADE;                          // approve a contract to be upgraded on the ETH bridge, enables the network to decide
 std::string PBAAS_DEFAULT_NOTIFICATION_ORACLE = "Verus Coin Foundation@";
 
 int32_t MAX_OUR_UTXOS_ID_RESCAN = 1000; // this can be set with "-maxourutxosidrescan=n"
