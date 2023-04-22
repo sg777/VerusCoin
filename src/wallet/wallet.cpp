@@ -1804,11 +1804,11 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
 
     if (totalStakingAmount)
     {
-        LogPrint("staking", "Staking with %s VRSC\n", ValueFromAmount(totalStakingAmount).write().c_str());
+        LogPrint("staking", "Staking with %s %s\n", ValueFromAmount(totalStakingAmount).write().c_str(), ConnectedChains.ThisChain().name.c_str());
     }
     else
     {
-        LogPrint("staking", "No VRSC staking\n");
+        LogPrint("staking", "No %s staking\n", ConnectedChains.ThisChain().name.c_str());
         return false;
     }
 

@@ -105,9 +105,10 @@ public:
     }
 
     // return a vector of bytes that contains the internal data for this solution vector
-    void GetExtraData(std::vector<unsigned char> &dataVec)
+    void GetExtraData(std::vector<unsigned char> &dataVec) const
     {
-        CVerusSolutionVector(nSolution).GetExtraData(dataVec);
+        std::vector<unsigned char> writeSolution = nSolution;
+        CVerusSolutionVector(writeSolution).GetExtraData(dataVec);
     }
 
     // set the extra data with a pointer to bytes and length
@@ -2099,7 +2100,6 @@ public:
 
     enum EConstants {
         DEFAULT_OUTPUT_VALUE = 0,
-        MAX_EVIDENCE_SUPPLEMENTALS = 25     // how many reserve transfers can be max in each output
     };
 
     enum ETypes {
@@ -2401,6 +2401,11 @@ public:
                version <= VERSION_LAST &&
                !systemID.IsNull() &&
                output.IsValid();
+    }
+
+    bool HasEvidence() const
+    {
+        return IsValid() && evidence.chainObjects.size();
     }
 };
 

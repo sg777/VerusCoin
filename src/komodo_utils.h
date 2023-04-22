@@ -1791,31 +1791,31 @@ void komodo_args(char *argv0)
     }
     */
 
-    // either the testmode parameter or calling this chain VRSCTEST will put us into testmode
-    PBAAS_TESTMODE = GetBoolArg("-testnet", false);
-
-    // setting test mode also prevents the name of this chain from being set to VRSC
-
-    //printf("%s: initial name: %s\n", __func__, name.c_str());
-
     // for testnet release, default to testnet
     name = GetArg("-chain", name == "" ? "VRSC" : name);
     name = GetArg("-ac_name", name);
 
     std::string lowerName = boost::to_lower_copy(name);
 
-    // TODO: POST HARDENING - right now, all PBaaS chains assume testmode. change before mainnet
+    PBAAS_TESTMODE = false;
+
+    // TODO: POST HARDENING - right now, all PBaaS chains default testmode. remove this and change default before mainnet
     if (lowerName != "vrsc")
     {
         PBAAS_TESTMODE = true;
     }
 
+    // either the testmode parameter or calling this chain VRSCTEST will put us into testmode
+    PBAAS_TESTMODE = GetBoolArg("-testnet", PBAAS_TESTMODE);
+
     // both VRSC and VRSCTEST are names that cannot be
     // used as alternate chain names
+    // setting test mode also prevents the name of this chain from being set to VRSC
     if ((PBAAS_TESTMODE && lowerName == "vrsc") || lowerName == "vrsctest")
     {
         // upper case name
         name = "VRSCTEST";
+        PBAAS_TESTMODE = true;
     }
     else if (lowerName == "vrsc")
     {
@@ -2037,7 +2037,7 @@ void komodo_args(char *argv0)
 
     if ( (KOMODO_REWIND= GetArg("-rewind",0)) != 0 )
     {
-        printf("KOMODO_REWIND %d\n",KOMODO_REWIND);
+        printf("SET TO REWIND TO: %d\n",KOMODO_REWIND);
     }
 
     if ( name.size() )

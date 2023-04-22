@@ -28,10 +28,7 @@ static const int DEFAULT_RPC_TIMEOUT=900;
 static const uint32_t PBAAS_VERSION = 1;
 static const uint32_t PBAAS_VERSION_INVALID = 0;
 
-extern uint32_t PBAAS_TESTFORK_TIME;
 extern const uint32_t PBAAS_PREMAINNET_ACTIVATION;
-
-extern std::string PBAAS_TEST_ETH_CONTRACT;
 
 class CTransaction;
 class CScript;
@@ -468,12 +465,12 @@ public:
         DEFAULT_START_TARGET = 0x1e01e1e1,
         MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 20,
         MAX_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK = 100,
-        MAX_TRANSFER_EXPORTS_PER_BLOCK = 1000,
-        MAX_TRANSFER_EXPORTS_SIZE_PER_BLOCK = 400000,
+        MAX_TRANSFER_EXPORTS_PER_BLOCK = 500,       // this is per block, and up to two of these limits go into an export
+        MAX_TRANSFER_EXPORTS_SIZE_PER_BLOCK = 100000, // same as above, but regarding space
         MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 1,
         MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK = 0,
         MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK = 50,
-        MAX_ETH_TRANSFER_EXPORTS_SIZE_PER_BLOCK = 100000,
+        MAX_ETH_TRANSFER_EXPORTS_SIZE_PER_BLOCK = 50000,
         DEFAULT_BLOCK_NOTARIZATION_TIME = 600,      // default target time for block notarizations
         MIN_BLOCK_NOTARIZATION_PERIOD = 5,          // minimum target blocks for notarization period
         MAX_NOTARIZATION_CONVERSION_PRICING_INTERVAL = 100,  // there must be a notarization with conversion at least 100 blocks before reserve transfer
@@ -1276,8 +1273,6 @@ public:
 class CIdentitySignature
 {
 public:
-    // TODO HARDENING - move all instances post PBaaS to
-    // VERSION_ETHBRIDGE
     enum EVersions {
         VERSION_INVALID = 0,
         VERSION_VERUSID = 1,

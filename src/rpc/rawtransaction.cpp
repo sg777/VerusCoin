@@ -176,7 +176,8 @@ void TxToJSONExpanded(const CTransaction& tx, const uint256 hashBlock, UniValue&
             in.push_back(Pair("vout", (int64_t)txin.prevout.n));
             {
                 uint256 hash; CTransaction txFrom;
-                if (GetTransaction(txin.prevout.hash,txFrom,hash,false))
+                if (GetTransaction(txin.prevout.hash, txFrom, hash, false) &&
+                    txFrom.vout.size() > txin.prevout.n)
                 {
                     COptCCParams p;
                     BlockMap::iterator blockIdxIt = mapBlockIndex.find(hash);
@@ -748,7 +749,8 @@ UniValue createrawtransaction(const UniValue& params, bool fHelp)
             "     ]\n"
             "2. \"addresses\"           (string, required) a json object with addresses as keys and amounts as values\n"
             "    {\n"
-            "      \"address\": x.xxx   (numeric, required) The key is the Komodo address, the value is the " + CURRENCY_UNIT + " amount\n"
+            "      \"address\": x.xxx   (numeric, required) The key is the destination address or ID, the value is the " + CURRENCY_UNIT + " amount\n"
+            "      \"address\": {\"currency\": x.xxx, ...} (object, optional) The key is the destination address or ID, the value is currencies and amounts\n"
             "      \"data\": \"hex\"    (string, optional) The key is \"data\", the value is hex encoded data\n"
             "      ,...\n"
             "    }\n"
@@ -837,20 +839,48 @@ UniValue createrawtransaction(const UniValue& params, bool fHelp)
         } else {
             CTxDestination destination = DecodeDestination(name_);
             if (!IsValidDestination(destination)) {
-                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid Komodo address: ") + name_);
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid address: ") + name_);
             }
 
             if (!destinations.insert(destination).second) {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("Invalid parameter, duplicated address: ") + name_);
             }
 
-            CScript scriptPubKey = GetScriptForDestination(destination);
-            CAmount nAmount = AmountFromValue(sendTo[name_]);
+            CScript scriptPubKey;
+            CAmount nAmount = 0;
+
+            UniValue sendVal = find_value(sendTo, name_);
+            if (sendVal.isObject())
+            {
+                CCurrencyValueMap outputValue = CCurrencyValueMap(sendVal).CanonicalMap();
+                if (!(outputValue.IsValid() && outputValue.valueMap.size()))
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("Invalid output for address: ") + name_);
+                }
+                nAmount = outputValue.valueMap[ASSETCHAINS_CHAINID];
+                outputValue.valueMap.erase(ASSETCHAINS_CHAINID);
+                if (outputValue.valueMap.size())
+                {
+                    std::vector<CTxDestination> dests = std::vector<CTxDestination>({destination});
+                    CTokenOutput to(outputValue);
+                    scriptPubKey = MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, dests, 1, &to));
+                }
+                else
+                {
+                    scriptPubKey = GetScriptForDestination(destination);
+                }
+            }
+            else
+            {
+                scriptPubKey = GetScriptForDestination(destination);
+                nAmount = AmountFromValue(sendVal);
+            }
 
             CTxOut out(nAmount, scriptPubKey);
             rawTx.vout.push_back(out);
         }
     }
+
     return EncodeHexTx(rawTx);
 }
 
