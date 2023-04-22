@@ -517,6 +517,7 @@ std::string HelpMessage(HelpMessageMode mode)
     strUsage += HelpMessageOpt("-defaultid=<i-address>", _("VerusID used for default change out and staking reward recipient"));
     strUsage += HelpMessageOpt("-notaryid=<i-address>", _("VerusID used for PBaaS and Ethereum cross-chain notarization"));
     strUsage += HelpMessageOpt("-notificationoracle=<i-address>", strprintf(_("VerusID monitored for network alerts, triggers, and signals. Current default is \"%s\" for Verus and the chain ID for PBaaS chains"), PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str()));
+    strUsage += HelpMessageOpt("-approvecontractupgrade=<0xf09...>", strprintf(_("When validating blocks, vote to agree to upgrade to the specific contract. Default is no upgrade.")));
     strUsage += HelpMessageOpt("-defaultzaddr=<sapling-address>", _("sapling address to receive fraud proof rewards and if used with \"-privatechange=1\", z-change address for the sendcurrency command"));
     strUsage += HelpMessageOpt("-cheatcatcher=<sapling-address>", _("same as \"-defaultzaddr\""));
     strUsage += HelpMessageOpt("-privatechange", _("directs all change from sendcurency or z_sendmany APIs to the defaultzaddr set, if it is a valid sapling address"));
@@ -653,7 +654,7 @@ void CleanupBlockRevFiles()
 void ThreadImport(std::vector<boost::filesystem::path> vImportFiles)
 {
     const CChainParams& chainparams = Params();
-    RenameThread("zcash-loadblk");
+    RenameThread("verus-loadblk");
     // -reindex
     if (fReindex) {
         CImportingNow imp;
@@ -1252,6 +1253,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5, 1053660);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5_1, 1053660);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV6, 1796400);
+            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV7, 2546600);
         }
         else if (IsVerusActive())
         {
@@ -1287,6 +1289,12 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     // get default IDs and addresses
     auto chainUpgradeOracle = DecodeDestination(GetArg("-notificationoracle", IsVerusActive() ? PBAAS_DEFAULT_NOTIFICATION_ORACLE : EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
     PBAAS_NOTIFICATION_ORACLE = chainUpgradeOracle.which() == COptCCParams::ADDRTYPE_ID ? CIdentityID(GetDestinationID(chainUpgradeOracle)) : CIdentityID();
+    auto upgradeContractAddress = CTransferDestination::DecodeEthDestination(GetArg("-approvecontractupgrade", ""));
+    if (!upgradeContractAddress.IsNull())
+    {
+        APPROVE_CONTRACT_UPGRADE = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(upgradeContractAddress));
+    }
+
     auto notaryIDDest = DecodeDestination(GetArg("-notaryid", ""));
     VERUS_NOTARYID = notaryIDDest.which() == COptCCParams::ADDRTYPE_ID ? CIdentityID(GetDestinationID(notaryIDDest)) : CIdentityID();
     auto defaultIDDest = DecodeDestination(GetArg("-defaultid", VERUS_NOTARYID.IsNull() ? "" : EncodeDestination(notaryIDDest)));

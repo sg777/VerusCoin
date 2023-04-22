@@ -462,7 +462,8 @@ public:
                   std::vector<CTxOut> &txOutputs,
                   uint32_t height,
                   std::set<uint160> &exportedIDs,
-                  std::set<uint160> &exportedCurrencies) const;
+                  std::set<uint160> &exportedCurrencies,
+                  const uint256 &existingTxHash=uint256()) const;
 };
 
 class CReserveDeposit : public CTokenOutput
@@ -1595,7 +1596,8 @@ public:
                                              bool &feesConverted,
                                              CCurrencyValueMap &liquidityFees,
                                              CCurrencyValueMap &convertedFees) const;
-    void RevertReservesAndSupply();
+
+    void RevertReservesAndSupply(const uint160 &systemID=ASSETCHAINS_CHAINID, bool pbaasInitialChainCurrency=false);
 
     template <typename NUMBERVECTOR>
     static NUMBERVECTOR AddVectors(const NUMBERVECTOR &a, const NUMBERVECTOR &b)

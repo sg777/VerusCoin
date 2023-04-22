@@ -1275,6 +1275,15 @@ bool ContextualCheckTransaction(
                             REJECT_INVALID, "bad-txns-oversize");
     }
 
+    // Rules that apply to PBaaS or later:
+    if (isPBaaS) {
+        for (const JSDescription& joinsplit : tx.vJoinSplit) {
+            if (joinsplit.vpub_old > 0) {
+                return state.DoS(100, error("ContextualCheckTransaction(): joinsplit.vpub_old nonzero"), REJECT_INVALID, "bad-txns-vpub_old-nonzero");
+            }
+        }
+    }
+
     uint256 dataToBeSigned;
 
     if (!tx.IsMint() &&
@@ -1427,11 +1436,7 @@ bool ContextualCheckTransaction(
                 {
                     return state.DoS(100, error("ContextualCheckTransaction(): Invalid smart transaction eval code"), REJECT_INVALID, "bad-txns-evalcode-invalid");
                 }
-                if (isPBaaS &&
-                    (!IsVerusActive() ||
-                     IsVerusMainnetActive() ||
-                     chainActive[std::min((uint32_t)chainActive.Height(), (uint32_t)nHeight)]->nTime > PBAAS_PREMAINNET_ACTIVATION) &&
-                    p.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
+                if (isPBaaS && p.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
                 {
                     if (LogAcceptCategory("notarization"))
                     {
@@ -3522,6 +3527,8 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
             return DISCONNECT_FAILED;
         }
     }
+    // unwind any consensus upgrades that may have been removed in the block
+    ConnectedChains.CheckOracleUpgrades();
     return fClean ? DISCONNECT_OK : DISCONNECT_UNCLEAN;
 }
 
@@ -3553,7 +3560,7 @@ bool FindUndoPos(CValidationState &state, int nFile, CDiskBlockPos &pos, unsigne
 static CCheckQueue<CScriptCheck> scriptcheckqueue(128);
 
 void ThreadScriptCheck() {
-    RenameThread("zcash-scriptch");
+    RenameThread("verus-scriptch");
     scriptcheckqueue.Thread();
 }
 
@@ -3930,6 +3937,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                    nHeight < 1800000)))
             {
                 LogPrintf("%s: ERROR: %s\nBlock %s rejected\n", __func__, state.GetRejectReason().c_str(), block.GetHash().GetHex().c_str());
+                InvalidBlockFound(pindex, state, Params());
                 return false; // Failure reason has been set in validation state object
             }
             state = CValidationState();
@@ -6180,7 +6188,7 @@ bool ContextualCheckBlockHeader(
     int nHeight = pindexPrev->GetHeight()+1;
 
     // Check proof of work
-    if ((ASSETCHAINS_SYMBOL[0] != 0 || !IsVerusMainnetActive() || nHeight < 235300 || nHeight > 236000) && block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))
+    if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))
     {
         cout << block.nBits << " block.nBits vs. calc " << GetNextWorkRequired(pindexPrev, &block, consensusParams) <<
                                " for block #" << nHeight << endl;
@@ -6276,8 +6284,11 @@ bool ContextualCheckBlock(
         {
             if (IsVerusMainnetActive() && nHeight < 1564700)
             {
-                printf("%s: Invalid POS block at height %u - %s\n", __func__, nHeight, block.GetHash().GetHex().c_str());
-                LogPrintf("%s: Invalid POS block at height %u - %s\n", __func__, nHeight, block.GetHash().GetHex().c_str());
+                if (LogAcceptCategory("pos"))
+                {
+                    printf("%s: Invalid POS block at height %u - %s\n", __func__, nHeight, block.GetHash().GetHex().c_str());
+                    LogPrintf("%s: Invalid POS block at height %u - %s\n", __func__, nHeight, block.GetHash().GetHex().c_str());
+                }
             }
             else
             {

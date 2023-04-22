@@ -199,7 +199,9 @@ uint256 CTxOut::GetHash() const
 
 std::string CTxOut::ToString() const
 {
-    return strprintf("CTxOut(nValue=%d.%08d, scriptPubKey=%s)", nValue / COIN, nValue % COIN, HexStr(scriptPubKey).substr(0, 30));
+    UniValue scriptUni(UniValue::VOBJ);
+    ScriptPubKeyToUniv(scriptPubKey, scriptUni, true);
+    return strprintf("CTxOut(nValue=%s, scriptPubKey=%s)", ValueFromAmount(nValue).write().c_str(), scriptUni.write().c_str());
 }
 
 CMutableTransaction::CMutableTransaction() : nVersion(CTransaction::SPROUT_MIN_CURRENT_VERSION), fOverwintered(false), nVersionGroupId(0), nExpiryHeight(0), nLockTime(0), valueBalance(0) {}
