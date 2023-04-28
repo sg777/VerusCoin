@@ -1813,6 +1813,28 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
         {
             if (::AsVector(*revCheckOutputIt) != ::AsVector(*revOutputIt))
             {
+                // we forgive evidence with an alternate output, but nothing else
+                COptCCParams p1, p2;
+                CNotaryEvidence ne1, ne2;
+                if (revCheckOutputIt->scriptPubKey.IsPayToCryptoCondition(p1) &&
+                    p1.IsValid() &&
+                    p1.evalCode == EVAL_NOTARY_EVIDENCE &&
+                    p1.vData.size() &&
+                    (ne1 = CNotaryEvidence(p1.vData[0])).IsValid() &&
+                    revOutputIt->scriptPubKey.IsPayToCryptoCondition(p2) &&
+                    p2.IsValid() &&
+                    p2.evalCode == EVAL_NOTARY_EVIDENCE &&
+                    p2.vData.size() &&
+                    (ne2 = CNotaryEvidence(p2.vData[0])).IsValid() &&
+                    ne2.output.n > ne1.output.n)
+                {
+                    ne1.output.n = ne2.output.n;
+                    if (::AsVector(ne1) == ::AsVector(ne2) &&
+                        revCheckOutputIt->nValue == revOutputIt->nValue)
+                    {
+                        continue;
+                    }
+                }
                 mismatchCount++;
                 LogPrint("notarization", "%s: mismatch block one coinbase output:\nexpected: %s\nactual: %s\n", __func__, revCheckOutputIt->ToString().c_str(), revOutputIt->ToString().c_str());
             }
