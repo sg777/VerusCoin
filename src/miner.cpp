@@ -1435,7 +1435,7 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
     // if we are on the PBaaS chain itself, we can only reject a valid block 1 if it does not
     // match the one that would be created using the notary chain as a guide
     if ((newChainCurrency.GetID() != ASSETCHAINS_CHAINID && launchChainID == ASSETCHAINS_CHAINID) ||
-        (newChainCurrency.GetID() == ASSETCHAINS_CHAINID && ConnectedChains.IsNotaryAvailable()))
+        (newChainCurrency.GetID() == ASSETCHAINS_CHAINID && (ConnectedChains.IsNotaryAvailable(false) || ConnectedChains.IsNotaryAvailable(true))))
     {
         bool validOutputs = BlockOneCoinbaseOutputs(checkOutputs, launchNotarization, additionalFees, launchChain, newChainCurrency);
 
@@ -1818,16 +1818,22 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
             }
             LogPrint("notarization", "Matched %d/%d outputs for block 1 coinbase\n", (int)checkOutputs.size() - mismatchCount, (int)checkOutputs.size());
         }
+        if (mismatchCount)
+        {
+            LogPrintf("%s: Invalid block one coinbase for chain %s\n", __func__, newChainCurrency.name.c_str());
+            return state.Error(std::string("Invalid block 1 coinbase for chain ") + newChainCurrency.name + std::string(" (") + EncodeDestination(CIdentityID(newChainCurrency.GetID())) + std::string(")"));
+        }
     }
     else
     {
-        // TODO: HARDENING -
+        // TODO: POST HARDENING -
         // if we did not get full checkoutputs, we could still double check that we have
         // correct preallocations,
         // correct notary funds distributed
         // expected reserve deposits
         //
-        // numbers are already checked for consistency, but check that all numbers match here
+        // numbers are already checked for consistency & fully checked if we are on the
+        // launch chain or connected to it, but check that all numbers match here
     }
     return true;
 }
