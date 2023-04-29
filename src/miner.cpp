@@ -1492,7 +1492,7 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
     else
     {
         // get our initial currency definition from the outputs
-        const std::vector<CTxOut> &findCurrencyOuts = checkOutputs.size() ? checkOutputs : outputs;
+        const std::vector<CTxOut> &findCurrencyOuts = outputs;
         for (auto &oneOut : findCurrencyOuts)
         {
             if ((newChainCurrency = CCurrencyDefinition(oneOut.scriptPubKey)).IsValid() &&
@@ -1517,6 +1517,7 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
     if (!converterCurrencyID.IsNull())
     {
         blockOneCurrencies.insert(converterCurrencyID);
+        blockOneIDs.insert(converterCurrencyID);
         // find it in the outputs or checkOutputs, whichever we have, and add converter preallocation IDs
         const std::vector<CTxOut> &findConverterOuts = checkOutputs.size() ? checkOutputs : outputs;
         for (auto &oneOut : findConverterOuts)
@@ -1554,13 +1555,6 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
     // get this chain's notaries
     auto &notaryIDs = newChainCurrency.notaries;
     blockOneIDs.insert(notaryIDs.begin(), notaryIDs.end());
-
-    // add converterCurrency if appropriate & populate currency and identity imports
-    uint160 gatewayConverterID = newChainCurrency.GatewayConverterID();
-    if (!gatewayConverterID.IsNull())
-    {
-        blockOneIDs.insert(gatewayConverterID);
-    }
 
     CFeePool cbFeePool;
     bool haveFeePool = false;
@@ -1826,7 +1820,7 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
                     p2.evalCode == EVAL_NOTARY_EVIDENCE &&
                     p2.vData.size() &&
                     (ne2 = CNotaryEvidence(p2.vData[0])).IsValid() &&
-                    ne2.output.n > ne1.output.n)
+                    ne2.output.n - ne1.output.n == outputs.size() - checkOutputs.size())
                 {
                     ne1.output.n = ne2.output.n;
                     if (::AsVector(ne1) == ::AsVector(ne2) &&
