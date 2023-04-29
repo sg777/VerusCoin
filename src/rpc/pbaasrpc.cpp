@@ -8840,6 +8840,15 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 }
             }
 
+            if ((burnWeight || mintNew) &&
+                !convertToCurrencyDef.IsValid() ||
+                (convertToCurrencyDef.proofProtocol == CCurrencyDefinition::PROOF_CHAINID &&
+                 convertToCurrencyDef.endBlock > 0 &&
+                 convertToCurrencyDef.endBlock <= height))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(burnWeight ? "burnchangeweight" : "minting") + " is disallowed, even by currency ID after the currency endblock");
+            }
+
             std::string systemDestStr;
             uint160 destSystemID = thisChainID;
             CCurrencyDefinition destSystemDef;
@@ -12310,6 +12319,12 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         else if (!(issuingCurrency.GetID() == ASSETCHAINS_CHAINID || issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID))
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parent currency for identity registration on this chain");
+        }
+        if (issuingCurrency.proofProtocol == CCurrencyDefinition::PROOF_CHAINID &&
+            issuingCurrency.endBlock > 0 &&
+            issuingCurrency.endBlock <= height)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity registration - minting period has ended");
         }
     }
 
