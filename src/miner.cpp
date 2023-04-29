@@ -1161,9 +1161,8 @@ bool BlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
                              CPBaaSNotarization &launchNotarization,
                              CCurrencyValueMap &additionalFees,
                              const CRPCChainData &_launchChain,
-                             const CCurrencyDefinition &_newChainCurrency)
+                             CCurrencyDefinition &newChainCurrency)
 {
-    CCurrencyDefinition newChainCurrency = _newChainCurrency;
     CCoinbaseCurrencyState currencyState;
     std::map<uint160, std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>>> blockOneExportImports;
 
