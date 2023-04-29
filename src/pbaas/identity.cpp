@@ -1924,7 +1924,10 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             {
                 if (isPBaaS)
                 {
-                    if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID)
+                    if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
+                        (!issuingCurrency.IsFractional() ||
+                         issuingCurrency.endBlock == 0 ||
+                         issuingCurrency.endBlock <= height))
                     {
                         // if this is a purchase from centralized/DAO-based currency, ensure we have a valid output
                         // of the correct amount to the issuer ID before any of the referrals

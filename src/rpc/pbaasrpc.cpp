@@ -12321,6 +12321,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parent currency for identity registration on this chain");
         }
         if (issuingCurrency.proofProtocol == CCurrencyDefinition::PROOF_CHAINID &&
+            !issuingCurrency.IsFractional() &&
             issuingCurrency.endBlock > 0 &&
             issuingCurrency.endBlock <= height)
         {
@@ -12566,7 +12567,10 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     int64_t expectedFee = referralID.IsNull() ? feeOffer : feeOffer - idReferralFee;
 
-    if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID)
+    if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
+        (!issuingCurrency.IsFractional() ||
+         (issuingCurrency.endBlock > 0 &&
+          issuingCurrency.endBlock < height)))
     {
         if (issuerID == ASSETCHAINS_CHAINID)
         {
