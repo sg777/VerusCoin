@@ -1345,7 +1345,7 @@ bool BlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
                                        outputs,
                                        additionalFees,
                                        _launchChain,
-                                       _newChainCurrency);
+                                       newChainCurrency);
     }
 
     if (success)
@@ -1379,7 +1379,7 @@ bool BlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
                                            outputs,
                                            additionalFees,
                                            _launchChain,
-                                           _newChainCurrency);
+                                           newChainCurrency);
             if (!success)
             {
                 break;
