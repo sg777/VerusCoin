@@ -934,7 +934,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         return state.Error("Multi-currency operation before PBaaS activation");
     }
 
-    // TODO: HARDENING - ensure that this transaction has necessary finalization & notarization outputs, as required
+    // ensure that this transaction has necessary finalization & notarization outputs, as required
     // - create parameter to add a currency to the wallet black/broken list if a bridge is clearly blocked by an error
     // when rolling up an export, or blocked at import to prevent continuously trying to process transactions on a failed bridge
     // do not roll up or import currencies with broken bridges
@@ -943,7 +943,9 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
     COptCCParams p;
     CCrossChainExport ccx;
     int primaryExportOut = -1, nextOutput;
+
     CPBaaSNotarization notarization;
+
     std::vector<CReserveTransfer> reserveTransfers;
     CCurrencyDefinition destSystem;
     std::vector<ChainTransferData> txInputVec;
@@ -977,6 +979,8 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         return state.Error("Export source height is too high for current height");
     }
 
+    CObjectFinalization exportFinalization, tmpFinalization;
+
     for (int i = outNum + 1; i < tx.vout.size(); i++)
     {
         COptCCParams dupP;
@@ -989,6 +993,19 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             dupCCX.destCurrencyID == ccx.destCurrencyID)
         {
             return state.Error("Duplicate export output");
+        }
+        else if (dupP.IsValid() &&
+                 dupP.evalCode == EVAL_FINALIZE_EXPORT &&
+                 dupP.vData.size() &&
+                 (tmpFinalization = CObjectFinalization(dupP.vData[0])).IsValid() &&
+                 tmpFinalization.output.hash.IsNull() &&
+                 tmpFinalization.output.n == outNum)
+        {
+            if (exportFinalization.IsValid())
+            {
+                return state.Error("Duplicate export finalization");
+            }
+            exportFinalization = tmpFinalization;
         }
     }
 
@@ -1171,6 +1188,12 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             }
             return state.Error("Invalid export input that was not mined in as valid reserve transfer");
         }
+    }
+
+    if ((ccx.IsClearLaunch() || (ccx.IsSameChain() && ccx.IsPostlaunch())) &&
+        !exportFinalization.IsValid())
+    {
+        return state.Error("Clear launch export or post launch on same chain must include export finalization output");
     }
 
     if (ccx.IsClearLaunch() || ccx.IsChainDefinition())
@@ -1483,7 +1506,7 @@ bool IsFinalizeExportInput(const CScript &scriptSig)
 
 bool PreCheckFinalizeExport(const CTransaction &tx, int32_t outNum, CValidationState &state, uint32_t height)
 {
-    // TODO: HARDENING - ensure that this finalization represents an export that is either the clear launch beacon of
+    // ensure that this finalization represents an export that is either the clear launch beacon of
     // the currency or a same-chain export to be spent by the matching import
     COptCCParams p;
     CObjectFinalization of;

@@ -7981,7 +7981,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                     // if this has already been confirmed, the bridge to this chain cannot be easily repaired, so we fail
                     if (confirmingIdx == 0)
                     {
-                        // TODO: HARDENING - Unless this is discrepancy from an attack, which is the only other option
+                        // Unless this is discrepancy from an attack, which is the only other option
                         // besides we are on a non-main fork, we should use the node information from the other chain
                         // to connect to new nodes, set the confirmed root from the other chain, and
                         // stop accepting blocks that disagree.
@@ -7990,6 +7990,10 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                         // is a high chance it is due to a sophisticated chain attack in progress and should not be
                         // possible in any reasonably anticipated circumstance.
                         //
+                        for (auto &oneNode : oneNotarization.second.nodes)
+                        {
+                            AddOneShot(oneNode.networkAddress);
+                        }
                         LogPrintf("CROSS-CHAIN ERROR: Confirmed notarization on %s does not match this chain\n", EncodeDestination(CIdentityID(systemID)).c_str());
                         printf("CROSS-CHAIN ERROR: Confirmed notarization on %s does not match this chain\n", EncodeDestination(CIdentityID(systemID)).c_str());
                         return retVal;
