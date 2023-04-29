@@ -1329,7 +1329,7 @@ bool BlockOneCoinbaseOutputs(std::vector<CTxOut> &outputs,
                                         outputs,
                                         additionalFees,
                                         _launchChain,
-                                        _newChainCurrency);
+                                        newChainCurrency);
 
     // now, the converter
     if (success && converterCurDef.IsValid())
