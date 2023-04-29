@@ -2050,6 +2050,13 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             return state.Error("Inadequate fee paid for ID registration");
         }
     }
+    if (isPBaaS &&
+        issuingCurrency.proofProtocol == CCurrencyDefinition::PROOF_CHAINID &&
+        issuingCurrency.endBlock > 0 &&
+        issuingCurrency.endBlock < height)
+    {
+        return state.Error("Invalid identity registration - minting period has ended");
+    }
 
     std::string cleanName;
 

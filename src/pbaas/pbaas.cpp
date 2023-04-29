@@ -4194,6 +4194,12 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     return state.Error("Minting and/or burning while changing reserve ratios is only allowed in centralized (\"proofprotocol\":2) currencies on their native chain " + rt.ToUniValue().write(1,2));
                 }
 
+                if (importCurrencyDef.endBlock > 0 &&
+                    importCurrencyDef.endBlock < height)
+                {
+                    return state.Error("Minting and/or burning while changing reserve ratios was only allowed prior to block " + std::to_string(importCurrencyDef.endBlock + 1));
+                }
+
                 // ensure that this mint or burnchangeweight is spent by the currency ID
                 if (!CheckIdentitySpends(tx, importCurrencyID, state, height))
                 {
