@@ -1777,6 +1777,13 @@ bool SelectArbitrageFromOffers(const std::vector<
 
                     // if we have anything in mostProfitablePairs, select the best priced in native currency
                     // we should be able to add multiple conversions that do not have common currencies
+                    //
+                    // pick the one or combination of multiple orthogonal currencies that results in the equivalent
+                    // of the most amount of native currency from the basket
+                    //
+                    // then put them in the arbitrageInputs and add to export transfers
+                    // arbitrageInputs.push_back(std::make_pair());
+                    //
                     printf("%s: preview state:\n%s\n", __func__, previewState.ToUniValue().write(1,2).c_str());
                     for (auto oneConversion : mostProfitablePairs)
                     {
@@ -8840,15 +8847,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 }
             }
 
-            if ((burnWeight || mintNew) &&
-                !convertToCurrencyDef.IsValid() ||
-                (convertToCurrencyDef.proofProtocol == CCurrencyDefinition::PROOF_CHAINID &&
-                 convertToCurrencyDef.endBlock > 0 &&
-                 convertToCurrencyDef.endBlock <= height))
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(burnWeight ? "burnchangeweight" : "minting") + " is disallowed, even by currency ID after the currency endblock");
-            }
-
             std::string systemDestStr;
             uint160 destSystemID = thisChainID;
             CCurrencyDefinition destSystemDef;
@@ -9044,6 +9042,18 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             // if we are already converting or processing through some currency, that can only be done on its native system
             // and may imply an export off-chain. before creating an off-chain export, we need an explicit "exportto" command that matches.
             // we may also have an "exportafter" command, which enables funding a second leg to up to one more system
+
+            if ((burnWeight &&
+                 !convertToCurrencyDef.IsValid() ||
+                 (convertToCurrencyDef.endBlock > 0 &&
+                  convertToCurrencyDef.endBlock <= height)) ||
+                (mintNew &&
+                 !sourceCurrencyDef.IsValid() ||
+                 (sourceCurrencyDef.endBlock > 0 &&
+                  sourceCurrencyDef.endBlock <= height)))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(burnWeight ? "burnchangeweight" : "minting") + " is disallowed, even by currency ID after the currency endblock");
+            }
 
             // ensure that any initial export is explicit
             if (sendOffChain && !exportToCurrencyID.IsNull() &&
