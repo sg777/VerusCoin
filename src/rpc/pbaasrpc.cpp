@@ -12580,7 +12580,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
         (!issuingCurrency.IsFractional() ||
          (issuingCurrency.endBlock > 0 &&
-          issuingCurrency.endBlock < height)))
+          issuingCurrency.endBlock > height)))
     {
         if (issuerID == ASSETCHAINS_CHAINID)
         {

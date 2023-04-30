@@ -1041,6 +1041,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             if (destSystem.IsValid() && newCurrency.IsValid())
             {
                 found = true;
+                thisDef = newCurrency;
             }
         }
         if (!found)
@@ -1190,10 +1191,13 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         }
     }
 
-    if ((ccx.IsClearLaunch() || (ccx.IsSameChain() && ccx.IsPostlaunch())) &&
-        !exportFinalization.IsValid())
+    if (((ccx.IsClearLaunch() || (ccx.IsSameChain() && ccx.IsPostlaunch())) &&
+         !exportFinalization.IsValid()) &&
+        !(thisDef.IsValid() &&
+          thisDef.GetID() == ASSETCHAINS_CHAINID ||
+          thisDef.IsGateway()))
     {
-        return state.Error("Clear launch export or post launch on same chain must include export finalization output");
+        return state.Error("Clear launch export or post launch of anything but a gateway on same chain must include export finalization output");
     }
 
     if (ccx.IsClearLaunch() || ccx.IsChainDefinition())

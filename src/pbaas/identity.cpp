@@ -1270,7 +1270,10 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
             {
                 if (isPBaaS)
                 {
-                    if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID)
+                    if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
+                        (!issuingCurrency.IsFractional() ||
+                         issuingCurrency.endBlock == 0 ||
+                         issuingCurrency.endBlock >= height))
                     {
                         // if this is a purchase from centralized/DAO-based currency, ensure we have a valid output
                         // of the correct amount to the issuer ID before any of the referrals
@@ -1927,7 +1930,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
                     if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
                         (!issuingCurrency.IsFractional() ||
                          issuingCurrency.endBlock == 0 ||
-                         issuingCurrency.endBlock <= height))
+                         issuingCurrency.endBlock >= height))
                     {
                         // if this is a purchase from centralized/DAO-based currency, ensure we have a valid output
                         // of the correct amount to the issuer ID before any of the referrals
@@ -2053,10 +2056,10 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             return state.Error("Inadequate fee paid for ID registration");
         }
     }
-    if (isPBaaS &&
-        issuingCurrency.proofProtocol == CCurrencyDefinition::PROOF_CHAINID &&
-        issuingCurrency.endBlock > 0 &&
-        issuingCurrency.endBlock < height)
+    else if (isPBaaS &&
+             issuingCurrency.proofProtocol == CCurrencyDefinition::PROOF_CHAINID &&
+             issuingCurrency.endBlock > 0 &&
+             issuingCurrency.endBlock < height)
     {
         return state.Error("Invalid identity registration - minting period has ended");
     }
