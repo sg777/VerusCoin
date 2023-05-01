@@ -10795,10 +10795,6 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
                 {
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "All reserve currencies of a fractional currency must be valid and past the start block " + EncodeDestination(CIdentityID(currency)));
                 }
-                if (reserveCurrencies.back().endBlock && (!newCurrency.endBlock || reserveCurrencies.back().endBlock < newCurrency.endBlock))
-                {
-                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Reserve currency " + EncodeDestination(CIdentityID(currency)) + " ends its life before the fractional currency's endblock");
-                }
             }
         }
         if (!hasCoreReserve)
@@ -12731,7 +12727,10 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     // if we have registration payments, fixup the output amount based on referrals adjustment
     if (registrationPaymentOut >= 0)
     {
-        if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID)
+        if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
+            (!issuingCurrency.IsFractional() ||
+             (issuingCurrency.endBlock > 0 &&
+              issuingCurrency.endBlock > height)))
         {
             if (issuerID == ASSETCHAINS_CHAINID)
             {
