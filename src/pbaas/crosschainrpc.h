@@ -29,6 +29,7 @@ static const uint32_t PBAAS_VERSION = 1;
 static const uint32_t PBAAS_VERSION_INVALID = 0;
 
 extern const uint32_t PBAAS_PREMAINNET_ACTIVATION;
+extern const uint32_t PBAAS_TESTFORK_TIME;
 
 class CTransaction;
 class CScript;
