@@ -12275,7 +12275,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     // determine if we may use a gateway converter to issue
     if (isPBaaS)
     {
-        if (issuingCurrency.NoIDs())
+        if (issuingCurrency.NoIDs() || issuingCurrency.IsNFTToken())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency parent cannot register identities");
         }

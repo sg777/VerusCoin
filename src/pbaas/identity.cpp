@@ -1849,7 +1849,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     CCurrencyValueMap burnAmount;
     CCoinbaseCurrencyState pricingState;
 
-    if (issuingCurrency.NoIDs())
+    if (issuingCurrency.NoIDs() || issuingCurrency.IsNFTToken())
     {
         return state.Error("Currency " + ConnectedChains.GetFriendlyCurrencyName(issuingCurrency.GetID()) + " cannot register IDs");
     }
