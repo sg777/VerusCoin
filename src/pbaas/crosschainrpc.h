@@ -1107,6 +1107,7 @@ public:
         return (nVersion != PBAAS_VERSION_INVALID) &&
                 (!notaries.size() || minNotariesConfirm > (notaries.size() >> 1)) &&
                 !(options & ~OPTIONS_FLAG_MASK) &&
+                !(IsPBaaSChain() && (NoIDs() || IsToken() || IsFractional())) &&
                 idReferralLevels <= MAX_ID_REFERRAL_LEVELS &&
                 name.size() > 0 &&
                 name.size() <= (KOMODO_ASSETCHAIN_MAXLEN - 1) &&

@@ -12609,7 +12609,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
         outputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt)), ConnectedChains.ThisChain().GetTransactionTransferFee(), false});
     }
-    else if (issuingCurrency != ASSETCHAINS_CHAINID)
+    else if (issuingCurrency.GetID() != ASSETCHAINS_CHAINID)
     {
         throw JSONRPCError(RPC_VERIFY_ALREADY_IN_CHAIN, "Invalid issuing/parent currency for this network");
     }
