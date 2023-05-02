@@ -1224,7 +1224,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
             }
         }
         // aside from fractional currencies, centralized or native currencies can issue IDs
-        else if (!(issuingCurrency.GetID() == ASSETCHAINS_CHAINID || issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID))
+        else if (!(issuingCurrency.GetID() == ASSETCHAINS_CHAINID || issuingCurrency.IsToken()))
         {
             return state.Error("Invalid parent currency for identity registration on this chain");
         }
@@ -1271,9 +1271,8 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
                 if (isPBaaS)
                 {
                     if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
-                        (!issuingCurrency.IsFractional() ||
-                         issuingCurrency.endBlock == 0 ||
-                         issuingCurrency.endBlock >= height))
+                        (issuingCurrency.endBlock == 0 ||
+                         issuingCurrency.endBlock <= height))
                     {
                         // if this is a purchase from centralized/DAO-based currency, ensure we have a valid output
                         // of the correct amount to the issuer ID before any of the referrals
@@ -1309,7 +1308,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
                             }
                         }
                     }
-                    else if (issuingCurrency.IsFractional())
+                    else if (issuingCurrency.IsToken())
                     {
                         // if this is a burn and issue, we need to make sure we have a valid burn transaction
                         // of the correct amount before any of the referrals
@@ -1525,7 +1524,7 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
     if (isPBaaS)
     {
         // CHECK #3e
-        // although IDs issued by fractional currencies are paid for by the currency or a reserve,
+        // although IDs issued by tokens are paid for by the currency or a reserve,
         // an import fee must be paid in the native currency to register on the current chain
         if (issuerID != ASSETCHAINS_CHAINID && rtxd.NativeFees() < ConnectedChains.ThisChain().IDImportFee())
         {
@@ -1537,7 +1536,9 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
                     rtxd.NativeFees() :
                     (burnAmount.valueMap.begin()->first == issuerID ?
                      burnAmount.valueMap.begin()->second :
-                     pricingState.ReserveToNative(burnAmount.valueMap.begin()->second, pricingState.GetReserveMap()[burnAmount.valueMap.begin()->first]));
+                     (issuingCurrency.IsFractional() ?
+                      pricingState.ReserveToNative(burnAmount.valueMap.begin()->second, pricingState.GetReserveMap()[burnAmount.valueMap.begin()->first]) :
+                      0));
 
         // CHECK #4 - if blockchain referrals are not enabled or if there is no referring identity, make sure the fees of this transaction are full price for an identity,
         // all further checks only if referrals are enabled and there is a referrer
@@ -1848,6 +1849,11 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
     CCurrencyValueMap burnAmount;
     CCoinbaseCurrencyState pricingState;
 
+    if (issuingCurrency.NoIDs())
+    {
+        return state.Error("Currency " + ConnectedChains.GetFriendlyCurrencyName(issuingCurrency.GetID()) + " cannot register IDs");
+    }
+
     if (issuingCurrency.IsFractional())
     {
         // calculate the correct conversion rate that should have been observed when making the transaction and enforce it
@@ -1928,9 +1934,8 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
                 if (isPBaaS)
                 {
                     if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
-                        (!issuingCurrency.IsFractional() ||
-                         issuingCurrency.endBlock == 0 ||
-                         issuingCurrency.endBlock >= height))
+                        (issuingCurrency.endBlock == 0 ||
+                         issuingCurrency.endBlock <= height))
                     {
                         // if this is a purchase from centralized/DAO-based currency, ensure we have a valid output
                         // of the correct amount to the issuer ID before any of the referrals
@@ -1966,7 +1971,7 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
                             }
                         }
                     }
-                    else if (issuingCurrency.IsFractional())
+                    else if (issuingCurrency.IsToken())
                     {
                         // if this is a burn and issue, we need to make sure we have a valid burn transaction
                         // of the correct amount before any of the referrals
@@ -2055,13 +2060,6 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
         {
             return state.Error("Inadequate fee paid for ID registration");
         }
-    }
-    else if (isPBaaS &&
-             issuingCurrency.proofProtocol == CCurrencyDefinition::PROOF_CHAINID &&
-             issuingCurrency.endBlock > 0 &&
-             issuingCurrency.endBlock < height)
-    {
-        return state.Error("Invalid identity registration - minting period has ended");
     }
 
     std::string cleanName;
@@ -2339,6 +2337,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     bool validReservation = false;
     bool validIdentity = false;
     bool validImport = false;
+    bool idMayBeImported = true;
     bool validSourceSysImport = false;
     bool validCrossChainImport = false;
 
@@ -2442,6 +2441,14 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                         return state.Error("Invalid import on transaction output " + std::to_string(i));
                     }
 
+                    // if identity comes before an import and we're not on block 1, the import can't be source of validation
+                    if (height != 1 &&
+                        (identity.IsValid() ||
+                         cci.IsDefinitionImport()))
+                    {
+                        idMayBeImported = false;
+                    }
+
                     // twice through makes it invalid
                     if (!(isPBaaS && (height == 1 || cci.IsDefinitionImport())) && (validSourceSysImport || (validImport && !cci.IsSourceSystemImport())))
                     {
@@ -2451,12 +2458,12 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                     {
                         validSourceSysImport = true;
                     }
-
-                    validImport = true;
-                    if (cci.sourceSystemID != ASSETCHAINS_CHAINID)
+                    else if (cci.sourceSystemID != ASSETCHAINS_CHAINID)
                     {
                         validCrossChainImport = true;
                     }
+
+                    validImport = true;
                 }
                 break;
             }
@@ -2763,7 +2770,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                 return state.Error("Invalid ID minting in block 1");
             }
         }
-        else if (validCrossChainImport)
+        else if (idMayBeImported && validCrossChainImport)
         {
             // ensure that we are importing IDs from a source system that can send us these IDs
             return true;

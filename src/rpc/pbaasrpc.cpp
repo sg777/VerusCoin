@@ -12273,16 +12273,20 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
 
     // set currency and price, as well as burn requirement
     // determine if we may use a gateway converter to issue
-
     if (isPBaaS)
     {
+        if (issuingCurrency.NoIDs())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency parent cannot register identities");
+        }
+
         if (!issuingCurrency.IsNameController() && !issuingCurrency.GatewayConverterID().IsNull())
         {
             issuingCurrency = ConnectedChains.GetCachedCurrency(issuingCurrency.GatewayConverterID());
             if (!(issuingCurrency.IsValid() &&
-                 issuingCurrency.IsFractional() &&
-                 issuingCurrency.IsGatewayConverter() &&
-                 issuingCurrency.gatewayID == parentID))
+                  issuingCurrency.IsFractional() &&
+                  issuingCurrency.IsGatewayConverter() &&
+                  issuingCurrency.gatewayID == parentID))
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid converter for gateway to register identity");
             }
@@ -12321,17 +12325,10 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
                 idReferredRegistrationFee = pricingState.ReserveToNative(idReferredRegistrationFee, reserveIndex);
             }
         }
-        // aside from fractional currencies, centralized or native currencies can issue IDs
-        else if (!(issuingCurrency.GetID() == ASSETCHAINS_CHAINID || issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID))
+        // aside from fractional currencies, tokens on this system or native currencies can issue IDs
+        else if (!(issuingCurrency.GetID() == ASSETCHAINS_CHAINID || (issuingCurrency.systemID == ASSETCHAINS_CHAINID)))
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parent currency for identity registration on this chain");
-        }
-        if (issuingCurrency.proofProtocol == CCurrencyDefinition::PROOF_CHAINID &&
-            !issuingCurrency.IsFractional() &&
-            issuingCurrency.endBlock > 0 &&
-            issuingCurrency.endBlock <= height)
-        {
-            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid identity registration - minting period has ended");
         }
     }
 
@@ -12574,9 +12571,8 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     int64_t expectedFee = referralID.IsNull() ? feeOffer : feeOffer - idReferralFee;
 
     if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
-        (!issuingCurrency.IsFractional() ||
-         (issuingCurrency.endBlock > 0 &&
-          issuingCurrency.endBlock > height)))
+        (issuingCurrency.endBlock == 0 ||
+         issuingCurrency.endBlock < height))
     {
         if (issuerID == ASSETCHAINS_CHAINID)
         {
@@ -12592,7 +12588,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
             outputs.push_back({MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, std::vector<CTxDestination>({CIdentityID(issuerID)}), 1, &to)), 0, false});
         }
     }
-    else if (issuingCurrency.IsFractional())
+    else if (issuingCurrency.IsToken())
     {
         // make a burn output of this currency for the amount
         CReserveTransfer rt(CReserveTransfer::VALID + CReserveTransfer::BURN_CHANGE_PRICE,
@@ -12612,6 +12608,10 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
         std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
 
         outputs.push_back({MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt)), ConnectedChains.ThisChain().GetTransactionTransferFee(), false});
+    }
+    else if (issuingCurrency != ASSETCHAINS_CHAINID)
+    {
+        throw JSONRPCError(RPC_VERIFY_ALREADY_IN_CHAIN, "Invalid issuing/parent currency for this network");
     }
 
     // wrong referral refers to the source identity instead of specified referral address
@@ -12728,9 +12728,8 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     if (registrationPaymentOut >= 0)
     {
         if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
-            (!issuingCurrency.IsFractional() ||
-             (issuingCurrency.endBlock > 0 &&
-              issuingCurrency.endBlock > height)))
+            (issuingCurrency.endBlock == 0 ||
+             issuingCurrency.endBlock < height))
         {
             if (issuerID == ASSETCHAINS_CHAINID)
             {
@@ -12747,7 +12746,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
                                                                                                             &to));
             }
         }
-        else
+        else if (issuingCurrency.IsToken())
         {
             // make a burn output of this currency for the amount
             CReserveTransfer rt(CReserveTransfer::VALID + CReserveTransfer::BURN_CHANGE_PRICE,
