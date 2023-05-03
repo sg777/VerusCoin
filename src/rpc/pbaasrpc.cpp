@@ -11853,6 +11853,11 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parent currency for this network");
     }
 
+    if (issuingCurrency.NoIDs())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, ConnectedChains.GetFriendlyCurrencyName(issuingCurrency.GetID()) + " is unable to issue currencies");
+    }
+
     std::string rawName = uni_get_str(params[0]);
     std::string name = CleanName(uni_get_str(params[0]), parentID, true, true);
     if (parentID != parentCurrency.GetID())
