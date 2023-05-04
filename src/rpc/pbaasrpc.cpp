@@ -11311,7 +11311,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     tb.AddTransparentOutput(MakeMofNCCScript(CConditionObj<CCrossChainImport>(EVAL_CROSSCHAIN_IMPORT, dests, 1, &cci)), 0);
 
     // get initial currency state at this height
-    newCurrencyState = ConnectedChains.GetCurrencyState(newChain, height);
+    newCurrencyState = ConnectedChains.GetCurrencyState(newChain, height + 1);
 
     newCurrencyState.SetPrelaunch();
 
@@ -11465,7 +11465,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                 CCurrencyDefinition::DEFAULT_OUTPUT_VALUE);
 
             // get initial currency state at this height
-            CCoinbaseCurrencyState gatewayCurrencyState = ConnectedChains.GetCurrencyState(newGatewayConverter, chainActive.Height());
+            CCoinbaseCurrencyState gatewayCurrencyState = ConnectedChains.GetCurrencyState(newGatewayConverter, chainActive.Height() + 1);
             int currencyIndex = gatewayCurrencyState.GetReserveMap()[newChainID];
 
             gatewayCurrencyState.reserveIn[currencyIndex] += newChain.gatewayConverterIssuance;
