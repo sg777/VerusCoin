@@ -3060,9 +3060,9 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
         {
             const CTxOut &oneOut = tx.vout[i];
             COptCCParams p;
-            if (i < outNum &&
-                oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+            if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
                 p.IsValid() &&
+                i < outNum &&
                 p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
                 p.vData.size() > 1 &&
                 (cci = CCrossChainImport(p.vData[0])).IsValid())
@@ -3131,6 +3131,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
 
                 // now, make sure new currency matches any initial notarization
                 // if this is not the systemID, we must be either a gateway, PBaaS chain, mapped currency, or gateway converter
+                CCurrencyDefinition newSystemCurrency;
                 if (newCurrency.systemID != ASSETCHAINS_CHAINID &&
                     !newCurrency.IsPBaaSChain() &&
                     !newCurrency.IsGateway())
@@ -3146,6 +3147,9 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                                 (oneCurDef.IsPBaaSChain() &&
                                     oneCurDef.GatewayConverterID() == newCurrency.GetID() &&
                                     newCurrency.IsGatewayConverter()))
+                            {
+                                newSystemCurrency = oneCurDef;
+                            }
                             failed = false;
                             break;
                         }
@@ -3156,29 +3160,51 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                     }
                 }
 
-                if (!pbn.IsValid() ||
-                    !pbn.IsDefinitionNotarization() ||
-                     pbn.IsMirror() ||
-                     newCurrency.IsFractional() != pbn.currencyState.IsFractional())
+                bool isMappedCurrency = (newCurrency.systemID != ASSETCHAINS_CHAINID &&
+                                         newCurrency.IsToken() &&
+                                         !newCurrency.IsFractional() &&
+                                         newCurrency.nativeCurrencyID.TypeNoFlags() != newCurrency.nativeCurrencyID.DEST_INVALID);
+
+                if (!(isMappedCurrency && !pbn.IsValid()))
                 {
-                    return state.Error("New currency definition must have valid notarization on output");
-                }
-                if ((chainActive.Height() >= (height - 1) &&
-                     chainActive[height - 1]->nTime >= PBAAS_TESTFORK_TIME))
-                {
-                    CCoinbaseCurrencyState checkCurrencyState = GetInitialCurrencyState(newCurrency);
-                    checkCurrencyState.flags = pbn.currencyState.flags;
-                    if (::AsVector(pbn.currencyState) != ::AsVector(checkCurrencyState))
+                    if (!pbn.IsValid() ||
+                        !pbn.IsDefinitionNotarization() ||
+                        pbn.IsMirror() ||
+                        newCurrency.IsFractional() != pbn.currencyState.IsFractional())
                     {
-                        return state.Error("New currency definition must have valid currency state in notarization");
+                        return state.Error("New currency definition must have valid notarization on output");
                     }
-                }
-                if (!newCurrency.IsGateway() &&
-                    newCurrency.GetID() != ASSETCHAINS_CHAINID &&
-                    (!pbn.IsPreLaunch() ||
-                     !pbn.currencyState.IsPrelaunch()))
-                {
-                    return state.Error("New currency definition must have valid notarization state on output");
+                    if (chainActive.Height() >= (height - 1))
+                    {
+                        CCoinbaseCurrencyState checkCurrencyState = ConnectedChains.GetCurrencyState(newCurrency, height - 1);
+                        checkCurrencyState.flags = pbn.currencyState.flags;
+
+                        if (newCurrency.IsGatewayConverter() &&
+                            newSystemCurrency.IsValid())
+                        {
+                            int currencyIndex = checkCurrencyState.GetReserveMap()[newSystemCurrency.GetID()];
+                            checkCurrencyState.reserveIn[currencyIndex] += newSystemCurrency.gatewayConverterIssuance;
+                        }
+
+                        if (::AsVector(pbn.currencyState) != ::AsVector(checkCurrencyState))
+                        {
+                            if (LogAcceptCategory("notarization"))
+                            {
+                                LogPrintf("%s: Currency state mismatch. Expected:\n%s\nActual\n%s\n", __func__, checkCurrencyState.ToUniValue().write(1,2).c_str(), pbn.currencyState.ToUniValue().write(1,2).c_str());
+                            }
+                            if (chainActive[height - 1]->nTime >= PBAAS_TESTFORK_TIME)
+                            {
+                                return state.Error("New currency definition must have valid currency state in notarization");
+                            }
+                        }
+                    }
+                    if (!newCurrency.IsGateway() &&
+                        newCurrency.GetID() != ASSETCHAINS_CHAINID &&
+                        (!pbn.IsPreLaunch() ||
+                        !pbn.currencyState.IsPrelaunch()))
+                    {
+                        return state.Error("New currency definition must have valid notarization state on output");
+                    }
                 }
 
                 // ensure that either the required definitions are on this transaction, such as a PBaaS chain and its converter or mapped currencies
