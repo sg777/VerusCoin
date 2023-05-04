@@ -3159,14 +3159,20 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                 if (!pbn.IsValid() ||
                     !pbn.IsDefinitionNotarization() ||
                      pbn.IsMirror() ||
-                     newCurrency.IsFractional() != pbn.currencyState.IsFractional() ||
-                     (chainActive.Height() >= (height - 1) &&
-                      chainActive[height - 1]->nTime >= PBAAS_TESTFORK_TIME &&
-                      ::AsVector(pbn.currencyState) != ::AsVector(GetInitialCurrencyState(newCurrency))))
+                     newCurrency.IsFractional() != pbn.currencyState.IsFractional())
                 {
                     return state.Error("New currency definition must have valid notarization on output");
                 }
-
+                if ((chainActive.Height() >= (height - 1) &&
+                     chainActive[height - 1]->nTime >= PBAAS_TESTFORK_TIME))
+                {
+                    CCoinbaseCurrencyState checkCurrencyState = GetInitialCurrencyState(newCurrency);
+                    checkCurrencyState.flags = pbn.currencyState.flags;
+                    if (::AsVector(pbn.currencyState) != ::AsVector(checkCurrencyState))
+                    {
+                        return state.Error("New currency definition must have valid currency state in notarization");
+                    }
+                }
                 if (!newCurrency.IsGateway() &&
                     newCurrency.GetID() != ASSETCHAINS_CHAINID &&
                     (!pbn.IsPreLaunch() ||
