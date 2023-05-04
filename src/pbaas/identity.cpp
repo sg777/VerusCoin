@@ -1832,7 +1832,9 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
                 }
                 if (!(issuingCurrency.GetID() == ASSETCHAINS_CHAINID ||
                       issuingCurrency.IsFractional() ||
-                      issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID) ||
+                      issuingCurrency.NoIDs() ||
+                      (issuingCurrency.IsToken() &&
+                       !issuingCurrency.IsNFTToken())) ||
                     issuingCurrency.systemID != ASSETCHAINS_CHAINID)
                 {
                     return state.Error("Invalid parent in identity reservation");
