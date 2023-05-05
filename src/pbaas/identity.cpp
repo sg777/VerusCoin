@@ -474,7 +474,6 @@ CIdentity::GetAggregatedIdentityMultimap(const uint160 &idID,
                         CNativeHashWriter hw;
                         hw.write((char *)&(std::get<0>(removeItemCursor->second)[0]), std::get<0>(removeItemCursor->second).size());
 
-
                         uint256 hashVal = hw.GetHash();
                         if (hashVal == removeAction.valueHash)
                         {
@@ -2370,6 +2369,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
     bool isPBaaS = networkVersion >= CActivationHeight::ACTIVATE_PBAAS; // this is only PBaaS differences, not Verus Vault
     bool advancedIdentity = networkVersion >= CActivationHeight::ACTIVATE_VERUSVAULT;
     bool isCoinbase = tx.IsCoinBase();
+    bool isInSync = chainActive.Height() >= (height - 1);
 
     for (int i = 0; i < tx.vout.size(); i++)
     {
@@ -2422,6 +2422,23 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                     if (!checkIdentity.IsValid())
                     {
                         return state.Error("Invalid identity on transaction output " + std::to_string(i));
+                    }
+
+                    if (isPBaaS && isInSync && (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK_TIME))
+                    {
+                        std::set<uint160> primaryDests;
+                        for (auto &oneDest : checkIdentity.primaryAddresses)
+                        {
+                            if (oneDest.which() == COptCCParams::ADDRTYPE_PK ||
+                                oneDest.which() == COptCCParams::ADDRTYPE_PKH)
+                            {
+                                primaryDests.insert(GetDestinationID(oneDest));
+                            }
+                        }
+                        if (primaryDests.size() != checkIdentity.primaryAddresses.size())
+                        {
+                            return state.Error("Duplicate or invalid primary address in identity " + ConnectedChains.GetFriendlyIdentityName(checkIdentity));
+                        }
                     }
 
                     // twice through used to make it invalid

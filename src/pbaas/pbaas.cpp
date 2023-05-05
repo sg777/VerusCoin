@@ -3053,6 +3053,9 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
 
     if (!isBlockOneDefinition)
     {
+        CCrossChainImport launchCCI;
+        CCrossChainExport launchCCX;
+
         // if this is an imported currency definition,
         // just be sure that it is part of an import and can be imported from the source
         // if so, it is fine
@@ -3082,10 +3085,39 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
             else if (p.IsValid() &&
                      (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
                      p.vData.size() &&
+                     !pbn.IsValid() &&
                      (pbn = CPBaaSNotarization(p.vData[0])).IsValid() &&
                      pbn.currencyID == newCurrency.GetID())
             {
-                break;
+                continue;
+            }
+            if (pbn.IsValid() && pbn.currencyID != newCurrency.GetID())
+            {
+                pbn = CPBaaSNotarization();
+            }
+            if (p.IsValid() &&
+                (p.evalCode == EVAL_CROSSCHAIN_EXPORT) &&
+                p.vData.size() &&
+                (launchCCX = CCrossChainExport(p.vData[0])).IsValid() &&
+                launchCCX.destCurrencyID == newCurrency.GetID())
+            {
+                continue;
+            }
+            if (launchCCX.IsValid() && launchCCX.destCurrencyID != newCurrency.GetID())
+            {
+                launchCCX = CCrossChainExport();
+            }
+            if (p.IsValid() &&
+                (p.evalCode == EVAL_CROSSCHAIN_IMPORT) &&
+                p.vData.size() &&
+                (launchCCI = CCrossChainImport(p.vData[0])).IsValid() &&
+                launchCCI.importCurrencyID == newCurrency.GetID())
+            {
+                continue;
+            }
+            if (launchCCI.IsValid() && launchCCI.importCurrencyID != newCurrency.GetID())
+            {
+                launchCCI = CCrossChainImport();
             }
         }
 
@@ -3170,9 +3202,20 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                     if (!pbn.IsValid() ||
                         !pbn.IsDefinitionNotarization() ||
                         pbn.IsMirror() ||
-                        newCurrency.IsFractional() != pbn.currencyState.IsFractional())
+                        newCurrency.IsFractional() != pbn.currencyState.IsFractional() ||
+                        !launchCCX.IsValid() ||
+                        launchCCX.destSystemID != newCurrency.systemID ||
+                        !launchCCX.IsChainDefinition() ||
+                        launchCCX.numInputs ||
+                        launchCCI.numOutputs ||
+                        !launchCCI.IsValid() ||
+                        !launchCCI.IsDefinitionImport() ||
+                        (!(newCurrency.IsGateway() || newCurrency.GetID() == ASSETCHAINS_CHAINID) &&
+                         (!launchCCX.IsPrelaunch() ||
+                          launchCCX.IsPostlaunch() ||
+                          launchCCI.IsPostLaunch())))
                     {
-                        return state.Error("New currency definition must have valid notarization on output");
+                        return state.Error("New currency definition must have valid notarization export and import on definition transaction");
                     }
                     if (chainActive.Height() >= (height - 1))
                     {
