@@ -3095,7 +3095,9 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
             {
                 pbn = CPBaaSNotarization();
             }
-            if (p.IsValid() &&
+            if (!((launchCCX.IsValid() &&
+                   launchCCX.destCurrencyID == newCurrency.GetID())) &&
+                p.IsValid() &&
                 (p.evalCode == EVAL_CROSSCHAIN_EXPORT) &&
                 p.vData.size() &&
                 (launchCCX = CCrossChainExport(p.vData[0])).IsValid() &&
@@ -3107,7 +3109,9 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
             {
                 launchCCX = CCrossChainExport();
             }
-            if (p.IsValid() &&
+            if (!(launchCCI.IsValid() &&
+                  launchCCI.importCurrencyID == newCurrency.GetID()) &&
+                p.IsValid() &&
                 (p.evalCode == EVAL_CROSSCHAIN_IMPORT) &&
                 p.vData.size() &&
                 (launchCCI = CCrossChainImport(p.vData[0])).IsValid() &&
