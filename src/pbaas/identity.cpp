@@ -476,10 +476,6 @@ CIdentity::GetAggregatedIdentityMultimap(const uint160 &idID,
 
 
                         uint256 hashVal = hw.GetHash();
-                        printf("HexValue: %s, HashValue: %s\n",
-                               HexBytes(&(std::get<0>(removeItemCursor->second)[0]), std::get<0>(removeItemCursor->second).size()).c_str(),
-                               hashVal.GetHex().c_str());
-
                         if (hashVal == removeAction.valueHash)
                         {
                             itemsToRemove.push_back(removeItemCursor);
@@ -515,6 +511,12 @@ CIdentity::GetIdentityContentByKey(const uint160 &idID,
                                    bool keepDeleted)
 {
     uint160 lookupKey = CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(vdxfKey, idID));
+
+    if (LogAcceptCategory("oracleupgrades"))
+    {
+        LogPrintf("%s: vdxfKey: %s, idID: %s, lookupKey: %s\n", __func__, EncodeDestination(CIdentityID(vdxfKey)).c_str(), EncodeDestination(CIdentityID(idID)).c_str(), EncodeDestination(CIdentityID(lookupKey)).c_str());
+    }
+
     auto aggregatedMap = GetAggregatedIdentityMultimap(idID, startHeight, endHeight, checkMempool, getProofs, proofHeight, lookupKey, keepDeleted);
 
     std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>> retVec;
