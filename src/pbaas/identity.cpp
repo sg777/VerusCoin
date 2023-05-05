@@ -2424,7 +2424,7 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                         return state.Error("Invalid identity on transaction output " + std::to_string(i));
                     }
 
-                    if (isPBaaS && isInSync && (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK_TIME))
+                    if (isPBaaS && isInSync)
                     {
                         std::set<uint160> primaryDests;
                         for (auto &oneDest : checkIdentity.primaryAddresses)
@@ -2437,7 +2437,10 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                         }
                         if (primaryDests.size() != checkIdentity.primaryAddresses.size())
                         {
-                            return state.Error("Duplicate or invalid primary address in identity " + ConnectedChains.GetFriendlyIdentityName(checkIdentity));
+                            if (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK_TIME)
+                            {
+                                return state.Error("Duplicate or invalid primary address in identity " + ConnectedChains.GetFriendlyIdentityName(checkIdentity));
+                            }
                         }
                     }
 
