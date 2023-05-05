@@ -9153,6 +9153,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
             if (mintNew &&
                 (!(sourceCurrencyDef.IsToken() &&
+                   !sourceCurrencyDef.NoIDs() &&
                    GetDestinationID(sourceDest) == sourceCurrencyID &&
                    sourceCurrencyDef.proofProtocol == sourceCurrencyDef.PROOF_CHAINID &&
                    destSystemID == thisChainID &&
@@ -9160,7 +9161,15 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                    convertToCurrencyID.IsNull())))
             {
                 // attempt to mint currency that isn't under the source ID's control
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "Only the ID of a mintable currency can mint such a currency. Minting cannot be combined with conversion.");
+                if (!sourceCurrencyDef.IsToken() || sourceCurrencyDef.NoIDs())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency for minting");
+                }
+                if (preConvert || !convertToCurrencyID.IsNull())
+                {
+                    throw JSONRPCError(RPC_INVALID_PARAMETER, "Minting cannot be combined with conversion.");
+                }
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Only the ID of a mintable currency can mint such a currency on its system chain.");
             }
 
             if (hasZDest)

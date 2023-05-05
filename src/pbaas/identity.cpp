@@ -335,8 +335,8 @@ CIdentity::LookupIdentities(const CIdentityID &nameID,
     }
 
     // order from first that spends unknown to last that has no spender
-    std::map<COutPoint, uint256> spentOutputs;
-    mempoolIdentities = mempool.FilterAddressDeltas(mempoolIdentities, spentOutputs);
+    std::set<COutPoint> spentTxOuts;
+    mempoolIdentities = mempool.FilterUnspent(mempoolIdentities, spentTxOuts);
 
     if (identityIndex.size() || mempoolIdentities.size())
     {
@@ -383,7 +383,6 @@ CIdentity::LookupIdentities(const CIdentityID &nameID,
             CTransaction identityTx;
             if (mempool.lookup(mempoolIdentities[i].first.txhash, identityTx))
             {
-                CTransaction identityTx;
                 CIdentity identity;
                 COptCCParams fP;
                 if (mempoolIdentities[i].first.index >= identityTx.vout.size() ||
@@ -439,10 +438,18 @@ CIdentity::GetAggregatedIdentityMultimap(const uint160 &idID,
             if (it->first == CVDXF_Data::ContentMultiMapRemoveKey() &&
                 it->second.size())
             {
+                CDataStream ss(it->second, PROTOCOL_VERSION, SER_DISK);
+                uint160 objTypeKey;
+                uint32_t serVersion;
+                size_t serSize;
                 CContentMultiMapRemove removeAction;
-                bool success;
-                ::FromVector(it->second, removeAction, &success);
-                if (!success ||
+
+                ss >> objTypeKey;
+                ss >> VARINT(serVersion);
+                ss >> VARINT(serSize);
+                ss >> removeAction;
+
+                if (objTypeKey != CVDXF_Data::ContentMultiMapRemoveKey() ||
                     !removeAction.IsValid())
                 {
                     continue;
@@ -466,7 +473,14 @@ CIdentity::GetAggregatedIdentityMultimap(const uint160 &idID,
                     {
                         CNativeHashWriter hw;
                         hw.write((char *)&(std::get<0>(removeItemCursor->second)[0]), std::get<0>(removeItemCursor->second).size());
-                        if (hw.GetHash() == removeAction.valueHash)
+
+
+                        uint256 hashVal = hw.GetHash();
+                        printf("HexValue: %s, HashValue: %s\n",
+                               HexBytes(&(std::get<0>(removeItemCursor->second)[0]), std::get<0>(removeItemCursor->second).size()).c_str(),
+                               hashVal.GetHex().c_str());
+
+                        if (hashVal == removeAction.valueHash)
                         {
                             itemsToRemove.push_back(removeItemCursor);
                             if (removeAction.action == removeAction.ACTION_REMOVE_ONE_KEYVALUE)

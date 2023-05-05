@@ -1140,7 +1140,7 @@ public:
 
     bool NoIDs() const
     {
-        return ChainOptions() & OPTION_NO_IDS;
+        return IsNFTToken() || ChainOptions() & OPTION_NO_IDS;
     }
 
     bool IsGateway() const

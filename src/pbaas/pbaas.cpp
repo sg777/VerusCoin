@@ -3192,7 +3192,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                             {
                                 LogPrintf("%s: Currency state mismatch. Expected:\n%s\nActual\n%s\n", __func__, checkCurrencyState.ToUniValue().write(1,2).c_str(), pbn.currencyState.ToUniValue().write(1,2).c_str());
                             }
-                            if (chainActive[height - 1]->nTime >= PBAAS_TESTFORK_TIME)
+                            if (PBAAS_TESTMODE && chainActive[height - 1]->nTime >= PBAAS_TESTFORK_TIME)
                             {
                                 return state.Error("New currency definition must have valid currency state in notarization");
                             }
