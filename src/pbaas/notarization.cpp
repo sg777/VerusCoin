@@ -9073,6 +9073,15 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
         }
         else
         {
+            if (ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisableDeFiKey()))
+            {
+                if (LogAcceptCategory("defi"))
+                {
+                    LogPrintf("%s: DeFi functions temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+                }
+                return state.Error("DeFi functions temporarily disabled for security alert by notification oracle. Notarization rejected " + currentNotarization.ToUniValue().write(1,2));
+            }
+
             // either this is another system entering an accepted notarization or one coming from an import or pre-launch export
             // determine which, based on the tx and presence of an import
             if (currentNotarization.IsPreLaunch())
@@ -9166,6 +9175,25 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                     {
                         hashType = (CCurrencyDefinition::EHashTypes)(notarySignatures[0].signatures.begin()->second.hashType);
                     }
+
+                    if (ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisablePBaaSCrossChainKey()))
+                    {
+                        if (LogAcceptCategory("defi"))
+                        {
+                            LogPrintf("%s: Cross-chain functions temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+                        }
+                        return state.Error("Cross-chain functions temporarily disabled for security alert by notification oracle. Notarization rejected " + currentNotarization.ToUniValue().write(1,2));
+                    }
+                    else if (curDef.IsGateway() &&
+                             ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisableGatewayCrossChainKey()))
+                    {
+                        if (LogAcceptCategory("defi"))
+                        {
+                            LogPrintf("%s: Non-PBaaS cross-chain functions temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+                        }
+                        return state.Error(" Non-PBaaS cross-chain functions temporarily disabled for security alert by notification oracle. Notarization rejected " + currentNotarization.ToUniValue().write(1,2));
+                    }
+
                     CNativeHashWriter hw(hashType);
                     CPBaaSNotarization normalizedNotarization = currentNotarization;
                     if (!currentNotarization.SetMirror(false))

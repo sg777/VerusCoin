@@ -314,6 +314,15 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
     bool isPostSync = chainActive.Height() > (height - 1);
     bool deepCheckImportProof = IsVerusMainnetActive() || !(isPreSync || isPostSync);
 
+    if (!isPreSync && ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisableDeFiKey()))
+    {
+        if (LogAcceptCategory("defi"))
+        {
+            LogPrintf("%s: All DeFi functions temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+        }
+        return state.Error("All DeFi functions temporarily disabled for security alert by notification oracle. Import rejected.");
+    }
+
     COptCCParams p;
     CCrossChainImport cci, sysCCI;
     CCrossChainExport ccx;
@@ -444,8 +453,9 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             // if we have the chain behind us, verify that the prior import imports the prior export
             if (!isPreSync && !cci.IsDefinitionImport())
             {
-                CTransaction priorImportTx;
+                CTransaction priorImportTx, priorImportFromSystemTx;
                 CCrossChainImport priorImport;
+                CCrossChainImport priorImportFromSystem;
                 if (height != 1)
                 {
                     priorImport = cci.GetPriorImport(tx, state, &priorImportTx);
@@ -474,6 +484,24 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 }
                 else
                 {
+                    if (priorImport.sourceSystemID != cci.sourceSystemID)
+                    {
+                        for (priorImportFromSystem = priorImport.GetPriorImport(priorImportTx, state, &priorImportFromSystemTx);
+                             priorImportFromSystem.IsValid() &&
+                                !priorImportFromSystem.IsDefinitionImport() &&
+                                !(priorImportFromSystem.IsInitialLaunchImport() && (priorImportFromSystem.importCurrencyID == ASSETCHAINS_CHAINID ||
+                                                                                    priorImportFromSystem.importCurrencyID == ConnectedChains.ThisChain().GatewayConverterID())) &&
+                                priorImportFromSystem.sourceSystemID != cci.sourceSystemID;
+                             priorImportFromSystem = priorImport.GetPriorImport(priorImportFromSystemTx, state, &priorImportFromSystemTx))
+                        {}
+
+                        if (priorImportFromSystem.IsValid() &&
+                                priorImportFromSystem.sourceSystemID == cci.sourceSystemID)
+                        {
+                            priorImport = priorImportFromSystem;
+                            priorImportTx = priorImportFromSystemTx;
+                        }
+                    }
                     if (priorImport.sourceSystemID == cci.sourceSystemID)
                     {
                         CTransaction exportTx;
@@ -617,6 +645,36 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                         }
                         else
                         {
+                            if (!isPreSync)
+                            {
+                                if (ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisablePBaaSCrossChainKey()))
+                                {
+                                    if (LogAcceptCategory("defi"))
+                                    {
+                                        LogPrintf("%s: All crosschain imports temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+                                    }
+                                    return state.Error("All crosschain imports temporarily disabled for security alert by notification oracle - import rejected.");
+                                }
+
+                                if (!cci.IsDefinitionImport())
+                                {
+                                    CCurrencyDefinition sourceSystem = ConnectedChains.GetCachedCurrency(ccx.sourceSystemID);
+                                    if (!sourceSystem.IsValid())
+                                    {
+                                        return state.Error("Invalid source system in import or system not found");
+                                    }
+                                    if (sourceSystem.IsGateway() &&
+                                        ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisableGatewayCrossChainKey()))
+                                    {
+                                        if (LogAcceptCategory("defi"))
+                                        {
+                                            LogPrintf("%s: All gateway imports temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+                                        }
+                                        return state.Error("All gateway imports temporarily disabled for security alert by notification oracle - import rejected.");
+                                    }
+                                }
+                            }
+
                             // next output should be export in evidence output followed by supplemental reserve transfers for the export
                             int afterEvidence;
                             CNotaryEvidence evidence(tx, evidenceOutStart, evidenceOutEnd, CNotaryEvidence::TYPE_IMPORT_PROOF);
@@ -696,6 +754,16 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                                         priorImport.exportTxOutNum);
                             }
                         }
+                    }
+                    else if (!(priorImportFromSystem.IsInitialLaunchImport() &&
+                               (priorImportFromSystem.importCurrencyID == ASSETCHAINS_CHAINID ||
+                                priorImportFromSystem.importCurrencyID == ConnectedChains.ThisChain().GatewayConverterID())))
+                    {
+                        if (LogAcceptCategory("DeFi"))
+                        {
+                            LogPrintf("%s: No valid prior import from system %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
+                        }
+                        return state.Error("No valid prior import from system on import: " + cci.ToUniValue().write(1,2));
                     }
                 }
             }
@@ -951,6 +1019,15 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
     std::vector<ChainTransferData> txInputVec;
 
     bool isPreSync = chainActive.Height() < (height - 1);
+
+    if (!isPreSync && ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisableDeFiKey()))
+    {
+        if (LogAcceptCategory("defi"))
+        {
+            LogPrintf("%s: All DeFi functions temporarily disabled for security alert by notification oracle %s. Export rejected.\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+        }
+        return state.Error("All DeFi functions temporarily disabled for security alert by notification oracle. Export rejected.");
+    }
 
     if (!(tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
           p.IsValid() &&
@@ -1340,6 +1417,28 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                         return state.Error("Invalid fee recipient for export " + ccx.ToUniValue().write());
                     }
                 }
+            }
+
+            if (!destSystem.IsValid())
+            {
+                return state.Error("Invalid destination system in export or system not found");
+            }
+            if (destSystem.systemID != ASSETCHAINS_CHAINID && ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisablePBaaSCrossChainKey()))
+            {
+                if (LogAcceptCategory("defi"))
+                {
+                    LogPrintf("%s: All crosschain exports temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+                }
+                return state.Error("All crosschain exports temporarily disabled for security alert by notification oracle - export rejected.");
+            }
+            if (destSystem.IsGateway() &&
+                ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisableGatewayCrossChainKey()))
+            {
+                if (LogAcceptCategory("defi"))
+                {
+                    LogPrintf("%s: All gateway exports temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+                }
+                return state.Error("All gateway exports temporarily disabled for security alert by notification oracle - export rejected.");
             }
         }
 
@@ -3801,6 +3900,15 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
     uint32_t chainHeight = chainActive.Height();
     bool haveFullChain = height <= chainHeight + 1;
 
+    if (haveFullChain && ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisableDeFiKey()))
+    {
+        if (LogAcceptCategory("defi"))
+        {
+            LogPrintf("%s: DeFi functions temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+        }
+        return state.Error("DeFi functions temporarily disabled for security alert by notification oracle. Reserve transfer rejected " + rt.ToUniValue().write(1,2));
+    }
+
     if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
         p.IsValid() &&
         p.evalCode == EVAL_RESERVE_TRANSFER &&
@@ -3943,6 +4051,26 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
 
         if (systemDestID != ASSETCHAINS_CHAINID)
         {
+            if (haveFullChain)
+            {
+                if (ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisablePBaaSCrossChainKey()))
+                {
+                    if (LogAcceptCategory("defi"))
+                    {
+                        LogPrintf("%s: Cross-chain transfers temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+                    }
+                    return false;
+                }
+                if (systemDest.IsGateway() && ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisableGatewayCrossChainKey()))
+                {
+                    if (LogAcceptCategory("defi"))
+                    {
+                        LogPrintf("%s: Cross-chain transfers for non-PBaaS gateways temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+                    }
+                    return false;
+                }
+            }
+
             CPBaaSNotarization lastConfirmedNotarization = currenciesAndNotarizations[systemDestID].second;
             std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> lastConfirmed = lastConfirmedNotarization.IsValid() ?
                     std::tuple<uint32_t, CUTXORef, CPBaaSNotarization>({1, CUTXORef(), lastConfirmedNotarization}) :
@@ -5950,6 +6078,31 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
     if (!exports.size())
     {
+        return false;
+    }
+
+    if (ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisableDeFiKey()))
+    {
+        if (LogAcceptCategory("defi"))
+        {
+            LogPrintf("%s: All DeFi temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+        }
+        return false;
+    }
+    if (sourceSystemDef.SystemOrGatewayID() != ASSETCHAINS_CHAINID && ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisablePBaaSCrossChainKey()))
+    {
+        if (LogAcceptCategory("crosschainimports"))
+        {
+            LogPrintf("%s: Cross-chain imports temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+        }
+        return false;
+    }
+    if (sourceSystemDef.IsGateway() && ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisableGatewayCrossChainKey()))
+    {
+        if (LogAcceptCategory("crosschainimports"))
+        {
+            LogPrintf("%s: Cross-chain imports for non-PBaaS gateways temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
+        }
         return false;
     }
 
@@ -8606,7 +8759,7 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
 
                 bool isSameChain = destDef.SystemOrGatewayID() == thisChainID;
 
-                if (ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisablePBaaSCrossChainKey()))
+                if (!isSameChain && ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisablePBaaSCrossChainKey()))
                 {
                     if (LogAcceptCategory("crosschainexports"))
                     {

@@ -1056,7 +1056,7 @@ CCrossChainImport CCrossChainImport::GetPriorImportFromSystem(const CTransaction
         bool sourceSystemChain = sourceSystemID != ASSETCHAINS_CHAINID;
         CCrossChainImport primaryCCI;
 
-        for (auto &oneIn : tx.vin)
+        for (auto &oneIn : pCurTx->vin)
         {
             primaryCCI = CCrossChainImport();
             cci = CCrossChainImport();
