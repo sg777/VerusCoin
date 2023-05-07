@@ -9044,13 +9044,13 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             // we may also have an "exportafter" command, which enables funding a second leg to up to one more system
 
             if ((burnWeight &&
-                 !convertToCurrencyDef.IsValid() ||
-                 (convertToCurrencyDef.endBlock > 0 &&
-                  convertToCurrencyDef.endBlock <= height)) ||
+                 (!convertToCurrencyDef.IsValid() ||
+                  (convertToCurrencyDef.endBlock > 0 &&
+                   convertToCurrencyDef.endBlock <= height))) ||
                 (mintNew &&
-                 !sourceCurrencyDef.IsValid() ||
-                 (sourceCurrencyDef.endBlock > 0 &&
-                  sourceCurrencyDef.endBlock <= height)))
+                 (!sourceCurrencyDef.IsValid() ||
+                  (sourceCurrencyDef.endBlock > 0 &&
+                   sourceCurrencyDef.endBlock <= height))))
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, std::string(burnWeight ? "burnchangeweight" : "minting") + " is disallowed, even by currency ID after the currency endblock");
             }
