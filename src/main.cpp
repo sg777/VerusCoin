@@ -3655,6 +3655,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     }
 
     SetMaxScriptElementSize(nHeight);
+    ConnectedChains.CheckOracleUpgrades();
 
     if (CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_PBAAS)
     {
@@ -4945,7 +4946,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     }
 
     SetMaxScriptElementSize(nHeight + 1);
-    ConnectedChains.CheckOracleUpgrades();
 
     // add this block to the view's block chain
     view.SetBestBlock(pindex->GetBlockHash());
