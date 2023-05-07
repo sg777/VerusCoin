@@ -426,7 +426,9 @@ CIdentity::GetAggregatedIdentityMultimap(const uint160 &idID,
         indexKeys.push_back(indexKey);
         if (!keepDeleted)
         {
-            indexKeys.push_back(CVDXF_Data::ContentMultiMapRemoveKey());
+            indexKeys.push_back(
+                CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(CVDXF_Data::ContentMultiMapRemoveKey(), idID))
+            );
         }
     }
 
