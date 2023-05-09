@@ -11305,10 +11305,10 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     }
 
     CCrossChainImport cci = CCrossChainImport(newChain.SystemOrGatewayID(),
-                                            lastImportHeight,
-                                            newChainID,
-                                            CCurrencyValueMap(),
-                                            CCurrencyValueMap());
+                                              lastImportHeight,
+                                              newChainID,
+                                              CCurrencyValueMap(),
+                                              CCurrencyValueMap());
     cci.SetSameChain(newChain.systemID == ASSETCHAINS_CHAINID);
     cci.SetDefinitionImport(true);
     if (newChainID == ASSETCHAINS_CHAINID || newChain.IsGateway())

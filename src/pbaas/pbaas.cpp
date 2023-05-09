@@ -451,6 +451,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             }
 
             // if we have the chain behind us, verify that the prior import imports the prior export
+            CCurrencyDefinition sourceSystem;
             if (!isPreSync && !cci.IsDefinitionImport())
             {
                 CTransaction priorImportTx, priorImportFromSystemTx;
@@ -458,10 +459,10 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 CCrossChainImport priorImportFromSystem;
                 if (height != 1)
                 {
+                    sourceSystem = ConnectedChains.GetCachedCurrency(cci.sourceSystemID);
                     priorImport = cci.GetPriorImport(tx, state, &priorImportTx);
                     if (!priorImport.IsValid())
                     {
-                        CCurrencyDefinition sourceSystem = ConnectedChains.GetCachedCurrency(cci.sourceSystemID);
                         if (!sourceSystem.IsValid() ||
                             sourceSystem.proofProtocol != sourceSystem.PROOF_ETHNOTARIZATION ||
                             !cci.IsInitialLaunchImport())
@@ -717,7 +718,10 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                                 if (!(priorImport.sourceSystemHeight == 1 && priorImport.IsInitialLaunchImport()) &&
                                     (priorImport.sourceSystemHeight + 1) != ccx.sourceHeightStart)
                                 {
-                                    CCurrencyDefinition sourceSystem = ConnectedChains.GetCachedCurrency(ccx.sourceSystemID);
+                                    if (!sourceSystem.IsValid())
+                                    {
+                                        sourceSystem = ConnectedChains.GetCachedCurrency(ccx.sourceSystemID);
+                                    }
                                     if (!(IsVerusActive() &&
                                           sourceSystem.GetID() == ASSETCHAINS_CHAINID &&
                                           cci.importCurrencyID == ASSETCHAINS_CHAINID &&
@@ -755,9 +759,14 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                             }
                         }
                     }
-                    else if (!(priorImportFromSystem.IsInitialLaunchImport() &&
-                               (priorImportFromSystem.importCurrencyID == ASSETCHAINS_CHAINID ||
-                                priorImportFromSystem.importCurrencyID == ConnectedChains.ThisChain().GatewayConverterID())))
+                    else if (!(((priorImportFromSystem.IsDefinitionImport() &&
+                                 sourceSystem.IsValid() &&
+                                 sourceSystem.IsGateway() &&
+                                 sourceSystem.GatewayConverterID() == cci.importCurrencyID &&
+                                 priorImportFromSystem.importCurrencyID == cci.importCurrencyID)) ||
+                               (priorImportFromSystem.IsInitialLaunchImport() &&
+                                (priorImportFromSystem.importCurrencyID == ASSETCHAINS_CHAINID ||
+                                 priorImportFromSystem.importCurrencyID == ConnectedChains.ThisChain().GatewayConverterID()))))
                     {
                         if (LogAcceptCategory("DeFi"))
                         {
