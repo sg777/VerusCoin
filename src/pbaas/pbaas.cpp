@@ -3307,7 +3307,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                         pbn.IsMirror() ||
                         newCurrency.IsFractional() != pbn.currencyState.IsFractional() ||
                         !launchCCX.IsValid() ||
-                        launchCCX.destSystemID != newCurrency.systemID ||
+                        launchCCX.destSystemID != newCurrency.SystemOrGatewayID() ||
                         !launchCCX.IsChainDefinition() ||
                         launchCCX.numInputs ||
                         launchCCI.numOutputs ||
