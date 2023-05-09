@@ -23,11 +23,6 @@
 
 extern int32_t VERUS_MIN_STAKEAGE;
 
-bool IsData(opcodetype opcode)
-{
-    return (opcode >= 0 && opcode <= OP_PUSHDATA4) || (opcode >= OP_1 && opcode <= OP_16);
-}
-
 // this validates the format of the stake transaction and, optionally, whether or not it is
 // properly signed to spend the source stake.
 // it does not validate the relationship to a coinbase guard, PoS eligibility or the actual stake spend.

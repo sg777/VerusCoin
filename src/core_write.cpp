@@ -1543,6 +1543,11 @@ UniValue CAdvancedNameReservation::ToUniValue() const
     return ret;
 }
 
+bool IsData(opcodetype opcode)
+{
+    return (opcode >= 0 && opcode <= OP_PUSHDATA4) || (opcode >= OP_1 && opcode <= OP_16);
+}
+
 bool UnpackStakeOpRet(const CTransaction &stakeTx, std::vector<std::vector<unsigned char>> &vData)
 {
     bool isValid = stakeTx.vout[stakeTx.vout.size() - 1].scriptPubKey.GetOpretData(vData);

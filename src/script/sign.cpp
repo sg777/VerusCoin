@@ -405,14 +405,14 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                             }
                             else
                             {
+                                bool isLockedIdSpendOrRevoked = (id.IsRevoked() || (!idID.IsNull() && id.IsLocked()));
                                 for (auto oneKey : id.primaryAddresses)
                                 {
-                                    destMap[GetDestinationID(oneKey)] =
-                                        (id.IsRevoked() || (!idID.IsNull() && id.IsLocked())) ? CKeyID(GetDestinationID(dest)) : oneKey;
+                                    destMap[GetDestinationID(oneKey)] = isLockedIdSpendOrRevoked ? CKeyID(GetDestinationID(dest)) : oneKey;
                                 }
-                                if (id.primaryAddresses.size() == 1)
+                                if (id.primaryAddresses.size() == 1 || isLockedIdSpendOrRevoked)
                                 {
-                                    vCC.push_back(MakeCCcondOneSig(CKeyID(GetDestinationID(id.primaryAddresses[0]))));
+                                    vCC.push_back(MakeCCcondOneSig(isLockedIdSpendOrRevoked ? CKeyID(GetDestinationID(dest)) : CKeyID(GetDestinationID(id.primaryAddresses[0]))));
                                 }
                                 else
                                 {
