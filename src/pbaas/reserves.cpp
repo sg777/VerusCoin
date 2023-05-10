@@ -3079,7 +3079,7 @@ CCurrencyValueMap CReserveTransactionDescriptor::GeneratedImportCurrency(const u
     return retVal;
 }
 
-CReserveTransfer CReserveTransfer::GetRefundTransfer(bool clearCrossSystem) const
+CReserveTransfer CReserveTransfer::GetRefundTransfer(bool clearCrossSystem, bool recoverFees) const
 {
     CReserveTransfer rt = *this;
     uint160 newDest;
@@ -3100,11 +3100,19 @@ CReserveTransfer CReserveTransfer::GetRefundTransfer(bool clearCrossSystem) cons
     {
         rt.flags &= ~CROSS_SYSTEM;
         rt.destSystemID.SetNull();
+
         // convert full ID destinations to normal ID outputs, since it's refund, full ID will be on this chain already
         if (rt.destination.type == CTransferDestination::DEST_FULLID)
         {
             CIdentity(rt.destination.destination);
             rt.destination = CTransferDestination(CTransferDestination::DEST_ID, rt.destination.destination);
+        }
+
+        // if we are clipping a second leg, ensure the destination is valid and recover the fees
+        if (recoverFees && HasNextLeg())
+        {
+            rt.nFees += destination.fees;
+            rt.destination = DestinationToTransferDestination(GetCompatibleAuxDestination(rt.destination, CCurrencyDefinition::EProofProtocol::PROOF_PBAASMMR));
         }
     }
 
@@ -3767,6 +3775,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     CAmount totalVerusFee = 0;
 
     uint32_t solveTime = (chainActive.Height() >= (height - 1)) ? chainActive[height - 1]->nTime : chainActive.LastTip()->nTime;
+    bool fullUpgrade = !PBAAS_TESTMODE || PBAAS_TESTFORK2_TIME <= solveTime;
 
     for (int i = 0; i <= exportObjects.size(); i++)
     {
@@ -3784,11 +3793,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                            feeRecipient);
         }
         else if (importCurrencyState.IsRefunding() ||
-                 (PBAAS_TESTMODE && exportObjects[i].FirstCurrency() == exportObjects[i].destCurrencyID && PBAAS_TESTFORK2_TIME > solveTime) ||
+                 (!fullUpgrade && exportObjects[i].FirstCurrency() == exportObjects[i].destCurrencyID) ||
                  (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()) ||
                  (exportObjects[i].IsConversion() && !exportObjects[i].IsPreConversion() && !importCurrencyState.IsLaunchCompleteMarker()))
         {
-            curTransfer = exportObjects[i].GetRefundTransfer(!(systemSourceID != systemDestID && exportObjects[i].IsCrossSystem()));
+            curTransfer = exportObjects[i].GetRefundTransfer(!(systemSourceID != systemDestID && exportObjects[i].IsCrossSystem()), fullUpgrade);
         }
         else
         {

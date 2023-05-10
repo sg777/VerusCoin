@@ -419,7 +419,7 @@ public:
         return flags & ARBITRAGE_ONLY;
     }
 
-    CReserveTransfer GetRefundTransfer(bool clearCrossSystem=true) const;
+    CReserveTransfer GetRefundTransfer(bool clearCrossSystem=true, bool recoverFees=false) const;
 
     static std::string ReserveTransferKeyName()
     {
