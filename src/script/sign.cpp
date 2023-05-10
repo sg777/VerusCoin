@@ -405,7 +405,7 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                             }
                             else
                             {
-                                bool isLockedIdSpendOrRevoked = (id.IsRevoked() || (!idID.IsNull() && id.IsLocked()));
+                                bool isLockedIdSpendOrRevoked = (id.IsRevoked() || (!idID.IsNull() && destId != idID && id.IsLocked()));
                                 for (auto oneKey : id.primaryAddresses)
                                 {
                                     destMap[GetDestinationID(oneKey)] = isLockedIdSpendOrRevoked ? CKeyID(GetDestinationID(dest)) : oneKey;

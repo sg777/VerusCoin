@@ -7310,7 +7310,7 @@ bool RewindBlockIndex(const CChainParams& chainparams, bool& clearWitnessCaches)
         auto networkID = chainparams.NetworkIDString();
 
         // This is true when we intend to do a long rewind.
-        bool intendedRewind = false;
+        bool intendedRewind = KOMODO_REWIND != 0;
 
         clearWitnessCaches = (rewindLength > MAX_REORG_LENGTH && intendedRewind);
 
