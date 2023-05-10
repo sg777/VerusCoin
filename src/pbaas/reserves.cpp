@@ -17,6 +17,7 @@
 #include "key_io.h"
 #include <random>
 
+const uint32_t PBAAS_TESTFORK2_TIME = 1683756000;
 
 LRUCache<CUTXORef, std::tuple<int, CPBaaSNotarization, std::vector<CReserveTransfer>, CCurrencyDefinition::EProofProtocol>>
     CCrossChainExport::exportInfoCache(200, 0.1F, false);
@@ -605,8 +606,8 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
                             if (uint160(importFromDef.nativeCurrencyID.destination) != EthProof.GetNativeAddress())
                             {
                                 LogPrintf("%s: Invalid ETH storage address, Found: %s, got %s from proof", __func__,
-                                CTransferDestination::EncodeEthDestination(uint160(importFromDef.nativeCurrencyID.destination)),
-                                CTransferDestination::EncodeEthDestination(EthProof.GetNativeAddress()));
+                                    CTransferDestination::EncodeEthDestination(uint160(importFromDef.nativeCurrencyID.destination)),
+                                    CTransferDestination::EncodeEthDestination(EthProof.GetNativeAddress()));
                                 return state.Error(strprintf("%s: invalid ETH storage address", __func__));
                             }
                         }
@@ -3765,6 +3766,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     CAmount totalNativeFee = 0;
     CAmount totalVerusFee = 0;
 
+    uint32_t solveTime = (chainActive.Height() >= (height - 1)) ? chainActive[height - 1]->nTime : chainActive.LastTip()->nTime;
+
     for (int i = 0; i <= exportObjects.size(); i++)
     {
         CReserveTransfer curTransfer;
@@ -3781,7 +3784,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                            feeRecipient);
         }
         else if (importCurrencyState.IsRefunding() ||
-                 exportObjects[i].FirstCurrency() == exportObjects[i].destCurrencyID ||
+                 (PBAAS_TESTMODE && exportObjects[i].FirstCurrency() == exportObjects[i].destCurrencyID && PBAAS_TESTFORK2_TIME > solveTime) ||
                  (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()) ||
                  (exportObjects[i].IsConversion() && !exportObjects[i].IsPreConversion() && !importCurrencyState.IsLaunchCompleteMarker()))
         {
