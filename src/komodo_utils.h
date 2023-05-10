@@ -1799,12 +1799,6 @@ void komodo_args(char *argv0)
 
     PBAAS_TESTMODE = false;
 
-    // TODO: POST HARDENING - right now, all PBaaS chains default testmode. remove this and change default before mainnet
-    if (lowerName != "vrsc")
-    {
-        PBAAS_TESTMODE = true;
-    }
-
     // either the testmode parameter or calling this chain VRSCTEST will put us into testmode
     PBAAS_TESTMODE = GetBoolArg("-testnet", PBAAS_TESTMODE);
 
