@@ -178,18 +178,28 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
 
     if (solutionVersion >= CConstVerusSolutionVector::activationHeight.ACTIVATE_PBAAS_HEADER)
     {
+        UpdateTime(pblock, Params().GetConsensus(), pindexPrev);
+
+        bool posSourceInfo = ((CConstVerusSolutionVector::GetVersionByHeight(pindexPrev->GetHeight() + 1) > CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
+                              pblock->nTime >= PBAAS_TESTFORK2_TIME);
+
+        uint256 entropyHash;
+        if (posSourceInfo)
+        {
+            LOCK(cs_main);
+            entropyHash = pblock->GetVerusEntropyHashComponent(pindexPrev->GetHeight() + 1);
+        }
+
         // coinbase should already be finalized in the new version
         if (buildMerkle)
         {
             pblock->hashMerkleRoot = pblock->BuildMerkleTree();
             pblock->SetPrevMMRRoot(ChainMerkleMountainView(chainActive.GetMMR(), pindexPrev->GetHeight()).GetRoot());
-            BlockMMRange mmRange(pblock->BuildBlockMMRTree());
+            BlockMMRange mmRange(pblock->BuildBlockMMRTree(entropyHash));
             BlockMMView mmView(mmRange);
             pblock->SetBlockMMRRoot(mmView.GetRoot());
             pblock->AddUpdatePBaaSHeader();
         }
-
-        UpdateTime(pblock, Params().GetConsensus(), pindexPrev);
 
         // POS blocks have already had their solution space filled, and there is no actual extra nonce, extradata is used
         // for POS proof, so don't modify it

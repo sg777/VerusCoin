@@ -2576,11 +2576,11 @@ std::vector<unsigned char> CreatePoSBlockProof(ChainMerkleMountainView &mmrView,
     std::vector<unsigned char> emptyVec;
 
     // we get these sources of entropy to prove all sources in the header
-    int posHeight = -1, powHeight = -1, altHeight = -1;
+    int posHeight = -1, powHeight = -1, altHeight = -1, pastBlockHeight1, pastBlockHeight2;
     uint256 pastHash;
     {
         LOCK(cs_main);
-        pastHash = chainActive.GetVerusEntropyHash(height, &posHeight, &powHeight, &altHeight);
+        pastHash = chainActive.GetVerusEntropyHash(height, &posHeight, &powHeight, &altHeight, &pastBlockHeight1, &pastBlockHeight2);
         if (altHeight == -1 && (powHeight == -1 || posHeight == -1))
         {
             printf("Error retrieving entropy hash at height %d, posHeight: %d, powHeight: %d, altHeight: %d\n", height, posHeight, powHeight, altHeight);
@@ -2588,19 +2588,6 @@ std::vector<unsigned char> CreatePoSBlockProof(ChainMerkleMountainView &mmrView,
             return emptyVec;
         }
     }
-
-    // secondBlockHeight is either less than first or -1 if there isn't one
-    int pastBlockHeight2 = altHeight != -1 ?
-                                altHeight :
-                                posHeight == -1 ?
-                                    posHeight :
-                                    powHeight == -1 ?
-                                        powHeight :
-                                        (posHeight > powHeight ?
-                                            powHeight :
-                                            posHeight);
-
-    int pastBlockHeight1 = posHeight > pastBlockHeight2 ? posHeight : ((powHeight == -1) ? posHeight : powHeight);
 
     // get map and MMR for stake source transaction
     CTransactionMap txMap(stakeSource);
@@ -2621,7 +2608,14 @@ std::vector<unsigned char> CreatePoSBlockProof(ChainMerkleMountainView &mmrView,
         return emptyVec;
     }
 
-    BlockMMRange blockMMR(block.GetBlockMMRTree());
+    bool posSourceInfo = (CVerusSolutionVector(chainActive[sourceBlockNum]->nSolution).Version() >= CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
+                                block.nTime >= PBAAS_TESTFORK2_TIME;
+    bool posEntropyInfo1 = (CConstVerusSolutionVector::GetVersionByHeight(pastBlockHeight1) > CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
+                                chainActive[pastBlockHeight1]->nTime >= PBAAS_TESTFORK2_TIME;
+    bool posEntropyInfo2 = (CConstVerusSolutionVector::GetVersionByHeight(pastBlockHeight2) > CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
+                                chainActive[pastBlockHeight2]->nTime >= PBAAS_TESTFORK2_TIME;
+
+    BlockMMRange blockMMR(block.GetBlockMMRTree(posSourceInfo ? block.GetVerusEntropyHashComponent(sourceBlockNum) : uint256()));
     BlockMMView blockView(blockMMR);
 
     int txIndexPos;
@@ -2662,23 +2656,48 @@ std::vector<unsigned char> CreatePoSBlockProof(ChainMerkleMountainView &mmrView,
 
     headerStream << CPartialTransactionProof(txRootProof, txProofVec);
 
-    CMMRProof blockHeaderProof1;
-    if (!chainActive.GetBlockProof(mmrView, blockHeaderProof1, pastBlockHeight1))
+    if (posEntropyInfo1)
     {
-        LogPrintf("%s: ERROR: could not create block proof for block %u\n", __func__, sourceBlockNum);
-        return emptyVec;
+        CBlock entropyBlock1;
+        if (!ReadBlockFromDisk(entropyBlock1, chainActive[pastBlockHeight1], Params().GetConsensus(), false))
+        {
+            LogPrintf("%s: ERROR: could not read block number %u from disk for entropy component 1\n", __func__, pastBlockHeight1);
+            return emptyVec;
+        }
+        headerStream << chainActive.GetPreHeaderProof(entropyBlock1, pastBlockHeight1, pastBlockHeight1);
     }
-    headerStream << CBlockHeaderProof(blockHeaderProof1, chainActive[pastBlockHeight1]->GetBlockHeader());
-
-    CMMRProof blockHeaderProof2;
-    if (!chainActive.GetBlockProof(mmrView, blockHeaderProof2, pastBlockHeight2))
+    else
     {
-        LogPrintf("%s: ERROR: could not create block proof for second entropy source block %u\n", __func__, sourceBlockNum);
-        chainActive.GetBlockProof(mmrView, blockHeaderProof2, pastBlockHeight2); // repeat for debugging
-        return emptyVec;
+        CMMRProof blockHeaderProof1;
+        if (!chainActive.GetBlockProof(mmrView, blockHeaderProof1, pastBlockHeight1))
+        {
+            LogPrintf("%s: ERROR: could not create block proof for block %u\n", __func__, sourceBlockNum);
+            return emptyVec;
+        }
+        headerStream << CBlockHeaderProof(blockHeaderProof1, chainActive[pastBlockHeight1]->GetBlockHeader());
     }
-    headerStream << CBlockHeaderProof(blockHeaderProof2, chainActive[pastBlockHeight2]->GetBlockHeader());
 
+    if (posEntropyInfo2)
+    {
+        CBlock entropyBlock2;
+        if (!ReadBlockFromDisk(entropyBlock2, chainActive[pastBlockHeight2], Params().GetConsensus(), false))
+        {
+            LogPrintf("%s: ERROR: could not read block number %u from disk for entropy component 1\n", __func__, pastBlockHeight2);
+            return emptyVec;
+        }
+        headerStream << chainActive.GetPreHeaderProof(entropyBlock2, pastBlockHeight2, pastBlockHeight1);
+    }
+    else
+    {
+        CMMRProof blockHeaderProof2;
+        if (!chainActive.GetBlockProof(mmrView, blockHeaderProof2, pastBlockHeight2))
+        {
+            LogPrintf("%s: ERROR: could not create block proof for second entropy source block %u\n", __func__, sourceBlockNum);
+            chainActive.GetBlockProof(mmrView, blockHeaderProof2, pastBlockHeight2); // repeat for debugging
+            return emptyVec;
+        }
+        headerStream << CBlockHeaderProof(blockHeaderProof2, chainActive[pastBlockHeight2]->GetBlockHeader());
+    }
     return std::vector<unsigned char>(headerStream.begin(), headerStream.end());
 }
 
@@ -2748,8 +2767,9 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
         EXPECT_CHECKPOINT = 5,                  // checkpoints between large spans of notarizations to narrow challenges
         EXPECT_COMMITMENT_PROOF = 6,            // commitments of prior blocks from this notarization (only needed if there is a challenge proof root)
         EXPECT_HEADER_PROOFS = 7,               // header proofs randomly selected from prior commitments, based on entropy
-        EXPECT_STAKE_TX = 8,                    // stake transaction in block for stake headers
-        EXPECT_ID_PROOF_OR_STAKEGUARD = 9,      // necessary ID proof(s) to be able to confirm signature & end with coinbase stakeguard output
+        EXPECT_PROOF_HEADER_REF = 8,            // a header ref with numbers, like prevHashMMR used for subsequent proofs
+        EXPECT_STAKE_TX = 9,                    // stake transaction in block for stake headers
+        EXPECT_ID_PROOF_OR_STAKEGUARD = 10,     // necessary ID proof(s) to be able to confirm signature & end with coinbase stakeguard output
     };
 
     EProofState proofState = EXPECT_LASTNOTARIZATION_PROOF;
@@ -2793,11 +2813,16 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
     uint256 headerSelectionHash;
 
     CBlockHeaderAndProof posBlockHeaderAndProof;
+    uint256 posPrevMMRRoot;
+    CPBaaSPreHeader proofPreHeader;
     CPartialTransactionProof posSourceProof;
     CTransaction lastStakeTx, lastSourceTx;
     uint32_t provingBlockHeight;
     CStakeParams stakeParams;
     std::vector<CBlockHeaderProof> posEntropyHeaders;
+    std::vector<CPartialTransactionProof> posEntropyHeadersAsTxes;
+    CPBaaSPreHeader preHeader1, preHeader2;
+
     std::vector<CIdentity> stakeSpendingIDs;
     CCurrencyDefinition externalCurrency;
     int crossChainProofCount = 0;
@@ -3012,8 +3037,8 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                             // to confirm it, we need to get the last notarization and compare
                             // std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization>
                             priorReferencedNotarization = GetPriorReferencedNotarization(lastNotarizationTx,
-                                                                                        lastNotarizationAddressEntry.first.index,
-                                                                                        lastNotarization);
+                                                                                         lastNotarizationAddressEntry.first.index,
+                                                                                         lastNotarization);
                             if (!std::get<0>(priorReferencedNotarization))
                             {
                                 lastNotarization = CPBaaSNotarization();
@@ -3314,7 +3339,6 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                         {
                             validBasicEvidence = (lastLocalNotarization.IsValid() && lastLocalNotarization.IsPreLaunch()) || !challengeProofRoot.IsValid();
                             proofState = validBasicEvidence ? EXPECT_NOTHING : EXPECT_COMMITMENT_PROOF;
-                            proofState = EXPECT_NOTHING;
                         }
                         else
                         {
@@ -3367,8 +3391,8 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                     //    the notarization, or the block of the header from the proof root in question.
                     //
 
-                    startingHeight = std::get<3>(priorReferencedNotarization).proofRoots.count(expectedNotarization.currencyID) ?
-                        std::get<3>(priorReferencedNotarization).proofRoots[expectedNotarization.currencyID].rootHeight :
+                    startingHeight = lastNotarization.proofRoots.count(expectedNotarization.currencyID) ?
+                        lastNotarization.proofRoots[expectedNotarization.currencyID].rootHeight :
                         1;
 
                     int endHeight = futureProofRoot.rootHeight;
@@ -3401,7 +3425,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                     bool mismatchIndex = false;
                     for (auto &oneRange : commitmentRanges)
                     {
-                        for (uint32_t loop = oneRange.first; loop < oneRange.second; loop++, checkIndex++)
+                        for (uint32_t loop = oneRange.first; loop <= oneRange.second; loop++, checkIndex++)
                         {
                             if (loop != ((uint32_t)checkCommitments[checkIndex]) >> 1)
                             {
@@ -3473,6 +3497,8 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                         {
                             posBlockHeaderAndProof = ((CChainObject<CBlockHeaderAndProof> *)proofComponent)->object;
                             posEntropyHeaders.clear();
+                            posEntropyHeadersAsTxes.clear();
+
                             // make sure we have all the expected objects in the header
 
                             // get proofs of the following from the PoS header, all proven by the MMR of the
@@ -3486,21 +3512,44 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
 
                             try
                             {
+                                bool posNewFormat = (CConstVerusSolutionVector::GetVersionByHeight(posBlockHeaderAndProof.GetBlockHeight()) >
+                                                     CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
+                                                    posBlockHeaderAndProof.blockHeader.nTime >= PBAAS_TESTFORK2_TIME;
+
                                 posSourceProof = CPartialTransactionProof();
                                 ds >> posSourceProof;
                                 if (posSourceProof.IsValid())
                                 {
-                                    // and get the two entropy sources
-                                    posEntropyHeaders.push_back(CBlockHeaderProof());
-                                    ds >> posEntropyHeaders.back();
-                                    if (posEntropyHeaders.back().IsValid())
+                                    if (posSourceProof.GetPartialTransaction(lastSourceTx).IsNull())
                                     {
+                                        proofState = EXPECT_NOTHING;
+                                        break;
+                                    }
+                                    if (posNewFormat)
+                                    {
+                                        posEntropyHeadersAsTxes.push_back(CPartialTransactionProof());
+                                        ds >> posEntropyHeadersAsTxes.back();
+                                        if (posEntropyHeadersAsTxes.back().IsValid())
+                                        {
+                                            posEntropyHeadersAsTxes.push_back(CPartialTransactionProof());
+                                            ds >> posEntropyHeadersAsTxes.back();
+                                        }
+                                        proofState = posEntropyHeadersAsTxes.size() == 2 && posEntropyHeadersAsTxes.back().IsValid() ? EXPECT_PROOF_HEADER_REF : EXPECT_NOTHING;
+                                    }
+                                    else
+                                    {
+                                        // and get the two entropy sources
                                         posEntropyHeaders.push_back(CBlockHeaderProof());
                                         ds >> posEntropyHeaders.back();
+                                        if (posEntropyHeaders.back().IsValid())
+                                        {
+                                            posEntropyHeaders.push_back(CBlockHeaderProof());
+                                            ds >> posEntropyHeaders.back();
+                                        }
+                                        proofState = posEntropyHeaders.size() == 2 && posEntropyHeaders.back().IsValid() ? EXPECT_PROOF_HEADER_REF : EXPECT_NOTHING;
                                     }
                                 }
                                 provingBlockHeight = blockToProve;
-                                proofState = posEntropyHeaders.size() == 2 && posEntropyHeaders.back().IsValid() ? EXPECT_STAKE_TX : EXPECT_NOTHING;
                             }
                             catch(const std::exception& e)
                             {
@@ -3528,6 +3577,55 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                 }
                 break;
             }
+
+            case EXPECT_PROOF_HEADER_REF:
+            {
+                // this should be a header ref proof of the header just in front of the nearest entropy hash header
+                posPrevMMRRoot = posBlockHeaderAndProof.blockHeader.GetPrevMMRRoot();
+                if (proofComponent->objectType == CHAINOBJ_TRANSACTION_PROOF &&
+                    posPrevMMRRoot == ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.CheckBlockPreHeader(proofPreHeader))
+                {
+                    if (posEntropyHeadersAsTxes.size() == 2)
+                    {
+                        if (proofPreHeader.hashPrevMMRRoot != posEntropyHeadersAsTxes[0].CheckBlockPreHeader(preHeader1) ||
+                            proofPreHeader.hashPrevMMRRoot != posEntropyHeadersAsTxes[1].CheckBlockPreHeader(preHeader2))
+                        {
+                            proofState = EXPECT_NOTHING;
+                            break;
+                        }
+                        else
+                        {
+                            proofState = EXPECT_STAKE_TX;
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    proofPreHeader = posEntropyHeaders.size() ? posEntropyHeaders[0].preHeader : CPBaaSPreHeader();
+                }
+                if (!PBAAS_TESTMODE || !proofPreHeader.IsValid())
+                {
+                    proofState = EXPECT_NOTHING;
+                    break;
+                }
+
+                // if we either don't have a valid proof root of this chain in the
+                // notarization or we do and it was made before the TESTFORK2_TIME,
+                // drop through to see if it is a valid stake tx proof
+                if (lastNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
+                {
+                    uint32_t rootHeight = lastNotarization.proofRoots.find(ASSETCHAINS_CHAINID)->second.rootHeight;
+                    if (rootHeight < 0 ||
+                        chainActive.Height() < rootHeight ||
+                        chainActive[rootHeight]->nTime > PBAAS_TESTFORK2_TIME)
+                    {
+                        proofState = EXPECT_NOTHING;
+                        break;
+                    }
+                }
+            }
+
             case EXPECT_STAKE_TX:
             {
                 if (proofComponent->objectType == CHAINOBJ_TRANSACTION_PROOF)
@@ -3545,9 +3643,16 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                                          ValidateStakeTransaction(outTx, stakeParams, false) &&
                                          stakeParams.prevHash == posBlockHeaderAndProof.blockHeader.hashPrevBlock &&
                                          stakeParams.srcHeight == posSourceProof.GetBlockHeight() &&
-                                         stakeParams.blkHeight == provingBlockHeight;
+                                         stakeParams.blkHeight == provingBlockHeight &&
+                                         outTx.vin.size() &&
+                                         (!posEntropyHeadersAsTxes.size() ||
+                                          CPOSNonce(posBlockHeaderAndProof.blockHeader.nNonce).CheckPOSEntropy(
+                                                        CChain::CombineForPastHash(preHeader1.hashBlockMMRRoot, preHeader2.hashBlockMMRRoot),
+                                                        outTx.vin[0].prevout.hash,
+                                                        outTx.vin[0].prevout.n,
+                                                        CConstVerusSolutionVector::Version(posBlockHeaderAndProof.blockHeader.nSolution)));
 
-                    if (posBlockHeaderAndProof.blockHeader.GetPrevMMRRoot() != posSourceProof.CheckPartialTransaction(lastSourceTx, &isPartial))
+                    if (proofPreHeader.hashPrevMMRRoot != posSourceProof.CheckPartialTransaction(lastSourceTx, &isPartial))
                     {
                         proofState = EXPECT_NOTHING;
                         break;
@@ -3646,8 +3751,8 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                     headerProofsSize += GetSerializeSize(ds, *(CChainObject<CPartialTransactionProof> *)proofComponent);
 
                     // get the proofroot for startingheight
-                    CProofRoot startingRoot = std::get<3>(priorReferencedNotarization).proofRoots.count(expectedNotarization.currencyID) ?
-                        std::get<3>(priorReferencedNotarization).proofRoots[expectedNotarization.currencyID] :
+                    CProofRoot startingRoot = lastNotarization.proofRoots.count(expectedNotarization.currencyID) ?
+                        lastNotarization.proofRoots[expectedNotarization.currencyID] :
                         CProofRoot();
 
                     // if it is proven against this block MMR root, it must be the stake transaction
@@ -4874,10 +4979,72 @@ bool ProvePosBlock(uint32_t lastProofRootHeight, const CBlockIndex *pindex, CNot
         return state.Error("invalid crosschain notarization data");
     }
 
+    // get the proof in the header and use it
+    std::vector<unsigned char> streamVec;
+    posBlock.GetExtraData(streamVec);
+
+    CDataStream ds(streamVec, SER_NETWORK, PROTOCOL_VERSION);
+    CPartialTransactionProof sourceTxProof;
+
+    try
+    {
+        ds >> sourceTxProof;
+    }
+    catch (...)
+    {
+        sourceTxProof = CPartialTransactionProof();
+    }
+
+    bool posSourceInfo = (CConstVerusSolutionVector::GetVersionByHeight(sourceTxProof.GetBlockHeight()) > CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
+                                chainActive[sourceTxProof.GetBlockHeight()]->nTime >= PBAAS_TESTFORK2_TIME;
+
+    uint256 entropyHash;
+    if ((CConstVerusSolutionVector::GetVersionByHeight(pindex->GetHeight()) > CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
+        pindex->nTime >= PBAAS_TESTFORK2_TIME)
+    {
+        entropyHash = pindex->GetVerusEntropyHashComponent();
+    }
+
+    int posh, powh, alth, firstHeight, secondHeight;
+    uint256 pastHash = chainActive.GetVerusEntropyHash(pindex->GetHeight(), &posh, &powh, &alth, &firstHeight, &secondHeight);
+
+    if (!sourceTxProof.IsValid() || pindex->GetHeight() < (firstHeight + 100))
+    {
+        LogPrintf("%s: ERROR: Invalid PoS header\n", __func__);
+        return state.Error("Invalid PoS header for proof");
+    }
+
+    uint32_t heightAfterFirstEntropy = firstHeight + 1;
+
+    // get what's needed to prove the preheader of the block after closest entropy header
+    // to get a proven MMR root of that height from the prev MMR root
+    CBlock blockAfterEntropy;
+    if (!ReadBlockFromDisk(blockAfterEntropy, chainActive[heightAfterFirstEntropy], Params().GetConsensus(), false))
+    {
+        LogPrintf("%s: ERROR: could not read block after entropy height from disk, LIKELY DUE TO CORRUPT LOCAL STATE, BOOTSTRAP OR RESYNC RECOMMENDED\n", __func__);
+        return state.Error("Invalid post entropy block data");
+    }
+
+    bool posInfoAfterEntropy = (CConstVerusSolutionVector::GetVersionByHeight(firstHeight) > CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
+                                chainActive[firstHeight]->nTime >= PBAAS_TESTFORK2_TIME;
+
+    // prove block header ref just in front of our first entropy block, so we can get the prev value as a root to prove
+    // the rest that is in the block header, while connecting it to our current state
+    CPartialTransactionProof afterEntropyProof = chainActive.GetPreHeaderProof(blockAfterEntropy, heightAfterFirstEntropy, pindex->GetHeight() - 1);
+    if (!afterEntropyProof.IsValid())
+    {
+        LogPrintf("%s: ERROR: failed to create proof of header after entropy height\n", __func__);
+        return state.Error("Unable to create post entropy proof");
+    }
+    evidence.evidence << afterEntropyProof;
+
     // now prove:
     //
     // 1) the entire last transaction in the block - proven by the block Merkle root, which is available in the proven header
-    evidence.evidence << posBlock.GetPartialTransactionProof(posBlock.vtx.back(), posBlock.vtx.size() - 1);
+    evidence.evidence << posBlock.GetPartialTransactionProof(posBlock.vtx.back(),
+                                                             posBlock.vtx.size() - 1,
+                                                             std::vector<std::pair<int16_t, int16_t>>(),
+                                                             entropyHash);
 
     if (proofSize)
     {
@@ -4885,12 +5052,11 @@ bool ProvePosBlock(uint32_t lastProofRootHeight, const CBlockIndex *pindex, CNot
         *proofSize += GetSerializeSize(ds, *(CChainObject<CBlockHeaderAndProof> *)evidence.evidence.chainObjects.back());
     }
 
-
     if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
     {
         CTransaction checkTx;
 
-        auto checkProof = posBlock.GetPartialTransactionProof(posBlock.vtx.back(), posBlock.vtx.size() - 1);
+        auto checkProof = posBlock.GetPartialTransactionProof(posBlock.vtx.back(), posBlock.vtx.size() - 1, std::vector<std::pair<int16_t, int16_t>>(), entropyHash);
         uint256 txHash = checkProof.GetPartialTransaction(checkTx);
         uint256 merkleRoot = checkProof.CheckPartialTransaction(checkTx);
 
@@ -4978,10 +5144,6 @@ bool ProvePosBlock(uint32_t lastProofRootHeight, const CBlockIndex *pindex, CNot
             }
         }
     }
-    else
-    {
-        return state.Error("invalid stake transaction - cannot make proof");
-    }
 
     // 3) one stakeguard output from the coinbase
     int cbOutNum;
@@ -5006,7 +5168,8 @@ bool ProvePosBlock(uint32_t lastProofRootHeight, const CBlockIndex *pindex, CNot
                                             0,
                                             std::vector<std::pair<int16_t, int16_t>>(
                                                 {{(int16_t)CTransactionHeader::TX_HEADER, (int16_t)0},
-                                                    {(int16_t)CTransactionHeader::TX_OUTPUT, (int16_t)cbOutNum}}));
+                                                    {(int16_t)CTransactionHeader::TX_OUTPUT, (int16_t)cbOutNum}}),
+                                            entropyHash);
     if (proofSize)
     {
         CDataStream ds(SER_DISK, PROTOCOL_VERSION);
@@ -8063,9 +8226,9 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             if (crosschainCND.vtx.size() != 1)
             {
                 // go backwards until we find one to confirm or fail
-                for (int i = crosschainCND.vtx.size() - 1; i > 0; i--)
+                for (int i = crosschainCND.vtx.size() - 1; i >= 0; i--)
                 {
-                    if (invalidCrossChainIndexSet.count(i))
+                    if ((isFirstLaunchingNotarization && i == 0) || invalidCrossChainIndexSet.count(i))
                     {
                         continue;
                     }

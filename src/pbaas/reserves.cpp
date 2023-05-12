@@ -17,8 +17,6 @@
 #include "key_io.h"
 #include <random>
 
-const uint32_t PBAAS_TESTFORK2_TIME = 1683853200;
-
 LRUCache<CUTXORef, std::tuple<int, CPBaaSNotarization, std::vector<CReserveTransfer>, CCurrencyDefinition::EProofProtocol>>
     CCrossChainExport::exportInfoCache(200, 0.1F, false);
 

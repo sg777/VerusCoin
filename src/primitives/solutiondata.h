@@ -117,7 +117,7 @@ public:
 
     bool IsValid() const
     {
-        return !(hashPrevBlock.IsNull() && hashMerkleRoot.IsNull() && hashFinalSaplingRoot.IsNull() && nNonce.IsNull() && !nBits && hashBlockMMRRoot.IsNull());
+        return !(hashPrevBlock.IsNull() || hashMerkleRoot.IsNull() || hashFinalSaplingRoot.IsNull() || nNonce.IsNull() || !nBits || hashBlockMMRRoot.IsNull());
     }
 };
 

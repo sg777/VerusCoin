@@ -40,6 +40,8 @@ class CValidationState;
 class CPBaaSNotarization;
 extern uint160 ASSETCHAINS_CHAINID;
 
+const uint32_t PBAAS_TESTFORK2_TIME = 1684026000;
+
 // reserve output is a special kind of token output that does not have to carry it's identifier, as it
 // is always assumed to be the reserve currency of the current chain.
 class CTokenOutput

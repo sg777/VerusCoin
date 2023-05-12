@@ -380,6 +380,19 @@ uint256 CBlockHeader::GetRawVerusPOSHash(int32_t blockVersion, uint32_t solVersi
     }
 }
 
+// depending on the height of the block and its type, this returns the POS hash or the POW hash
+uint256 CBlockHeader::GetVerusEntropyHashComponent(uint32_t magic, int32_t height, bool isVerusMainnet) const
+{
+    uint256 retVal;
+    // if we qualify as PoW, use PoW hash, regardless of PoS state
+    if (IsVerusPOSBlock())
+    {
+        // POS hash
+        return GetRawVerusPOSHash(nVersion, CConstVerusSolutionVector::Version(nSolution), magic, nNonce, height, isVerusMainnet);
+    }
+    return GetHash();
+}
+
 // returns false if unable to fast calculate the VerusPOSHash from the header.
 // if it returns false, value is set to 0, but it can still be calculated from the full block
 // in that case. the only difference between this and the POS hash for the contest is that it is not divided by the value out
@@ -506,15 +519,21 @@ CDefaultMMRNode CBlock::GetMMRNode(int index) const
 }
 
 
-CPBaaSPreHeader CBlock::GetSubstitutedPreHeader() const
+CPBaaSPreHeader CBlockHeader::GetSubstitutedPreHeader(const uint256 &entropyHash) const
 {
     CPBaaSPreHeader substitutedPreHeader(*this);
     auto solutionCopy = nSolution;
-    arith_uint256 extraData = (arith_uint256((uint64_t)CVerusSolutionVector(solutionCopy).Version()) << 64) +
-                              (arith_uint256((uint64_t)((uint32_t)nVersion)) << 32) +
-                              arith_uint256((uint64_t)nTime);
-
-    substitutedPreHeader.hashBlockMMRRoot = ArithToUint256(extraData);
+    if (entropyHash.IsNull() || !IsVerusPOSBlock())
+    {
+        arith_uint256 extraData = (arith_uint256((uint64_t)CVerusSolutionVector(solutionCopy).Version()) << 64) +
+                                    (arith_uint256((uint64_t)((uint32_t)nVersion)) << 32) +
+                                    arith_uint256((uint64_t)nTime);
+        substitutedPreHeader.hashBlockMMRRoot = ArithToUint256(extraData);
+    }
+    else
+    {
+        substitutedPreHeader.hashBlockMMRRoot = entropyHash;
+    }
     return substitutedPreHeader;
 }
 
@@ -522,7 +541,7 @@ CPBaaSPreHeader CBlock::GetSubstitutedPreHeader() const
 // This creates the MMR tree for the block, which replaces the merkle tree used today
 // while enabling a proof of the transaction hash as well as parts of the transaction
 // such as inputs, outputs, shielded spends and outputs, transaction header info, etc.
-BlockMMRange CBlock::BuildBlockMMRTree() const
+BlockMMRange CBlock::BuildBlockMMRTree(const uint256 &entropyHash) const
 {
     // build a tree of transactions, each having both the transaction ID and root of the transaction
     // map's MMR. that enables any part of a transaction in the blockchain to be proven outside the
@@ -546,53 +565,27 @@ BlockMMRange CBlock::BuildBlockMMRTree() const
         // which is stored in the pre header in place of hashBlockMMRRoot
         // before hashing.
         auto hw = CDefaultMMRNode::GetHashWriter();
-        hw << GetSubstitutedPreHeader();
+        hw << GetSubstitutedPreHeader(entropyHash);
         mmRange.Add(CDefaultMMRNode(hw.GetHash()));
     }
 
     return mmRange;
 }
 
-BlockMMRange CBlock::GetBlockMMRTree() const
+BlockMMRange CBlock::GetBlockMMRTree(const uint256 &entropyHash) const
 {
     // no caching yet, the anticipation of which is why this is separate from build
-    return BuildBlockMMRTree();
+    return BuildBlockMMRTree(entropyHash);
 }
 
-CPartialTransactionProof CBlock::GetPreHeaderProof() const
-{
-    if (IsAdvancedHeader() != 0)
-    {
-        // make a partial transaction proof for the export opret only
-        BlockMMRange blockMMR(GetBlockMMRTree());
-        BlockMMView blockMMV(blockMMR);
-        CMMRProof txProof;
-
-        if (!blockMMV.GetProof(txProof, vtx.size()))
-        {
-            LogPrintf("%s: Cannot make pre header proof in block\n", __func__);
-            printf("%s: Cannot make pre header in block\n", __func__);
-            return CPartialTransactionProof();
-        }
-        return CPartialTransactionProof(txProof, CPBaaSPreHeader(*this));
-    }
-    else
-    {
-        // invalid proof
-        CPartialTransactionProof errorProof;
-        errorProof.version = errorProof.VERSION_INVALID;
-        return errorProof;
-    }
-}
-
-CPartialTransactionProof CBlock::GetPartialTransactionProof(const CTransaction &tx, int txIndex, const std::vector<std::pair<int16_t, int16_t>> &partIndexes) const
+CPartialTransactionProof CBlock::GetPartialTransactionProof(const CTransaction &tx, int txIndex, const std::vector<std::pair<int16_t, int16_t>> &partIndexes, const uint256 &entropyHash) const
 {
     std::vector<CTransactionComponentProof> components;
 
     if (IsAdvancedHeader() != 0 && partIndexes.size())
     {
         // make a partial transaction proof for the export opret only
-        BlockMMRange blockMMR(GetBlockMMRTree());
+        BlockMMRange blockMMR(GetBlockMMRTree(entropyHash));
         BlockMMView blockMMV(blockMMR);
         CMMRProof txProof;
 
