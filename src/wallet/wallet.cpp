@@ -1941,12 +1941,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 LOCK(cs_main);
                 CDataStream headerStream = CDataStream(SER_NETWORK, PROTOCOL_VERSION);
 
-                bool posSourceInfo = (CConstVerusSolutionVector::GetVersionByHeight(srcIndex) > CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
-                                            pBlock->nTime >= PBAAS_TESTFORK2_TIME;
-                bool posEntropyInfo1 = (CConstVerusSolutionVector::GetVersionByHeight(proveBlockHeight) > CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
-                                            chainActive[proveBlockHeight]->nTime >= PBAAS_TESTFORK2_TIME;
-                bool posEntropyInfo2 = (CConstVerusSolutionVector::GetVersionByHeight(secondBlockHeight) > CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
-                                            chainActive[secondBlockHeight]->nTime >= PBAAS_TESTFORK2_TIME;
+                bool posSourceInfo = isPBaaS && (!PBAAS_TESTMODE || pBlock->nTime >= PBAAS_TESTFORK2_TIME);
 
                 // store:
                 // 1. PBaaS header for this block
@@ -2015,7 +2010,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
 
                 headerStream << CPartialTransactionProof(txRootProof, txProofVec);
 
-                if (posEntropyInfo1)
+                if (posSourceInfo)
                 {
                     CBlock entropyBlock1;
                     if (!ReadBlockFromDisk(entropyBlock1, chainActive[proveBlockHeight], Params().GetConsensus(), false))
@@ -2036,7 +2031,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                     headerStream << CBlockHeaderProof(blockHeaderProof1, chainActive[proveBlockHeight]->GetBlockHeader());
                 }
 
-                if (posEntropyInfo2)
+                if (posSourceInfo)
                 {
                     CBlock entropyBlock2;
                     if (!ReadBlockFromDisk(entropyBlock2, chainActive[secondBlockHeight], Params().GetConsensus(), false))

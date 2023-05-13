@@ -180,8 +180,8 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
     {
         UpdateTime(pblock, Params().GetConsensus(), pindexPrev);
 
-        bool posSourceInfo = ((CConstVerusSolutionVector::GetVersionByHeight(pindexPrev->GetHeight() + 1) > CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
-                              pblock->nTime >= PBAAS_TESTFORK2_TIME);
+        bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(pindexPrev->GetHeight() + 1) >= CActivationHeight::ACTIVATE_PBAAS;
+        bool posSourceInfo = (isPBaaS && (!PBAAS_TESTMODE || pblock->nTime >= PBAAS_TESTFORK2_TIME));
 
         uint256 entropyHash;
         if (posSourceInfo)
@@ -193,8 +193,10 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
         // coinbase should already be finalized in the new version
         if (buildMerkle)
         {
+            uint32_t mmrSize = (isPBaaS && (!PBAAS_TESTMODE || pblock->nTime >= PBAAS_TESTFORK2_TIME)) ? pindexPrev->GetHeight() + 1 : pindexPrev->GetHeight();
+
             pblock->hashMerkleRoot = pblock->BuildMerkleTree();
-            pblock->SetPrevMMRRoot(ChainMerkleMountainView(chainActive.GetMMR(), pindexPrev->GetHeight()).GetRoot());
+            pblock->SetPrevMMRRoot(ChainMerkleMountainView(chainActive.GetMMR(), mmrSize).GetRoot());
             BlockMMRange mmRange(pblock->BuildBlockMMRTree(entropyHash));
             BlockMMView mmView(mmRange);
             pblock->SetBlockMMRRoot(mmView.GetRoot());

@@ -1118,6 +1118,10 @@ UniValue getblock(const UniValue& params, bool fHelp)
     if (pblockindex)
     {
         blockUni.pushKV("proofroot", CProofRoot::GetProofRoot(pblockindex->GetHeight()).ToUniValue());
+        if (CConstVerusSolutionVector::GetVersionByHeight(pblockindex->GetHeight()) >= CActivationHeight::ACTIVATE_PBAAS_HEADER)
+        {
+            blockUni.pushKV("prevmmrroot", block.GetPrevMMRRoot().GetHex());
+        }
     }
     return blockUni;
 }

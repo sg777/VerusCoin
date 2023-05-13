@@ -2608,12 +2608,9 @@ std::vector<unsigned char> CreatePoSBlockProof(ChainMerkleMountainView &mmrView,
         return emptyVec;
     }
 
-    bool posSourceInfo = (CVerusSolutionVector(chainActive[sourceBlockNum]->nSolution).Version() >= CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
-                                block.nTime >= PBAAS_TESTFORK2_TIME;
-    bool posEntropyInfo1 = (CConstVerusSolutionVector::GetVersionByHeight(pastBlockHeight1) > CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
-                                chainActive[pastBlockHeight1]->nTime >= PBAAS_TESTFORK2_TIME;
-    bool posEntropyInfo2 = (CConstVerusSolutionVector::GetVersionByHeight(pastBlockHeight2) > CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
-                                chainActive[pastBlockHeight2]->nTime >= PBAAS_TESTFORK2_TIME;
+    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS;
+
+    bool posSourceInfo = isPBaaS && (!PBAAS_TESTMODE || block.nTime >= PBAAS_TESTFORK2_TIME);
 
     BlockMMRange blockMMR(block.GetBlockMMRTree(posSourceInfo ? block.GetVerusEntropyHashComponent(sourceBlockNum) : uint256()));
     BlockMMView blockView(blockMMR);
@@ -2656,7 +2653,7 @@ std::vector<unsigned char> CreatePoSBlockProof(ChainMerkleMountainView &mmrView,
 
     headerStream << CPartialTransactionProof(txRootProof, txProofVec);
 
-    if (posEntropyInfo1)
+    if (posSourceInfo)
     {
         CBlock entropyBlock1;
         if (!ReadBlockFromDisk(entropyBlock1, chainActive[pastBlockHeight1], Params().GetConsensus(), false))
@@ -2677,7 +2674,7 @@ std::vector<unsigned char> CreatePoSBlockProof(ChainMerkleMountainView &mmrView,
         headerStream << CBlockHeaderProof(blockHeaderProof1, chainActive[pastBlockHeight1]->GetBlockHeader());
     }
 
-    if (posEntropyInfo2)
+    if (posSourceInfo)
     {
         CBlock entropyBlock2;
         if (!ReadBlockFromDisk(entropyBlock2, chainActive[pastBlockHeight2], Params().GetConsensus(), false))
@@ -3512,9 +3509,8 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
 
                             try
                             {
-                                bool posNewFormat = (CConstVerusSolutionVector::GetVersionByHeight(posBlockHeaderAndProof.GetBlockHeight()) >
-                                                     CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
-                                                    posBlockHeaderAndProof.blockHeader.nTime >= PBAAS_TESTFORK2_TIME;
+                                bool posNewFormat = CConstVerusSolutionVector::GetVersionByHeight(posBlockHeaderAndProof.GetBlockHeight()) >= CActivationHeight::ACTIVATE_PBAAS &&
+                                                     (!PBAAS_TESTMODE || posBlockHeaderAndProof.blockHeader.nTime >= PBAAS_TESTFORK2_TIME);
 
                                 posSourceProof = CPartialTransactionProof();
                                 ds >> posSourceProof;
@@ -3582,6 +3578,16 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
             {
                 // this should be a header ref proof of the header just in front of the nearest entropy hash header
                 posPrevMMRRoot = posBlockHeaderAndProof.blockHeader.GetPrevMMRRoot();
+                if (LogAcceptCategory("notarization"))
+                {
+                    LogPrintf("%s: blockHeight: %u, proofHeight: %u, posPrevMMRRoot: %s, CheckBlockPreHeader(proofPreHeader): %s\n",
+                        __func__,
+                        ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight(),
+                        ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetProofHeight(),
+                        posPrevMMRRoot.GetHex().c_str(),
+                        ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.CheckBlockPreHeader(proofPreHeader).GetHex().c_str());
+                    LogPrintf("proofPreHeader: %s\n", proofPreHeader.ToUniValue().write(1,2).c_str());
+                }
                 if (proofComponent->objectType == CHAINOBJ_TRANSACTION_PROOF &&
                     posPrevMMRRoot == ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.CheckBlockPreHeader(proofPreHeader))
                 {
@@ -3618,6 +3624,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                     uint32_t rootHeight = lastNotarization.proofRoots.find(ASSETCHAINS_CHAINID)->second.rootHeight;
                     if (rootHeight < 0 ||
                         chainActive.Height() < rootHeight ||
+                        !PBAAS_TESTMODE ||
                         chainActive[rootHeight]->nTime > PBAAS_TESTFORK2_TIME)
                     {
                         proofState = EXPECT_NOTHING;
@@ -4946,7 +4953,7 @@ std::vector<__uint128_t> GetBlockCommitments(uint32_t fromHeight, uint32_t toHei
                 bigCommitmentNum = (bigCommitmentNum << 32) | ((uint32_t)(blockNum << 1) | (uint32_t)isPosBlock);
                 blockCommitmentsSmall[currentOffset] = bigCommitmentNum;
 
-                if (LogAcceptCategory("notarization"))
+                if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
                 {
                     LogPrintf("%s: reading small commitments\n", __func__);
                     auto commitmentVec = UnpackBlockCommitment(blockCommitmentsSmall[currentOffset]);
@@ -4995,12 +5002,10 @@ bool ProvePosBlock(uint32_t lastProofRootHeight, const CBlockIndex *pindex, CNot
         sourceTxProof = CPartialTransactionProof();
     }
 
-    bool posSourceInfo = (CConstVerusSolutionVector::GetVersionByHeight(sourceTxProof.GetBlockHeight()) > CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
-                                chainActive[sourceTxProof.GetBlockHeight()]->nTime >= PBAAS_TESTFORK2_TIME;
-
     uint256 entropyHash;
-    if ((CConstVerusSolutionVector::GetVersionByHeight(pindex->GetHeight()) > CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
-        pindex->nTime >= PBAAS_TESTFORK2_TIME)
+    bool isNewFormatBlock = CConstVerusSolutionVector::GetVersionByHeight(pindex->GetHeight()) >= CActivationHeight::ACTIVATE_PBAAS &&
+                            (!PBAAS_TESTMODE || pindex->nTime >= PBAAS_TESTFORK2_TIME);
+    if (isNewFormatBlock)
     {
         entropyHash = pindex->GetVerusEntropyHashComponent();
     }
@@ -5015,6 +5020,17 @@ bool ProvePosBlock(uint32_t lastProofRootHeight, const CBlockIndex *pindex, CNot
     }
 
     uint32_t heightAfterFirstEntropy = firstHeight + 1;
+    if (!(CConstVerusSolutionVector::Version(chainActive[heightAfterFirstEntropy]->nSolution) >= CActivationHeight::ACTIVATE_PBAAS &&
+         (!PBAAS_TESTMODE || chainActive[heightAfterFirstEntropy]->nTime >= PBAAS_TESTFORK2_TIME)))
+    {
+        heightAfterFirstEntropy++;
+    }
+
+    if (LogAcceptCategory("notarization"))
+    {
+        LogPrintf("%s: pastHash: %s, firstHeight: %u, secondHeight: %u\n", __func__, pastHash.GetHex().c_str(), firstHeight, secondHeight);
+        LogPrintf("proveblockheight: %u, proofheight: %u\nproofrootAtHeight: %s\nproofrootAtHeight - 1: %s\nproofrootAtHeight + 1: %s\n", heightAfterFirstEntropy, pindex->GetHeight() - 1, CProofRoot::GetProofRoot(pindex->GetHeight() - 1).ToUniValue().write(1,2).c_str(), CProofRoot::GetProofRoot(pindex->GetHeight() - 2).ToUniValue().write(1,2).c_str(), CProofRoot::GetProofRoot(pindex->GetHeight()).ToUniValue().write(1,2).c_str());
+    }
 
     // get what's needed to prove the preheader of the block after closest entropy header
     // to get a proven MMR root of that height from the prev MMR root
@@ -5025,12 +5041,18 @@ bool ProvePosBlock(uint32_t lastProofRootHeight, const CBlockIndex *pindex, CNot
         return state.Error("Invalid post entropy block data");
     }
 
-    bool posInfoAfterEntropy = (CConstVerusSolutionVector::GetVersionByHeight(firstHeight) > CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
-                                chainActive[firstHeight]->nTime >= PBAAS_TESTFORK2_TIME;
-
     // prove block header ref just in front of our first entropy block, so we can get the prev value as a root to prove
     // the rest that is in the block header, while connecting it to our current state
-    CPartialTransactionProof afterEntropyProof = chainActive.GetPreHeaderProof(blockAfterEntropy, heightAfterFirstEntropy, pindex->GetHeight() - 1);
+    uint32_t preHeaderProofHeight = pindex->GetHeight() - (isNewFormatBlock ? 1 : 2);
+
+    CPartialTransactionProof afterEntropyProof = chainActive.GetPreHeaderProof(blockAfterEntropy, heightAfterFirstEntropy, preHeaderProofHeight);
+    if (LogAcceptCategory("notarization"))
+    {
+        CPBaaSPreHeader proofPreHeader;
+        LogPrintf("%s: afterEntropyProof.CheckBlockPreHeader(proofPreHeader): %s\n", __func__, afterEntropyProof.CheckBlockPreHeader(proofPreHeader).GetHex().c_str());
+        LogPrintf("proofPreHeader: %s\n", proofPreHeader.ToUniValue().write(1,2).c_str());
+        LogPrintf("prevMMRRoot: %s\n", pindex->GetBlockHeader().GetPrevMMRRoot().GetHex().c_str());
+    }
     if (!afterEntropyProof.IsValid())
     {
         LogPrintf("%s: ERROR: failed to create proof of header after entropy height\n", __func__);
@@ -5072,7 +5094,7 @@ bool ProvePosBlock(uint32_t lastProofRootHeight, const CBlockIndex *pindex, CNot
         uint256 checkMerkle =
             SafeCheckMerkleBranch(txHash, ((CBTCMerkleBranch *)(checkProof.txProof.proofSequence[0]))->branch, ((CBTCMerkleBranch *)(checkProof.txProof.proofSequence[0]))->nIndex);
 
-        LogPrintf("Proving block 1513\nHeader:\n%s\nProofRoot at 1513: %s\n", pindex->ToString().c_str(), CProofRoot::GetProofRoot(pindex->GetHeight()).ToUniValue().write(1,2).c_str());
+        LogPrintf("CBlockIndex: %s\nProofRoot: %s\n", pindex->ToString().c_str(), CProofRoot::GetProofRoot(pindex->GetHeight()).ToUniValue().write(1,2).c_str());
         LogPrintf("txhash: %s\ncheckTx.GetHash(): %s\ncalculated merkle: %s\ncheckMerkle: %s\n", txHash.GetHex().c_str(), checkTx.GetHash().GetHex().c_str(), merkleRoot.GetHex().c_str(), checkMerkle.GetHex().c_str());
     }
 

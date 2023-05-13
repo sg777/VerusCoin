@@ -1599,9 +1599,7 @@ std::vector<std::string> ParseSubNames(const std::string &Name, std::string &Cha
 // hash its parent names into a parent ID and return the parent hash and cleaned, single name
 std::string CleanName(const std::string &Name, uint160 &Parent, bool displayfilter, bool addVerus)
 {
-    // The line below should make sense, but this path should be tested in test mode until we are sure there are
-    // no edge cases
-    addVerus = addVerus && (!PBAAS_TESTMODE || Parent.IsNull());
+    addVerus = addVerus && Parent.IsNull();
 
     std::string chainName;
     std::vector<std::string> subNames = ParseSubNames(Name, chainName, displayfilter, addVerus);

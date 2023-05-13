@@ -900,7 +900,7 @@ uint256 CHashCommitments::GetSmallCommitments(std::vector<__uint128_t> &smallCom
                 bigIndex--;
             }
         }
-        if (LogAcceptCategory("notarization"))
+        if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
         {
             LogPrintf("%s: RETURNING COMMITMENTS:\n", __func__);
             for (int currentOffset = 0; currentOffset < smallCommitments.size(); currentOffset++)

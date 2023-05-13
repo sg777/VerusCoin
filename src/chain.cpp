@@ -257,8 +257,8 @@ CPartialTransactionProof CChain::GetPreHeaderProof(const CBlock &block, uint32_t
     uint256 entropyHash;
     if (block.IsAdvancedHeader() != 0)
     {
-        bool posEntropyInfo = (CVerusSolutionVector((*this)[blockHeight]->nSolution).Version() >= CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
-                                    block.nTime >= PBAAS_TESTFORK2_TIME;
+        bool posEntropyInfo = CVerusSolutionVector((*this)[blockHeight]->nSolution).Version() >= CActivationHeight::ACTIVATE_PBAAS &&
+                                (!PBAAS_TESTMODE || block.nTime >= PBAAS_TESTFORK2_TIME);
 
         if (posEntropyInfo)
         {
@@ -286,8 +286,20 @@ CPartialTransactionProof CChain::GetPreHeaderProof(const CBlock &block, uint32_t
 
     ChainMerkleMountainView mmv = GetMMV();
     mmv.resize(proofAtHeight + 1);
-    GetMerkleProof(mmv, txProof, proofAtHeight);
-    return CPartialTransactionProof(txProof, block.GetSubstitutedPreHeader(entropyHash));
+    GetMerkleProof(mmv, txProof, blockHeight);
+    if (block.IsVerusPOSBlock() && LogAcceptCategory("notarization"))
+    {
+        auto substitutedPreHeader = block.GetSubstitutedPreHeader(entropyHash);
+        if (LogAcceptCategory("notarization"))
+        {
+            LogPrintf("substitutedPreHeader: %s\n", substitutedPreHeader.ToUniValue().write(1,2).c_str());
+        }
+        return CPartialTransactionProof(txProof, substitutedPreHeader);
+    }
+    else
+    {
+        return CPartialTransactionProof(txProof, block.GetSubstitutedPreHeader(entropyHash));
+    }
 }
 
 uint256 CChainPower::CompactChainPower() const

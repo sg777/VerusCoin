@@ -5889,8 +5889,8 @@ CPartialTransactionProof::CPartialTransactionProof(const CTransaction tx, const 
         return;
     }
 
-    bool posEntropyInfo = (CVerusSolutionVector(block.nSolution).Version() >= CActivationHeight::ACTIVATE_PBAAS && !PBAAS_TESTMODE) ||
-                                block.nTime >= PBAAS_TESTFORK2_TIME;
+    bool posEntropyInfo = CVerusSolutionVector(block.nSolution).Version() >= CActivationHeight::ACTIVATE_PBAAS &&
+                            (!PBAAS_TESTMODE || block.nTime >= PBAAS_TESTFORK2_TIME);
 
     BlockMMRange blockMMR(block.GetBlockMMRTree(posEntropyInfo ? pIndex->GetVerusEntropyHashComponent() : uint256()));
     BlockMMView blockView(blockMMR);

@@ -3710,7 +3710,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     int64_t nTimeStart = 0;
 
     uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
-    bool isPBaaS = solutionVersion > CActivationHeight::ACTIVATE_PBAAS;
+    bool isPBaaS = solutionVersion >= CActivationHeight::ACTIVATE_PBAAS;
     bool isVerusActive = IsVerusActive();
     CAmount nFees = 0;
     int nInputs = 0;

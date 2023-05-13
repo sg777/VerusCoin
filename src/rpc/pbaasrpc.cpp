@@ -4696,7 +4696,7 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                             LogPrintf("%s: ERROR - commitments evidence mismatch\n", __func__);
                         }
 
-                        if (LogAcceptCategory("notarization"))
+                        if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
                         {
                             for (int currentOffset = 0; currentOffset < checkSmallCommitments.size(); currentOffset++)
                             {
