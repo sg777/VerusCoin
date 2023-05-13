@@ -1945,6 +1945,14 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                                                     pblock->GetExtraData(extraData);
                                                     if (extraData != CreatePoSBlockProof(mmv, *pblock, tx, voutNum, pastBlockIndex->GetHeight(), height))
                                                     {
+                                                        auto checkExtra = CreatePoSBlockProof(mmv, *pblock, tx, voutNum, pastBlockIndex->GetHeight(), height);
+                                                        if (LogAcceptCategory("notarization"))
+                                                        {
+                                                            LogPrintf("%s: Invalid stake header proofs\nextraData:\n%s\nexpected:\n%s\n",
+                                                                        __func__,
+                                                                        HexBytes(extraData.data(), extraData.size()).c_str(),
+                                                                        HexBytes(checkExtra.data(), checkExtra.size()).c_str());
+                                                        }
                                                         printf("ERROR: in staked block %s - invalid header proofs\n", pblock->GetHash().ToString().c_str());
                                                         LogPrintf("ERROR: in staked block %s - invalid header proofs\n", pblock->GetHash().ToString().c_str());
                                                         return false;

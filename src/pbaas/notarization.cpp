@@ -2810,6 +2810,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
     uint256 headerSelectionHash;
 
     CBlockHeaderAndProof posBlockHeaderAndProof;
+    bool posNewFormat;
     uint256 posPrevMMRRoot;
     CPBaaSPreHeader proofPreHeader;
     CPartialTransactionProof posSourceProof;
@@ -3509,7 +3510,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
 
                             try
                             {
-                                bool posNewFormat = CConstVerusSolutionVector::GetVersionByHeight(posBlockHeaderAndProof.GetBlockHeight()) >= CActivationHeight::ACTIVATE_PBAAS &&
+                                posNewFormat = CConstVerusSolutionVector::GetVersionByHeight(posBlockHeaderAndProof.GetBlockHeight()) >= CActivationHeight::ACTIVATE_PBAAS &&
                                                      (!PBAAS_TESTMODE || posBlockHeaderAndProof.blockHeader.nTime >= PBAAS_TESTFORK2_TIME);
 
                                 posSourceProof = CPartialTransactionProof();
@@ -3577,6 +3578,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
             case EXPECT_PROOF_HEADER_REF:
             {
                 // this should be a header ref proof of the header just in front of the nearest entropy hash header
+                bool skipPreHeaderChecks = PBAAS_TESTMODE && (posBlockHeaderAndProof.blockHeader.nTime - (120 * 200) < PBAAS_TESTFORK2_TIME);
                 posPrevMMRRoot = posBlockHeaderAndProof.blockHeader.GetPrevMMRRoot();
                 if (LogAcceptCategory("notarization"))
                 {
@@ -3586,15 +3588,23 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                         ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetProofHeight(),
                         posPrevMMRRoot.GetHex().c_str(),
                         ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.CheckBlockPreHeader(proofPreHeader).GetHex().c_str());
+                    if (skipPreHeaderChecks)
+                    {
+                        LogPrintf("CheckBlockPreHeader(proofPreHeader, false): %s\n",
+                                  ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.CheckBlockPreHeader(proofPreHeader, false).GetHex().c_str());
+                    }
                     LogPrintf("proofPreHeader: %s\n", proofPreHeader.ToUniValue().write(1,2).c_str());
                 }
                 if (proofComponent->objectType == CHAINOBJ_TRANSACTION_PROOF &&
-                    posPrevMMRRoot == ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.CheckBlockPreHeader(proofPreHeader))
+                    (posPrevMMRRoot == ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.CheckBlockPreHeader(proofPreHeader) ||
+                    (skipPreHeaderChecks &&
+                     posPrevMMRRoot == ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.CheckBlockPreHeader(proofPreHeader, false))))
                 {
                     if (posEntropyHeadersAsTxes.size() == 2)
                     {
-                        if (proofPreHeader.hashPrevMMRRoot != posEntropyHeadersAsTxes[0].CheckBlockPreHeader(preHeader1) ||
-                            proofPreHeader.hashPrevMMRRoot != posEntropyHeadersAsTxes[1].CheckBlockPreHeader(preHeader2))
+                        if ((proofPreHeader.hashPrevMMRRoot != posEntropyHeadersAsTxes[0].CheckBlockPreHeader(preHeader1) ||
+                             proofPreHeader.hashPrevMMRRoot != posEntropyHeadersAsTxes[1].CheckBlockPreHeader(preHeader2)) &&
+                            !skipPreHeaderChecks)
                         {
                             proofState = EXPECT_NOTHING;
                             break;
@@ -5050,6 +5060,7 @@ bool ProvePosBlock(uint32_t lastProofRootHeight, const CBlockIndex *pindex, CNot
     {
         CPBaaSPreHeader proofPreHeader;
         LogPrintf("%s: afterEntropyProof.CheckBlockPreHeader(proofPreHeader): %s\n", __func__, afterEntropyProof.CheckBlockPreHeader(proofPreHeader).GetHex().c_str());
+        LogPrintf("%s: afterEntropyProof.CheckBlockPreHeader(proofPreHeader, false): %s\n", __func__, afterEntropyProof.CheckBlockPreHeader(proofPreHeader, false).GetHex().c_str());
         LogPrintf("proofPreHeader: %s\n", proofPreHeader.ToUniValue().write(1,2).c_str());
         LogPrintf("prevMMRRoot: %s\n", pindex->GetBlockHeader().GetPrevMMRRoot().GetHex().c_str());
         LogPrintf("proofroot at height %u: %s\n", preHeaderProofHeight, pindex->GetBlockHeader().GetPrevMMRRoot().GetHex().c_str());

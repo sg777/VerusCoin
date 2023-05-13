@@ -570,18 +570,19 @@ CDefaultMMRNode CBlock::GetMMRNode(int index) const
     {
         return CDefaultMMRNode(uint256());
     }
-    else if (IsAdvancedHeader() != 0 && index == vtx.size())
+    else if (index == vtx.size())
     {
-        uint256 entropyHash;
-        if (CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::ACTIVATE_PBAAS && (!PBAAS_TESTMODE || nTime >= PBAAS_TESTFORK2_TIME))
+        if (IsAdvancedHeader() != 0 &&
+            CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::ACTIVATE_PBAAS && (!PBAAS_TESTMODE || nTime >= PBAAS_TESTFORK2_TIME))
         {
-            // we need to get the height from the coinbase
-            entropyHash = GetVerusEntropyHashComponent((int32_t)GetHeight());
+            auto hw = CDefaultMMRNode::GetHashWriter();
+            hw << GetSubstitutedPreHeader(GetVerusEntropyHashComponent((int32_t)GetHeight()));
+            return CDefaultMMRNode(hw.GetHash());
         }
-
-        auto hw = CDefaultMMRNode::GetHashWriter();
-        hw << GetSubstitutedPreHeader(entropyHash);
-        return CDefaultMMRNode(hw.GetHash());
+        else
+        {
+            return CDefaultMMRNode(uint256());
+        }
     }
     return vtx[index].GetDefaultMMRNode();
 }

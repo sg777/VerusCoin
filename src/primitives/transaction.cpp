@@ -804,7 +804,7 @@ uint256 CPartialTransactionProof::CheckPartialTransaction(CTransaction &outTx, b
     return txProof.CheckProof(GetPartialTransaction(outTx, pIsPartial));
 }
 
-uint256 CPartialTransactionProof::CheckBlockPreHeader(CPBaaSPreHeader &outPreHeader) const
+uint256 CPartialTransactionProof::CheckBlockPreHeader(CPBaaSPreHeader &outPreHeader, bool newPosFormat) const
 {
     outPreHeader = GetBlockPreHeader();
     if (LogAcceptCategory("notarization"))
@@ -814,7 +814,7 @@ uint256 CPartialTransactionProof::CheckBlockPreHeader(CPBaaSPreHeader &outPreHea
     if (outPreHeader.IsValid())
     {
         auto hw = CDefaultMMRNode::GetHashWriter();
-        return txProof.CheckProof((hw << outPreHeader).GetHash());
+        return txProof.CheckProof(newPosFormat ? (hw << outPreHeader).GetHash() : uint256());
     }
     return uint256();
 }
