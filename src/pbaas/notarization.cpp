@@ -3580,7 +3580,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                 // this should be a header ref proof of the header just in front of the nearest entropy hash header
                 bool skipPreHeaderChecks = PBAAS_TESTMODE && (posBlockHeaderAndProof.blockHeader.nTime - (120 * 200) < PBAAS_TESTFORK2_TIME);
                 posPrevMMRRoot = posBlockHeaderAndProof.blockHeader.GetPrevMMRRoot();
-                if (LogAcceptCategory("notarization"))
+                if (LogAcceptCategory("notarization" && LogAcceptCategory("verbose"))
                 {
                     LogPrintf("%s: blockHeight: %u, proofHeight: %u, posPrevMMRRoot: %s, CheckBlockPreHeader(proofPreHeader): %s\n",
                         __func__,
