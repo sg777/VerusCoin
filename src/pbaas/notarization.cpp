@@ -3615,6 +3615,11 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                             break;
                         }
                     }
+                    else if (skipPreHeaderChecks)
+                    {
+                        proofState = EXPECT_STAKE_TX;
+                        break;
+                    }
                 }
                 else
                 {
