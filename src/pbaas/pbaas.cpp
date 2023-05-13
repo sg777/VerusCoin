@@ -853,10 +853,38 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     }
                     else
                     {
-                        maxHeight = ccx.sourceHeightEnd - 1;
-                        minHeight = ccx.sourceHeightStart > (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 20) ?
-                                    ccx.sourceHeightStart - (DEFAULT_PRE_BLOSSOM_TX_EXPIRY_DELTA + 20) :
-                                    0;
+                        CAddressIndexDbEntry txOutIdx;
+                        CTransaction txOut;
+                        CPBaaSNotarization lastNotarization;
+
+                        if (!lastNotarization.GetLastNotarization(ccx.sourceSystemID,
+                                                                  std::max((((int32_t)height) - (int32_t)((60 / ConnectedChains.ThisChain().blockTime) * 100)), 1),
+                                                                  height - 1,
+                                                                  &txOutIdx,
+                                                                  &txOut))
+                        {
+                            if (!lastNotarization.GetLastNotarization(ccx.sourceSystemID,
+                                                                      1,
+                                                                      height - 1,
+                                                                      &txOutIdx,
+                                                                      &txOut))
+                            {
+                                return state.Error("Cannot get prior notarization for cross chain import: " + cci.ToUniValue().write(1,2));
+                            }
+                        }
+
+                        // calculate based on this notarization and our last one how far back to look
+                        // based on our block at that time
+                        if (lastNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
+                        {
+                            maxHeight = lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
+                            minHeight = std::max((((int32_t)maxHeight) - (int32_t)((60 / ConnectedChains.ThisChain().blockTime) * 40)), 1);
+                        }
+                        else
+                        {
+                            minHeight = std::max((((int32_t)height) - (int32_t)((60 / ConnectedChains.ThisChain().blockTime) * 100)), 1);
+                            maxHeight = height - 10;
+                        }
                     }
 
                     conversionMap = cci.GetBestPriorConversions(tx, outNum, importingToDef.GetID(), ASSETCHAINS_CHAINID, startingState, state, height, minHeight, maxHeight);
