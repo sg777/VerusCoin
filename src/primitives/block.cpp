@@ -509,16 +509,6 @@ uint256 CBlock::BuildMerkleTree(bool* fMutated) const
 }
 
 
-CDefaultMMRNode CBlock::GetMMRNode(int index) const
-{
-    if (index >= vtx.size())
-    {
-        return CDefaultMMRNode(uint256());
-    }
-    return vtx[index].GetDefaultMMRNode();
-}
-
-
 CPBaaSPreHeader CBlockHeader::GetSubstitutedPreHeader(const uint256 &entropyHash) const
 {
     CPBaaSPreHeader substitutedPreHeader(*this);
@@ -535,6 +525,65 @@ CPBaaSPreHeader CBlockHeader::GetSubstitutedPreHeader(const uint256 &entropyHash
         substitutedPreHeader.hashBlockMMRRoot = entropyHash;
     }
     return substitutedPreHeader;
+}
+
+
+uint32_t CBlock::GetHeight() const
+{
+    if (!vtx.size())
+    {
+        return 0;
+    }
+    const CTransaction &cbTx = vtx[0];
+    uint32_t cbHeight = 0;
+    vector<unsigned char> data;
+    opcodetype opcode;
+    CScript::const_iterator pc = cbTx.vin[0].scriptSig.begin();
+
+    if (cbTx.vin[0].scriptSig.GetOp(pc, opcode, data))
+    {
+        if (opcode == OP_0)
+        {
+            cbHeight = 0;
+        }
+        else if (opcode >= OP_1 && opcode <= OP_16)
+        {
+            cbHeight = (opcode - OP_1) + 1;
+        }
+        else if (opcode > 0 && opcode <= OP_PUSHDATA4 && data.size() > 0)
+        {
+            int shiftCount = 0;
+            for (unsigned char oneByte : data)
+            {
+                cbHeight += oneByte << shiftCount;
+                shiftCount += 8;
+            }
+        }
+    }
+    return cbHeight;
+}
+
+
+CDefaultMMRNode CBlock::GetMMRNode(int index) const
+{
+    if (index > vtx.size())
+    {
+        return CDefaultMMRNode(uint256());
+    }
+    else if (IsAdvancedHeader() != 0 && index == vtx.size())
+    {
+        uint256 entropyHash;
+        if (CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::ACTIVATE_PBAAS && (!PBAAS_TESTMODE || nTime >= PBAAS_TESTFORK2_TIME))
+        {
+            // we need to get the height from the coinbase
+            entropyHash = GetVerusEntropyHashComponent((int32_t)GetHeight());
+        }
+
+        auto hw = CDefaultMMRNode::GetHashWriter();
+        hw << GetSubstitutedPreHeader(entropyHash);
+        return CDefaultMMRNode(hw.GetHash());
+    }
+    return vtx[index].GetDefaultMMRNode();
 }
 
 

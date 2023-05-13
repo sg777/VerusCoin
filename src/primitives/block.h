@@ -85,7 +85,7 @@ public:
         return (nBits == 0);
     }
 
-    // returns 0 if not PBaaS, 1 if PBaaS PoW, -1 if PBaaS PoS
+    // returns 0 if pre-advanced header, 1 if post & PoW, -1 if post & PoS
     int32_t IsAdvancedHeader() const
     {
         if (nVersion == VERUS_V2)
@@ -462,6 +462,7 @@ public:
     // If non-NULL, *mutated is set to whether mutation was detected in the merkle
     // tree (a duplication of transactions in the block leading to an identical
     // merkle root).
+    uint32_t GetHeight() const;
     uint256 BuildMerkleTree(bool* mutated = NULL) const;
     BlockMMRange BuildBlockMMRTree(const uint256 &entropyHash) const;
     BlockMMRange GetBlockMMRTree(const uint256 &entropyHash) const;

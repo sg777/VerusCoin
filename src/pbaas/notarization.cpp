@@ -5052,6 +5052,7 @@ bool ProvePosBlock(uint32_t lastProofRootHeight, const CBlockIndex *pindex, CNot
         LogPrintf("%s: afterEntropyProof.CheckBlockPreHeader(proofPreHeader): %s\n", __func__, afterEntropyProof.CheckBlockPreHeader(proofPreHeader).GetHex().c_str());
         LogPrintf("proofPreHeader: %s\n", proofPreHeader.ToUniValue().write(1,2).c_str());
         LogPrintf("prevMMRRoot: %s\n", pindex->GetBlockHeader().GetPrevMMRRoot().GetHex().c_str());
+        LogPrintf("proofroot at height %u: %s\n", preHeaderProofHeight, pindex->GetBlockHeader().GetPrevMMRRoot().GetHex().c_str());
     }
     if (!afterEntropyProof.IsValid())
     {
