@@ -11,6 +11,7 @@
 #include "hash.h"
 #include "nonce.h"
 #include "streams.h"
+#include <univalue.h>
 
 class CPBaaSBlockHeader;
 
