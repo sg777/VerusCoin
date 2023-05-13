@@ -536,7 +536,7 @@ uint32_t CBlock::GetHeight() const
     }
     const CTransaction &cbTx = vtx[0];
     uint32_t cbHeight = 0;
-    vector<unsigned char> data;
+    std::vector<unsigned char> data;
     opcodetype opcode;
     CScript::const_iterator pc = cbTx.vin[0].scriptSig.begin();
 
