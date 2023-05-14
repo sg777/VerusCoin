@@ -478,7 +478,7 @@ void ProcessNewImports(const uint160 &sourceChainID, CPBaaSNotarization &lastCon
                     return;
                 }
                 {
-                    LOCK(cs_main);
+                    LOCK2(cs_main, mempool.cs);
                     if (isSameChain &&
                         !(myGetTransaction(exportTxId, exportTx, blkHash) &&
                             exportTx.vout.size() > exportTxOutNum))
