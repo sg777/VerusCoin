@@ -737,6 +737,12 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                                     }
                                 }
                             }
+                            else if (LogAcceptCategory("notarization"))
+                            {
+                                UniValue jsonTx(UniValue::VOBJ);
+                                TxToUniv(tx, uint256(), jsonTx);
+                                LogPrintf("%s: Failed to load prior from import transaction:\n%s\n", __func__, jsonTx.write(1,2).c_str());
+                            }
 
                             if (LogAcceptCategory("crosschainimports"))
                             {
@@ -822,7 +828,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                                                           spentCurrencyOut,
                                                           &dummyState))
                 {
-                    printf("Errors processing\n");
+                    return state.Error("Failed to provess reserve transfers for import " + cci.ToUniValue().write(1,2));
                 }
 
                 CCoinbaseCurrencyState startingState;
@@ -855,30 +861,20 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     {
                         CAddressIndexDbEntry txOutIdx;
                         CTransaction txOut;
-                        CPBaaSNotarization lastNotarization;
 
-                        if (!lastNotarization.GetLastNotarization(ccx.sourceSystemID,
-                                                                  std::max((((int32_t)height) - (int32_t)((60 / ConnectedChains.ThisChain().blockTime) * 100)), 1),
-                                                                  height - 1,
-                                                                  &txOutIdx,
-                                                                  &txOut))
+                        std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> lastNotarization = GetLastConfirmedNotarization(ccx.sourceSystemID, height - 1);
+
+                        if (!std::get<0>(lastNotarization))
                         {
-                            if (!lastNotarization.GetLastNotarization(ccx.sourceSystemID,
-                                                                      1,
-                                                                      height - 1,
-                                                                      &txOutIdx,
-                                                                      &txOut))
-                            {
-                                return state.Error("Cannot get prior notarization for cross chain import: " + cci.ToUniValue().write(1,2));
-                            }
+                            return state.Error("Cannot get prior notarization for cross chain import: " + cci.ToUniValue().write(1,2));
                         }
 
                         // calculate based on this notarization and our last one how far back to look
                         // based on our block at that time
-                        if (lastNotarization.proofRoots.count(ASSETCHAINS_CHAINID))
+                        if (std::get<2>(lastNotarization).proofRoots.count(ASSETCHAINS_CHAINID))
                         {
-                            maxHeight = lastNotarization.proofRoots[ASSETCHAINS_CHAINID].rootHeight;
-                            minHeight = std::max((((int32_t)maxHeight) - (int32_t)((60 / ConnectedChains.ThisChain().blockTime) * 40)), 1);
+                            maxHeight = std::get<2>(lastNotarization).proofRoots[ASSETCHAINS_CHAINID].rootHeight;
+                            minHeight = std::max((((int32_t)maxHeight) - std::max((int32_t)((60 * 40) / ConnectedChains.ThisChain().blockTime), 50)), 1);
                         }
                         else
                         {
@@ -990,12 +986,9 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                                                     cnd.vtx[cnd.lastConfirmed].second.proofRoots[exportingDef.systemID].gasPrice;
                         }
 
-                        if ((oneTransfer.HasNextLeg() && oneTransfer.destination.gatewayID != ASSETCHAINS_CHAINID ?
-                                nextLegFeeEquiv :
-                                feeEquivalent) <
-                                    CCurrencyState::NativeGasToReserveRaw(
-                                        ConnectedChains.ThisChain().GetCurrencyImportFee(exportingDef.ChainOptions() & exportingDef.OPTION_NFT_TOKEN),
-                                        feeConversionRate))
+                        int64_t registrationFee = ConnectedChains.ThisChain().GetCurrencyImportFee(exportingDef.ChainOptions() & exportingDef.OPTION_NFT_TOKEN);
+                        if ((oneTransfer.HasNextLeg() && oneTransfer.destination.gatewayID != ASSETCHAINS_CHAINID ? nextLegFeeEquiv : feeEquivalent) <
+                            CCurrencyState::NativeGasToReserveRaw(registrationFee, feeConversionRate))
                         {
                             return state.Error("Insufficient fee for currency import: " + cci.ToUniValue().write(1,2));
                         }

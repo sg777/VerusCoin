@@ -1044,6 +1044,7 @@ CCrossChainImport CCrossChainImport::GetPriorImportFromSystem(const CTransaction
     int32_t _priorOutNum;
     uint256 _priorTxBlockHash;
     CTransaction &priorTx = ppriorTx ? *ppriorTx : _priorTx;
+    CTransaction interimPriorTx;
     int32_t &priorOutNum = ppriorOutNum ? *ppriorOutNum : _priorOutNum;
     uint256 &priorTxBlockHash = ppriorTxBlockHash ? *ppriorTxBlockHash : _priorTxBlockHash;
 
@@ -1055,16 +1056,20 @@ CCrossChainImport CCrossChainImport::GetPriorImportFromSystem(const CTransaction
         bool sourceSystemChain = sourceSystemID != ASSETCHAINS_CHAINID;
         CCrossChainImport primaryCCI;
 
-        for (auto &oneIn : pCurTx->vin)
+        CTransaction tmpPriorTx;
+
+        for (int i = 0; i < pCurTx->vin.size(); i++)
         {
+            auto oneIn = pCurTx->vin[i];
+
             primaryCCI = CCrossChainImport();
             cci = CCrossChainImport();
 
             COptCCParams p;
-            if (myGetTransaction(oneIn.prevout.hash, _priorTx, priorTxBlockHash))
+            if (tmpPriorTx.GetHash() == oneIn.prevout.hash || myGetTransaction(oneIn.prevout.hash, tmpPriorTx, priorTxBlockHash))
             {
-                if (_priorTx.vout.size() > oneIn.prevout.n &&
-                    _priorTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                if (tmpPriorTx.vout.size() > oneIn.prevout.n &&
+                    tmpPriorTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(p) &&
                     p.IsValid() &&
                     p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
                     p.vData.size() &&
@@ -1073,14 +1078,14 @@ CCrossChainImport CCrossChainImport::GetPriorImportFromSystem(const CTransaction
                     // if last one didn't match, but source system does, follow it
                     if (cci.IsSourceSystemImport() &&
                         oneIn.prevout.n > 0 &&
-                        _priorTx.vout[oneIn.prevout.n - 1].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        tmpPriorTx.vout[oneIn.prevout.n - 1].scriptPubKey.IsPayToCryptoCondition(p) &&
                         p.IsValid() &&
                         p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
                         p.vData.size() &&
                         (primaryCCI = CCrossChainImport(p.vData[0])).IsValid() &&
                         primaryCCI.sourceSystemID == sourceSystemID && primaryCCI.importCurrencyID == importCurrencyID)
                     {
-                        priorTx = _priorTx;
+                        priorTx = tmpPriorTx;
                         priorOutNum = oneIn.prevout.n;
                         return primaryCCI;
                     }
@@ -1088,7 +1093,7 @@ CCrossChainImport CCrossChainImport::GetPriorImportFromSystem(const CTransaction
                               cci.sourceSystemID == sourceSystemID &&
                               cci.importCurrencyID == importCurrencyID)
                     {
-                        priorTx = _priorTx;
+                        priorTx = tmpPriorTx;
                         priorOutNum = oneIn.prevout.n;
                         return cci;
                     }
@@ -1100,12 +1105,20 @@ CCrossChainImport CCrossChainImport::GetPriorImportFromSystem(const CTransaction
                     }
                 }
             }
+            else
+            {
+                if (LogAcceptCategory("notarization"))
+                {
+                    LogPrintf("%s: Failed to read transaction for input #%d: %s\n", __func__, i, oneIn.prevout.ToString().c_str());
+                }
+            }
         }
         if (cci.IsValid() &&
             !cci.IsInitialLaunchImport() &&
             !cci.IsDefinitionImport())
         {
-            pCurTx = &_priorTx;
+            interimPriorTx = tmpPriorTx;
+            pCurTx = &interimPriorTx;
         }
         else
         {

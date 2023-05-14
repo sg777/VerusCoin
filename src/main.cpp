@@ -2346,7 +2346,15 @@ bool myGetTransaction(const uint256 &hash, CTransaction &txOut, uint256 &hashBlo
             }
             hashBlock = header.GetHash();
             if (txOut.GetHash() != hash)
+            {
+                if (LogAcceptCategory("notarization"))
+                {
+                    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+                    hw << txOut;
+                    LogPrintf("%s: txid mismatch, read: %s, expected: %s, CHashWriter hash: %s\n", __func__, txOut.GetHash().GetHex().c_str(), hash.GetHex().c_str(), hw.GetHash().GetHex().c_str());
+                }
                 return error("%s: txid mismatch", __func__);
+            }
             //fprintf(stderr,"found on disk\n");
             return true;
         }
