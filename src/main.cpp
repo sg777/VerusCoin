@@ -2018,42 +2018,94 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
 
         // if this is an identity, determine the identtyFeeFactor
         CAmount identityFeeFactor = 0;
-        if (txDesc.IsValid() && txDesc.IsIdentity() && !txDesc.IsImport())
+        if (fLimitFree && txDesc.IsValid())
         {
-            for (int j = 0; j < tx.vout.size(); j++)
+            if (txDesc.IsImport())
             {
-                auto &oneOut = tx.vout[j];
+                // find the first import and check for adequate fees
                 COptCCParams p;
-                uint160 oneIdID;
-                if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
-                    p.IsValid() &&
-                    p.version >= p.VERSION_V3 &&
-                    p.vData.size() &&
-                    p.evalCode == EVAL_IDENTITY_PRIMARY)
-                {
-                    CIdentity identity;
-                    if ((identity = CIdentity(p.vData[0])).IsValid())
-                    {
-                        if (!tx.IsCoinBase())
-                        {
-                            if (identity.contentMultiMap.size())
-                            {
-                                CDataStream ss(SER_DISK, PROTOCOL_VERSION);
-                                auto tempID = identity;
-                                tempID.contentMultiMap.clear();
-                                size_t serSize = GetSerializeSize(ss, identity) - GetSerializeSize(ss, tempID);
-                                identityFeeFactor += (serSize / 128) + ((serSize % 128) ? 1 : 0);
-                            }
+                CCrossChainImport cci, sysCCI;
+                CCrossChainExport ccx;
+                CPBaaSNotarization notarization;
+                std::vector<CReserveTransfer> reserveTransfers;
+                CCurrencyDefinition importCurDef;
 
-                            // if we have more primary addresses than 1 or more private addresses than 1, pay appropriate fee
-                            identityFeeFactor += identity.contentMap.size();
-                            identityFeeFactor += identity.primaryAddresses.size() > 1 ? identity.primaryAddresses.size() - 1 : 0;
-                            identityFeeFactor += identity.privateAddresses.size() > 1 ? identity.privateAddresses.size() - 1 : 0;
+                for (int32_t outNum = 0; outNum < tx.vout.size(); outNum++)
+                {
+                    int32_t sysOutNum = -1, notarizationOut = -1, evidenceOutStart = -1, evidenceOutEnd = -1;
+                    if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() &&
+                        p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                        p.vData.size() > 1 &&
+                        p.IsEvalPKOut() &&
+                        (cci = CCrossChainImport(p.vData[0])).IsValid() &&
+                        ((cci.IsDefinitionImport() || cci.IsInitialLaunchImport()) ||
+                         ((importCurDef = ConnectedChains.GetCachedCurrency(cci.importCurrencyID)).IsValid() &&
+                          cci.GetImportInfo(tx,
+                                            nextBlockHeight,
+                                            outNum,
+                                            ccx,
+                                            sysCCI,
+                                            sysOutNum,
+                                            notarization,
+                                            notarizationOut,
+                                            evidenceOutStart,
+                                            evidenceOutEnd,
+                                            reserveTransfers,
+                                            state))))
+                    {
+                        if (!(cci.IsDefinitionImport() || cci.IsInitialLaunchImport()) && reserveTransfers.size())
+                        {
+                            if (!ImportHasAdequateFees(tx, outNum, importCurDef, cci, ccx, notarization, reserveTransfers, state, nextBlockHeight))
+                            {
+                                LogPrint("crosschainimports", "%s: Inadequate fees for import %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
+                                return state.DoS(10, error("%s: inadequate fees for import", __func__), REJECT_INVALID, "bad-txn-invalid-id");
+                            }
                         }
                     }
                     else
                     {
-                        return state.DoS(10, error("%s: invalid identity", __func__), REJECT_INVALID, "bad-txn-invalid-id");
+                        return state.DoS(10, error("%s: invalid import output", __func__), REJECT_INVALID, "bad-txn-invalid-id");
+                    }
+                }
+            }
+            else if (txDesc.IsIdentity())
+            {
+                for (int j = 0; j < tx.vout.size(); j++)
+                {
+                    auto &oneOut = tx.vout[j];
+                    COptCCParams p;
+                    uint160 oneIdID;
+                    if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() &&
+                        p.version >= p.VERSION_V3 &&
+                        p.vData.size() &&
+                        p.evalCode == EVAL_IDENTITY_PRIMARY)
+                    {
+                        CIdentity identity;
+                        if ((identity = CIdentity(p.vData[0])).IsValid())
+                        {
+                            if (!tx.IsCoinBase())
+                            {
+                                if (identity.contentMultiMap.size())
+                                {
+                                    CDataStream ss(SER_DISK, PROTOCOL_VERSION);
+                                    auto tempID = identity;
+                                    tempID.contentMultiMap.clear();
+                                    size_t serSize = GetSerializeSize(ss, identity) - GetSerializeSize(ss, tempID);
+                                    identityFeeFactor += (serSize / 128) + ((serSize % 128) ? 1 : 0);
+                                }
+
+                                // if we have more primary addresses than 1 or more private addresses than 1, pay appropriate fee
+                                identityFeeFactor += identity.contentMap.size();
+                                identityFeeFactor += identity.primaryAddresses.size() > 1 ? identity.primaryAddresses.size() - 1 : 0;
+                                identityFeeFactor += identity.privateAddresses.size() > 1 ? identity.privateAddresses.size() - 1 : 0;
+                            }
+                        }
+                        else
+                        {
+                            return state.DoS(10, error("%s: invalid identity", __func__), REJECT_INVALID, "bad-txn-invalid-id");
+                        }
                     }
                 }
             }
