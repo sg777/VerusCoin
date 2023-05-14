@@ -452,15 +452,15 @@ bool ImportHasAdequateFees(const CTransaction &tx,
             CCurrencyDefinition nextSys = ConnectedChains.GetCachedCurrency(exportingDef.systemID);
             if (nextSys.IsValid() && nextSys.IsGateway() && nextSys.proofProtocol == nextSys.PROOF_ETHNOTARIZATION)
             {
-                if (!GetNotarizationData(exportingDef.systemID, cnd) ||
-                    !cnd.IsConfirmed() ||
-                    !cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(exportingDef.systemID))
+                auto lastConfirmedNotarization = GetLastConfirmedNotarization(exportingDef.systemID, height - 1);
+                if (!std::get<0>(lastConfirmedNotarization) ||
+                    !std::get<2>(lastConfirmedNotarization).proofRoots.count(exportingDef.systemID))
                 {
                     return state.Error("Cannot get notarization data for destination system of transfer: " + oneTransfer.ToUniValue().write(1,2));
                 }
-                feeConversionRate = cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice.size() ?
-                                        cnd.vtx[cnd.lastConfirmed].second.currencyState.conversionPrice[0] :
-                                        cnd.vtx[cnd.lastConfirmed].second.proofRoots[exportingDef.systemID].gasPrice;
+                feeConversionRate = std::get<2>(lastConfirmedNotarization).currencyState.conversionPrice.size() ?
+                                        std::get<2>(lastConfirmedNotarization).currencyState.conversionPrice[0] :
+                                        std::get<2>(lastConfirmedNotarization).proofRoots[exportingDef.systemID].gasPrice;
             }
 
             int64_t registrationFee = ConnectedChains.ThisChain().GetCurrencyImportFee(exportingDef.ChainOptions() & exportingDef.OPTION_NFT_TOKEN);
