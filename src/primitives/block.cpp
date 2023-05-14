@@ -563,7 +563,6 @@ uint32_t CBlock::GetHeight() const
     return cbHeight;
 }
 
-
 CDefaultMMRNode CBlock::GetMMRNode(int index) const
 {
     if (index > vtx.size())
