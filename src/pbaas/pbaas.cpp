@@ -2098,24 +2098,6 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                                                         LogPrintf("ERROR: in staking block %s - invalid coinbase output 1\n", blkHash.ToString().c_str());
                                                         return false;
                                                     }
-                                                    // check the header to ensure that it contains the correct transaction and proofs
-                                                    auto mmv = chainActive.GetMMV();
-                                                    std::vector<unsigned char> extraData;
-                                                    pblock->GetExtraData(extraData);
-                                                    if (extraData != CreatePoSBlockProof(mmv, *pblock, tx, voutNum, pastBlockIndex->GetHeight(), height))
-                                                    {
-                                                        auto checkExtra = CreatePoSBlockProof(mmv, *pblock, tx, voutNum, pastBlockIndex->GetHeight(), height);
-                                                        if (LogAcceptCategory("notarization"))
-                                                        {
-                                                            LogPrintf("%s: Invalid stake header proofs\nextraData:\n%s\nexpected:\n%s\n",
-                                                                        __func__,
-                                                                        HexBytes(extraData.data(), extraData.size()).c_str(),
-                                                                        HexBytes(checkExtra.data(), checkExtra.size()).c_str());
-                                                        }
-                                                        printf("ERROR: in staked block %s - invalid header proofs\n", pblock->GetHash().ToString().c_str());
-                                                        LogPrintf("ERROR: in staked block %s - invalid header proofs\n", pblock->GetHash().ToString().c_str());
-                                                        return false;
-                                                    }
                                                 }
                                                 std::vector<CTxDestination> oneOutDests;
                                                 if (!ExtractDestinations(oneOut.scriptPubKey, cbType, oneOutDests, numRequired) ||
@@ -2155,6 +2137,29 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                                                 {
                                                     printf("%s: ERROR: in staking block %s - invalid coinbase output type\n", __func__, blkHash.ToString().c_str());
                                                     LogPrintf("%s: ERROR: in staking block %s - invalid coinbase output type\n", __func__, blkHash.ToString().c_str());
+                                                    return false;
+                                                }
+                                            }
+                                            if (isPBaaS)
+                                            {
+                                                // check the header to ensure that it contains the correct transaction and proofs
+                                                auto mmv = chainActive.GetMMV();
+                                                // resize to be sure
+                                                mmv.resize(height);
+                                                std::vector<unsigned char> extraData;
+                                                pblock->GetExtraData(extraData);
+                                                if (extraData != CreatePoSBlockProof(mmv, *pblock, tx, voutNum, pastBlockIndex->GetHeight(), height))
+                                                {
+                                                    if (LogAcceptCategory("notarization"))
+                                                    {
+                                                        auto checkExtra = CreatePoSBlockProof(mmv, *pblock, tx, voutNum, pastBlockIndex->GetHeight(), height);
+                                                        LogPrintf("%s: Invalid stake header proofs\nextraData:\n%s\nexpected:\n%s\n",
+                                                                    __func__,
+                                                                    HexBytes(extraData.data(), extraData.size()).c_str(),
+                                                                    HexBytes(checkExtra.data(), checkExtra.size()).c_str());
+                                                    }
+                                                    printf("ERROR: in staked block %s - invalid header proofs\n", pblock->GetHash().ToString().c_str());
+                                                    LogPrintf("ERROR: in staked block %s - invalid header proofs\n", pblock->GetHash().ToString().c_str());
                                                     return false;
                                                 }
                                             }
@@ -6061,6 +6066,11 @@ CPartialTransactionProof::CPartialTransactionProof(const CTransaction tx, const 
 
     BlockMMRange blockMMR(block.GetBlockMMRTree(posEntropyInfo ? pIndex->GetVerusEntropyHashComponent() : uint256()));
     BlockMMView blockView(blockMMR);
+
+    if (blockView.GetRoot() != block.GetBlockMMRRoot())
+    {
+        LogPrintf("%s: ERROR: incorrect block tree root\n", __func__);
+    }
 
     int txIndexPos;
     for (txIndexPos = 0; txIndexPos < blockMMR.size(); txIndexPos++)

@@ -287,7 +287,7 @@ CPartialTransactionProof CChain::GetPreHeaderProof(const CBlock &block, uint32_t
     ChainMerkleMountainView mmv = GetMMV();
     mmv.resize(proofAtHeight + 1);
     GetMerkleProof(mmv, txProof, blockHeight);
-    if (block.IsVerusPOSBlock() && LogAcceptCategory("notarization"))
+    if (LogAcceptCategory("notarization"))
     {
         auto substitutedPreHeader = block.GetSubstitutedPreHeader(entropyHash);
         if (LogAcceptCategory("notarization"))

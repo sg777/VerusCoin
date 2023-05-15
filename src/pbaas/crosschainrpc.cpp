@@ -51,6 +51,10 @@ extern string PBAAS_USERPASS;
 extern int32_t PBAAS_PORT;
 extern std::string VERUS_CHAINNAME;
 
+//uint32_t PBAAS_TESTFORK2_TIME = 1684142124;         // Lex test network
+//uint32_t PBAAS_TESTFORK2_TIME = 1679300000; // Asher test network
+uint32_t PBAAS_TESTFORK2_TIME = 1684268161;
+
 //
 // Exception thrown on connection error.  This error is used to determine
 // when to wait if -rpcwait is given.

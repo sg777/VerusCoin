@@ -6178,9 +6178,28 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
         if ( *futureblockp == 0 )
         {
             LogPrintf("CheckBlock header error");
-            return false;
+            return state.Error("CheckBlock header error");
         }
     }
+
+    bool isPBaaS = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS;
+    if (isPBaaS)
+    {
+        uint256 entropyHash;
+        if ((!PBAAS_TESTMODE || block.nTime >= PBAAS_TESTFORK2_TIME))
+        {
+            entropyHash = chainActive.GetVerusEntropyHash(height);
+        }
+        if (isPBaaS && block.GetBlockMMRRoot() != BlockMMView(block.GetBlockMMRTree(entropyHash)).GetRoot())
+        {
+            LogPrint("notarization", "%s: block.GetBlockMMRRoot(): %s\nBlockMMView(block.GetBlockMMRTree(entropyHash)).GetRoot(): %s\n",
+                        __func__,
+                        block.GetBlockMMRRoot().GetHex().c_str(),
+                        BlockMMView(block.GetBlockMMRTree(entropyHash)).GetRoot().GetHex().c_str());
+            return state.Error("CheckBlock Merkle Mountain Range (MMR) root mismatch");
+        }
+    }
+
     if ( fCheckPOW )
     {
         //if ( !CheckEquihashSolution(&block, Params()) )

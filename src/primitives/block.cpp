@@ -571,8 +571,7 @@ CDefaultMMRNode CBlock::GetMMRNode(int index) const
     }
     else if (index == vtx.size())
     {
-        if (IsAdvancedHeader() != 0 &&
-            CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::ACTIVATE_PBAAS && (!PBAAS_TESTMODE || nTime >= PBAAS_TESTFORK2_TIME))
+        if (CConstVerusSolutionVector::Version(nSolution) >= CActivationHeight::ACTIVATE_PBAAS && (!PBAAS_TESTMODE || nTime >= PBAAS_TESTFORK2_TIME))
         {
             auto hw = CDefaultMMRNode::GetHashWriter();
             hw << GetSubstitutedPreHeader(GetVerusEntropyHashComponent((int32_t)GetHeight()));
@@ -613,9 +612,7 @@ BlockMMRange CBlock::BuildBlockMMRTree(const uint256 &entropyHash) const
         // sapling transactions, nonces, nBits, and nTime of a block,
         // which is stored in the pre header in place of hashBlockMMRRoot
         // before hashing.
-        auto hw = CDefaultMMRNode::GetHashWriter();
-        hw << GetSubstitutedPreHeader(entropyHash);
-        mmRange.Add(CDefaultMMRNode(hw.GetHash()));
+        mmRange.Add(GetMMRNode(vtx.size()));
     }
 
     return mmRange;
@@ -623,7 +620,6 @@ BlockMMRange CBlock::BuildBlockMMRTree(const uint256 &entropyHash) const
 
 BlockMMRange CBlock::GetBlockMMRTree(const uint256 &entropyHash) const
 {
-    // no caching yet, the anticipation of which is why this is separate from build
     return BuildBlockMMRTree(entropyHash);
 }
 
