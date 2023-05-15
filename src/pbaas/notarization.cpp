@@ -5343,12 +5343,15 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
     std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>> crossChainCounterEvidence;
     std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence>>> crossChainEvidence;
 
-    if (notarizationResult.isNull() ||
-        !(crosschainCND = CChainNotarizationData(notarizationResult, true, &blockHashes, &crossChainCounterEvidence, &crossChainEvidence)).IsValid() ||
-        (!externalSystem.chainDefinition.IsGateway() && !crosschainCND.IsConfirmed()))
     {
-        LogPrint("notarization", "Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(externalSystem.GetID())).c_str());
-        return state.Error("invalid crosschain notarization data");
+        LOCK2(cs_main, mempool.cs);
+        if (notarizationResult.isNull() ||
+            !(crosschainCND = CChainNotarizationData(notarizationResult, true, &blockHashes, &crossChainCounterEvidence, &crossChainEvidence)).IsValid() ||
+            (!externalSystem.chainDefinition.IsGateway() && !crosschainCND.IsConfirmed()))
+        {
+            LogPrint("notarization", "Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(externalSystem.GetID())).c_str());
+            return state.Error("invalid crosschain notarization data");
+        }
     }
 
     // look for the following things to challenge:
@@ -8005,16 +8008,19 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence, CProofRoot, CProofRoot>>> counterEvidence;
     std::vector<std::vector<std::tuple<CObjectFinalization, CNotaryEvidence>>> evidence;
 
-    if (result.isNull() ||
-        !(crosschainCND = CChainNotarizationData(result, true, &blockHashes, &counterEvidence, &evidence)).IsValid() ||
-        (!externalSystem.chainDefinition.IsGateway() && !crosschainCND.IsConfirmed()))
     {
-        if (LogAcceptCategory("notarization"))
+        LOCK2(cs_main, mempool.cs);
+        if (result.isNull() ||
+            !(crosschainCND = CChainNotarizationData(result, true, &blockHashes, &counterEvidence, &evidence)).IsValid() ||
+            (!externalSystem.chainDefinition.IsGateway() && !crosschainCND.IsConfirmed()))
         {
-            LogPrintf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
-            printf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+            if (LogAcceptCategory("notarization"))
+            {
+                LogPrintf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+                printf("Unable to get notarization data from %s\n", EncodeDestination(CIdentityID(systemID)).c_str());
+            }
+            return retVal;
         }
-        return retVal;
     }
 
     std::set<int> validCrossChainIndexSet;
@@ -10115,15 +10121,11 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
     std::vector<std::pair<CObjectFinalization, CNotaryEvidence>> evidenceVec =
         currentFinalization.GetFinalizationEvidence(tx, outNum, state, &notarizationTx);
 
-    if (state.IsError())
+    if (state.IsError() || !haveFullChain)
     {
         return !haveFullChain;
     }
 
-    if (txBlockHash.IsNull() && !haveFullChain)
-    {
-        return true;
-    }
     auto pCurNotarizationBlkIndex = txBlockHash.IsNull() ? chainActive[height - 1] :
                                                            mapBlockIndex.count(txBlockHash) ? mapBlockIndex.find(txBlockHash)->second : nullptr;
     if (!pCurNotarizationBlkIndex)
@@ -10241,6 +10243,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
 
         if (currentFinalization.IsConfirmed())
         {
+            LOCK(mempool.cs);
             std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> priorNotarizationInfo =
                 GetPriorReferencedNotarization(finalizedTx, currentFinalization.output.n, normalizedNotarization);
 
@@ -10285,46 +10288,62 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             // for earned notarizations, the finalization will always include a pending reference to the most
             // recent notarization that is the tip of this confirming chain at this time
             //
-            CNotaryEvidence combinedEvidence;
-            if (evidenceVec.size())
-            {
-                combinedEvidence = evidenceVec[0].second;
-            }
-
+            bool tipFound = evidenceVec.size();
             CPrimaryProofDescriptor proofDescr;
             CTransaction tipTx;
             BlockMap::iterator tipTxBlockIt;
             uint256 tipBlockHash;
             CPBaaSNotarization tipNotarization;
             int numNotaryConfirms = (p.evalCode == EVAL_ACCEPTEDNOTARIZATION ? 2 : 1); // starts with prior, so +1, +1 for accepted
-            bool tipFound = true;
 
-            std::set<int> evidenceTypes;
-            evidenceTypes.insert(CHAINOBJ_CROSSCHAINPROOF);
-            CCrossChainProof autoProof(combinedEvidence.GetSelectEvidence(evidenceTypes));
-
-            if (autoProof.chainObjects.size() < 1 ||
-                !((CChainObject<CCrossChainProof> *)(autoProof.chainObjects[0]))->object.chainObjects.size() ||
-                ((CChainObject<CCrossChainProof> *)(autoProof.chainObjects[0]))->object.chainObjects[0]->objectType != CHAINOBJ_EVIDENCEDATA ||
-                ((CChainObject<CEvidenceData> *)
-                    (((CChainObject<CCrossChainProof> *)(autoProof.chainObjects[0]))->object.chainObjects[0]))->object.vdxfd !=
-                        CNotaryEvidence::NotarizationTipKey() ||
-                !(proofDescr = CPrimaryProofDescriptor(((CChainObject<CEvidenceData> *)
-                    (((CChainObject<CCrossChainProof> *)(autoProof.chainObjects[0]))->object.chainObjects[0]))->object.dataVec)).IsValid() ||
-                !proofDescr.challengeOutputs.size() ||
-                !proofDescr.challengeOutputs[0].GetOutputTransaction(tipTx, tipBlockHash) ||
-                tipBlockHash.IsNull() ||
-                (tipTxBlockIt = mapBlockIndex.find(tipBlockHash)) == mapBlockIndex.end() ||
-                tipTxBlockIt->second->GetHeight() > (height - 1) ||
-                tipTxBlockIt->second->GetHeight() < pCurNotarizationBlkIndex->GetHeight() ||
-                tipTx.vout.size() <= proofDescr.challengeOutputs[0].n ||
-                !(tipNotarization = CPBaaSNotarization(tipTx.vout[proofDescr.challengeOutputs[0].n].scriptPubKey)).IsValid())
+            for (int i = 0; i < evidenceVec.size(); i++)
             {
-                if (confirmNeedsEvidence)
+                CNotaryEvidence combinedEvidence;
+                if (evidenceVec.size())
                 {
-                    return state.Error("Invalid confirmation evidence 1");
+                    combinedEvidence = evidenceVec[i].second;
                 }
-                tipFound = false;
+
+                std::set<int> evidenceTypes;
+                evidenceTypes.insert(CHAINOBJ_CROSSCHAINPROOF);
+                CCrossChainProof autoProof(combinedEvidence.GetSelectEvidence(evidenceTypes));
+
+                if (autoProof.chainObjects.size() < 1 ||
+                    !((CChainObject<CCrossChainProof> *)(autoProof.chainObjects[0]))->object.chainObjects.size() ||
+                    ((CChainObject<CCrossChainProof> *)(autoProof.chainObjects[0]))->object.chainObjects[0]->objectType != CHAINOBJ_EVIDENCEDATA ||
+                    ((CChainObject<CEvidenceData> *)
+                        (((CChainObject<CCrossChainProof> *)(autoProof.chainObjects[0]))->object.chainObjects[0]))->object.vdxfd !=
+                            CNotaryEvidence::NotarizationTipKey() ||
+                    !(proofDescr = CPrimaryProofDescriptor(((CChainObject<CEvidenceData> *)
+                        (((CChainObject<CCrossChainProof> *)(autoProof.chainObjects[0]))->object.chainObjects[0]))->object.dataVec)).IsValid() ||
+                    !proofDescr.challengeOutputs.size() ||
+                    !proofDescr.challengeOutputs[0].GetOutputTransaction(tipTx, tipBlockHash) ||
+                    tipBlockHash.IsNull() ||
+                    (tipTxBlockIt = mapBlockIndex.find(tipBlockHash)) == mapBlockIndex.end() ||
+                    tipTxBlockIt->second->GetHeight() > (height - 1) ||
+                    tipTxBlockIt->second->GetHeight() < pCurNotarizationBlkIndex->GetHeight() ||
+                    tipTx.vout.size() <= proofDescr.challengeOutputs[0].n ||
+                    !(tipNotarization = CPBaaSNotarization(tipTx.vout[proofDescr.challengeOutputs[0].n].scriptPubKey)).IsValid())
+                {
+                    if (LogAcceptCategory("notarization") && proofDescr.IsValid() && proofDescr.challengeOutputs.size())
+                    {
+                        LogPrintf("%s: Invalid confirmation evidence for transaction output: %s\n", __func__, proofDescr.challengeOutputs[0].ToString().c_str());
+                    }
+                    if ((i + 1) < evidenceVec.size())
+                    {
+                        continue;
+                    }
+                    if (confirmNeedsEvidence && (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK2_TIME))
+                    {
+                        return state.Error("Invalid confirmation evidence 1");
+                    }
+                    tipFound = false;
+                }
+                // if we make it through and still true, early out
+                if (tipFound)
+                {
+                    break;
+                }
             }
 
             if (tipFound)
