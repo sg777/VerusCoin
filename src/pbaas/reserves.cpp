@@ -2772,6 +2772,11 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                                            (importCurrencyDef.IsGatewayConverter() && importCurrencyDef.gatewayID == ASSETCHAINS_CHAINID) ||
                                                            (!IsVerusActive() && importCurrencyDef.GetID() == ASSETCHAINS_CHAINID));
 
+                        if (LogAcceptCategory("defi"))
+                        {
+                            LogPrintf("%s: reverted currency state: %s\n", __func__, checkState.ToUniValue().write(1,2).c_str());
+                        }
+
                         // between clear launch and complete, we need to adjust supply for verification
                         if (!checkState.IsFractional() &&
                             checkState.GetID() != ASSETCHAINS_CHAINID &&
@@ -3804,7 +3809,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                            feeRecipient);
         }
         else if (importCurrencyState.IsRefunding() ||
-                 (!fullUpgrade && exportObjects[i].FirstCurrency() == exportObjects[i].destCurrencyID) ||
                  (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()) ||
                  (exportObjects[i].IsConversion() && !exportObjects[i].IsPreConversion() && !importCurrencyState.IsLaunchCompleteMarker()))
         {

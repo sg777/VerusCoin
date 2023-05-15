@@ -2616,7 +2616,7 @@ UniValue getlastimportfrom(const UniValue& params, bool fHelp)
 
 UniValue getimports(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 1)
+    if (fHelp || params.size() < 1 || params.size() > 3)
     {
         throw runtime_error(
             "getimports \"chainname\" (startheight) (endheight)\n"
@@ -2624,6 +2624,8 @@ UniValue getimports(const UniValue& params, bool fHelp)
 
             "\nArguments\n"
             "1. \"chainname\"                     (string, optional) name of the chain to look for. no parameter returns current chain in daemon.\n"
+            "1. (startheight)                     (number, optional) startheight default == 0\n"
+            "1. (endheight)                       (number, optional) endheight default == 0\n"
 
             "\nResult:\n"
             "  {\n"
