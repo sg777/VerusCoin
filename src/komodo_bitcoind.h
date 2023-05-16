@@ -1535,7 +1535,7 @@ int32_t komodo_checkPOW(int32_t slowflag,CBlock *pblock,int32_t height)
     }
     else
     {
-        printf("Insufficient hash result and not PoS block\n");
+        printf("Insufficient hash result in PoW block\nActual: %s\nTarget: %s\n", hash.GetHex().c_str(), ArithToUint256(bnTarget).GetHex().c_str());
     }
 
     return -1;

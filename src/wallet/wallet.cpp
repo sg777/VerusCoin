@@ -1813,11 +1813,11 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
     }
 
     // we get these sources of entropy to prove all sources in the header
-    int posHeight = -1, powHeight = -1, altHeight = -1;
+    int posHeight = -1, powHeight = -1, altHeight = -1, proveBlockHeight, secondBlockHeight;
     uint256 pastHash;
     {
         LOCK(cs_main);
-        pastHash = chainActive.GetVerusEntropyHash(nHeight, &posHeight, &powHeight, &altHeight);
+        pastHash = chainActive.GetVerusEntropyHash(nHeight, &posHeight, &powHeight, &altHeight, &proveBlockHeight, &secondBlockHeight);
         if (extendedStake && (altHeight == -1 && (powHeight == -1 || posHeight == -1)))
         {
             printf("Error retrieving entropy hash at height %d, posHeight: %d, powHeight: %d, altHeight: %d\n", nHeight, posHeight, powHeight, altHeight);
@@ -1826,23 +1826,11 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         }
     }
 
-    // secondBlockHeight is either less than first or -1 if there isn't one
-    int secondBlockHeight = altHeight != -1 ?
-                                altHeight :
-                                posHeight == -1 ?
-                                    posHeight :
-                                    powHeight == -1 ?
-                                        powHeight :
-                                        (posHeight > powHeight ?
-                                            powHeight :
-                                            posHeight);
-
-    int proveBlockHeight = posHeight > secondBlockHeight ? posHeight : ((powHeight == -1) ? posHeight : powHeight);
-
     if (proveBlockHeight == -1)
     {
         printf("No block suitable for proof for height %d, posHeight: %d, powHeight: %d, altHeight: %d\n", nHeight, posHeight, powHeight, altHeight);
         LogPrintf("No block suitable for proof for height %d, posHeight: %d, powHeight: %d, altHeight: %d\n", nHeight, posHeight, powHeight, altHeight);
+        return false;
     }
     else
     {
@@ -1953,6 +1941,9 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 LOCK(cs_main);
                 CDataStream headerStream = CDataStream(SER_NETWORK, PROTOCOL_VERSION);
 
+                pBlock->nTime = std::max(chainActive.LastTip()->GetMedianTimePast()+1, GetAdjustedTime());
+                bool posSourceInfo = isPBaaS && (!PBAAS_TESTMODE || pBlock->nTime >= PBAAS_TESTFORK2_TIME);
+
                 // store:
                 // 1. PBaaS header for this block
                 // 2. source transaction
@@ -1987,7 +1978,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                     return false;
                 }
 
-                BlockMMRange blockMMR(block.GetBlockMMRTree());
+                BlockMMRange blockMMR(block.GetBlockMMRTree(posSourceInfo ? block.GetVerusEntropyHashComponent(srcIndex) : uint256()));
                 BlockMMView blockView(blockMMR);
 
                 int txIndexPos;
@@ -2020,22 +2011,48 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
 
                 headerStream << CPartialTransactionProof(txRootProof, txProofVec);
 
-                CMMRProof blockHeaderProof1;
-                if (!chainActive.GetBlockProof(mmrView, blockHeaderProof1, proveBlockHeight))
+                if (posSourceInfo)
                 {
-                    LogPrintf("%s: ERROR: could not create block proof for block %u\n", __func__, srcIndex);
-                    return false;
+                    CBlock entropyBlock1;
+                    if (!ReadBlockFromDisk(entropyBlock1, chainActive[proveBlockHeight], Params().GetConsensus(), false))
+                    {
+                        LogPrintf("%s: ERROR: could not read block number %u from disk for entropy component 1\n", __func__, proveBlockHeight);
+                        return false;
+                    }
+                    headerStream << chainActive.GetPreHeaderProof(entropyBlock1, proveBlockHeight, proveBlockHeight);
                 }
-                headerStream << CBlockHeaderProof(blockHeaderProof1, chainActive[proveBlockHeight]->GetBlockHeader());
+                else
+                {
+                    CMMRProof blockHeaderProof1;
+                    if (!chainActive.GetBlockProof(mmrView, blockHeaderProof1, proveBlockHeight))
+                    {
+                        LogPrintf("%s: ERROR: could not create block proof for block %u\n", __func__, srcIndex);
+                        return false;
+                    }
+                    headerStream << CBlockHeaderProof(blockHeaderProof1, chainActive[proveBlockHeight]->GetBlockHeader());
+                }
 
-                CMMRProof blockHeaderProof2;
-                if (!chainActive.GetBlockProof(mmrView, blockHeaderProof2, secondBlockHeight))
+                if (posSourceInfo)
                 {
-                    LogPrintf("%s: ERROR: could not create block proof for second entropy source block %u\n", __func__, srcIndex);
-                    chainActive.GetBlockProof(mmrView, blockHeaderProof2, secondBlockHeight); // repeat for debugging
-                    return false;
+                    CBlock entropyBlock2;
+                    if (!ReadBlockFromDisk(entropyBlock2, chainActive[secondBlockHeight], Params().GetConsensus(), false))
+                    {
+                        LogPrintf("%s: ERROR: could not read block number %u from disk for entropy component 1\n", __func__, proveBlockHeight);
+                        return false;
+                    }
+                    headerStream << chainActive.GetPreHeaderProof(entropyBlock2, secondBlockHeight, proveBlockHeight);
                 }
-                headerStream << CBlockHeaderProof(blockHeaderProof2, chainActive[secondBlockHeight]->GetBlockHeader());
+                else
+                {
+                    CMMRProof blockHeaderProof2;
+                    if (!chainActive.GetBlockProof(mmrView, blockHeaderProof2, secondBlockHeight))
+                    {
+                        LogPrintf("%s: ERROR: could not create block proof for second entropy source block %u\n", __func__, srcIndex);
+                        chainActive.GetBlockProof(mmrView, blockHeaderProof2, secondBlockHeight); // repeat for debugging
+                        return false;
+                    }
+                    headerStream << CBlockHeaderProof(blockHeaderProof2, chainActive[secondBlockHeight]->GetBlockHeader());
+                }
 
                 std::vector<unsigned char> stx(headerStream.begin(), headerStream.end());
 

@@ -2018,42 +2018,99 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
 
         // if this is an identity, determine the identtyFeeFactor
         CAmount identityFeeFactor = 0;
-        if (txDesc.IsValid() && txDesc.IsIdentity() && !txDesc.IsImport())
+        if (fLimitFree && txDesc.IsValid())
         {
-            for (int j = 0; j < tx.vout.size(); j++)
+            if (txDesc.IsImport())
             {
-                auto &oneOut = tx.vout[j];
+                // find the first import and check for adequate fees
                 COptCCParams p;
-                uint160 oneIdID;
-                if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
-                    p.IsValid() &&
-                    p.version >= p.VERSION_V3 &&
-                    p.vData.size() &&
-                    p.evalCode == EVAL_IDENTITY_PRIMARY)
-                {
-                    CIdentity identity;
-                    if ((identity = CIdentity(p.vData[0])).IsValid())
-                    {
-                        if (!tx.IsCoinBase())
-                        {
-                            if (identity.contentMultiMap.size())
-                            {
-                                CDataStream ss(SER_DISK, PROTOCOL_VERSION);
-                                auto tempID = identity;
-                                tempID.contentMultiMap.clear();
-                                size_t serSize = GetSerializeSize(ss, identity) - GetSerializeSize(ss, tempID);
-                                identityFeeFactor += (serSize / 128) + ((serSize % 128) ? 1 : 0);
-                            }
+                CCrossChainImport cci, sysCCI;
+                CCrossChainExport ccx;
+                CPBaaSNotarization notarization;
+                std::vector<CReserveTransfer> reserveTransfers;
+                CCurrencyDefinition importCurDef;
 
-                            // if we have more primary addresses than 1 or more private addresses than 1, pay appropriate fee
-                            identityFeeFactor += identity.contentMap.size();
-                            identityFeeFactor += identity.primaryAddresses.size() > 1 ? identity.primaryAddresses.size() - 1 : 0;
-                            identityFeeFactor += identity.privateAddresses.size() > 1 ? identity.privateAddresses.size() - 1 : 0;
-                        }
-                    }
-                    else
+                for (int32_t outNum = 0; outNum < tx.vout.size(); outNum++)
+                {
+                    int32_t sysOutNum = -1, notarizationOut = -1, evidenceOutStart = -1, evidenceOutEnd = -1;
+                    if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() &&
+                        p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                        p.vData.size() > 1 &&
+                        p.IsEvalPKOut() &&
+                        (cci = CCrossChainImport(p.vData[0])).IsValid() &&
+                        ((cci.IsDefinitionImport() || cci.IsInitialLaunchImport()) || cci.IsSourceSystemImport() ||
+                         ((importCurDef = ConnectedChains.GetCachedCurrency(cci.importCurrencyID)).IsValid() &&
+                          cci.GetImportInfo(tx,
+                                            nextBlockHeight,
+                                            outNum,
+                                            ccx,
+                                            sysCCI,
+                                            sysOutNum,
+                                            notarization,
+                                            notarizationOut,
+                                            evidenceOutStart,
+                                            evidenceOutEnd,
+                                            reserveTransfers,
+                                            state))))
                     {
-                        return state.DoS(10, error("%s: invalid identity", __func__), REJECT_INVALID, "bad-txn-invalid-id");
+                        if (!(cci.sourceSystemID == ASSETCHAINS_CHAINID ||
+                              cci.IsDefinitionImport() ||
+                              cci.IsInitialLaunchImport() ||
+                              cci.IsSourceSystemImport() ||
+                              (notarization.IsValid() && notarization.IsRefunding())) &&
+                              reserveTransfers.size())
+                        {
+                            if (cci.sourceSystemID != ASSETCHAINS_CHAINID &&
+                                !ConnectedChains.NotarySystems().count(cci.sourceSystemID) &&
+                                !FREE_CURRENCY_IMPORTS.count(cci.sourceSystemID) &&
+                                !ImportHasAdequateFees(tx, outNum, importCurDef, cci, ccx, notarization, reserveTransfers, state, nextBlockHeight))
+                            {
+                                LogPrint("crosschainimports", "%s: Inadequate fees for import %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
+                                return state.DoS(10, error("%s: inadequate fees for import", __func__), REJECT_INVALID, "bad-txn-invalid-id");
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+            else if (txDesc.IsIdentity())
+            {
+                for (int j = 0; j < tx.vout.size(); j++)
+                {
+                    auto &oneOut = tx.vout[j];
+                    COptCCParams p;
+                    uint160 oneIdID;
+                    if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() &&
+                        p.version >= p.VERSION_V3 &&
+                        p.vData.size() &&
+                        p.evalCode == EVAL_IDENTITY_PRIMARY)
+                    {
+                        CIdentity identity;
+                        if ((identity = CIdentity(p.vData[0])).IsValid())
+                        {
+                            if (!tx.IsCoinBase())
+                            {
+                                if (identity.contentMultiMap.size())
+                                {
+                                    CDataStream ss(SER_DISK, PROTOCOL_VERSION);
+                                    auto tempID = identity;
+                                    tempID.contentMultiMap.clear();
+                                    size_t serSize = GetSerializeSize(ss, identity) - GetSerializeSize(ss, tempID);
+                                    identityFeeFactor += (serSize / 128) + ((serSize % 128) ? 1 : 0);
+                                }
+
+                                // if we have more primary addresses than 1 or more private addresses than 1, pay appropriate fee
+                                identityFeeFactor += identity.contentMap.size();
+                                identityFeeFactor += identity.primaryAddresses.size() > 1 ? identity.primaryAddresses.size() - 1 : 0;
+                                identityFeeFactor += identity.privateAddresses.size() > 1 ? identity.privateAddresses.size() - 1 : 0;
+                            }
+                        }
+                        else
+                        {
+                            return state.DoS(10, error("%s: invalid identity", __func__), REJECT_INVALID, "bad-txn-invalid-id");
+                        }
                     }
                 }
             }
@@ -2346,7 +2403,15 @@ bool myGetTransaction(const uint256 &hash, CTransaction &txOut, uint256 &hashBlo
             }
             hashBlock = header.GetHash();
             if (txOut.GetHash() != hash)
+            {
+                if (LogAcceptCategory("notarization"))
+                {
+                    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+                    hw << txOut;
+                    LogPrintf("%s: txid mismatch, read: %s, expected: %s, CHashWriter hash: %s\n", __func__, txOut.GetHash().GetHex().c_str(), hash.GetHex().c_str(), hw.GetHash().GetHex().c_str());
+                }
                 return error("%s: txid mismatch", __func__);
+            }
             //fprintf(stderr,"found on disk\n");
             return true;
         }
@@ -3710,7 +3775,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     int64_t nTimeStart = 0;
 
     uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
-    bool isPBaaS = solutionVersion > CActivationHeight::ACTIVATE_PBAAS;
+    bool isPBaaS = solutionVersion >= CActivationHeight::ACTIVATE_PBAAS;
     bool isVerusActive = IsVerusActive();
     CAmount nFees = 0;
     int nInputs = 0;
@@ -6118,9 +6183,28 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
         if ( *futureblockp == 0 )
         {
             LogPrintf("CheckBlock header error");
-            return false;
+            return state.Error("CheckBlock header error");
         }
     }
+
+    bool isPBaaS = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS;
+    if (isPBaaS)
+    {
+        uint256 entropyHash;
+        if ((!PBAAS_TESTMODE || block.nTime >= PBAAS_TESTFORK2_TIME))
+        {
+            entropyHash = chainActive.GetVerusEntropyHash(height);
+        }
+        if (isPBaaS && block.GetBlockMMRRoot() != BlockMMView(block.GetBlockMMRTree(entropyHash)).GetRoot())
+        {
+            LogPrint("notarization", "%s: block.GetBlockMMRRoot(): %s\nBlockMMView(block.GetBlockMMRTree(entropyHash)).GetRoot(): %s\n",
+                        __func__,
+                        block.GetBlockMMRRoot().GetHex().c_str(),
+                        BlockMMView(block.GetBlockMMRTree(entropyHash)).GetRoot().GetHex().c_str());
+            return state.Error("CheckBlock Merkle Mountain Range (MMR) root mismatch");
+        }
+    }
+
     if ( fCheckPOW )
     {
         //if ( !CheckEquihashSolution(&block, Params()) )
@@ -7310,7 +7394,7 @@ bool RewindBlockIndex(const CChainParams& chainparams, bool& clearWitnessCaches)
         auto networkID = chainparams.NetworkIDString();
 
         // This is true when we intend to do a long rewind.
-        bool intendedRewind = false;
+        bool intendedRewind = KOMODO_REWIND != 0;
 
         clearWitnessCaches = (rewindLength > MAX_REORG_LENGTH && intendedRewind);
 

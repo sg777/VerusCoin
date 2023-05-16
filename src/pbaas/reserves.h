@@ -40,6 +40,9 @@ class CValidationState;
 class CPBaaSNotarization;
 extern uint160 ASSETCHAINS_CHAINID;
 
+
+extern uint32_t PBAAS_TESTFORK2_TIME;
+
 // reserve output is a special kind of token output that does not have to carry it's identifier, as it
 // is always assumed to be the reserve currency of the current chain.
 class CTokenOutput
@@ -154,7 +157,7 @@ public:
         CONVERT = 2,
         PRECONVERT = 4,
         FEE_OUTPUT = 8,                     // one per import, amount must match total percentage of fees for exporter, no pre-convert allowed
-        DOUBLE_SEND = 0x10,                 // this is used along with increasing the fee to send one transaction on two hops
+        RESERVED = 0x10,                    // reserved
         MINT_CURRENCY = 0x20,               // set when this output is being minted on import
         CROSS_SYSTEM = 0x40,                // if this is set, there is a systemID serialized and deserialized as well for destination
         BURN_CHANGE_PRICE = 0x80,           // this output is being burned on import and will change the price
@@ -419,7 +422,7 @@ public:
         return flags & ARBITRAGE_ONLY;
     }
 
-    CReserveTransfer GetRefundTransfer(bool clearCrossSystem=true) const;
+    CReserveTransfer GetRefundTransfer(bool clearCrossSystem=true, bool recoverFees=false) const;
 
     static std::string ReserveTransferKeyName()
     {
