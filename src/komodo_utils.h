@@ -1797,7 +1797,7 @@ void komodo_args(char *argv0)
 
     std::string lowerName = boost::to_lower_copy(name);
 
-    PBAAS_TESTMODE = false;
+    PBAAS_TESTMODE = lowerName != "vrsc";
 
     // either the testmode parameter or calling this chain VRSCTEST will put us into testmode
     PBAAS_TESTMODE = GetBoolArg("-testnet", PBAAS_TESTMODE);
