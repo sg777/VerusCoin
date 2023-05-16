@@ -2039,7 +2039,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
                         p.vData.size() > 1 &&
                         p.IsEvalPKOut() &&
                         (cci = CCrossChainImport(p.vData[0])).IsValid() &&
-                        ((cci.IsDefinitionImport() || cci.IsInitialLaunchImport()) ||
+                        ((cci.IsDefinitionImport() || cci.IsInitialLaunchImport()) || cci.IsSourceSystemImport() ||
                          ((importCurDef = ConnectedChains.GetCachedCurrency(cci.importCurrencyID)).IsValid() &&
                           cci.GetImportInfo(tx,
                                             nextBlockHeight,
@@ -2054,7 +2054,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
                                             reserveTransfers,
                                             state))))
                     {
-                        if (!(cci.IsDefinitionImport() || cci.IsInitialLaunchImport()) && reserveTransfers.size())
+                        if (!(cci.IsDefinitionImport() || cci.IsInitialLaunchImport() || cci.IsSourceSystemImport()) && reserveTransfers.size())
                         {
                             if (!ImportHasAdequateFees(tx, outNum, importCurDef, cci, ccx, notarization, reserveTransfers, state, nextBlockHeight) &&
                                 !ConnectedChains.NotarySystems().count(cci.sourceSystemID) &&
@@ -2064,10 +2064,11 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
                                 return state.DoS(10, error("%s: inadequate fees for import", __func__), REJECT_INVALID, "bad-txn-invalid-id");
                             }
                         }
+                        break;
                     }
                     else
                     {
-                        return state.DoS(10, error("%s: invalid import output", __func__), REJECT_INVALID, "bad-txn-invalid-id");
+                        continue;
                     }
                 }
             }
