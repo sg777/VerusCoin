@@ -5440,10 +5440,10 @@ void CConnectedChains::CheckOracleUpgrades()
     }
     if (stoppingIt != activeUpgradesByKey.end())
     {
-        printf("%s: ERROR - THE NETWORK IS ACTIVATING \"%s\" - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, gracefulStop.c_str(), VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1);
+        printf("%s: ERROR - THE NETWORK IS ACTIVATING \"%s\" - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE %s CHAIN\n", __func__, gracefulStop.c_str(), VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1, ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID).c_str());
         if (KOMODO_STOPAT == 0 || KOMODO_STOPAT > (upgradePBaaSIt->second.upgradeBlockHeight - 1))
         {
-            LogPrintf("%s: ERROR - THE NETWORK IS ACTIVATING \"%s\" - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, gracefulStop.c_str(), VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1);
+            LogPrintf("%s: ERROR - THE NETWORK IS ACTIVATING \"%s\" - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE %s CHAIN\n", __func__, gracefulStop.c_str(), VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1, ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID).c_str());
             KOMODO_STOPAT = stoppingIt->second.upgradeBlockHeight - 1;
         }
     }
