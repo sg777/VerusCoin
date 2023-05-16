@@ -1300,7 +1300,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     auto freeImportsFrom = GetArg("-acceptfreeimportsfrom", "");
     if (!freeImportsFrom.empty())
     {
-        std::vector<srd::string> freeImportCurrencies;
+        std::vector<std::string> freeImportCurrencies;
         boost::split(freeImportCurrencies, freeImportsFrom, boost::is_any_of(","));
         for (auto &oneFreeCur : freeImportCurrencies)
         {
@@ -1308,13 +1308,13 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             if (oneCurDest.which() == COptCCParams::ADDRTYPE_ID)
             {
                 FREE_CURRENCY_IMPORTS.insert(GetDestinationID(oneCurDest));
-                LogPrintf("Enabling free imports from system: %s\n", oneFreeCur);
-                printf("Enabling free imports from system: %s\n", oneFreeCur);
+                LogPrintf("Enabling free imports from system: %s\n", oneFreeCur.c_str());
+                printf("Enabling free imports from system: %s\n", oneFreeCur.c_str());
             }
             else
             {
-                LogPrintf("Invalid parameter for free imports, should be valid identity name of system root currency: %s\n", oneFreeCur);
-                printf("Invalid parameter for free imports, should be valid identity name of system root currency: %s\n", oneFreeCur);
+                LogPrintf("Invalid parameter for free imports, should be valid identity name of system root currency: %s\n", oneFreeCur.c_str());
+                printf("Invalid parameter for free imports, should be valid identity name of system root currency: %s\n", oneFreeCur.c_str());
             }
         }
     }
