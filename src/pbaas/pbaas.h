@@ -1451,4 +1451,14 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
                                                           std::map<uint160, std::string> &requiredDefinitions,
                                                           bool checkMempool=true);
 
+bool ImportHasAdequateFees(const CTransaction &tx,
+                           int32_t outNum,
+                           const CCurrencyDefinition &importingToDef,
+                           const CCrossChainImport &cci,
+                           const CCrossChainExport &ccx,
+                           const CPBaaSNotarization &notarization,
+                           const std::vector<CReserveTransfer> &reserveTransfers,
+                           CValidationState &state,
+                           uint32_t height);
+
 #endif

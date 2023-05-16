@@ -517,6 +517,7 @@ std::string HelpMessage(HelpMessageMode mode)
     strUsage += HelpMessageOpt("-defaultid=<i-address>", _("VerusID used for default change out and staking reward recipient"));
     strUsage += HelpMessageOpt("-notaryid=<i-address>", _("VerusID used for PBaaS and Ethereum cross-chain notarization"));
     strUsage += HelpMessageOpt("-notificationoracle=<i-address>", strprintf(_("VerusID monitored for network alerts, triggers, and signals. Current default is \"%s\" for Verus and the chain ID for PBaaS chains"), PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str()));
+    strUsage += HelpMessageOpt("-acceptfreeimportsfrom=<i-address>,<i-address>,...", _(" \"%s\" no spaces - accept underpaid imports from these PBaaS chains or networks - default is empty"));
     strUsage += HelpMessageOpt("-approvecontractupgrade=<0xf09...>", strprintf(_("When validating blocks, vote to agree to upgrade to the specific contract. Default is no upgrade.")));
     strUsage += HelpMessageOpt("-defaultzaddr=<sapling-address>", _("sapling address to receive fraud proof rewards and if used with \"-privatechange=1\", z-change address for the sendcurrency command"));
     strUsage += HelpMessageOpt("-cheatcatcher=<sapling-address>", _("same as \"-defaultzaddr\""));
@@ -1293,6 +1294,29 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     if (!upgradeContractAddress.IsNull())
     {
         APPROVE_CONTRACT_UPGRADE = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(upgradeContractAddress));
+    }
+
+    // free imports
+    auto freeImportsFrom = GetArg("-acceptfreeimportsfrom", "");
+    if (!freeImportsFrom.empty())
+    {
+        std::vector<std::string> freeImportCurrencies;
+        boost::split(freeImportCurrencies, freeImportsFrom, boost::is_any_of(","));
+        for (auto &oneFreeCur : freeImportCurrencies)
+        {
+            auto oneCurDest = DecodeDestination(oneFreeCur);
+            if (oneCurDest.which() == COptCCParams::ADDRTYPE_ID)
+            {
+                FREE_CURRENCY_IMPORTS.insert(GetDestinationID(oneCurDest));
+                LogPrintf("Enabling free imports from system: %s\n", oneFreeCur.c_str());
+                printf("Enabling free imports from system: %s\n", oneFreeCur.c_str());
+            }
+            else
+            {
+                LogPrintf("Invalid parameter for free imports, should be valid identity name of system root currency: %s\n", oneFreeCur.c_str());
+                printf("Invalid parameter for free imports, should be valid identity name of system root currency: %s\n", oneFreeCur.c_str());
+            }
+        }
     }
 
     auto notaryIDDest = DecodeDestination(GetArg("-notaryid", ""));

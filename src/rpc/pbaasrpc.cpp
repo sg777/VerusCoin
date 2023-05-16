@@ -2070,18 +2070,22 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
 
 UniValue getreservedeposits(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 1)
+    if (fHelp || params.size() < 1 || params.size() > 2)
     {
         throw runtime_error(
-            "getreservedeposits \"currencyname\"\n"
+            "getreservedeposits \"currencyname\" (returnutxos)\n"
             "\nReturns all deposits under control of the specified currency or chain. If the currency is of an external system\n"
             "or chain, all deposits will be under the control of that system or chain only, not its independent currencies.\n"
 
             "\nArguments\n"
-            "1. \"currencyname\"       (string, optional) full name or i-ID of controlling currency\n"
+            "1. \"currencyname\"       (string, required)       full name or i-ID of controlling currency\n"
+            "2. \"returnutxos\"        (bool, optional)         if true, returns a UTXO list and currency values on each\n"
 
             "\nResult:\n"
             "  {\n"
+            "     \"utxos\" : {utxo and currency values},       if returnutxos == true, else null\n"
+            "     \"currency 1 i-address\" : value,\n"
+            "     \"currency 2 i-address\" : value,\n"
             "  }\n"
 
             "\nExamples:\n"
@@ -2097,6 +2101,12 @@ UniValue getreservedeposits(const UniValue& params, bool fHelp)
     CCurrencyDefinition chainDef;
 
     uint160 chainID = ValidateCurrencyName(uni_get_str(params[0]), true, &chainDef);
+
+    bool getUTXOs = false;
+    if (params.size() > 1)
+    {
+        getUTXOs = uni_get_bool(params[1]);
+    }
 
     if (chainID.IsNull())
     {
@@ -2119,9 +2129,24 @@ UniValue getreservedeposits(const UniValue& params, bool fHelp)
         }
     }
 
+    UniValue ret(UniValue::VOBJ);
+    UniValue utxos(UniValue::VARR);
+
     CCurrencyValueMap totalReserveDeposits;
     for (auto &oneDeposit : reserveDeposits)
     {
+        if (getUTXOs)
+        {
+            UniValue outputUni = CUTXORef(oneDeposit.txIn.prevout).ToUniValue();
+            CCurrencyValueMap outCurMap = oneDeposit.scriptPubKey.ReserveOutValue();
+            if (oneDeposit.nValue)
+            {
+                outCurMap.valueMap[ASSETCHAINS_CHAINID] += oneDeposit.nValue;
+            }
+            outputUni.pushKV("values", outCurMap.ToUniValue());
+            utxos.push_back(outputUni);
+        }
+
         CReserveDeposit rd;
         COptCCParams p;
         if (oneDeposit.scriptPubKey.IsPayToCryptoCondition(p) &&
@@ -2135,7 +2160,10 @@ UniValue getreservedeposits(const UniValue& params, bool fHelp)
         }
     }
 
-    UniValue ret(UniValue::VOBJ);
+    if (getUTXOs)
+    {
+        ret.pushKV("utxos", utxos);
+    }
 
     if (totalReserveDeposits.valueMap.size())
     {
@@ -2588,7 +2616,7 @@ UniValue getlastimportfrom(const UniValue& params, bool fHelp)
 
 UniValue getimports(const UniValue& params, bool fHelp)
 {
-    if (fHelp || params.size() != 1)
+    if (fHelp || params.size() < 1 || params.size() > 3)
     {
         throw runtime_error(
             "getimports \"chainname\" (startheight) (endheight)\n"
@@ -2596,6 +2624,8 @@ UniValue getimports(const UniValue& params, bool fHelp)
 
             "\nArguments\n"
             "1. \"chainname\"                     (string, optional) name of the chain to look for. no parameter returns current chain in daemon.\n"
+            "1. (startheight)                     (number, optional) startheight default == 0\n"
+            "1. (endheight)                       (number, optional) endheight default == 0\n"
 
             "\nResult:\n"
             "  {\n"
@@ -4668,7 +4698,7 @@ UniValue getnotarizationproofs(const UniValue& params, bool fHelp)
                             LogPrintf("%s: ERROR - commitments evidence mismatch\n", __func__);
                         }
 
-                        if (LogAcceptCategory("notarization"))
+                        if (LogAcceptCategory("notarization") && LogAcceptCategory("verbose"))
                         {
                             for (int currentOffset = 0; currentOffset < checkSmallCommitments.size(); currentOffset++)
                             {
@@ -11305,10 +11335,10 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
     }
 
     CCrossChainImport cci = CCrossChainImport(newChain.SystemOrGatewayID(),
-                                            lastImportHeight,
-                                            newChainID,
-                                            CCurrencyValueMap(),
-                                            CCurrencyValueMap());
+                                              lastImportHeight,
+                                              newChainID,
+                                              CCurrencyValueMap(),
+                                              CCurrencyValueMap());
     cci.SetSameChain(newChain.systemID == ASSETCHAINS_CHAINID);
     cci.SetDefinitionImport(true);
     if (newChainID == ASSETCHAINS_CHAINID || newChain.IsGateway())
