@@ -3111,7 +3111,7 @@ CReserveTransfer CReserveTransfer::GetRefundTransfer(bool clearCrossSystem, bool
     }
 
     // turn it into a normal transfer, which will create an unconverted output
-    rt.flags &= ~(DOUBLE_SEND | PRECONVERT | CONVERT);
+    rt.flags &= ~(RESERVED | PRECONVERT | CONVERT);
 
     if (clearCrossSystem)
     {
@@ -3810,6 +3810,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                            feeRecipient);
         }
         else if (importCurrencyState.IsRefunding() ||
+                 exportObjects[i].IsRefund() ||
                  (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()) ||
                  (exportObjects[i].IsConversion() && !exportObjects[i].IsPreConversion() && !importCurrencyState.IsLaunchCompleteMarker()))
         {
