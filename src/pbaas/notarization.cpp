@@ -2610,7 +2610,7 @@ std::vector<unsigned char> CreatePoSBlockProof(ChainMerkleMountainView &mmrView,
 
     bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS;
 
-    bool posSourceInfo = isPBaaS && (!PBAAS_TESTMODE || block.nTime >= PBAAS_TESTFORK2_TIME);
+    bool posSourceInfo = isPBaaS && (!PBAAS_TESTMODE || checkBlock.nTime >= PBAAS_TESTFORK2_TIME);
 
     BlockMMRange blockMMR(block.GetBlockMMRTree(posSourceInfo ? block.GetVerusEntropyHashComponent(sourceBlockNum) : uint256()));
     BlockMMView blockView(blockMMR);
