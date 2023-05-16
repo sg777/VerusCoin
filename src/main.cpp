@@ -2054,7 +2054,11 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
                                             reserveTransfers,
                                             state))))
                     {
-                        if (!(cci.IsDefinitionImport() || cci.IsInitialLaunchImport() || cci.IsSourceSystemImport()) && reserveTransfers.size())
+                        if (!(cci.IsDefinitionImport() ||
+                              cci.IsInitialLaunchImport() ||
+                              cci.IsSourceSystemImport() ||
+                              (notarization.IsValid() && notarization.IsRefunding())) &&
+                              reserveTransfers.size())
                         {
                             if (!ImportHasAdequateFees(tx, outNum, importCurDef, cci, ccx, notarization, reserveTransfers, state, nextBlockHeight) &&
                                 !ConnectedChains.NotarySystems().count(cci.sourceSystemID) &&
