@@ -2056,7 +2056,9 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
                     {
                         if (!(cci.IsDefinitionImport() || cci.IsInitialLaunchImport()) && reserveTransfers.size())
                         {
-                            if (!ImportHasAdequateFees(tx, outNum, importCurDef, cci, ccx, notarization, reserveTransfers, state, nextBlockHeight))
+                            if (!ImportHasAdequateFees(tx, outNum, importCurDef, cci, ccx, notarization, reserveTransfers, state, nextBlockHeight) &&
+                                !ConnectedChains.NotarySystems().count(cci.sourceSystemID) &&
+                                !FREE_CURRENCY_IMPORTS.count(cci.sourceSystemID))
                             {
                                 LogPrint("crosschainimports", "%s: Inadequate fees for import %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
                                 return state.DoS(10, error("%s: inadequate fees for import", __func__), REJECT_INVALID, "bad-txn-invalid-id");
