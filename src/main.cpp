@@ -2066,10 +2066,6 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
                         }
                         break;
                     }
-                    else
-                    {
-                        continue;
-                    }
                 }
             }
             else if (txDesc.IsIdentity())
