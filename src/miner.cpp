@@ -1896,7 +1896,7 @@ uint256 RandomizedNonce()
     return ArithToUint256(nonce);
 }
 
-CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vector<CTxOut> &minerOutputs, bool isStake)
+CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vector<CTxOut> &minerOutputs, bool isStake, uint256 useNonce)
 {
     // instead of one scriptPubKeyIn, we take a vector of them along with relative weight. each is assigned a percentage of the block subsidy and
     // mining reward based on its weight relative to the total
@@ -3490,9 +3490,16 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         pblocktemplate->vTxSigOps[0] = GetLegacySigOpCount(pblock->vtx[0]);
 
         // if not Verus stake, setup nonce, otherwise, leave it alone
-        if (!isStake || ASSETCHAINS_LWMAPOS == 0)
+        if (!isStake)
         {
-            pblock->nNonce = RandomizedNonce();
+            if (useNonce.IsNull())
+            {
+                pblock->nNonce = RandomizedNonce();
+            }
+            else
+            {
+                pblock->nNonce = useNonce;
+            }
         }
 
         // Fill in header
@@ -3512,10 +3519,10 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
     return pblocktemplate.release();
 }
 
-CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _scriptPubKeyIn, bool isStake)
+CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _scriptPubKeyIn, bool isStake, uint256 useNonce)
 {
     std::vector<CTxOut> minerOutputs = _scriptPubKeyIn.size() ? std::vector<CTxOut>({CTxOut(1, _scriptPubKeyIn)}) : std::vector<CTxOut>();
-    return CreateNewBlock(chainparams, minerOutputs, isStake);
+    return CreateNewBlock(chainparams, minerOutputs, isStake, useNonce);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -3553,7 +3560,7 @@ void GetScriptForMinerAddress(boost::shared_ptr<CReserveScript> &script)
 // Internal miner
 //
 
-CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, bool isStake)
+CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, bool isStake, uint256 useNonce)
 {
     CPubKey pubkey;
     CScript scriptPubKey;
@@ -3581,7 +3588,7 @@ CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, 
         }
         if (minerOutputs.size())
         {
-            return CreateNewBlock(Params(), minerOutputs, false);
+            return CreateNewBlock(Params(), minerOutputs, false, useNonce);
         }
         LogPrintf("%s: invalid -miningdistrbution parameter\n", __func__);
     }
@@ -3605,7 +3612,7 @@ CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, 
             scriptPubKey = GetScriptForDestination(pubkey);
         }
     }
-    return CreateNewBlock(Params(), scriptPubKey, isStake);
+    return CreateNewBlock(Params(), scriptPubKey, isStake, useNonce);
 }
 
 void komodo_broadcast(const CBlock *pblock,int32_t limit)

@@ -779,17 +779,17 @@ UniValue getblocktemplate(const UniValue& params, bool fHelp)
             + HelpExampleRpc("getblocktemplate", "")
          );
 
+#ifndef ENABLE_WALLET
+    throw JSONRPCError(RPC_METHOD_NOT_FOUND, "verusd must be compiled with wallet, even if wallet isn't used");
+#endif
+
     LOCK(cs_main);
 
     // Wallet or miner address is required because we support coinbasetxn
     if (GetArg("-mineraddress", "").empty()) {
-#ifdef ENABLE_WALLET
         if (!pwalletMain) {
             throw JSONRPCError(RPC_METHOD_NOT_FOUND, "Wallet disabled and -mineraddress not set");
         }
-#else
-        throw JSONRPCError(RPC_METHOD_NOT_FOUND, "verusd compiled without wallet and -mineraddress not set");
-#endif
     }
 
     std::string strMode = "template";
@@ -933,6 +933,12 @@ UniValue getblocktemplate(const UniValue& params, bool fHelp)
             pblocktemplate = NULL;
         }
 
+        uint256 useNonce;
+        if (params.size() > 0)
+        {
+            useNonce = uint256S(uni_get_str(find_value(params[0], "nonce")));
+        }
+
         UniValue recipientWeights;
         if (params.size() > 0 &&
             ((recipientWeights = find_value(params[0], "miningdistribution")).isObject() ||
@@ -952,16 +958,12 @@ UniValue getblocktemplate(const UniValue& params, bool fHelp)
                 }
                 minerOutputs.push_back(CTxOut(relVal, GetScriptForDestination(oneDest)));
             }
-            pblocktemplate = CreateNewBlock(Params(), minerOutputs, false);
+            pblocktemplate = CreateNewBlock(Params(), minerOutputs, false, useNonce);
         }
         else
         {
-#ifdef ENABLE_WALLET
             CReserveKey reservekey(pwalletMain);
-            pblocktemplate = CreateNewBlockWithKey(reservekey, chainActive.LastTip()->GetHeight()+1);
-#else
-            pblocktemplate = CreateNewBlockWithKey();
-#endif
+            pblocktemplate = CreateNewBlockWithKey(reservekey, chainActive.LastTip()->GetHeight()+1, false, useNonce);
         }
 
         /* keep Zcash script-based approach for reference
@@ -986,9 +988,9 @@ UniValue getblocktemplate(const UniValue& params, bool fHelp)
     }
     CBlock* pblock = &pblocktemplate->block; // pointer for convenience
 
-    // Update nTime
-    UpdateTime(pblock, Params().GetConsensus(), pindexPrev);
-    pblock->nNonce = uint256();
+    // REMOVED FOR PBaaS - Update nTime
+    // UpdateTime(pblock, Params().GetConsensus(), pindexPrev);
+    // pblock->nNonce = uint256();
 
     UniValue aCaps(UniValue::VARR); aCaps.push_back("proposal");
 
@@ -1083,6 +1085,8 @@ UniValue getblocktemplate(const UniValue& params, bool fHelp)
     result.push_back(Pair("sizelimit", (int64_t)MAX_BLOCK_SIZE));
     result.push_back(Pair("curtime", pblock->GetBlockTime()));
     result.push_back(Pair("bits", strprintf("%08x", pblock->nBits)));
+    result.push_back(Pair("mergeminebits", strprintf("%08x", ConnectedChains.CombineBlocks(*pblock))));
+    result.push_back(Pair("nonce", pblock->nNonce.GetHex().c_str()));
     result.push_back(Pair("height", (int64_t)(pindexPrev->GetHeight()+1)));
 
     //fprintf(stderr,"return complete template\n");
