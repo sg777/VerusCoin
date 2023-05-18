@@ -255,7 +255,7 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
                     ChainMerkleMountainView mmv = chainActive.GetMMV();
                     mmv.resize(nHeight);                                 // we want it pointing right before us, nHeight is our new height
 
-                    std::vector<unsigned char> extraSolutionData = CreatePoSBlockProof(mmv, *pblock, tx, pblock->vtx.back().vin[0].prevout.n, pindexPrev->GetHeight(), nHeight);
+                    std::vector<unsigned char> extraSolutionData = CreatePoSBlockProof(mmv, *pblock, tx, pblock->vtx.back().vin[0].prevout.n, mapBlockIndex[txBlockHash]->GetHeight(), nHeight);
                     CVerusSolutionVector(pblock->nSolution).ResizeExtraData(extraSolutionData.size());
                     pblock->SetExtraData(extraSolutionData.data(), extraSolutionData.size());
                 }
