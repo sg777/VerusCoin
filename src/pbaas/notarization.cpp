@@ -3160,12 +3160,26 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                                 oneOut.scriptPubKey.IsPayToCryptoCondition(notaP) &&
                                 (notaP.evalCode == EVAL_EARNEDNOTARIZATION || notaP.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
                                 notaP.vData.size() &&
-                                ::AsVector(CPBaaSNotarization(notaP.vData[0])) == ::AsVector(CPBaaSNotarization(provenNotarization)))
+                                ::AsVector(CPBaaSNotarization(notaP.vData[0])) == ::AsVector(provenNotarization))
                             {
                                 // expect more than nothing
                                 thisNotarizationOutput.n = outNum;
                                 proofState = EXPECT_CHECKPOINT;
                                 break;
+                            }
+                            else if (LogAcceptCategory("notarization") &&
+                                     (notaP.evalCode == EVAL_EARNEDNOTARIZATION || notaP.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
+                                     notaP.vData.size() &&
+                                     ::AsVector(CPBaaSNotarization(notaP.vData[0])) != ::AsVector(provenNotarization))
+                            {
+                                printf("%s: Notarization mismatch\nexpected: %s\nactual: %s\n",
+                                    __func__,
+                                    CPBaaSNotarization(notaP.vData[0]).ToUniValue().write(1,2).c_str(),
+                                    provenNotarization.ToUniValue().write(1,2).c_str());
+                                LogPrintf("%s: Notarization mismatch\nexpected: %s\nactual: %s\n",
+                                            __func__,
+                                            CPBaaSNotarization(notaP.vData[0]).ToUniValue().write(1,2).c_str(),
+                                            provenNotarization.ToUniValue().write(1,2).c_str());
                             }
                         }
                     }

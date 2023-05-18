@@ -51,8 +51,7 @@ extern string PBAAS_USERPASS;
 extern int32_t PBAAS_PORT;
 extern std::string VERUS_CHAINNAME;
 
-//uint32_t PBAAS_TESTFORK2_TIME = 1684210692;     // Lex test network
-//uint32_t PBAAS_TESTFORK2_TIME = 1679300000;     // Asher test network
+//uint32_t PBAAS_TESTFORK2_TIME = 1684268161;
 uint32_t PBAAS_TESTFORK2_TIME = 1684281600;
 
 //

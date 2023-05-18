@@ -158,7 +158,9 @@ UniValue getminingdistribution(const UniValue& params, bool fHelp);
 
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &nExtraNonce, bool buildMerkle, uint32_t *pSaveBits)
 {
-    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(pindexPrev->GetHeight() + 1) >= CActivationHeight::ACTIVATE_PBAAS;
+    uint32_t nHeight = pindexPrev->GetHeight() + 1;
+    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_PBAAS;
+    bool isPoS = pblock->IsVerusPOSBlock();
     bool posSourceInfo = (isPBaaS && (!PBAAS_TESTMODE || pblock->nTime >= PBAAS_TESTFORK2_TIME));
 
     // Update nExtraNonce
@@ -174,8 +176,6 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
     {
         *pSaveBits = pblock->nBits;
     }
-
-    int32_t nHeight = pindexPrev->GetHeight() + 1;
 
     int solutionVersion = CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight);
 
@@ -240,6 +240,27 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
             uint32_t mmrSize = posSourceInfo ? pindexPrev->GetHeight() + 1 : pindexPrev->GetHeight();
             pblock->hashMerkleRoot = pblock->BuildMerkleTree();
             pblock->SetPrevMMRRoot(ChainMerkleMountainView(chainActive.GetMMR(), mmrSize).GetRoot());
+
+            if (isPoS)
+            {
+                LOCK2(cs_main, mempool.cs);
+                CTransaction tx;
+                uint256 txBlockHash;
+                CBlockIndex *pIndexSource;
+                CBlock sourceBlock;
+                if (myGetTransaction(pblock->vtx.back().vin[0].prevout.hash, tx, txBlockHash) &&
+                    mapBlockIndex.count(txBlockHash) &&
+                    ReadBlockFromDisk(sourceBlock, mapBlockIndex[txBlockHash], Params().GetConsensus()))
+                {
+                    ChainMerkleMountainView mmv = chainActive.GetMMV();
+                    mmv.resize(nHeight);                                 // we want it pointing right before us, nHeight is our new height
+
+                    std::vector<unsigned char> extraSolutionData = CreatePoSBlockProof(mmv, *pblock, tx, pblock->vtx.back().vin[0].prevout.n, pindexPrev->GetHeight(), nHeight);
+                    CVerusSolutionVector(pblock->nSolution).ResizeExtraData(extraSolutionData.size());
+                    pblock->SetExtraData(extraSolutionData.data(), extraSolutionData.size());
+                }
+            }
+
             BlockMMRange mmRange(pblock->BuildBlockMMRTree(entropyHash));
             BlockMMView mmView(mmRange);
             pblock->SetBlockMMRRoot(mmView.GetRoot());
@@ -2152,37 +2173,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         uint32_t autoTxSize = 0;                // extra transaction overhead that we will add while creating the block
         int nBlockSigOps = 100;
 
-        // VerusPoP staking transaction data
-        CMutableTransaction txStaked;           // if this is a stake operation, the staking transaction that goes at the end
-        uint32_t nStakeTxSize = 0;              // serialized size of the stake transaction
-
-        // if this is not for mining, first determine if we have a right to make a block
-        if (isStake)
-        {
-            uint64_t txfees, utxovalue;
-            uint32_t txtime;
-            uint256 utxotxid;
-            int32_t i, siglen, numsigs, utxovout;
-            std::vector<unsigned char> utxosig;
-
-            txStaked = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
-
-            uint32_t nBitsPOS;
-            arith_uint256 posHash;
-
-            siglen = verus_staked(pblock, txStaked, nBitsPOS, posHash, utxosig, firstDestination);
-            blocktime = GetAdjustedTime();
-
-            if (siglen <= 0)
-            {
-                return NULL;
-            }
-
-            pblock->nTime = blocktime;
-            nStakeTxSize = GetSerializeSize(txStaked, SER_NETWORK, PROTOCOL_VERSION);
-            nBlockSize += nStakeTxSize;
-        }
-
         {
             LOCK(mempool.cs);
             std::vector<CTransaction> txesToRemove;
@@ -2290,52 +2280,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         CMutableTransaction coinbaseTx = CreateNewContextualCMutableTransaction(consensusParams, nHeight);
         coinbaseTx.vin.push_back(CTxIn(uint256(), (uint32_t)-1, CScript() << nHeight << OP_0));
 
-        // we will update amounts and fees later, but convert the guarded output now for validity checking and size estimate
-        if (isStake)
-        {
-            // if there is a specific destination, use it
-            CTransaction stakeTx(txStaked);
-            CStakeParams p;
-            if (ValidateStakeTransaction(stakeTx, p, false))
-            {
-                if (p.Version() < p.VERSION_EXTENDED_STAKE && !p.pk.IsValid())
-                {
-                    LogPrintf("CreateNewBlock: invalid public key\n");
-                    fprintf(stderr,"CreateNewBlock: invalid public key\n");
-                    return NULL;
-                }
-                CTxDestination guardedOutputDest = (p.Version() < p.VERSION_EXTENDED_STAKE) ? p.pk : p.delegate;
-                coinbaseTx.vout.push_back(CTxOut(1, CScript()));
-                if (!MakeGuardedOutput(1, guardedOutputDest, stakeTx, coinbaseTx.vout.back()))
-                {
-                    LogPrintf("CreateNewBlock: failed to make GuardedOutput on staking coinbase\n");
-                    fprintf(stderr,"CreateNewBlock: failed to make GuardedOutput on staking coinbase\n");
-                    return NULL;
-                }
-                COptCCParams optP;
-                if (!coinbaseTx.vout.back().scriptPubKey.IsPayToCryptoCondition(optP) || !optP.IsValid())
-                {
-                    MakeGuardedOutput(1, guardedOutputDest, stakeTx, coinbaseTx.vout.back());
-                    LogPrintf("%s: created invalid staking coinbase\n", __func__);
-                    fprintf(stderr,"%s: created invalid staking coinbase\n", __func__);
-                    return NULL;
-                }
-            }
-            else
-            {
-                LogPrintf("CreateNewBlock: invalid stake transaction\n");
-                fprintf(stderr,"CreateNewBlock: invalid stake transaction\n");
-                return NULL;
-            }
-        }
-        else
-        {
-            // default outputs for mining and before stake guard or fee calculation
-            // store the relative weight in the amount output to convert later to a relative portion
-            // of the reward + fees
-            coinbaseTx.vout.insert(coinbaseTx.vout.end(), minerOutputs.begin(), minerOutputs.end());
-        }
-
         CAmount totalEmission = blockSubsidy;
         CCurrencyValueMap additionalFees;
 
@@ -2362,7 +2306,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         }
 
         // at block 1 for a PBaaS chain, we validate launch conditions
-        if (!isVerusActive && nHeight == 1)
+        bool isPBaaSBlock1 = !isVerusActive && nHeight == 1;
+        if (isPBaaSBlock1)
         {
             CPBaaSNotarization launchNotarization;
             if (!ConnectedChains.readyToStart &&
@@ -2371,6 +2316,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             {
                 return NULL;
             }
+            coinbaseTx.vout.insert(coinbaseTx.vout.end(), minerOutputs.begin(), minerOutputs.end());
             if (!MakeBlockOneCoinbaseOutputs(coinbaseTx.vout, launchNotarization, additionalFees))
             {
                 // can't mine block 1 if we are not connected to a notary
@@ -2381,7 +2327,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             currencyState = launchNotarization.currencyState;
         }
 
-        // if we are a notary, notarize
+        // if we can, notarize
         if (nHeight > ConnectedChains.ThisChain().GetMinBlocksToSignNotarize() && !VERUS_NOTARYID.IsNull())
         {
             CValidationState state;
@@ -2601,6 +2547,95 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                     }
                 }
             }
+        }
+
+        // we will update amounts and fees later, but convert the guarded output now for validity checking and size estimate
+        // VerusPoP staking transaction data
+        CMutableTransaction txStaked;           // if this is a stake operation, the staking transaction that goes at the end
+        uint32_t nStakeTxSize = 0;              // serialized size of the stake transaction
+
+        // if this is not for mining, first determine if we have a right to make a block
+        if (isStake)
+        {
+            uint64_t txfees, utxovalue;
+            uint32_t txtime;
+            uint256 utxotxid;
+            int32_t i, siglen, numsigs, utxovout;
+            std::vector<unsigned char> utxosig;
+
+            txStaked = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
+
+            uint32_t nBitsPOS;
+            arith_uint256 posHash;
+
+            siglen = verus_staked(pblock, txStaked, nBitsPOS, posHash, utxosig, firstDestination);
+            blocktime = GetAdjustedTime();
+
+            bool stakeValid = siglen > 0;
+
+            if (stakeValid)
+            {
+                pblock->nTime = blocktime;
+                nStakeTxSize = GetSerializeSize(txStaked, SER_NETWORK, PROTOCOL_VERSION);
+                nBlockSize += nStakeTxSize;
+            }
+
+            // if there is a specific destination, use it
+            CTransaction stakeTx(txStaked);
+            CStakeParams p;
+
+            if (stakeValid && ValidateStakeTransaction(stakeTx, p, false))
+            {
+                if (p.Version() < p.VERSION_EXTENDED_STAKE && !p.pk.IsValid())
+                {
+                    LogPrintf("CreateNewBlock: invalid public key\n");
+                    fprintf(stderr,"CreateNewBlock: invalid public key\n");
+                }
+                else
+                {
+                    CTxDestination guardedOutputDest = (p.Version() < p.VERSION_EXTENDED_STAKE) ? p.pk : p.delegate;
+                    coinbaseTx.vout.push_back(CTxOut(1, CScript()));
+                    if (!MakeGuardedOutput(1, guardedOutputDest, stakeTx, coinbaseTx.vout.back()))
+                    {
+                        LogPrintf("CreateNewBlock: failed to make GuardedOutput on staking coinbase\n");
+                        fprintf(stderr,"CreateNewBlock: failed to make GuardedOutput on staking coinbase\n");
+                    }
+                    else
+                    {
+                        COptCCParams optP;
+                        if (!coinbaseTx.vout.back().scriptPubKey.IsPayToCryptoCondition(optP) || !optP.IsValid())
+                        {
+                            if (LogAcceptCategory("notarization"))
+                            {
+                                MakeGuardedOutput(1, guardedOutputDest, stakeTx, coinbaseTx.vout.back());
+                            }
+                            LogPrintf("%s: created invalid staking coinbase\n", __func__);
+                            fprintf(stderr,"%s: created invalid staking coinbase\n", __func__);
+                        }
+                        else
+                        {
+                            stakeValid = true;
+                        }
+                    }
+                }
+            }
+            if (!stakeValid)
+            {
+                CPBaaSNotarization lastImportNotarization;
+                CUTXORef lastImportNotarizationUTXO;
+                CValidationState state;
+
+                CPBaaSNotarization::SubmitFinalizedNotarizations(ConnectedChains.FirstNotaryChain(), state);
+                ProcessNewImports(ConnectedChains.FirstNotaryChain().chainDefinition.GetID(), lastImportNotarization, lastImportNotarizationUTXO, nHeight);
+                return NULL;
+            }
+        }
+        else if (!isPBaaSBlock1)
+        {
+            // default outputs for mining and before stake guard or fee calculation
+            // store the relative weight in the amount output to convert later to a relative portion
+            // of the reward + fees
+            coinbaseTx.vout.insert(coinbaseTx.vout.end(), minerOutputs.begin(), minerOutputs.end());
         }
 
         if (notaryConnected)
