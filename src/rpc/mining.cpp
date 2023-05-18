@@ -248,10 +248,6 @@ UniValue generate(const UniValue& params, bool fHelp)
         if (!pblocktemplate.get())
             throw JSONRPCError(RPC_INTERNAL_ERROR, "Couldn't create new block");
         CBlock *pblock = &pblocktemplate->block;
-        {
-            LOCK(cs_main);
-            IncrementExtraNonce(pblock, chainActive.LastTip(), nExtraNonce);
-        }
 
         // Hash state
         crypto_generichash_blake2b_state eh_state;
@@ -671,43 +667,6 @@ UniValue getminingdistribution(const UniValue& params, bool fHelp)
 
     UniValue distributionObj(UniValue::VOBJ);
     distributionObj.read(mapArgs.count("-miningdistribution") ? mapArgs["-miningdistribution"] : "");
-    return distributionObj;
-}
-
-UniValue getlastminingdistribution(const UniValue& params, bool fHelp)
-{
-    if (fHelp || params.size() != 0)
-        throw runtime_error(
-            "getlastminingdistribution\n"
-            "\nRetrieves the last used mining distribution when making a block\n"
-
-            "\nArguments: NONE\n"
-            "\n"
-
-            "\nResult:\n"
-            "     NULL object if not set\n"
-            "     If set:\n"
-            "     {\n"
-            "       \"uniquedestination1\":value    (key/number) valid destination address and relative value output to it\n"
-            "       \"uniquedestination2\":value    (key/number) destination address and relative value output\n"
-            "       ...\n"
-            "     }\n"
-
-            "\nExamples:\n"
-            + HelpExampleCli("getlastminingdistribution", "")
-            + HelpExampleRpc("getlastminingdistribution", "")
-        );
-
-
-    UniValue distributionObj(UniValue::VOBJ);
-    for (auto &oneRecipient : ConnectedChains.latestMiningOutputs)
-    {
-        CTxDestination recipient;
-        if (ExtractDestination(oneRecipient.scriptPubKey, recipient) && recipient.which() != COptCCParams::ADDRTYPE_INVALID)
-        {
-            distributionObj.pushKV(EncodeDestination(recipient), oneRecipient.nValue);
-        }
-    }
     return distributionObj;
 }
 
@@ -1305,7 +1264,6 @@ static const CRPCCommand commands[] =
     { "mining",             "prioritisetransaction",  &prioritisetransaction,  true  },
     { "mining",             "setminingdistribution",  &setminingdistribution,  true  },
     { "mining",             "getminingdistribution",  &getminingdistribution,  true  },
-    { "mining",             "getlastminingdistribution",  &getlastminingdistribution,  true  },
     { "mining",             "getblocktemplate",       &getblocktemplate,       true  },
     { "mining",             "submitblock",            &submitblock,            true  },
     { "mining",             "getblocksubsidy",        &getblocksubsidy,        true  },

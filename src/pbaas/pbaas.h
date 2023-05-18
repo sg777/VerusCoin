@@ -935,6 +935,8 @@ public:
     std::map<uint160, CPBaaSMergeMinedChainData> mergeMinedChains;
     std::multimap<arith_uint256, CPBaaSMergeMinedChainData *> mergeMinedTargets;
 
+    uint32_t nextBlockTime;
+
     std::map<uint160, CUpgradeDescriptor> activeUpgradesByKey;
 
     LRUCache<uint160, CCurrencyDefinition> currencyDefCache;        // protected by cs_main, so doesn't need sync
@@ -968,7 +970,11 @@ public:
         earnedNotarizationIndex(0),
         dirty(false),
         lastSubmissionFailed(false),
-        sem_submitthread(0) {}
+        sem_submitthread(0),
+        nextBlockTime(0) {}
+
+    uint32_t SetNextBlockTime(uint32_t NextBlockTime);
+    uint32_t GetNextBlockTime(const CBlockIndex *pindexPrev);
 
     arith_uint256 LowestTarget()
     {
