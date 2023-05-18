@@ -656,6 +656,11 @@ public:
                                             CObjectFinalization &confirmedFinalization,
                                             CAddressIndexDbEntry &earnedNotarizationIndex);
 
+    bool CheckCrossNotarizationProgression(const CCurrencyDefinition &curDef,
+                                           CPBaaSNotarization &priorNotarization,
+                                           uint32_t newHeight,
+                                           CValidationState &state) const;
+
     // accepts enough information to build a local accepted notarization transaction
     // miner fees are deferred until an import that uses this notarization, in which case
     // Proposer will get a share of the fees, if they are large enough. any miner,
