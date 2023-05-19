@@ -4957,6 +4957,7 @@ uint32_t CConnectedChains::GetNextBlockTime(const CBlockIndex *pindexPrev)
     // if sync time is 45 seconds behind or more, use calculated time
     if (nextBlockTime < (nextTimeCandidate - 45))
     {
+        nextBlockTime = nextTimeCandidate;
         return nextTimeCandidate;
     }
     else
