@@ -9890,7 +9890,14 @@ void CConnectedChains::SubmissionThread()
             uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
 
             bool isNotaryAvailable = IsNotaryAvailable(true);
-            SetNextBlockTime(GetNextBlockTime(chainActive.LastTip()));
+
+            uint32_t lastNextTime = ConnectedChains.nextBlockTime;
+            uint32_t newNextTime = SetNextBlockTime(GetNextBlockTime(chainActive.LastTip()));
+            if (IsVerusActive() &&
+                lastNextTime != newNextTime)
+            {
+                ConnectedChains.PruneOldChains(newNextTime);
+            }
 
             // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
             if (isNotaryAvailable)
