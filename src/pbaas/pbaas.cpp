@@ -504,7 +504,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
     bool isPreSync = chainActive.Height() < (height - 1);
     bool isPostSync = chainActive.Height() > (height - 1);
-    bool deepCheckImportProof = IsVerusMainnetActive() || !(isPreSync || isPostSync);
+    bool deepCheckImportProof = !(isPreSync || isPostSync);
 
     if (!isPreSync && ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisableDeFiKey()))
     {
