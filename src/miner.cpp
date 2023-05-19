@@ -156,6 +156,10 @@ int32_t verus_staked(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &nBits
 int32_t komodo_notaryvin(CMutableTransaction &txNew,uint8_t *notarypub33);
 UniValue getminingdistribution(const UniValue& params, bool fHelp);
 
+// for PoW: don't update MMR if the merkle root, prev MMR && time haven't changed
+LRUCache<std::tuple<uint256, uint256, uint32_t>, uint256> powBlockMMRLRU(200);
+// for PoS: don't update MMR if the merkle root, prev MMR && entropy hash component haven't changed
+LRUCache<std::tuple<uint256, uint256, uint256>, uint256> posBlockMMRLRU(200);
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &nExtraNonce, bool buildMerkle, uint32_t *pSaveBits)
 {
     uint32_t nHeight = pindexPrev->GetHeight() + 1;
@@ -239,31 +243,62 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
         {
             uint32_t mmrSize = posSourceInfo ? pindexPrev->GetHeight() + 1 : pindexPrev->GetHeight();
             pblock->hashMerkleRoot = pblock->BuildMerkleTree();
-            pblock->SetPrevMMRRoot(ChainMerkleMountainView(chainActive.GetMMR(), mmrSize).GetRoot());
+            uint256 prevMMRRoot = ChainMerkleMountainView(chainActive.GetMMR(), mmrSize).GetRoot();
+            pblock->SetPrevMMRRoot(prevMMRRoot);
 
-            if (isPoS)
+            bool updateBlockRoots = true;
             {
-                LOCK2(cs_main, mempool.cs);
-                CTransaction tx;
-                uint256 txBlockHash;
-                CBlockIndex *pIndexSource;
-                CBlock sourceBlock;
-                if (myGetTransaction(pblock->vtx.back().vin[0].prevout.hash, tx, txBlockHash) &&
-                    mapBlockIndex.count(txBlockHash) &&
-                    ReadBlockFromDisk(sourceBlock, mapBlockIndex[txBlockHash], Params().GetConsensus()))
+                LOCK(ConnectedChains.cs_mergemining);
+                uint256 cachedBlockMMRRoot;
+                if ((isPoS &&
+                     posBlockMMRLRU.Get({pblock->hashMerkleRoot, prevMMRRoot, entropyHash}, cachedBlockMMRRoot) &&
+                     cachedBlockMMRRoot == pblock->GetBlockMMRRoot()) ||
+                    (!isPoS &&
+                     powBlockMMRLRU.Get({pblock->hashMerkleRoot, prevMMRRoot, pblock->nTime}, cachedBlockMMRRoot) &&
+                     cachedBlockMMRRoot == pblock->GetBlockMMRRoot()))
                 {
-                    ChainMerkleMountainView mmv = chainActive.GetMMV();
-                    mmv.resize(nHeight);                                 // we want it pointing right before us, nHeight is our new height
-
-                    std::vector<unsigned char> extraSolutionData = CreatePoSBlockProof(mmv, *pblock, tx, pblock->vtx.back().vin[0].prevout.n, mapBlockIndex[txBlockHash]->GetHeight(), nHeight);
-                    CVerusSolutionVector(pblock->nSolution).ResizeExtraData(extraSolutionData.size());
-                    pblock->SetExtraData(extraSolutionData.data(), extraSolutionData.size());
+                    updateBlockRoots = false;
                 }
             }
 
-            BlockMMRange mmRange(pblock->BuildBlockMMRTree(entropyHash));
-            BlockMMView mmView(mmRange);
-            pblock->SetBlockMMRRoot(mmView.GetRoot());
+            if (updateBlockRoots)
+            {
+                if (isPoS)
+                {
+                    LOCK(cs_main);
+                    CTransaction tx;
+                    uint256 txBlockHash;
+                    CBlockIndex *pIndexSource;
+                    CBlock sourceBlock;
+                    if (myGetTransaction(pblock->vtx.back().vin[0].prevout.hash, tx, txBlockHash, false) &&
+                        mapBlockIndex.count(txBlockHash) &&
+                        ReadBlockFromDisk(sourceBlock, mapBlockIndex[txBlockHash], Params().GetConsensus()))
+                    {
+                        ChainMerkleMountainView mmv = chainActive.GetMMV();
+                        mmv.resize(nHeight);                                 // we want it pointing right before us, nHeight is our new height
+
+                        std::vector<unsigned char> extraSolutionData = CreatePoSBlockProof(mmv, *pblock, tx, pblock->vtx.back().vin[0].prevout.n, mapBlockIndex[txBlockHash]->GetHeight(), nHeight);
+                        CVerusSolutionVector(pblock->nSolution).ResizeExtraData(extraSolutionData.size());
+                        pblock->SetExtraData(extraSolutionData.data(), extraSolutionData.size());
+                    }
+                }
+
+                BlockMMRange mmRange(pblock->BuildBlockMMRTree(entropyHash));
+                BlockMMView mmView(mmRange);
+                uint256 blockMMRRoot = mmView.GetRoot();
+                pblock->SetBlockMMRRoot(blockMMRRoot);
+                {
+                    LOCK(ConnectedChains.cs_mergemining);
+                    if (isPoS)
+                    {
+                        posBlockMMRLRU.Put({pblock->hashMerkleRoot, pblock->GetPrevMMRRoot(), entropyHash}, blockMMRRoot);
+                    }
+                    else
+                    {
+                        powBlockMMRLRU.Get({pblock->hashMerkleRoot, pblock->GetPrevMMRRoot(), pblock->nTime}, blockMMRRoot);
+                    }
+                }
+            }
         }
         pblock->AddUpdatePBaaSHeader();
     }
@@ -278,7 +313,6 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
         {
             pblock->hashMerkleRoot = pblock->BuildMerkleTree();
         }
-
         UpdateTime(pblock, Params().GetConsensus(), pindexPrev);
     }
 }
