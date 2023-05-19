@@ -2655,12 +2655,15 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             }
             if (!stakeValid)
             {
-                CPBaaSNotarization lastImportNotarization;
-                CUTXORef lastImportNotarizationUTXO;
-                CValidationState state;
+                if (notaryConnected)
+                {
+                    CPBaaSNotarization lastImportNotarization;
+                    CUTXORef lastImportNotarizationUTXO;
+                    CValidationState state;
 
-                CPBaaSNotarization::SubmitFinalizedNotarizations(ConnectedChains.FirstNotaryChain(), state);
-                ProcessNewImports(ConnectedChains.FirstNotaryChain().chainDefinition.GetID(), lastImportNotarization, lastImportNotarizationUTXO, nHeight);
+                    CPBaaSNotarization::SubmitFinalizedNotarizations(ConnectedChains.FirstNotaryChain(), state);
+                    ProcessNewImports(ConnectedChains.FirstNotaryChain().chainDefinition.GetID(), lastImportNotarization, lastImportNotarizationUTXO, nHeight);
+                }
                 return NULL;
             }
         }
