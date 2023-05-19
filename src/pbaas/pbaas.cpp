@@ -4946,6 +4946,7 @@ uint32_t CConnectedChains::SetNextBlockTime(uint32_t NextBlockTime)
 {
     LOCK(cs_mergemining);
     nextBlockTime = NextBlockTime;
+    return NextBlockTime;
 }
 
 uint32_t CConnectedChains::GetNextBlockTime(const CBlockIndex *pindexPrev)
