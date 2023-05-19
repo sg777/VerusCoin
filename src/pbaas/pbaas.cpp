@@ -4873,7 +4873,7 @@ bool CConnectedChains::AddMergedBlock(CPBaaSMergeMinedChainData &blkData)
 bool CConnectedChains::GetLastBlock(CBlock &block, uint32_t height)
 {
     LOCK(cs_mergemining);
-    if (lastBlockHeight == height && (GetAdjustedTime() - block.nTime) > (Params().consensus.nPowTargetSpacing / 2))
+    if (lastBlockHeight == height && block.nTime == ConnectedChains.GetNextBlockTime(chainActive.LastTip()))
     {
         block = lastBlock;
         return true;
