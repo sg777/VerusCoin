@@ -15074,6 +15074,7 @@ UniValue addmergedblock(const UniValue& params, bool fHelp)
             "\nResult:\n"
             "\"deserialize-invalid\" - block could not be deserialized and was rejected as invalid\n"
             "\"blocksfull\"          - block did not exceed others in estimated ROI, and there was no room for an additional merge mined block\n"
+            "{\"nextblocktime\": n}  - block has invalid time and must be remade with time returned\n"
 
             "\nExamples:\n"
             + HelpExampleCli("addmergedblock", "\"hexdata\" \'{\"currencyid\" : \"hexstring\", \"rpchost\" : \"127.0.0.1\", \"rpcport\" : portnum}\'")
@@ -15123,6 +15124,14 @@ UniValue addmergedblock(const UniValue& params, bool fHelp)
 
     if (!DecodeHexBlk(blk, params[0].get_str()))
         return "deserialize-invalid";
+
+    int64_t nextBlockTime = ConnectedChains.GetNextBlockTime(chainActive.LastTip());
+    if (blk.nTime != nextBlockTime)
+    {
+        UniValue returnTime(UniValue::VOBJ);
+        returnTime.pushKV("nextblocktime", nextBlockTime);
+        return returnTime;
+    }
 
     CPBaaSMergeMinedChainData blkData = CPBaaSMergeMinedChainData(chainDef, rpchost, rpcport, rpcuserpass, blk);
     return ConnectedChains.AddMergedBlock(blkData) ? NullUniValue : "blocksfull";

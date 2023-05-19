@@ -4225,39 +4225,58 @@ void static BitcoinMiner_noeq()
                 }
             }
 
-            // cache the last block or copy of last
-            ConnectedChains.SetLastBlock(*pblock, Mining_height);
-
             // randomize the nonce for each thread
             pblock->nNonce = RandomizedNonce();
 
             // set our easiest target, if V3+, no need to rebuild the merkle tree
             IncrementExtraNonce(pblock, pindexPrev, nExtraNonce, true, &savebits);
 
+            // cache the last block or copy of last
+            ConnectedChains.SetLastBlock(*pblock, Mining_height);
+
             // update PBaaS header
             if (verusSolutionPBaaS)
             {
                 if (!IsVerusActive() && ConnectedChains.IsVerusPBaaSAvailable())
                 {
-
                     UniValue params(UniValue::VARR);
                     UniValue error(UniValue::VARR);
-                    params.push_back(EncodeHexBlk(*pblock));
-                    params.push_back(ASSETCHAINS_SYMBOL);
-                    params.push_back(ASSETCHAINS_RPCHOST);
-                    params.push_back(ASSETCHAINS_RPCPORT);
-                    params.push_back(ASSETCHAINS_RPCCREDENTIALS);
-                    try
+
+                    bool tryAgain = true;
+                    int retryCount = 0;
+                    while (tryAgain && retryCount++ < 2)
                     {
-                        ConnectedChains.lastSubmissionFailed = false;
-                        params = RPCCallRoot("addmergedblock", params);
-                        params = find_value(params, "result");
-                        error = find_value(params, "error");
-                    } catch (std::exception e)
-                    {
-                        LogPrintf("Failed to connect to %s chain\n", ConnectedChains.FirstNotaryChain().chainDefinition.name.c_str());
-                        params = UniValue(e.what());
+                        tryAgain = false;
+                        params.push_back(EncodeHexBlk(*pblock));
+                        params.push_back(ASSETCHAINS_SYMBOL);
+                        params.push_back(ASSETCHAINS_RPCHOST);
+                        params.push_back(ASSETCHAINS_RPCPORT);
+                        params.push_back(ASSETCHAINS_RPCCREDENTIALS);
+                        try
+                        {
+                            ConnectedChains.lastSubmissionFailed = false;
+                            params = RPCCallRoot("addmergedblock", params);
+                            params = find_value(params, "result");
+                            error = find_value(params, "error");
+                        } catch (std::exception e)
+                        {
+                            LogPrintf("Failed to connect to %s chain\n", ConnectedChains.FirstNotaryChain().chainDefinition.name.c_str());
+                            params = UniValue(e.what());
+                        }
+                        uint32_t nextBlockTime;
+                        if (error.isNull() &&
+                            params.isObject() &&
+                            (nextBlockTime = (uint32_t)uni_get_int64(find_value(params, "nextblocktime"))) != 0)
+                        {
+                            ConnectedChains.SetNextBlockTime(nextBlockTime);
+                            IncrementExtraNonce(pblock, pindexPrev, nExtraNonce, true, &savebits);
+                            ConnectedChains.SetLastBlock(*pblock, Mining_height);
+                            params = UniValue(UniValue::VARR);
+                            error = UniValue(UniValue::VARR);
+                            tryAgain = true;
+                        }
                     }
+
                     if (mergeMining = (params.isNull() && error.isNull()))
                     {
                         printf("Merge mining %s with %s as the hashing chain\n", ASSETCHAINS_SYMBOL, ConnectedChains.FirstNotaryChain().chainDefinition.name.c_str());
@@ -4352,7 +4371,7 @@ void static BitcoinMiner_noeq()
                         // update every few minutes, regardless
                         int64_t elapsed = GetTime() - nStart;
 
-                        if ((mempool.GetTransactionsUpdated() != nTransactionsUpdatedLast && elapsed > 60) || elapsed > 60 || ConnectedChains.lastSubmissionFailed)
+                        if ((mempool.GetTransactionsUpdated() != nTransactionsUpdatedLast && elapsed > 30) || elapsed > 30 || ConnectedChains.lastSubmissionFailed)
                         {
                             break;
                         }
