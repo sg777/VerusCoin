@@ -4099,6 +4099,7 @@ void static BitcoinMiner_noeq()
     static int32_t lastMiningHeight = 0;
 
     miningTimer.start();
+    bool mergeMining = false;
 
     try {
         printf("Mining %s with %s\n", ASSETCHAINS_SYMBOL, ASSETCHAINS_ALGORITHMS[ASSETCHAINS_ALGO]);
@@ -4194,7 +4195,6 @@ void static BitcoinMiner_noeq()
             }
 
             uint32_t savebits;
-            bool mergeMining = false;
             savebits = pblock->nBits;
 
             uint32_t solutionVersion = CConstVerusSolutionVector::Version(pblock->nSolution);
@@ -4277,6 +4277,12 @@ void static BitcoinMiner_noeq()
                         }
                     }
 
+                    if (mergeMining && !(params.isNull() && error.isNull()))
+                    {
+                        printf("Lost connection to merge mining chain %s, restart mining to merge or solo mine\n", ConnectedChains.GetFriendlyCurrencyName(ConnectedChains.FirstNotaryChain().GetID()).c_str());
+                        LogPrintf("Lost connection to merge mining chain %s, restart mining to merge or solo mine\n", ConnectedChains.GetFriendlyCurrencyName(ConnectedChains.FirstNotaryChain().GetID()).c_str());
+                        break;
+                    }
                     if (mergeMining = (params.isNull() && error.isNull()))
                     {
                         printf("Merge mining %s with %s as the hashing chain\n", ASSETCHAINS_SYMBOL, ConnectedChains.FirstNotaryChain().chainDefinition.name.c_str());
