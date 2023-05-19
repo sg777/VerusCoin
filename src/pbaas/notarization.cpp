@@ -3749,7 +3749,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                     }
                     else
                     {
-                        LogPrintf("Stake TX validation failure for txid: %s\nexpected merkle root: %s\nproof header: %s\nstakeParams.srcHeight: %u\nstakeParams.blkHeight: %u\nstakeParams.prevHash: %s\nposSourceProof.GetBlockHeight(): %u\nprovingBlockHeight: %u\nposBlockHeaderAndProof.blockHeader.hashPrevBlock: %s\n",
+                        LogPrintf("Stake TX validation failure for tx, actual merkle root: %s\nexpected merkle root: %s\nproof header: %s\nstakeParams.srcHeight: %u\nstakeParams.blkHeight: %u\nstakeParams.prevHash: %s\nposSourceProof.GetBlockHeight(): %u\nprovingBlockHeight: %u\nposBlockHeaderAndProof.blockHeader.hashPrevBlock: %s\n",
                                   txMerkleRoot.GetHex().c_str(),
                                   posBlockHeaderAndProof.blockHeader.hashMerkleRoot.GetHex().c_str(),
                                   outTx.GetHash().GetHex().c_str(),

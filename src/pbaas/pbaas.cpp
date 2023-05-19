@@ -312,6 +312,7 @@ bool ImportHasAdequateFees(const CTransaction &tx,
     uint32_t minHeight = 0;
     uint32_t maxHeight = 0;
 
+    conversionMap.valueMap[ASSETCHAINS_CHAINID] = SATOSHIDEN;
     if (!notarization.IsRefunding() &&
         importingToDef.IsFractional() &&
         (notarization.currencyID == cci.importCurrencyID || notarization.currencyStates.count(cci.importCurrencyID)))
