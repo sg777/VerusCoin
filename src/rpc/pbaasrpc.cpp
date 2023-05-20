@@ -1812,7 +1812,7 @@ bool SelectArbitrageFromOffers(const std::vector<
                                                  rewardDest);
 }
 
-uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid=false, CCurrencyDefinition *pCurrencyDef=NULL)
+uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid, CCurrencyDefinition *pCurrencyDef)
 {
     std::string extraName;
     uint160 retVal;
