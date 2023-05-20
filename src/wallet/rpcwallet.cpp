@@ -4233,7 +4233,7 @@ UniValue fundrawtransaction(const UniValue& params, bool fHelp)
     if (!EnsureWalletIsAvailable(fHelp))
         return NullUniValue;
 
-    if (fHelp || params.size() < 1 || params.size() > 3)
+    if (fHelp || params.size() < 1 || params.size() > 4)
         throw runtime_error(
                             "fundrawtransaction \"hexstring\" '[{\"txid\":\"8892b6c090b51a4eed7a61b72e9c8dbf5ed5bcd5aca6c6819b630acf2cb3fc87\",\"voutnum\":1},...]' (changeaddress) (explicitfee)\n"
                             "\nAdd inputs to a transaction until it has enough in value to meet its out value.\n"
@@ -4324,8 +4324,9 @@ UniValue fundrawtransaction(const UniValue& params, bool fHelp)
         {
             utxoVec.push_back(oneUTXO);
         }
+
         CReserveTransactionDescriptor rtxd(tx, view, chainActive.Height() + 1);
-        CAmount fee = DEFAULT_TRANSACTION_FEE;
+        nFee = DEFAULT_TRANSACTION_FEE;
         std::map<CUTXORef, CCurrencyValueMap> mapCoinsRet;
         CCurrencyValueMap fundWithAmount, valueRet;
         CAmount nativeRet, nativeTarget;
@@ -4339,13 +4340,13 @@ UniValue fundrawtransaction(const UniValue& params, bool fHelp)
             fundWithAmount.valueMap[ASSETCHAINS_CHAINID] -= rtxd.NativeFees();
         }
 
-        if (params.size() > 2)
+        if (params.size() > 3)
         {
-            fee = uni_get_int64(params[1]);
+            nFee = uni_get_int64(params[3]);
         }
-        if (fee)
+        if (nFee)
         {
-            fundWithAmount.valueMap[ASSETCHAINS_CHAINID] += fee;
+            fundWithAmount.valueMap[ASSETCHAINS_CHAINID] += nFee;
         }
 
         CValidationState state;
