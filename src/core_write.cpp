@@ -759,7 +759,7 @@ bool CPBaaSNotarization::SetMirror(bool setTrue)
     }
 
     // we can only reverse notarizations with two proof roots
-    // one must be the current chain, and the other is to reverse
+        // one must be the current chain, and the other is to reverse
     if (proofRoots.size() != 2 ||
         currencyStates.count(currencyID) ||
         !(proofRoots.begin()->first == ASSETCHAINS_CHAINID || (++proofRoots.begin())->first == ASSETCHAINS_CHAINID))

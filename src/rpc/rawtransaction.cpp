@@ -852,6 +852,19 @@ UniValue createrawtransaction(const UniValue& params, bool fHelp)
             UniValue sendVal = find_value(sendTo, name_);
             if (sendVal.isObject())
             {
+                UniValue decodedSendVal(UniValue::VOBJ);
+                auto keys = sendVal.getKeys();
+                auto values = sendVal.getValues();
+                for (int j = 0; j < keys.size(); j++)
+                {
+                    uint160 destCurrency = ValidateCurrencyName(keys[j], true);
+                    if (destCurrency.IsNull())
+                    {
+                        throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("Invalid currency in output: ") + name_);
+                    }
+                    decodedSendVal.pushKV(EncodeDestination(CIdentityID(destCurrency)), values[j]);
+                }
+
                 CCurrencyValueMap outputValue = CCurrencyValueMap(sendVal).CanonicalMap();
                 if (!(outputValue.IsValid() && outputValue.valueMap.size()))
                 {

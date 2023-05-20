@@ -656,6 +656,11 @@ public:
                                             CObjectFinalization &confirmedFinalization,
                                             CAddressIndexDbEntry &earnedNotarizationIndex);
 
+    bool CheckCrossNotarizationProgression(const CCurrencyDefinition &curDef,
+                                           CPBaaSNotarization &priorNotarization,
+                                           uint32_t newHeight,
+                                           CValidationState &state) const;
+
     // accepts enough information to build a local accepted notarization transaction
     // miner fees are deferred until an import that uses this notarization, in which case
     // Proposer will get a share of the fees, if they are large enough. any miner,
@@ -930,6 +935,8 @@ public:
     std::map<uint160, CPBaaSMergeMinedChainData> mergeMinedChains;
     std::multimap<arith_uint256, CPBaaSMergeMinedChainData *> mergeMinedTargets;
 
+    uint32_t nextBlockTime;
+
     std::map<uint160, CUpgradeDescriptor> activeUpgradesByKey;
 
     LRUCache<uint160, CCurrencyDefinition> currencyDefCache;        // protected by cs_main, so doesn't need sync
@@ -963,7 +970,11 @@ public:
         earnedNotarizationIndex(0),
         dirty(false),
         lastSubmissionFailed(false),
-        sem_submitthread(0) {}
+        sem_submitthread(0),
+        nextBlockTime(0) {}
+
+    uint32_t SetNextBlockTime(uint32_t NextBlockTime);
+    uint32_t GetNextBlockTime(const CBlockIndex *pindexPrev);
 
     arith_uint256 LowestTarget()
     {
@@ -1426,6 +1437,7 @@ bool IsReserveExchangeInput(const CScript &scriptSig);
 bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsReserveDepositInput(const CScript &scriptSig);
 
+uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid=false, CCurrencyDefinition *pCurrencyDef=NULL);
 bool ValidateCurrencyDefinition(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, CValidationState &state, uint32_t height);
 bool IsCurrencyDefinitionInput(const CScript &scriptSig);
