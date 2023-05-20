@@ -1085,6 +1085,12 @@ public:
                                     std::set<std::pair<const CWalletTx*, unsigned int>> &setCoinsRet,
                                     CCurrencyValueMap& valueRet,
                                     CAmount &nativeValueRet) const;
+    static bool SelectReserveUTXOs(const CCurrencyValueMap &targetValues,
+                                   std::vector<std::pair<CUTXORef, CCurrencyValueMap>> &vCoins,
+                                   std::map<CUTXORef, CCurrencyValueMap> &mapCoinsRet,
+                                   CCurrencyValueMap& valueRet,
+                                   CAmount &nativeValueRet,
+                                   CValidationState &state);
 
     bool IsSpent(const uint256& hash, unsigned int n) const;
     bool IsSproutSpent(const uint256& nullifier) const;

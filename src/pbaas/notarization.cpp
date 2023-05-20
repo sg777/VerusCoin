@@ -3675,6 +3675,29 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                     CTransaction outTx;
                     bool isPartial = false;
                     uint256 txMerkleRoot = ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.CheckPartialTransaction(outTx, &isPartial);
+
+                    std::vector<uint256> entropyHashes;
+                    if (posEntropyHeadersAsTxes.size())
+                    {
+                        if (CPOSNonce(preHeader1.nNonce).IsPOSNonce(posBlockHeaderAndProof.blockHeader.nVersion))
+                        {
+                            entropyHashes.push_back(preHeader1.hashBlockMMRRoot);
+                            entropyHashes.push_back(CPOSNonce(preHeader2.nNonce).IsPOSNonce(posBlockHeaderAndProof.blockHeader.nVersion) ?
+                                                        preHeader2.hashBlockMMRRoot :
+                                                        posEntropyHeadersAsTxes[1].GetBlockHash());
+                        }
+                        else if (CPOSNonce(preHeader2.nNonce).IsPOSNonce(posBlockHeaderAndProof.blockHeader.nVersion))
+                        {
+                            entropyHashes.push_back(preHeader2.hashBlockMMRRoot);
+                            entropyHashes.push_back(posEntropyHeadersAsTxes[0].GetBlockHash());
+                        }
+                        else
+                        {
+                            entropyHashes.push_back(posEntropyHeadersAsTxes[0].GetBlockHash());
+                            entropyHashes.push_back(posEntropyHeadersAsTxes[1].GetBlockHash());
+                        }
+                    }
+
                     bool stakeTxPassed = txMerkleRoot == posBlockHeaderAndProof.blockHeader.hashMerkleRoot &&
                                          ValidateStakeTransaction(outTx, stakeParams, false) &&
                                          stakeParams.prevHash == posBlockHeaderAndProof.blockHeader.hashPrevBlock &&
@@ -3683,10 +3706,15 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                                          outTx.vin.size() &&
                                          (!posEntropyHeadersAsTxes.size() ||
                                           CPOSNonce(posBlockHeaderAndProof.blockHeader.nNonce).CheckPOSEntropy(
-                                                        CChain::CombineForPastHash(preHeader1.hashBlockMMRRoot, preHeader2.hashBlockMMRRoot),
+                                                        CChain::CombineForPastHash(entropyHashes[0], entropyHashes[1]),
                                                         outTx.vin[0].prevout.hash,
                                                         outTx.vin[0].prevout.n,
-                                                        CConstVerusSolutionVector::Version(posBlockHeaderAndProof.blockHeader.nSolution)));
+                                                        posBlockHeaderAndProof.blockHeader.nVersion) ||
+                                          CPOSNonce(posBlockHeaderAndProof.blockHeader.nNonce).CheckPOSEntropy(
+                                                        CChain::CombineForPastHash(entropyHashes[1], entropyHashes[2]),
+                                                        outTx.vin[0].prevout.hash,
+                                                        outTx.vin[0].prevout.n,
+                                                        posBlockHeaderAndProof.blockHeader.nVersion));
 
                     if (proofPreHeader.hashPrevMMRRoot != posSourceProof.CheckPartialTransaction(lastSourceTx, &isPartial))
                     {
@@ -5094,10 +5122,24 @@ bool ProvePosBlock(uint32_t lastProofRootHeight, const CBlockIndex *pindex, CNot
     // now prove:
     //
     // 1) the entire last transaction in the block - proven by the block Merkle root, which is available in the proven header
-    evidence.evidence << posBlock.GetPartialTransactionProof(posBlock.vtx.back(),
+    CPartialTransactionProof stakeTxProof = posBlock.GetPartialTransactionProof(posBlock.vtx.back(),
                                                              posBlock.vtx.size() - 1,
                                                              std::vector<std::pair<int16_t, int16_t>>(),
                                                              entropyHash);
+    evidence.evidence << stakeTxProof;
+
+    if (LogAcceptCategory("notarization"))
+    {
+        CTransaction checkTx;
+        if (stakeTxProof.CheckPartialTransaction(checkTx) == posBlock.hashMerkleRoot)
+        {
+            LogPrintf("MATCH proof and merkle branch:\nhashMerkleRoot: %s\n", posBlock.hashMerkleRoot.GetHex().c_str());
+        }
+        else
+        {
+            LogPrintf("MISMATCH proof and merkle branch:\nhashMerkleRoot: %s\ncalculated: %s\n", posBlock.hashMerkleRoot.GetHex().c_str(), stakeTxProof.CheckPartialTransaction(checkTx).GetHex().c_str());
+        }
+    }
 
     if (proofSize)
     {

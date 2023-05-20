@@ -4233,15 +4233,18 @@ UniValue fundrawtransaction(const UniValue& params, bool fHelp)
     if (!EnsureWalletIsAvailable(fHelp))
         return NullUniValue;
 
-    if (fHelp || params.size() != 1)
+    if (fHelp || params.size() < 1 || params.size() > 3)
         throw runtime_error(
-                            "fundrawtransaction \"hexstring\"\n"
+                            "fundrawtransaction \"hexstring\" '[{\"txid\":\"8892b6c090b51a4eed7a61b72e9c8dbf5ed5bcd5aca6c6819b630acf2cb3fc87\",\"voutnum\":1},...]' (changeaddress) (explicitfee)\n"
                             "\nAdd inputs to a transaction until it has enough in value to meet its out value.\n"
                             "This will not modify existing inputs, and will add one change output to the outputs.\n"
                             "Note that inputs which were signed may need to be resigned after completion since in/outputs have been added.\n"
                             "The inputs added will not be signed, use signrawtransaction for that.\n"
                             "\nArguments:\n"
-                            "1. \"hexstring\"    (string, required) The hex string of the raw transaction\n"
+                            "1. \"hexstring\"       (string, required)     The hex string of the raw transaction\n"
+                            "2. \"objectarray\"     (UTXO list, optional)  UTXOs to select from for funding\n"
+                            "3. \"changeaddress\"   (string, optional)     Address to send change to if there is any\n"
+                            "4. \"explicitfee\"     (number, optional)     Offer this instead of the default fee only when using UTXO list\n"
                             "\nResult:\n"
                             "{\n"
                             "  \"hex\":       \"value\", (string)  The resulting raw transaction (hex-encoded string)\n"
@@ -4271,8 +4274,130 @@ UniValue fundrawtransaction(const UniValue& params, bool fHelp)
     CAmount nFee;
     string strFailReason;
     int nChangePos = -1;
-    if(!pwalletMain->FundTransaction(tx, nFee, nChangePos, strFailReason))
-        throw JSONRPCError(RPC_INTERNAL_ERROR, strFailReason);
+
+    if (params.size() > 1)
+    {
+        if (!params[1].isArray())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "If present, UTXO list must be a JSON array of UTXO references. Please see help.");
+        }
+
+        CTxDestination changeDest;
+
+        if (params.size() < 3 ||
+            (changeDest = DecodeDestination(uni_get_str(params[2]))).which() == COptCCParams::ADDRTYPE_INVALID ||
+            (changeDest.which() != COptCCParams::ADDRTYPE_INVALID &&
+             changeDest.which() != COptCCParams::ADDRTYPE_PK &&
+             changeDest.which() != COptCCParams::ADDRTYPE_PKH &&
+             changeDest.which() != COptCCParams::ADDRTYPE_SH))
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "If UTXO list is present, transparent change address must be provided. Please see help.");
+        }
+
+        std::map<CUTXORef, CCurrencyValueMap> utxos;
+        std::vector<std::pair<CUTXORef, CCurrencyValueMap>> utxoVec;
+        LOCK(cs_main);
+        CCoinsViewCache view(pcoinsTip);
+        for (int i = 0; i < params[1].size(); i++)
+        {
+            CUTXORef oneRef(params[1][i]);
+            if (!oneRef.IsValid())
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMS, "Invalid UTXO in UTXO list. Please see help.");
+            }
+            const CCoins *coins = view.AccessCoins(oneRef.hash);
+            if (!coins ||
+                coins->vout.size() <= oneRef.n ||
+                !(coins->vout[oneRef.n].nValue > 0 ||
+                  (coins->vout[oneRef.n].scriptPubKey.size() &&
+                   coins->vout[oneRef.n].scriptPubKey.ReserveOutValue() > CCurrencyValueMap())))
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMS, "Invalid or spent UTXO in UTXO list. Please see help.");
+            }
+            utxos[oneRef] = coins->vout[oneRef.n].scriptPubKey.ReserveOutValue();
+            if (coins->vout[oneRef.n].nValue)
+            {
+                utxos[oneRef].valueMap[ASSETCHAINS_CHAINID] = coins->vout[oneRef.n].nValue;
+            }
+        }
+        for (auto &oneUTXO : utxos)
+        {
+            utxoVec.push_back(oneUTXO);
+        }
+        CReserveTransactionDescriptor rtxd(tx, view, chainActive.Height() + 1);
+        CAmount fee = DEFAULT_TRANSACTION_FEE;
+        std::map<CUTXORef, CCurrencyValueMap> mapCoinsRet;
+        CCurrencyValueMap fundWithAmount, valueRet;
+        CAmount nativeRet, nativeTarget;
+
+        if (rtxd.ReserveFees().HasNegative())
+        {
+            fundWithAmount = fundWithAmount.SubtractToZero(rtxd.ReserveFees());
+        }
+        if (rtxd.NativeFees() < 0)
+        {
+            fundWithAmount.valueMap[ASSETCHAINS_CHAINID] -= rtxd.NativeFees();
+        }
+
+        if (params.size() > 2)
+        {
+            fee = uni_get_int64(params[1]);
+        }
+        if (fee)
+        {
+            fundWithAmount.valueMap[ASSETCHAINS_CHAINID] += fee;
+        }
+
+        CValidationState state;
+        if (!CWallet::SelectReserveUTXOs(fundWithAmount, utxoVec, mapCoinsRet, valueRet, nativeRet, state))
+        {
+            throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, state.GetRejectReason());
+        }
+
+        // fund the transaction and make change outputs
+        nativeTarget = fundWithAmount.valueMap[ASSETCHAINS_CHAINID];
+        fundWithAmount.valueMap.erase(ASSETCHAINS_CHAINID);
+
+        CCurrencyValueMap reserveChange = (valueRet - fundWithAmount).CanonicalMap();
+        CAmount nativeChange = nativeRet - nativeTarget;
+        if (reserveChange.HasNegative() || nativeChange < 0)
+        {
+            throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Unable to fund transaction with UTXOs provided");
+        }
+
+        if (reserveChange.valueMap.size() &&
+            changeDest.which() == COptCCParams::ADDRTYPE_SH)
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMS, "Pay to script hash address may not be used when non-native change is present");
+        }
+
+        for (auto &oneOut : mapCoinsRet)
+        {
+            tx.vin.push_back(CTxIn(oneOut.first));
+        }
+
+        if (nativeChange || reserveChange.valueMap.size())
+        {
+            nChangePos = tx.vout.size() ? tx.vout.size() - 1 : 0;
+            // separate native change from reserve
+            if (nativeChange && !reserveChange.valueMap.size())
+            {
+                tx.vout.insert(tx.vout.begin() + nChangePos, CTxOut(nativeChange, GetScriptForDestination(changeDest)));
+            }
+            else if (reserveChange.valueMap.size())
+            {
+                CTokenOutput to(reserveChange);
+                tx.vout.insert(tx.vout.begin() + nChangePos,
+                               CTxOut(nativeChange,
+                                      MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, std::vector<CTxDestination>({changeDest}), 1, &to))));
+            }
+        }
+    }
+    else
+    {
+        if(!pwalletMain->FundTransaction(tx, nFee, nChangePos, strFailReason))
+            throw JSONRPCError(RPC_INTERNAL_ERROR, strFailReason);
+    }
 
     UniValue result(UniValue::VOBJ);
     result.push_back(Pair("hex", EncodeHexTx(tx)));
