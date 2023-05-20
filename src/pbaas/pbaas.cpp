@@ -312,6 +312,7 @@ bool ImportHasAdequateFees(const CTransaction &tx,
     uint32_t minHeight = 0;
     uint32_t maxHeight = 0;
 
+    conversionMap.valueMap[ASSETCHAINS_CHAINID] = SATOSHIDEN;
     if (!notarization.IsRefunding() &&
         importingToDef.IsFractional() &&
         (notarization.currencyID == cci.importCurrencyID || notarization.currencyStates.count(cci.importCurrencyID)))
@@ -503,7 +504,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
     bool isPreSync = chainActive.Height() < (height - 1);
     bool isPostSync = chainActive.Height() > (height - 1);
-    bool deepCheckImportProof = IsVerusMainnetActive() || !(isPreSync || isPostSync);
+    bool deepCheckImportProof = !(isPreSync || isPostSync);
 
     if (!isPreSync && ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisableDeFiKey()))
     {
@@ -4873,7 +4874,7 @@ bool CConnectedChains::AddMergedBlock(CPBaaSMergeMinedChainData &blkData)
 bool CConnectedChains::GetLastBlock(CBlock &block, uint32_t height)
 {
     LOCK(cs_mergemining);
-    if (lastBlockHeight == height && (GetAdjustedTime() - block.nTime) > (Params().consensus.nPowTargetSpacing / 2))
+    if (lastBlockHeight == height && block.nTime == ConnectedChains.GetNextBlockTime(chainActive.LastTip()))
     {
         block = lastBlock;
         return true;
@@ -4940,6 +4941,30 @@ void CConnectedChains::QueueNewBlockHeader(CBlockHeader &bh)
 void CConnectedChains::CheckImports()
 {
     sem_submitthread.post();
+}
+
+uint32_t CConnectedChains::SetNextBlockTime(uint32_t NextBlockTime)
+{
+    LOCK(cs_mergemining);
+    nextBlockTime = NextBlockTime;
+    return NextBlockTime;
+}
+
+uint32_t CConnectedChains::GetNextBlockTime(const CBlockIndex *pindexPrev)
+{
+    LOCK(cs_mergemining);
+    uint32_t nextTimeCandidate = std::max(pindexPrev->GetMedianTimePast()+1, GetAdjustedTime());
+
+    // if sync time is 45 seconds behind or more, use calculated time
+    if (nextBlockTime < (nextTimeCandidate - 45))
+    {
+        nextBlockTime = nextTimeCandidate;
+        return nextTimeCandidate;
+    }
+    else
+    {
+        return nextBlockTime;
+    }
 }
 
 // get the latest block header and submit one block at a time, returning after there are no more
@@ -5240,6 +5265,11 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
 
                 if (!chainDef.isNull() && CheckVerusPBaaSAvailable(chainInfo, chainDef))
                 {
+                    // if we're merge mining, try to use notary time
+                    if (!IsVerusActive())
+                    {
+                        SetNextBlockTime(uni_get_int64(find_value(chainInfo, "nextblocktime")));
+                    }
                     if (GetBoolArg("-miningdistributionpassthrough", false))
                     {
                         UniValue miningDistributionUni = find_value(RPCCallRoot("getminingdistribution", params), "result");
@@ -5428,11 +5458,8 @@ void CConnectedChains::CheckOracleUpgrades()
 
     if (upgradePBaaSIt != activeUpgradesByKey.end())
     {
-        if (upgradePBaaSIt->second.minDaemonVersion <= GetVerusVersion())
-        {
-            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV7, upgradePBaaSIt->second.upgradeBlockHeight);
-        }
-        else
+        CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV7, upgradePBaaSIt->second.upgradeBlockHeight);
+        if (upgradePBaaSIt->second.minDaemonVersion > GetVerusVersion())
         {
             stoppingIt = upgradePBaaSIt;
             gracefulStop = "PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0";
@@ -5440,10 +5467,10 @@ void CConnectedChains::CheckOracleUpgrades()
     }
     if (stoppingIt != activeUpgradesByKey.end())
     {
-        printf("%s: ERROR - THE NETWORK IS ACTIVATING \"%s\" - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, gracefulStop.c_str(), VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1);
+        printf("%s: ERROR - THE NETWORK IS ACTIVATING \"%s\" - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE %s CHAIN\n", __func__, gracefulStop.c_str(), VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1, ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID).c_str());
         if (KOMODO_STOPAT == 0 || KOMODO_STOPAT > (upgradePBaaSIt->second.upgradeBlockHeight - 1))
         {
-            LogPrintf("%s: ERROR - THE NETWORK IS ACTIVATING \"%s\" - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE VERUS PBAAS NETWORK\n", __func__, gracefulStop.c_str(), VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1);
+            LogPrintf("%s: ERROR - THE NETWORK IS ACTIVATING \"%s\" - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE %s CHAIN\n", __func__, gracefulStop.c_str(), VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1, ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID).c_str());
             KOMODO_STOPAT = stoppingIt->second.upgradeBlockHeight - 1;
         }
     }
@@ -9860,77 +9887,89 @@ void CConnectedChains::SubmissionThread()
 
             uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
 
-            // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
-            if (IsNotaryAvailable(true) &&
-                height > ConnectedChains.ThisChain().GetMinBlocksToStartNotarization() &&
-                lastImportTime < (GetAdjustedTime() - 30))
+            bool isNotaryAvailable = IsNotaryAvailable(true);
+
+            uint32_t lastNextTime = ConnectedChains.nextBlockTime;
+            uint32_t newNextTime = SetNextBlockTime(GetNextBlockTime(chainActive.LastTip()));
+            if (IsVerusActive() &&
+                lastNextTime != newNextTime)
             {
-                // check for exports on this chain that we should send to the notary and do so
-                // exports to another native system should be exported to that system and to the currency
-                // of this system on that system
-                lastImportTime = GetAdjustedTime();
+                ConnectedChains.PruneOldChains(newNextTime);
+            }
 
-                std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>> exports;
-                CPBaaSNotarization lastConfirmed;
-                CUTXORef lastConfirmedUTXO;
-                exports = GetPendingExports(ConnectedChains.ThisChain(),
-                                            ConnectedChains.FirstNotaryChain().chainDefinition,
-                                            lastConfirmed,
-                                            lastConfirmedUTXO);
-                if (exports.size())
+            // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
+            if (isNotaryAvailable)
+            {
+                if (height > ConnectedChains.ThisChain().GetMinBlocksToStartNotarization() &&
+                    lastImportTime < (GetAdjustedTime() - 30))
                 {
-                    bool success = true;
-                    UniValue exportParamObj(UniValue::VOBJ);
+                    // check for exports on this chain that we should send to the notary and do so
+                    // exports to another native system should be exported to that system and to the currency
+                    // of this system on that system
+                    lastImportTime = GetAdjustedTime();
 
-                    exportParamObj.pushKV("sourcesystemid", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)));
-                    exportParamObj.pushKV("notarizationtxid", lastConfirmedUTXO.hash.GetHex());
-                    exportParamObj.pushKV("notarizationtxoutnum", (int)lastConfirmedUTXO.n);
-
-                    UniValue exportArr(UniValue::VARR);
-                    for (auto &oneExport : exports)
+                    std::vector<std::pair<std::pair<CInputDescriptor, CPartialTransactionProof>, std::vector<CReserveTransfer>>> exports;
+                    CPBaaSNotarization lastConfirmed;
+                    CUTXORef lastConfirmedUTXO;
+                    exports = GetPendingExports(ConnectedChains.ThisChain(),
+                                                ConnectedChains.FirstNotaryChain().chainDefinition,
+                                                lastConfirmed,
+                                                lastConfirmedUTXO);
+                    if (exports.size())
                     {
-                        if (!oneExport.first.second.IsValid())
-                        {
-                            success = false;
-                            break;
-                        }
-                        UniValue oneExportUni(UniValue::VOBJ);
-                        oneExportUni.pushKV("txid", oneExport.first.first.txIn.prevout.hash.GetHex());
-                        oneExportUni.pushKV("txoutnum", (int)oneExport.first.first.txIn.prevout.n);
-                        oneExportUni.pushKV("partialtransactionproof", oneExport.first.second.ToUniValue());
-                        UniValue rtArr(UniValue::VARR);
+                        bool success = true;
+                        UniValue exportParamObj(UniValue::VOBJ);
 
-                        if (LogAcceptCategory("crosschainexports") && IsVerusActive())
+                        exportParamObj.pushKV("sourcesystemid", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)));
+                        exportParamObj.pushKV("notarizationtxid", lastConfirmedUTXO.hash.GetHex());
+                        exportParamObj.pushKV("notarizationtxoutnum", (int)lastConfirmedUTXO.n);
+
+                        UniValue exportArr(UniValue::VARR);
+                        for (auto &oneExport : exports)
                         {
-                            CDataStream ds = CDataStream(SER_GETHASH, PROTOCOL_VERSION);
+                            if (!oneExport.first.second.IsValid())
+                            {
+                                success = false;
+                                break;
+                            }
+                            UniValue oneExportUni(UniValue::VOBJ);
+                            oneExportUni.pushKV("txid", oneExport.first.first.txIn.prevout.hash.GetHex());
+                            oneExportUni.pushKV("txoutnum", (int)oneExport.first.first.txIn.prevout.n);
+                            oneExportUni.pushKV("partialtransactionproof", oneExport.first.second.ToUniValue());
+                            UniValue rtArr(UniValue::VARR);
+
+                            if (LogAcceptCategory("crosschainexports") && IsVerusActive())
+                            {
+                                CDataStream ds = CDataStream(SER_GETHASH, PROTOCOL_VERSION);
+                                for (auto &oneTransfer : oneExport.second)
+                                {
+                                    ds << oneTransfer;
+                                }
+                                std::vector<unsigned char> streamVec(ds.begin(), ds.end());
+                                printf("%s: transfers as hex: %s\n", __func__, HexBytes(&(streamVec[0]), streamVec.size()).c_str());
+                                LogPrint("bridge", "%s: transfers as hex: %s\n", __func__, HexBytes(&(streamVec[0]), streamVec.size()).c_str());
+                            }
+
                             for (auto &oneTransfer : oneExport.second)
                             {
-                                ds << oneTransfer;
+                                rtArr.push_back(oneTransfer.ToUniValue());
                             }
-                            std::vector<unsigned char> streamVec(ds.begin(), ds.end());
-                            printf("%s: transfers as hex: %s\n", __func__, HexBytes(&(streamVec[0]), streamVec.size()).c_str());
-                            LogPrint("bridge", "%s: transfers as hex: %s\n", __func__, HexBytes(&(streamVec[0]), streamVec.size()).c_str());
+                            oneExportUni.pushKV("transfers", rtArr);
+                            exportArr.push_back(oneExportUni);
                         }
 
-                        for (auto &oneTransfer : oneExport.second)
+                        exportParamObj.pushKV("exports", exportArr);
+
+                        UniValue params(UniValue::VARR);
+                        params.push_back(exportParamObj);
+                        UniValue result = NullUniValue;
+                        try
                         {
-                            rtArr.push_back(oneTransfer.ToUniValue());
+                            result = find_value(RPCCallRoot("submitimports", params), "result");
+                        } catch (exception e)
+                        {
+                            LogPrintf("%s: Error submitting imports to notary chain %s\n", uni_get_str(params[0]).c_str());
                         }
-                        oneExportUni.pushKV("transfers", rtArr);
-                        exportArr.push_back(oneExportUni);
-                    }
-
-                    exportParamObj.pushKV("exports", exportArr);
-
-                    UniValue params(UniValue::VARR);
-                    params.push_back(exportParamObj);
-                    UniValue result = NullUniValue;
-                    try
-                    {
-                        result = find_value(RPCCallRoot("submitimports", params), "result");
-                    } catch (exception e)
-                    {
-                        LogPrintf("%s: Error submitting imports to notary chain %s\n", uni_get_str(params[0]).c_str());
                     }
                 }
             }
@@ -9961,6 +10000,10 @@ void CConnectedChains::SubmissionThread()
             if (!submit && !FirstNotaryChain().IsValid())
             {
                 sem_submitthread.wait();
+            }
+            else if (isNotaryAvailable)
+            {
+                MilliSleep(1000);
             }
             else
             {

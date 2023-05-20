@@ -111,9 +111,9 @@ public:
 
 void UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev)
 {
-    pblock->nTime = std::max(pindexPrev->GetMedianTimePast()+1, GetAdjustedTime());
+    pblock->nTime = ConnectedChains.GetNextBlockTime(pindexPrev);
 
-    // Updating time can change work required on testnet:
+    // Updating time can change work required on testnet as well as the block MMR
     if (consensusParams.nPowAllowMinDifficultyBlocksAfterHeight != boost::none) {
         pblock->nBits = GetNextWorkRequired(pindexPrev, pblock, consensusParams);
     }
@@ -156,9 +156,15 @@ int32_t verus_staked(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &nBits
 int32_t komodo_notaryvin(CMutableTransaction &txNew,uint8_t *notarypub33);
 UniValue getminingdistribution(const UniValue& params, bool fHelp);
 
+// for PoW: don't update MMR if the merkle root, prev MMR && time haven't changed
+LRUCache<std::tuple<uint256, uint256, uint32_t>, uint256> powBlockMMRLRU(200);
+// for PoS: don't update MMR if the merkle root, prev MMR && entropy hash component haven't changed
+LRUCache<std::tuple<uint256, uint256, uint256>, uint256> posBlockMMRLRU(200);
 void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &nExtraNonce, bool buildMerkle, uint32_t *pSaveBits)
 {
-    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(pindexPrev->GetHeight() + 1) >= CActivationHeight::ACTIVATE_PBAAS;
+    uint32_t nHeight = pindexPrev->GetHeight() + 1;
+    bool isPBaaS = CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_PBAAS;
+    bool isPoS = pblock->IsVerusPOSBlock();
     bool posSourceInfo = (isPBaaS && (!PBAAS_TESTMODE || pblock->nTime >= PBAAS_TESTFORK2_TIME));
 
     // Update nExtraNonce
@@ -174,8 +180,6 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
     {
         *pSaveBits = pblock->nBits;
     }
-
-    int32_t nHeight = pindexPrev->GetHeight() + 1;
 
     int solutionVersion = CConstVerusSolutionVector::activationHeight.ActiveVersion(nHeight);
 
@@ -239,10 +243,62 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
         {
             uint32_t mmrSize = posSourceInfo ? pindexPrev->GetHeight() + 1 : pindexPrev->GetHeight();
             pblock->hashMerkleRoot = pblock->BuildMerkleTree();
-            pblock->SetPrevMMRRoot(ChainMerkleMountainView(chainActive.GetMMR(), mmrSize).GetRoot());
-            BlockMMRange mmRange(pblock->BuildBlockMMRTree(entropyHash));
-            BlockMMView mmView(mmRange);
-            pblock->SetBlockMMRRoot(mmView.GetRoot());
+            uint256 prevMMRRoot = ChainMerkleMountainView(chainActive.GetMMR(), mmrSize).GetRoot();
+            pblock->SetPrevMMRRoot(prevMMRRoot);
+
+            bool updateBlockRoots = true;
+            {
+                LOCK(ConnectedChains.cs_mergemining);
+                uint256 cachedBlockMMRRoot;
+                if ((isPoS &&
+                     posBlockMMRLRU.Get({pblock->hashMerkleRoot, prevMMRRoot, entropyHash}, cachedBlockMMRRoot) &&
+                     cachedBlockMMRRoot == pblock->GetBlockMMRRoot()) ||
+                    (!isPoS &&
+                     powBlockMMRLRU.Get({pblock->hashMerkleRoot, prevMMRRoot, pblock->nTime}, cachedBlockMMRRoot) &&
+                     cachedBlockMMRRoot == pblock->GetBlockMMRRoot()))
+                {
+                    updateBlockRoots = false;
+                }
+            }
+
+            if (updateBlockRoots)
+            {
+                if (isPoS)
+                {
+                    LOCK(cs_main);
+                    CTransaction tx;
+                    uint256 txBlockHash;
+                    CBlockIndex *pIndexSource;
+                    CBlock sourceBlock;
+                    if (myGetTransaction(pblock->vtx.back().vin[0].prevout.hash, tx, txBlockHash, false) &&
+                        mapBlockIndex.count(txBlockHash) &&
+                        ReadBlockFromDisk(sourceBlock, mapBlockIndex[txBlockHash], Params().GetConsensus()))
+                    {
+                        ChainMerkleMountainView mmv = chainActive.GetMMV();
+                        mmv.resize(nHeight);                                 // we want it pointing right before us, nHeight is our new height
+
+                        std::vector<unsigned char> extraSolutionData = CreatePoSBlockProof(mmv, *pblock, tx, pblock->vtx.back().vin[0].prevout.n, mapBlockIndex[txBlockHash]->GetHeight(), nHeight);
+                        CVerusSolutionVector(pblock->nSolution).ResizeExtraData(extraSolutionData.size());
+                        pblock->SetExtraData(extraSolutionData.data(), extraSolutionData.size());
+                    }
+                }
+
+                BlockMMRange mmRange(pblock->BuildBlockMMRTree(entropyHash));
+                BlockMMView mmView(mmRange);
+                uint256 blockMMRRoot = mmView.GetRoot();
+                pblock->SetBlockMMRRoot(blockMMRRoot);
+                {
+                    LOCK(ConnectedChains.cs_mergemining);
+                    if (isPoS)
+                    {
+                        posBlockMMRLRU.Put({pblock->hashMerkleRoot, pblock->GetPrevMMRRoot(), entropyHash}, blockMMRRoot);
+                    }
+                    else
+                    {
+                        powBlockMMRLRU.Get({pblock->hashMerkleRoot, pblock->GetPrevMMRRoot(), pblock->nTime}, blockMMRRoot);
+                    }
+                }
+            }
         }
         pblock->AddUpdatePBaaSHeader();
     }
@@ -257,7 +313,6 @@ void IncrementExtraNonce(CBlock* pblock, CBlockIndex* pindexPrev, unsigned int &
         {
             pblock->hashMerkleRoot = pblock->BuildMerkleTree();
         }
-
         UpdateTime(pblock, Params().GetConsensus(), pindexPrev);
     }
 }
@@ -1896,7 +1951,7 @@ uint256 RandomizedNonce()
     return ArithToUint256(nonce);
 }
 
-CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vector<CTxOut> &minerOutputs, bool isStake)
+CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vector<CTxOut> &minerOutputs, bool isStake, uint256 useNonce)
 {
     // instead of one scriptPubKeyIn, we take a vector of them along with relative weight. each is assigned a percentage of the block subsidy and
     // mining reward based on its weight relative to the total
@@ -2152,37 +2207,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         uint32_t autoTxSize = 0;                // extra transaction overhead that we will add while creating the block
         int nBlockSigOps = 100;
 
-        // VerusPoP staking transaction data
-        CMutableTransaction txStaked;           // if this is a stake operation, the staking transaction that goes at the end
-        uint32_t nStakeTxSize = 0;              // serialized size of the stake transaction
-
-        // if this is not for mining, first determine if we have a right to make a block
-        if (isStake)
-        {
-            uint64_t txfees, utxovalue;
-            uint32_t txtime;
-            uint256 utxotxid;
-            int32_t i, siglen, numsigs, utxovout;
-            std::vector<unsigned char> utxosig;
-
-            txStaked = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
-
-            uint32_t nBitsPOS;
-            arith_uint256 posHash;
-
-            siglen = verus_staked(pblock, txStaked, nBitsPOS, posHash, utxosig, firstDestination);
-            blocktime = GetAdjustedTime();
-
-            if (siglen <= 0)
-            {
-                return NULL;
-            }
-
-            pblock->nTime = blocktime;
-            nStakeTxSize = GetSerializeSize(txStaked, SER_NETWORK, PROTOCOL_VERSION);
-            nBlockSize += nStakeTxSize;
-        }
-
         {
             LOCK(mempool.cs);
             std::vector<CTransaction> txesToRemove;
@@ -2290,52 +2314,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         CMutableTransaction coinbaseTx = CreateNewContextualCMutableTransaction(consensusParams, nHeight);
         coinbaseTx.vin.push_back(CTxIn(uint256(), (uint32_t)-1, CScript() << nHeight << OP_0));
 
-        // we will update amounts and fees later, but convert the guarded output now for validity checking and size estimate
-        if (isStake)
-        {
-            // if there is a specific destination, use it
-            CTransaction stakeTx(txStaked);
-            CStakeParams p;
-            if (ValidateStakeTransaction(stakeTx, p, false))
-            {
-                if (p.Version() < p.VERSION_EXTENDED_STAKE && !p.pk.IsValid())
-                {
-                    LogPrintf("CreateNewBlock: invalid public key\n");
-                    fprintf(stderr,"CreateNewBlock: invalid public key\n");
-                    return NULL;
-                }
-                CTxDestination guardedOutputDest = (p.Version() < p.VERSION_EXTENDED_STAKE) ? p.pk : p.delegate;
-                coinbaseTx.vout.push_back(CTxOut(1, CScript()));
-                if (!MakeGuardedOutput(1, guardedOutputDest, stakeTx, coinbaseTx.vout.back()))
-                {
-                    LogPrintf("CreateNewBlock: failed to make GuardedOutput on staking coinbase\n");
-                    fprintf(stderr,"CreateNewBlock: failed to make GuardedOutput on staking coinbase\n");
-                    return NULL;
-                }
-                COptCCParams optP;
-                if (!coinbaseTx.vout.back().scriptPubKey.IsPayToCryptoCondition(optP) || !optP.IsValid())
-                {
-                    MakeGuardedOutput(1, guardedOutputDest, stakeTx, coinbaseTx.vout.back());
-                    LogPrintf("%s: created invalid staking coinbase\n", __func__);
-                    fprintf(stderr,"%s: created invalid staking coinbase\n", __func__);
-                    return NULL;
-                }
-            }
-            else
-            {
-                LogPrintf("CreateNewBlock: invalid stake transaction\n");
-                fprintf(stderr,"CreateNewBlock: invalid stake transaction\n");
-                return NULL;
-            }
-        }
-        else
-        {
-            // default outputs for mining and before stake guard or fee calculation
-            // store the relative weight in the amount output to convert later to a relative portion
-            // of the reward + fees
-            coinbaseTx.vout.insert(coinbaseTx.vout.end(), minerOutputs.begin(), minerOutputs.end());
-        }
-
         CAmount totalEmission = blockSubsidy;
         CCurrencyValueMap additionalFees;
 
@@ -2362,7 +2340,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         }
 
         // at block 1 for a PBaaS chain, we validate launch conditions
-        if (!isVerusActive && nHeight == 1)
+        bool isPBaaSBlock1 = !isVerusActive && nHeight == 1;
+        if (isPBaaSBlock1)
         {
             CPBaaSNotarization launchNotarization;
             if (!ConnectedChains.readyToStart &&
@@ -2371,6 +2350,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             {
                 return NULL;
             }
+            coinbaseTx.vout.insert(coinbaseTx.vout.end(), minerOutputs.begin(), minerOutputs.end());
             if (!MakeBlockOneCoinbaseOutputs(coinbaseTx.vout, launchNotarization, additionalFees))
             {
                 // can't mine block 1 if we are not connected to a notary
@@ -2381,7 +2361,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             currencyState = launchNotarization.currencyState;
         }
 
-        // if we are a notary, notarize
+        // if we can, notarize
         if (nHeight > ConnectedChains.ThisChain().GetMinBlocksToSignNotarize() && !VERUS_NOTARYID.IsNull())
         {
             CValidationState state;
@@ -2601,6 +2581,98 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                     }
                 }
             }
+        }
+
+        // we will update amounts and fees later, but convert the guarded output now for validity checking and size estimate
+        // VerusPoP staking transaction data
+        CMutableTransaction txStaked;           // if this is a stake operation, the staking transaction that goes at the end
+        uint32_t nStakeTxSize = 0;              // serialized size of the stake transaction
+
+        // if this is not for mining, first determine if we have a right to make a block
+        if (isStake)
+        {
+            uint64_t txfees, utxovalue;
+            uint32_t txtime;
+            uint256 utxotxid;
+            int32_t i, siglen, numsigs, utxovout;
+            std::vector<unsigned char> utxosig;
+
+            txStaked = CreateNewContextualCMutableTransaction(Params().GetConsensus(), nHeight);
+
+            uint32_t nBitsPOS;
+            arith_uint256 posHash;
+
+            siglen = verus_staked(pblock, txStaked, nBitsPOS, posHash, utxosig, firstDestination);
+            blocktime = GetAdjustedTime();
+
+            bool stakeValid = siglen > 0;
+
+            if (stakeValid)
+            {
+                pblock->nTime = blocktime;
+                nStakeTxSize = GetSerializeSize(txStaked, SER_NETWORK, PROTOCOL_VERSION);
+                nBlockSize += nStakeTxSize;
+            }
+
+            // if there is a specific destination, use it
+            CTransaction stakeTx(txStaked);
+            CStakeParams p;
+
+            if (stakeValid && ValidateStakeTransaction(stakeTx, p, false))
+            {
+                if (p.Version() < p.VERSION_EXTENDED_STAKE && !p.pk.IsValid())
+                {
+                    LogPrintf("CreateNewBlock: invalid public key\n");
+                    fprintf(stderr,"CreateNewBlock: invalid public key\n");
+                }
+                else
+                {
+                    CTxDestination guardedOutputDest = (p.Version() < p.VERSION_EXTENDED_STAKE) ? p.pk : p.delegate;
+                    coinbaseTx.vout.push_back(CTxOut(1, CScript()));
+                    if (!MakeGuardedOutput(1, guardedOutputDest, stakeTx, coinbaseTx.vout.back()))
+                    {
+                        LogPrintf("CreateNewBlock: failed to make GuardedOutput on staking coinbase\n");
+                        fprintf(stderr,"CreateNewBlock: failed to make GuardedOutput on staking coinbase\n");
+                    }
+                    else
+                    {
+                        COptCCParams optP;
+                        if (!coinbaseTx.vout.back().scriptPubKey.IsPayToCryptoCondition(optP) || !optP.IsValid())
+                        {
+                            if (LogAcceptCategory("notarization"))
+                            {
+                                MakeGuardedOutput(1, guardedOutputDest, stakeTx, coinbaseTx.vout.back());
+                            }
+                            LogPrintf("%s: created invalid staking coinbase\n", __func__);
+                            fprintf(stderr,"%s: created invalid staking coinbase\n", __func__);
+                        }
+                        else
+                        {
+                            stakeValid = true;
+                        }
+                    }
+                }
+            }
+            if (!stakeValid)
+            {
+                if (notaryConnected)
+                {
+                    CPBaaSNotarization lastImportNotarization;
+                    CUTXORef lastImportNotarizationUTXO;
+                    CValidationState state;
+
+                    CPBaaSNotarization::SubmitFinalizedNotarizations(ConnectedChains.FirstNotaryChain(), state);
+                    ProcessNewImports(ConnectedChains.FirstNotaryChain().chainDefinition.GetID(), lastImportNotarization, lastImportNotarizationUTXO, nHeight);
+                }
+                return NULL;
+            }
+        }
+        else if (!isPBaaSBlock1)
+        {
+            // default outputs for mining and before stake guard or fee calculation
+            // store the relative weight in the amount output to convert later to a relative portion
+            // of the reward + fees
+            coinbaseTx.vout.insert(coinbaseTx.vout.end(), minerOutputs.begin(), minerOutputs.end());
         }
 
         if (notaryConnected)
@@ -3490,9 +3562,16 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         pblocktemplate->vTxSigOps[0] = GetLegacySigOpCount(pblock->vtx[0]);
 
         // if not Verus stake, setup nonce, otherwise, leave it alone
-        if (!isStake || ASSETCHAINS_LWMAPOS == 0)
+        if (!isStake)
         {
-            pblock->nNonce = RandomizedNonce();
+            if (useNonce.IsNull())
+            {
+                pblock->nNonce = RandomizedNonce();
+            }
+            else
+            {
+                pblock->nNonce = useNonce;
+            }
         }
 
         // Fill in header
@@ -3512,10 +3591,10 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
     return pblocktemplate.release();
 }
 
-CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _scriptPubKeyIn, bool isStake)
+CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const CScript& _scriptPubKeyIn, bool isStake, uint256 useNonce)
 {
     std::vector<CTxOut> minerOutputs = _scriptPubKeyIn.size() ? std::vector<CTxOut>({CTxOut(1, _scriptPubKeyIn)}) : std::vector<CTxOut>();
-    return CreateNewBlock(chainparams, minerOutputs, isStake);
+    return CreateNewBlock(chainparams, minerOutputs, isStake, useNonce);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -3553,7 +3632,7 @@ void GetScriptForMinerAddress(boost::shared_ptr<CReserveScript> &script)
 // Internal miner
 //
 
-CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, bool isStake)
+CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, bool isStake, uint256 useNonce)
 {
     CPubKey pubkey;
     CScript scriptPubKey;
@@ -3581,7 +3660,7 @@ CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, 
         }
         if (minerOutputs.size())
         {
-            return CreateNewBlock(Params(), minerOutputs, false);
+            return CreateNewBlock(Params(), minerOutputs, false, useNonce);
         }
         LogPrintf("%s: invalid -miningdistrbution parameter\n", __func__);
     }
@@ -3605,7 +3684,7 @@ CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, 
             scriptPubKey = GetScriptForDestination(pubkey);
         }
     }
-    return CreateNewBlock(Params(), scriptPubKey, isStake);
+    return CreateNewBlock(Params(), scriptPubKey, isStake, useNonce);
 }
 
 void komodo_broadcast(const CBlock *pblock,int32_t limit)
@@ -4023,6 +4102,7 @@ void static BitcoinMiner_noeq()
     static int32_t lastMiningHeight = 0;
 
     miningTimer.start();
+    bool mergeMining = false;
 
     try {
         printf("Mining %s with %s\n", ASSETCHAINS_SYMBOL, ASSETCHAINS_ALGORITHMS[ASSETCHAINS_ALGO]);
@@ -4118,7 +4198,6 @@ void static BitcoinMiner_noeq()
             }
 
             uint32_t savebits;
-            bool mergeMining = false;
             savebits = pblock->nBits;
 
             uint32_t solutionVersion = CConstVerusSolutionVector::Version(pblock->nSolution);
@@ -4149,38 +4228,63 @@ void static BitcoinMiner_noeq()
                 }
             }
 
-            // cache the last block or copy of last
-            ConnectedChains.SetLastBlock(*pblock, Mining_height);
-
             // randomize the nonce for each thread
             pblock->nNonce = RandomizedNonce();
 
             // set our easiest target, if V3+, no need to rebuild the merkle tree
             IncrementExtraNonce(pblock, pindexPrev, nExtraNonce, true, &savebits);
 
+            // cache the last block or copy of last
+            ConnectedChains.SetLastBlock(*pblock, Mining_height);
+
             // update PBaaS header
             if (verusSolutionPBaaS)
             {
                 if (!IsVerusActive() && ConnectedChains.IsVerusPBaaSAvailable())
                 {
-
                     UniValue params(UniValue::VARR);
                     UniValue error(UniValue::VARR);
-                    params.push_back(EncodeHexBlk(*pblock));
-                    params.push_back(ASSETCHAINS_SYMBOL);
-                    params.push_back(ASSETCHAINS_RPCHOST);
-                    params.push_back(ASSETCHAINS_RPCPORT);
-                    params.push_back(ASSETCHAINS_RPCCREDENTIALS);
-                    try
+
+                    bool tryAgain = true;
+                    int retryCount = 0;
+                    while (tryAgain && retryCount++ < 2)
                     {
-                        ConnectedChains.lastSubmissionFailed = false;
-                        params = RPCCallRoot("addmergedblock", params);
-                        params = find_value(params, "result");
-                        error = find_value(params, "error");
-                    } catch (std::exception e)
+                        tryAgain = false;
+                        params.push_back(EncodeHexBlk(*pblock));
+                        params.push_back(ASSETCHAINS_SYMBOL);
+                        params.push_back(ASSETCHAINS_RPCHOST);
+                        params.push_back(ASSETCHAINS_RPCPORT);
+                        params.push_back(ASSETCHAINS_RPCCREDENTIALS);
+                        try
+                        {
+                            ConnectedChains.lastSubmissionFailed = false;
+                            params = RPCCallRoot("addmergedblock", params);
+                            params = find_value(params, "result");
+                            error = find_value(params, "error");
+                        } catch (std::exception e)
+                        {
+                            LogPrintf("Failed to connect to %s chain\n", ConnectedChains.FirstNotaryChain().chainDefinition.name.c_str());
+                            params = UniValue(e.what());
+                        }
+                        uint32_t nextBlockTime;
+                        if (error.isNull() &&
+                            params.isObject() &&
+                            (nextBlockTime = (uint32_t)uni_get_int64(find_value(params, "nextblocktime"))) != 0)
+                        {
+                            ConnectedChains.SetNextBlockTime(nextBlockTime);
+                            IncrementExtraNonce(pblock, pindexPrev, nExtraNonce, true, &savebits);
+                            ConnectedChains.SetLastBlock(*pblock, Mining_height);
+                            params = UniValue(UniValue::VARR);
+                            error = UniValue(UniValue::VARR);
+                            tryAgain = true;
+                        }
+                    }
+
+                    if (mergeMining && !(params.isNull() && error.isNull()))
                     {
-                        LogPrintf("Failed to connect to %s chain\n", ConnectedChains.FirstNotaryChain().chainDefinition.name.c_str());
-                        params = UniValue(e.what());
+                        printf("Lost connection to merge mining chain %s, restart mining to merge or solo mine\n", ConnectedChains.GetFriendlyCurrencyName(ConnectedChains.FirstNotaryChain().GetID()).c_str());
+                        LogPrintf("Lost connection to merge mining chain %s, restart mining to merge or solo mine\n", ConnectedChains.GetFriendlyCurrencyName(ConnectedChains.FirstNotaryChain().GetID()).c_str());
+                        break;
                     }
                     if (mergeMining = (params.isNull() && error.isNull()))
                     {
@@ -4276,7 +4380,7 @@ void static BitcoinMiner_noeq()
                         // update every few minutes, regardless
                         int64_t elapsed = GetTime() - nStart;
 
-                        if ((mempool.GetTransactionsUpdated() != nTransactionsUpdatedLast && elapsed > 60) || elapsed > 60 || ConnectedChains.lastSubmissionFailed)
+                        if ((mempool.GetTransactionsUpdated() != nTransactionsUpdatedLast && elapsed > 30) || elapsed > 30 || ConnectedChains.lastSubmissionFailed)
                         {
                             break;
                         }
