@@ -53,7 +53,7 @@ extern std::string VERUS_CHAINNAME;
 
 //uint32_t PBAAS_TESTFORK2_TIME = 1684268161;
 uint32_t PBAAS_TESTFORK2_TIME = 1684281600;
-uint32_t PBAAS_ENFORCE_CORRECT_EVIDENCE_TIME = 1682435895;
+uint32_t PBAAS_ENFORCE_CORRECT_EVIDENCE_TIME = 1684359650;
 
 //
 // Exception thrown on connection error.  This error is used to determine

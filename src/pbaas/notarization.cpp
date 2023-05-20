@@ -3728,11 +3728,27 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                     {
                         if (stakeHeadersPassed)
                         {
-                            LogPrint("notarization", "STAKE PASSED\nblockheight: %u\n", posEntropyHeadersAsTxes[0].GetBlockHeight());
+                            if (LogAcceptCategory("notarization") || LogAcceptCategory("stakeheaders"))
+                            {
+                                LogPrintf("STAKE TX PASSED\nblockheight: %u\n", posEntropyHeadersAsTxes[0].GetBlockHeight());
+                            }
                         }
                         else
                         {
-                            LogPrint("notarization", "STAKE TX DID NOT PASS\nblockheight: %u\n", posEntropyHeadersAsTxes[0].GetBlockHeight());
+                            if (LogAcceptCategory("notarization") || LogAcceptCategory("stakeheaders"))
+                            {
+                                LogPrintf("STAKE TX DID NOT PASS\nblockheight: %u\n", posEntropyHeadersAsTxes[0].GetBlockHeight());
+                                LogPrintf("Stake TX validation failure for tx, actual merkle root: %s\nexpected merkle root: %s\nproof header: %s\nstakeParams.srcHeight: %u\nstakeParams.blkHeight: %u\nstakeParams.prevHash: %s\nposSourceProof.GetBlockHeight(): %u\nprovingBlockHeight: %u\nposBlockHeaderAndProof.blockHeader.hashPrevBlock: %s\n",
+                                        txMerkleRoot.GetHex().c_str(),
+                                        posBlockHeaderAndProof.blockHeader.hashMerkleRoot.GetHex().c_str(),
+                                        outTx.GetHash().GetHex().c_str(),
+                                        stakeParams.srcHeight,
+                                        stakeParams.blkHeight,
+                                        stakeParams.prevHash.GetHex().c_str(),
+                                        posSourceProof.GetBlockHeight(),
+                                        provingBlockHeight,
+                                        posBlockHeaderAndProof.blockHeader.hashPrevBlock.GetHex().c_str());
+                            }
                             if (!PBAAS_TESTMODE || posBlockHeaderAndProof.blockHeader.nTime > PBAAS_ENFORCE_CORRECT_EVIDENCE_TIME)
                             {
                                 proofState = EXPECT_NOTHING;
