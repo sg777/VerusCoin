@@ -1437,6 +1437,7 @@ bool IsReserveExchangeInput(const CScript &scriptSig);
 bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool IsReserveDepositInput(const CScript &scriptSig);
 
+uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid=false, CCurrencyDefinition *pCurrencyDef=NULL);
 bool ValidateCurrencyDefinition(struct CCcontract_info *cp, Eval* eval, const CTransaction &tx, uint32_t nIn, bool fulfilled);
 bool PrecheckCurrencyDefinition(const CTransaction &spendingTx, int32_t outNum, CValidationState &state, uint32_t height);
 bool IsCurrencyDefinitionInput(const CScript &scriptSig);

@@ -813,8 +813,6 @@ CPBaaSNotarization::CPBaaSNotarization(const CTransaction &tx, int32_t *pOutIdx)
     }
 }
 
-uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid=false, CCurrencyDefinition *pCurrencyDef=NULL);
-
 CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
 {
     nVersion = (uint32_t)uni_get_int64(find_value(obj, "version"));
@@ -3703,18 +3701,19 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                                          stakeParams.prevHash == posBlockHeaderAndProof.blockHeader.hashPrevBlock &&
                                          stakeParams.srcHeight == posSourceProof.GetBlockHeight() &&
                                          stakeParams.blkHeight == provingBlockHeight &&
-                                         outTx.vin.size() &&
-                                         (!posEntropyHeadersAsTxes.size() ||
-                                          CPOSNonce(posBlockHeaderAndProof.blockHeader.nNonce).CheckPOSEntropy(
-                                                        CChain::CombineForPastHash(entropyHashes[0], entropyHashes[1]),
-                                                        outTx.vin[0].prevout.hash,
-                                                        outTx.vin[0].prevout.n,
-                                                        posBlockHeaderAndProof.blockHeader.nVersion) ||
-                                          CPOSNonce(posBlockHeaderAndProof.blockHeader.nNonce).CheckPOSEntropy(
-                                                        CChain::CombineForPastHash(entropyHashes[1], entropyHashes[2]),
-                                                        outTx.vin[0].prevout.hash,
-                                                        outTx.vin[0].prevout.n,
-                                                        posBlockHeaderAndProof.blockHeader.nVersion));
+                                         outTx.vin.size();
+
+                    bool stakeHeadersPassed = (!posEntropyHeadersAsTxes.size() ||
+                                               CPOSNonce(posBlockHeaderAndProof.blockHeader.nNonce).CheckPOSEntropy(
+                                                                CChain::CombineForPastHash(entropyHashes[0], entropyHashes[1]),
+                                                                outTx.vin[0].prevout.hash,
+                                                                outTx.vin[0].prevout.n,
+                                                                posBlockHeaderAndProof.blockHeader.nVersion) ||
+                                               CPOSNonce(posBlockHeaderAndProof.blockHeader.nNonce).CheckPOSEntropy(
+                                                                CChain::CombineForPastHash(entropyHashes[1], entropyHashes[2]),
+                                                                outTx.vin[0].prevout.hash,
+                                                                outTx.vin[0].prevout.n,
+                                                                posBlockHeaderAndProof.blockHeader.nVersion));
 
                     if (proofPreHeader.hashPrevMMRRoot != posSourceProof.CheckPartialTransaction(lastSourceTx, &isPartial))
                     {
@@ -3727,6 +3726,19 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
 
                     if (stakeTxPassed)
                     {
+                        if (stakeHeadersPassed)
+                        {
+                            LogPrint("notarization", "STAKE PASSED\nblockheight: %u\n", posEntropyHeadersAsTxes[0].GetBlockHeight());
+                        }
+                        else
+                        {
+                            LogPrint("notarization", "STAKE TX DID NOT PASS\nblockheight: %u\n", posEntropyHeadersAsTxes[0].GetBlockHeight());
+                            if (!PBAAS_TESTMODE || posBlockHeaderAndProof.blockHeader.nTime > PBAAS_ENFORCE_CORRECT_EVIDENCE_TIME)
+                            {
+                                proofState = EXPECT_NOTHING;
+                                break;
+                            }
+                        }
                         CDataStream ds(SER_DISK, PROTOCOL_VERSION);
                         headerProofsSize += GetSerializeSize(ds, *(CChainObject<CPartialTransactionProof> *)proofComponent);
 
@@ -3777,7 +3789,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                     }
                     else
                     {
-                        LogPrintf("Stake TX validation failure for tx, actual merkle root: %s\nexpected merkle root: %s\nproof header: %s\nstakeParams.srcHeight: %u\nstakeParams.blkHeight: %u\nstakeParams.prevHash: %s\nposSourceProof.GetBlockHeight(): %u\nprovingBlockHeight: %u\nposBlockHeaderAndProof.blockHeader.hashPrevBlock: %s\n",
+                        LogPrint("notarization", "Stake TX validation failure for tx, actual merkle root: %s\nexpected merkle root: %s\nproof header: %s\nstakeParams.srcHeight: %u\nstakeParams.blkHeight: %u\nstakeParams.prevHash: %s\nposSourceProof.GetBlockHeight(): %u\nprovingBlockHeight: %u\nposBlockHeaderAndProof.blockHeader.hashPrevBlock: %s\n",
                                   txMerkleRoot.GetHex().c_str(),
                                   posBlockHeaderAndProof.blockHeader.hashMerkleRoot.GetHex().c_str(),
                                   outTx.GetHash().GetHex().c_str(),
