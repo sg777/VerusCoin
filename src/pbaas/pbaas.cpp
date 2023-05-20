@@ -5458,11 +5458,8 @@ void CConnectedChains::CheckOracleUpgrades()
 
     if (upgradePBaaSIt != activeUpgradesByKey.end())
     {
-        if (upgradePBaaSIt->second.minDaemonVersion <= GetVerusVersion())
-        {
-            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV7, upgradePBaaSIt->second.upgradeBlockHeight);
-        }
-        else
+        CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV7, upgradePBaaSIt->second.upgradeBlockHeight);
+        if (upgradePBaaSIt->second.minDaemonVersion > GetVerusVersion())
         {
             stoppingIt = upgradePBaaSIt;
             gracefulStop = "PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0";
