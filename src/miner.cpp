@@ -3642,7 +3642,7 @@ CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, 
 
     UniValue miningDistributionUni;
     if (!GetArg("-miningdistribution", "").empty() &&
-        (miningDistributionUni = getminingdistribution(UniValue(UniValue::VARR), false)).isArray() &&
+        (miningDistributionUni = getminingdistribution(UniValue(UniValue::VARR), false)).isObject() &&
         miningDistributionUni.size())
     {
         std::vector<CTxOut> minerOutputs;
@@ -3662,7 +3662,7 @@ CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, 
         {
             return CreateNewBlock(Params(), minerOutputs, false, useNonce);
         }
-        LogPrintf("%s: invalid -miningdistrbution parameter\n", __func__);
+        LogPrintf("%s: invalid -miningdistribution parameter\n", __func__);
     }
     if ( nHeight == 1 && ASSETCHAINS_OVERRIDE_PUBKEY33[0] != 0 )
     {
