@@ -5280,7 +5280,7 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
                     {
                         params = UniValue(UniValue::VARR);
                         UniValue miningDistributionUni = find_value(RPCCallRoot("getminingdistribution", params), "result");
-                        if (miningDistributionUni.isArray() && miningDistributionUni.size())
+                        if (miningDistributionUni.isObject() && miningDistributionUni.size())
                         {
                             mapArgs["-miningdistribution"] = miningDistributionUni.write();
                         }
