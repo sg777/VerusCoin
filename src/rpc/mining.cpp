@@ -947,9 +947,9 @@ UniValue getblocktemplate(const UniValue& params, bool fHelp)
     }
     CBlock* pblock = &pblocktemplate->block; // pointer for convenience
 
-    uint32_t savebits;
-    savebits = pblock->nBits;
-    
+    static uint32_t gbtcachedsavebits;
+    uint32_t savebits = pblock->nBits;
+
     int64_t Mining_height = (int64_t)(pindexPrev->GetHeight()+1);
 
     // pickup/remove any new/deleted headers
@@ -957,6 +957,7 @@ UniValue getblocktemplate(const UniValue& params, bool fHelp)
     {
         unsigned int nExtraNonce = 0;
         IncrementExtraNonce(pblock, pindexPrev, nExtraNonce, true, &savebits);
+        gbtcachedsavebits = savebits;
     }
 
     // cache the last block or copy of last
@@ -1055,7 +1056,7 @@ UniValue getblocktemplate(const UniValue& params, bool fHelp)
     result.push_back(Pair("sizelimit", (int64_t)MAX_BLOCK_SIZE));
     result.push_back(Pair("curtime", pblock->GetBlockTime()));
     result.push_back(Pair("bits", strprintf("%08x", pblock->nBits)));
-    result.push_back(Pair("mergeminebits", strprintf("%08x", savebits)));
+    result.push_back(Pair("mergeminebits", strprintf("%08x", gbtcachedsavebits)));
     result.push_back(Pair("nonce", pblock->nNonce.GetHex().c_str()));
     result.push_back(Pair("height", (int64_t)(pindexPrev->GetHeight()+1)));
 
