@@ -5278,6 +5278,7 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
                     }
                     if (GetBoolArg("-miningdistributionpassthrough", false))
                     {
+                        params = UniValue(UniValue::VARR);
                         UniValue miningDistributionUni = find_value(RPCCallRoot("getminingdistribution", params), "result");
                         if (miningDistributionUni.isArray() && miningDistributionUni.size())
                         {
