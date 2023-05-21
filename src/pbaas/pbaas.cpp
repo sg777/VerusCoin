@@ -4934,6 +4934,7 @@ void CConnectedChains::QueueNewBlockHeader(CBlockHeader &bh)
         LOCK(cs_mergemining);
 
         qualifiedHeaders[UintToArith256(bh.GetHash())] = bh;
+
     }
     sem_submitthread.post();
 }
@@ -5075,6 +5076,9 @@ vector<pair<string, UniValue>> CConnectedChains::SubmitQualifiedBlocks()
             }
         }
     } while (submissionFound);
+    
+    SetNextBlockTime(0);
+    
     return results;
 }
 
