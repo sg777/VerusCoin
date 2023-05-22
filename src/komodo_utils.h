@@ -1745,8 +1745,6 @@ void komodo_args(char *argv0)
     if ( GetBoolArg("-gen", false) != 0 )
     {
         KOMODO_MININGTHREADS = GetArg("-genproclimit",-1);
-        if (KOMODO_MININGTHREADS == 0)
-            mapArgs["-gen"] = "0";
     }
     else KOMODO_MININGTHREADS = 0;
 
