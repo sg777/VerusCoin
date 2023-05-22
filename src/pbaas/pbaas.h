@@ -955,7 +955,11 @@ public:
     int32_t earnedNotarizationIndex;            // index of earned notarization in block
 
     bool dirty;
+    bool dirtygbt;
     bool lastSubmissionFailed;                  // if we submit a failed block, make another
+    
+    uint32_t saveBits;
+    
     std::map<arith_uint256, CBlockHeader> qualifiedHeaders;
 
     CCriticalSection cs_mergemining;
@@ -969,6 +973,8 @@ public:
         earnedNotarizationHeight(0),
         earnedNotarizationIndex(0),
         dirty(false),
+        dirtygbt(false),
+        saveBits(0),
         lastSubmissionFailed(false),
         sem_submitthread(0),
         nextBlockTime(0) {}

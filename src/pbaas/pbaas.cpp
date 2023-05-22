@@ -4860,6 +4860,7 @@ bool CConnectedChains::AddMergedBlock(CPBaaSMergeMinedChainData &blkData)
         mergeMinedChains.insert(make_pair(cID, blkData));
         mergeMinedTargets.insert(make_pair(target, &(mergeMinedChains[cID])));
         dirty = true;
+        dirtygbt = true;
         nextBlockTimeUpdateRequired = true;
     }
 
@@ -5153,8 +5154,10 @@ uint32_t CConnectedChains::CombineBlocks(CBlockHeader &bh)
         }
         dirty = false;
     }
+    
+    saveBits = target.GetCompact();
 
-    return target.GetCompact();
+    return saveBits;
 }
 
 bool CConnectedChains::IsVerusPBaaSAvailable()
