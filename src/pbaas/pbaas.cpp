@@ -10007,9 +10007,11 @@ void CConnectedChains::SubmissionThread()
 
                 // update block time on submit or PBaaS chain advances forward
                 if (submit || nextBlockTimeUpdateRequired) {
-                    //printf("SubmissionThread: update next block time\n");
-                    nextBlockTimeUpdateRequired = false;
+                    //SetNextBlockTime(0);
                     newNextTime = SetNextBlockTime(GetNextBlockTime(chainActive.LastTip()));
+
+                    //printf("blocktimeupdate: %d last time: %d new time: %d\n", nextBlockTimeUpdateRequired, lastNextTime, newNextTime);
+                    nextBlockTimeUpdateRequired = false;
                 }
 
                 // prune outdated blocks
