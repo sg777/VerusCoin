@@ -4837,6 +4837,9 @@ void CConnectedChains::PruneOldChains(uint32_t pruneBefore)
     }
 }
 
+
+static bool nextBlockTimeUpdateRequired = false;
+
 // adds or updates merge mined blocks
 // returns false if failed to add
 bool CConnectedChains::AddMergedBlock(CPBaaSMergeMinedChainData &blkData)
@@ -4857,6 +4860,7 @@ bool CConnectedChains::AddMergedBlock(CPBaaSMergeMinedChainData &blkData)
         mergeMinedChains.insert(make_pair(cID, blkData));
         mergeMinedTargets.insert(make_pair(target, &(mergeMinedChains[cID])));
         dirty = true;
+        nextBlockTimeUpdateRequired = true;
     }
 
     // Notify external listeners about a change via broadcasting new, possibly duplicate tip
@@ -4868,6 +4872,10 @@ bool CConnectedChains::AddMergedBlock(CPBaaSMergeMinedChainData &blkData)
             uiInterface.NotifyBlockTip(pIndexNewTip->GetBlockHash());
         }
     }
+
+    // let submission thread spin
+    sem_submitthread.post();
+
     return true;
 }
 
@@ -5076,9 +5084,7 @@ vector<pair<string, UniValue>> CConnectedChains::SubmitQualifiedBlocks()
             }
         }
     } while (submissionFound);
-    
-    SetNextBlockTime(0);
-    
+
     return results;
 }
 
@@ -9897,16 +9903,7 @@ void CConnectedChains::SubmissionThread()
             boost::this_thread::interruption_point();
 
             uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
-
             bool isNotaryAvailable = IsNotaryAvailable(true);
-
-            uint32_t lastNextTime = ConnectedChains.nextBlockTime;
-            uint32_t newNextTime = SetNextBlockTime(GetNextBlockTime(chainActive.LastTip()));
-            if (IsVerusActive() &&
-                lastNextTime != newNextTime)
-            {
-                ConnectedChains.PruneOldChains(newNextTime);
-            }
 
             // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
             if (isNotaryAvailable)
@@ -9988,9 +9985,6 @@ void CConnectedChains::SubmissionThread()
             bool submit = false;
             if (IsVerusActive())
             {
-                // blocks get discarded after no refresh for 90 seconds by default, probably should be more often
-                //printf("SubmissionThread: pruning\n");
-                PruneOldChains(GetAdjustedTime() - 90);
                 {
                     LOCK(cs_mergemining);
                     if (mergeMinedChains.size() == 0 && qualifiedHeaders.size() != 0)
@@ -10001,13 +9995,31 @@ void CConnectedChains::SubmissionThread()
 
                     //printf("SubmissionThread: qualifiedHeaders.size(): %lu, mergeMinedChains.size(): %lu\n", qualifiedHeaders.size(), mergeMinedChains.size());
                 }
+
+                uint32_t lastNextTime = ConnectedChains.nextBlockTime;
+                uint32_t newNextTime = lastNextTime;
+
                 if (submit)
                 {
                     //printf("SubmissionThread: calling submit qualified blocks\n");
                     SubmitQualifiedBlocks();
                 }
-            }
 
+                // update block time on submit or PBaaS chain advances forward
+                if (submit || nextBlockTimeUpdateRequired) {
+                    printf("SubmissionThread: update next block time\n");
+                    nextBlockTimeUpdateRequired = false;
+                    newNextTime = SetNextBlockTime(GetNextBlockTime(chainActive.LastTip()));
+                }
+
+                // prune outdated blocks
+                if (lastNextTime != newNextTime) {
+                    //printf("SubmissionThread: pruning\n");
+                    PruneOldChains(newNextTime);
+                } else {
+                    PruneOldChains(GetAdjustedTime() - 90);
+                }
+            }
             if (!submit && !FirstNotaryChain().IsValid())
             {
                 sem_submitthread.wait();
@@ -10020,6 +10032,8 @@ void CConnectedChains::SubmissionThread()
             {
                 MilliSleep(500);
             }
+            
+            //printf("SubmissionThread: running ...\n");            
             boost::this_thread::interruption_point();
         }
     }
