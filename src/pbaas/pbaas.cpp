@@ -4838,8 +4838,6 @@ void CConnectedChains::PruneOldChains(uint32_t pruneBefore)
 }
 
 
-static bool nextBlockTimeUpdateRequired = false;
-
 // adds or updates merge mined blocks
 // returns false if failed to add
 bool CConnectedChains::AddMergedBlock(CPBaaSMergeMinedChainData &blkData)
@@ -5154,7 +5152,7 @@ uint32_t CConnectedChains::CombineBlocks(CBlockHeader &bh)
         }
         dirty = false;
     }
-    
+
     saveBits = target.GetCompact();
 
     return saveBits;
@@ -10037,8 +10035,8 @@ void CConnectedChains::SubmissionThread()
             {
                 MilliSleep(500);
             }
-            
-            //printf("SubmissionThread: running ...\n");            
+
+            //printf("SubmissionThread: running ...\n");
             boost::this_thread::interruption_point();
         }
     }
