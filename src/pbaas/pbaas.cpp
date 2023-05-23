@@ -10016,12 +10016,7 @@ void CConnectedChains::SubmissionThread()
                 }
 
                 // prune outdated blocks
-                if (lastNextTime != newNextTime) {
-                    //printf("SubmissionThread: pruning\n");
-                    PruneOldChains(newNextTime);
-                } else {
-                    PruneOldChains(GetAdjustedTime() - 90);
-                }
+                PruneOldChains(GetAdjustedTime() - 90);
             }
             if (!submit && !FirstNotaryChain().IsValid())
             {
