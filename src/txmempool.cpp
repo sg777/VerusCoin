@@ -458,7 +458,8 @@ void CTxMemPool::removeForReorg(const CCoinsViewCache *pcoins, unsigned int nMem
 
                 if (!coins || (coins->IsCoinBase() &&
                                (((signed long)nMemPoolHeight) - coins->nHeight < COINBASE_MATURITY) ||
-                                    ((signed long)nMemPoolHeight < komodo_block_unlocktime(coins->nHeight) &&
+                                    (_IsVerusMainnetActive() &&
+                                        (signed long)nMemPoolHeight < komodo_block_unlocktime(coins->nHeight) &&
                                         coins->IsAvailable(0) && coins->vout[0].nValue >= ASSETCHAINS_TIMELOCKGTE))) {
                     transactionsToRemove.push_back(tx);
                     break;

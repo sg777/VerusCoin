@@ -149,7 +149,6 @@ int32_t komodo_chosennotary(int32_t *notaryidp,int32_t height,uint8_t *pubkey33,
 int32_t komodo_pax_opreturn(int32_t height,uint8_t *opret,int32_t maxsize);
 int32_t komodo_baseid(char *origbase);
 int32_t komodo_validate_interest(const CTransaction &tx,int32_t txheight,uint32_t nTime,int32_t dispflag);
-int64_t komodo_block_unlocktime(uint32_t nHeight);
 uint64_t komodo_commission(const CBlock *block);
 int32_t komodo_staked(CMutableTransaction &txNew,uint32_t nBits,uint32_t *blocktimep,uint32_t *txtimep,uint256 *utxotxidp,int32_t *utxovoutp,uint64_t *utxovaluep,uint8_t *utxosig);
 int32_t verus_staked(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &nBits, arith_uint256 &hashResult, std::vector<unsigned char> &utxosig, CTxDestination &rewardDest);
@@ -3642,7 +3641,7 @@ CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, 
 
     UniValue miningDistributionUni;
     if (!GetArg("-miningdistribution", "").empty() &&
-        (miningDistributionUni = getminingdistribution(UniValue(UniValue::VARR), false)).isArray() &&
+        (miningDistributionUni = getminingdistribution(UniValue(UniValue::VARR), false)).isObject() &&
         miningDistributionUni.size())
     {
         std::vector<CTxOut> minerOutputs;
@@ -3662,7 +3661,7 @@ CBlockTemplate* CreateNewBlockWithKey(CReserveKey& reservekey, int32_t nHeight, 
         {
             return CreateNewBlock(Params(), minerOutputs, false, useNonce);
         }
-        LogPrintf("%s: invalid -miningdistrbution parameter\n", __func__);
+        LogPrintf("%s: invalid -miningdistribution parameter\n", __func__);
     }
     if ( nHeight == 1 && ASSETCHAINS_OVERRIDE_PUBKEY33[0] != 0 )
     {
@@ -3989,7 +3988,6 @@ void static VerusStaker(CWallet *pwallet)
                 continue;
             }
 
-            int32_t unlockTime = komodo_block_unlocktime(Mining_height);
             int64_t subsidy = (int64_t)(pblock->vtx[0].vout[0].nValue);
 
             uint256 hashTarget = ArithToUint256(arith_uint256().SetCompact(pblock->nBits));
@@ -4008,7 +4006,7 @@ void static VerusStaker(CWallet *pwallet)
                 post.SetCompact(pblock->GetVerusPOSTarget());
 
                 CTransaction &sTx = pblock->vtx[pblock->vtx.size()-1];
-                printf("POS hash: %s  \ntarget:   %s\n",
+                printf("POS hash: %s  \ntarget:   %s\n\n",
                     CTransaction::_GetVerusPOSHash(&(pblock->nNonce),
                                                      sTx.vin[0].prevout.hash,
                                                      sTx.vin[0].prevout.n,
@@ -4016,10 +4014,6 @@ void static VerusStaker(CWallet *pwallet)
                                                      chainActive.GetVerusEntropyHash(newHeight),
                                                      sTx.vout[0].nValue).GetHex().c_str(),
                                                      ArithToUint256(post).GetHex().c_str());
-                if (unlockTime > newHeight && subsidy >= ASSETCHAINS_TIMELOCKGTE)
-                    printf("- timelocked until block %i\n", unlockTime);
-                else
-                    printf("\n");
             }
             else
             {
@@ -4472,8 +4466,6 @@ void static BitcoinMiner_noeq()
 
                             SetThreadPriority(THREAD_PRIORITY_NORMAL);
 
-                            int32_t unlockTime = komodo_block_unlocktime(Mining_height);
-
 #ifdef VERUSHASHDEBUG
                             std::string validateStr = hashResult.GetHex();
                             std::string hashStr = pblock->GetHash().GetHex();
@@ -4497,10 +4489,7 @@ void static BitcoinMiner_noeq()
 #else
                             printf("  hash: %s\ntarget: %s", hashStr.c_str(), ArithToUint256(ourTarget).GetHex().c_str());
 #endif
-                            if (unlockTime > Mining_height && subsidy >= ASSETCHAINS_TIMELOCKGTE)
-                                printf(" - timelocked until block %i\n", unlockTime);
-                            else
-                                printf("\n");
+                            printf("\n");
 #ifdef ENABLE_WALLET
                             ProcessBlockFound(pblock, *pwallet, reservekey);
 #else

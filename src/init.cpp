@@ -521,7 +521,7 @@ std::string HelpMessage(HelpMessageMode mode)
     strUsage += HelpMessageOpt("-defaultzaddr=<sapling-address>", _("sapling address to receive fraud proof rewards and if used with \"-privatechange=1\", z-change address for the sendcurrency command"));
     strUsage += HelpMessageOpt("-cheatcatcher=<sapling-address>", _("same as \"-defaultzaddr\""));
     strUsage += HelpMessageOpt("-privatechange", _("directs all change from sendcurency or z_sendmany APIs to the defaultzaddr set, if it is a valid sapling address"));
-    strUsage += HelpMessageOpt("-miningdistribution={\"addressorid\":<n>,...}", _("destination addresses and relative amounts used as ratios to divide total rewards + fees"));
+    strUsage += HelpMessageOpt("-miningdistribution='{\"addressorid\":<n>,...}'", _("destination addresses and relative amounts used as ratios to divide total rewards + fees"));
     strUsage += HelpMessageOpt("-miningdistributionpassthrough", _("uses the same miningdistribution values and addresses/IDs as Verus when merge mining"));
     strUsage += HelpMessageOpt("-chain=pbaaschainname", _("loads either mainnet or resolves and loads a PBaaS chain if not vrsc or vrsctest"));
     strUsage += HelpMessageOpt("-blocktime=<n>", strprintf(_("Set target block time (in seconds) for difficulty adjustment (default: %d)"), CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET));
