@@ -4837,6 +4837,7 @@ void CConnectedChains::PruneOldChains(uint32_t pruneBefore)
     }
 }
 
+
 // adds or updates merge mined blocks
 // returns false if failed to add
 bool CConnectedChains::AddMergedBlock(CPBaaSMergeMinedChainData &blkData)
@@ -4857,6 +4858,8 @@ bool CConnectedChains::AddMergedBlock(CPBaaSMergeMinedChainData &blkData)
         mergeMinedChains.insert(make_pair(cID, blkData));
         mergeMinedTargets.insert(make_pair(target, &(mergeMinedChains[cID])));
         dirty = true;
+        dirtygbt = true;
+        nextBlockTimeUpdateRequired = true;
     }
 
     // Notify external listeners about a change via broadcasting new, possibly duplicate tip
@@ -4868,6 +4871,10 @@ bool CConnectedChains::AddMergedBlock(CPBaaSMergeMinedChainData &blkData)
             uiInterface.NotifyBlockTip(pIndexNewTip->GetBlockHash());
         }
     }
+
+    // let submission thread spin
+    sem_submitthread.post();
+
     return true;
 }
 
@@ -4934,6 +4941,7 @@ void CConnectedChains::QueueNewBlockHeader(CBlockHeader &bh)
         LOCK(cs_mergemining);
 
         qualifiedHeaders[UintToArith256(bh.GetHash())] = bh;
+
     }
     sem_submitthread.post();
 }
@@ -5075,6 +5083,7 @@ vector<pair<string, UniValue>> CConnectedChains::SubmitQualifiedBlocks()
             }
         }
     } while (submissionFound);
+
     return results;
 }
 
@@ -5144,7 +5153,9 @@ uint32_t CConnectedChains::CombineBlocks(CBlockHeader &bh)
         dirty = false;
     }
 
-    return target.GetCompact();
+    saveBits = target.GetCompact();
+
+    return saveBits;
 }
 
 bool CConnectedChains::IsVerusPBaaSAvailable()
@@ -5278,8 +5289,9 @@ bool CConnectedChains::CheckVerusPBaaSAvailable()
                     }
                     if (GetBoolArg("-miningdistributionpassthrough", false))
                     {
+                        params = UniValue(UniValue::VARR);
                         UniValue miningDistributionUni = find_value(RPCCallRoot("getminingdistribution", params), "result");
-                        if (miningDistributionUni.isArray() && miningDistributionUni.size())
+                        if (miningDistributionUni.isObject() && miningDistributionUni.size())
                         {
                             mapArgs["-miningdistribution"] = miningDistributionUni.write();
                         }
@@ -9892,16 +9904,7 @@ void CConnectedChains::SubmissionThread()
             boost::this_thread::interruption_point();
 
             uint32_t height = chainActive.LastTip() ? chainActive.LastTip()->GetHeight() : 0;
-
             bool isNotaryAvailable = IsNotaryAvailable(true);
-
-            uint32_t lastNextTime = ConnectedChains.nextBlockTime;
-            uint32_t newNextTime = SetNextBlockTime(GetNextBlockTime(chainActive.LastTip()));
-            if (IsVerusActive() &&
-                lastNextTime != newNextTime)
-            {
-                ConnectedChains.PruneOldChains(newNextTime);
-            }
 
             // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
             if (isNotaryAvailable)
@@ -9983,9 +9986,6 @@ void CConnectedChains::SubmissionThread()
             bool submit = false;
             if (IsVerusActive())
             {
-                // blocks get discarded after no refresh for 90 seconds by default, probably should be more often
-                //printf("SubmissionThread: pruning\n");
-                PruneOldChains(GetAdjustedTime() - 90);
                 {
                     LOCK(cs_mergemining);
                     if (mergeMinedChains.size() == 0 && qualifiedHeaders.size() != 0)
@@ -9996,13 +9996,28 @@ void CConnectedChains::SubmissionThread()
 
                     //printf("SubmissionThread: qualifiedHeaders.size(): %lu, mergeMinedChains.size(): %lu\n", qualifiedHeaders.size(), mergeMinedChains.size());
                 }
+
+                uint32_t lastNextTime = ConnectedChains.nextBlockTime;
+                uint32_t newNextTime = lastNextTime;
+
                 if (submit)
                 {
                     //printf("SubmissionThread: calling submit qualified blocks\n");
                     SubmitQualifiedBlocks();
                 }
-            }
 
+                // update block time on submit or PBaaS chain advances forward
+                if (submit || nextBlockTimeUpdateRequired) {
+                    //SetNextBlockTime(0);
+                    newNextTime = SetNextBlockTime(GetNextBlockTime(chainActive.LastTip()));
+
+                    //printf("blocktimeupdate: %d last time: %d new time: %d\n", nextBlockTimeUpdateRequired, lastNextTime, newNextTime);
+                    nextBlockTimeUpdateRequired = false;
+                }
+
+                // prune outdated blocks
+                PruneOldChains(GetAdjustedTime() - 90);
+            }
             if (!submit && !FirstNotaryChain().IsValid())
             {
                 sem_submitthread.wait();
@@ -10015,6 +10030,8 @@ void CConnectedChains::SubmissionThread()
             {
                 MilliSleep(500);
             }
+
+            //printf("SubmissionThread: running ...\n");
             boost::this_thread::interruption_point();
         }
     }

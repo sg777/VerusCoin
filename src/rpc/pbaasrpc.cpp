@@ -9495,6 +9495,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Too late to convert " + sourceCurrencyDef.name + " to " + convertToStr + ", as pre-launch is over.");
                         }
 
+                        if (refundValid)
+                        {
+                            dest.SetAuxDest(DestinationToTransferDestination(refundDestination), dest.AuxDestCount());
+                            std::vector<CTxDestination>({pk.GetID(), refundDestination});
+                        }
+
                         CReserveTransfer rt = CReserveTransfer(flags,
                                                                sourceCurrencyID,
                                                                sourceAmount,
@@ -9504,8 +9510,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                dest);
                         rt.nFees = rt.CalculateTransferFee();
 
-                        std::vector<CTxDestination> dests = refundValid ? std::vector<CTxDestination>({pk.GetID(), refundDestination}) :
-                                                                          std::vector<CTxDestination>({pk.GetID()});
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
 
                         oneOutput.nAmount = sourceCurrencyID == thisChainID ? sourceAmount + rt.CalculateTransferFee() : rt.CalculateTransferFee();
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
@@ -9740,6 +9745,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert fees " + EncodeDestination(CIdentityID(feeCurrencyID)) + " to " + destSystemDef.name + ". 3");
                         }
 
+                        if (refundValid)
+                        {
+                            dest.SetAuxDest(DestinationToTransferDestination(refundDestination), dest.AuxDestCount());
+                            std::vector<CTxDestination>({pk.GetID(), refundDestination});
+                        }
+
                         // converting from reserve to a fractional of that reserve
                         auto fees = requiredFees + CCurrencyState::ReserveToNativeRaw(CReserveTransfer::CalculateTransferFee(dest, flags), reversePriceInFeeCur);
                         CReserveTransfer rt = CReserveTransfer(flags,
@@ -9752,8 +9763,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                secondCurrencyID,
                                                                destSystemID);
 
-                        std::vector<CTxDestination> dests = refundValid ? std::vector<CTxDestination>({pk.GetID(), refundDestination}) :
-                                                                          std::vector<CTxDestination>({pk.GetID()});
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
 
                         oneOutput.nAmount = rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID];
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
@@ -9812,6 +9822,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             requiredFees = CCurrencyState::ReserveToNativeRaw(adjustedFees, reversePriceInFeeCur);
                         }
 
+                        if (refundValid)
+                        {
+                            dest.SetAuxDest(DestinationToTransferDestination(refundDestination), dest.AuxDestCount());
+                            std::vector<CTxDestination>({pk.GetID(), refundDestination});
+                        }
+
                         flags |= CReserveTransfer::CROSS_SYSTEM;
                         auto fees = requiredFees + CCurrencyState::ReserveToNativeRaw(CReserveTransfer::CalculateTransferFee(dest, flags), reversePriceInFeeCur);
                         CReserveTransfer rt = CReserveTransfer(flags,
@@ -9824,8 +9840,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                secondCurrencyID,
                                                                destSystemID);
 
-                        std::vector<CTxDestination> dests = refundValid ? std::vector<CTxDestination>({pk.GetID(), refundDestination}) :
-                                                                          std::vector<CTxDestination>({pk.GetID()});
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
 
                         oneOutput.nAmount = rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID];
                         oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));
@@ -9858,10 +9873,15 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
                         CPubKey pk = CPubKey(ParseHex(CC.CChexstr));
 
-                        std::vector<CTxDestination> dests = refundValid ? std::vector<CTxDestination>({pk.GetID(), refundDestination}) :
-                                                                          std::vector<CTxDestination>({pk.GetID()});
-
                         auto dest = DestinationToTransferDestination(destination);
+                        if (refundValid)
+                        {
+                            dest.SetAuxDest(DestinationToTransferDestination(refundDestination), dest.AuxDestCount());
+                            std::vector<CTxDestination>({pk.GetID(), refundDestination});
+                        }
+
+                        std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
+
                         auto fees = CReserveTransfer::CalculateTransferFee(dest, flags);
                         CReserveTransfer rt = CReserveTransfer(flags,
                                                                sourceCurrencyID,
@@ -9986,6 +10006,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                             // converting from reserve to a fractional of that reserve
                             auto dest = DestinationToTransferDestination(destination);
+                            if (refundValid)
+                            {
+                                dest.SetAuxDest(DestinationToTransferDestination(refundDestination), dest.AuxDestCount());
+                                std::vector<CTxDestination>({pk.GetID(), refundDestination});
+                            }
+
                             CAmount fees = CCurrencyState::ReserveToNativeRaw(CReserveTransfer::CalculateTransferFee(dest, flags), reversePriceInFeeCur);
 
                             CReserveTransfer rt = CReserveTransfer(flags,
@@ -9997,8 +10023,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                                                    dest,
                                                                    secondCurrencyID);
 
-                            std::vector<CTxDestination> dests = refundValid ? std::vector<CTxDestination>({pk.GetID(), refundDestination}) :
-                                                                            std::vector<CTxDestination>({pk.GetID()});
+                            std::vector<CTxDestination> dests = std::vector<CTxDestination>({pk.GetID()});
 
                             oneOutput.nAmount = rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID];
                             oneOutput.scriptPubKey = MakeMofNCCScript(CConditionObj<CReserveTransfer>(EVAL_RESERVE_TRANSFER, dests, 1, &rt));

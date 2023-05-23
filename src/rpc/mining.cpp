@@ -947,9 +947,20 @@ UniValue getblocktemplate(const UniValue& params, bool fHelp)
     }
     CBlock* pblock = &pblocktemplate->block; // pointer for convenience
 
-    // REMOVED FOR PBaaS - Update nTime
-    // UpdateTime(pblock, Params().GetConsensus(), pindexPrev);
-    // pblock->nNonce = uint256();
+    int64_t Mining_height = (int64_t)(pindexPrev->GetHeight()+1);
+
+    // pickup/remove any new/deleted headers
+    if (ConnectedChains.dirtygbt || (pblock->NumPBaaSHeaders() < ConnectedChains.mergeMinedChains.size() + 1))
+    {
+        ConnectedChains.dirtygbt = false;
+
+        uint32_t tmpsavebits; // unused
+        uint32_t tmpnonce = 0;
+        IncrementExtraNonce(pblock, pindexPrev, tmpnonce, true, &tmpsavebits);
+    }
+
+    // cache the last block or copy of last
+    ConnectedChains.SetLastBlock(*pblock, Mining_height);
 
     UniValue aCaps(UniValue::VARR); aCaps.push_back("proposal");
 
@@ -1044,7 +1055,7 @@ UniValue getblocktemplate(const UniValue& params, bool fHelp)
     result.push_back(Pair("sizelimit", (int64_t)MAX_BLOCK_SIZE));
     result.push_back(Pair("curtime", pblock->GetBlockTime()));
     result.push_back(Pair("bits", strprintf("%08x", pblock->nBits)));
-    result.push_back(Pair("mergeminebits", strprintf("%08x", ConnectedChains.CombineBlocks(*pblock))));
+    result.push_back(Pair("mergeminebits", strprintf("%08x", ConnectedChains.saveBits)));
     result.push_back(Pair("nonce", pblock->nNonce.GetHex().c_str()));
     result.push_back(Pair("height", (int64_t)(pindexPrev->GetHeight()+1)));
 
