@@ -3147,6 +3147,8 @@ extern void vcalc_sha256(char deprecated[(256 >> 3) * 2 + 1], uint8_t hash[256 >
 
 uint32_t CCurrencyDefinition::MagicNumber() const
 {
+    bool isVerusMainnet = (!PBAAS_TESTMODE && GetID() == VERUS_CHAINID);
+
     std::vector<unsigned char> extraBuffer;
     extraBuffer.reserve(384);
 
@@ -3183,7 +3185,7 @@ uint32_t CCurrencyDefinition::MagicNumber() const
 
             // now incorporate time locks, which was only supported on Verus mainnet and is no
             // longer available
-            if (_IsVerusMainnetActive())
+            if (isVerusMainnet)
             {
                 uint64_t timeLockGTE = 19200000000, timeUnlockFrom = 129600, timeUnlockTo = 1180800;
                 extraBuffer.resize(extraBuffer.size() + sizeof(timeLockGTE) + sizeof(timeUnlockFrom) + sizeof(timeUnlockTo));
@@ -3220,7 +3222,7 @@ uint32_t CCurrencyDefinition::MagicNumber() const
     }
 
     std::string currencyName(name);
-    if (currencyName == "VRSC")
+    if (isVerusMainnet)
     {
         currencyName = boost::to_upper_copy(currencyName);
     }
@@ -8999,7 +9001,7 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                     {
                         LogPrintf("%s: Cross-chain functions temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
                     }
-                    return;
+                    continue;
                 }
                 if (systemDef.IsGateway() && ConnectedChains.activeUpgradesByKey.count(ConnectedChains.DisableGatewayCrossChainKey()))
                 {
@@ -9007,7 +9009,7 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                     {
                         LogPrintf("%s: Cross-chain function for non-PBaaS gateways temporarily disabled for security alert by notification oracle %s\n", PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str());
                     }
-                    return;
+                    continue;
                 }
 
                 // when we get here, we have a consecutive number of transfer outputs to consume in txInputs
