@@ -1968,7 +1968,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         CTxDestination checkDest;
         if (LogAcceptCategory("mining"))
         {
-            printf("%s: Calculating miner distribution {\"address\": amount}:");
+            printf("%s: Calculating miner distribution {\"address\": amount}:", __func__);
         }
         for (auto &output : minerOutputs)
         {
