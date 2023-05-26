@@ -4810,7 +4810,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 (!isVerusActive &&
                  ((verusFeePoolVal = feePool.reserveValues.valueMap[VERUS_CHAINID]) < (verusCheckVal - verusFees) ||
                   verusFeePoolVal > verusCheckVal)) ||
-                intersectMap.IntersectingValues(feePool.reserveValues).valueMap.size() != feePool.reserveValues.valueMap.size())
+                (feePool.reserveValues.IntersectingValues(intersectMap)).CanonicalMap().valueMap.size() != (feePool.reserveValues).CanonicalMap().valueMap.size())
             {
                 printf("%s: rewardfees: %ld, verusfees: %ld, feePool: %s\nfeepoolcheck: %s\n",
                         __func__,
