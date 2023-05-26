@@ -3486,8 +3486,18 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         // now that we have the total reward, update the coinbase outputs
         if (isStake)
         {
-            // TODO: need to add reserve output to stake coinbase to prevent burning of VRSC
             coinbaseTx.vout[0].nValue = rewardTotal;
+            COptCCParams stakeP;
+            if (!IsVerusActive() &&
+                verusFees &&
+                (!PBAAS_TESTMODE || pblock->nTime >= PBAAS_TESTFORK3_TIME) &&
+                coinbaseTx.vout[0].scriptPubKey.IsPayToCryptoCondition(stakeP) &&
+                stakeP.IsValid())
+            {
+                std::vector<CTxDestination> outDests = stakeP.vKeys;
+                CTokenOutput to = CTokenOutput(VERUS_CHAINID, verusFees);
+                coinbaseTx.vout.insert(coinbaseTx.vout.end() - 1, CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, stakeP.vKeys, stakeP.m, &to))));
+            }
         }
         else
         {

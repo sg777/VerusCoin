@@ -4799,11 +4799,18 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             CFeePool feePool;
             CAmount feePoolVal;
             CAmount verusFeePoolVal;
+            CCurrencyValueMap intersectMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<int64_t>({1}));
+            if (!isVerusActive)
+            {
+                intersectMap.valueMap[VERUS_CHAINID] = 1;
+            }
             if (!(feePool = CFeePool(block.vtx[0])).IsValid() ||
                 (feePoolVal = feePool.reserveValues.valueMap[ASSETCHAINS_CHAINID]) < (feePoolCheckVal - rewardFees) ||
                 feePoolVal > feePoolCheckVal ||
-                (!isVerusActive && ((verusFeePoolVal = feePoolCheck.reserveValues.valueMap[VERUS_CHAINID]) < (verusCheckVal - verusFees) ||
-                verusFeePoolVal > verusCheckVal)))
+                (!isVerusActive &&
+                 ((verusFeePoolVal = feePool.reserveValues.valueMap[VERUS_CHAINID]) < (verusCheckVal - verusFees) ||
+                  verusFeePoolVal > verusCheckVal)) ||
+                intersectMap.IntersectingValues(feePool.reserveValues).valueMap.size() != feePool.reserveValues.valueMap.size())
             {
                 printf("%s: rewardfees: %ld, verusfees: %ld, feePool: %s\nfeepoolcheck: %s\n",
                         __func__,
