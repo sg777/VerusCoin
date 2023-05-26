@@ -43,6 +43,8 @@ extern uint160 ASSETCHAINS_CHAINID;
 
 extern uint32_t PBAAS_TESTFORK2_TIME;
 extern uint32_t PBAAS_ENFORCE_CORRECT_EVIDENCE_TIME;
+extern uint32_t PBAAS_TESTFORK3_TIME;
+extern uint32_t PBAAS_MAINDEFI3_HEIGHT;
 
 // reserve output is a special kind of token output that does not have to carry it's identifier, as it
 // is always assumed to be the reserve currency of the current chain.
