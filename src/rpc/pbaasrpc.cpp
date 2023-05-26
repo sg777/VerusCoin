@@ -8890,6 +8890,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             uint160 exportToCurrencyID;
 
             toFractional = isConversion &&
+                           convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID &&
                            convertToCurrencyDef.IsValid() &&
                            convertToCurrencyDef.IsFractional() &&
                            convertToCurrencyDef.GetCurrenciesMap().count(sourceCurrencyID);
@@ -8976,7 +8977,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     exportToCurrencyID.SetNull();
                 }
             }
-            else if (convertToCurrencyDef.IsValid() && convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID)
+            else if ((toFractional && convertToCurrencyDef.IsValid() && convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID) || (fromFractional && sourceCurrencyDef.systemID != ASSETCHAINS_CHAINID))
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot implicitly convert with a cross-chain send without explicitly specifying the \"exportto\" parameter");
             }
