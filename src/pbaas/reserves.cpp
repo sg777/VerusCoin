@@ -5090,6 +5090,20 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         CAmount primaryLiquidityFees = liquidityFees.valueMap[importCurrencyID];
         newCurrencyState.primaryCurrencyOut -= primaryLiquidityFees;
         liquidityFees.valueMap.erase(importCurrencyID);
+
+        // properly burn fees
+        bool isVerusMainnet = !PBAAS_TESTMODE && systemDest.GetID() == VERUS_CHAINID;
+        bool nonVerusMainnet = !isVerusMainnet && !PBAAS_TESTMODE;
+
+        if ((isVerusMainnet && height > PBAAS_MAINDEFI3_HEIGHT) ||
+            nonVerusMainnet ||
+            (chainActive.Height() >= (height - 1) &&
+             chainActive[height - 1]->nTime >= PBAAS_TESTFORK3_TIME) ||
+            (chainActive.Height() < (height - 1) &&
+             chainActive.LastTip()->nTime >= PBAAS_TESTFORK3_TIME))
+        {
+            burnedChangePrice += primaryLiquidityFees;
+        }
     }
 
     // burn both change price and weight

@@ -1966,9 +1966,25 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
     {
         int64_t shareCheck = 0;
         CTxDestination checkDest;
+        if (LogAcceptCategory("mining"))
+        {
+            printf("%s: Calculating miner distribution {\"address\": amount}:", __func__);
+        }
         for (auto &output : minerOutputs)
         {
             shareCheck += output.nValue;
+            if (LogAcceptCategory("mining"))
+            {
+                UniValue scriptUni(UniValue::VOBJ);
+                ScriptPubKeyToUniv(output.scriptPubKey, scriptUni, true, true);
+                printf("%s, \"shareratio\": %ld, \"total\": %ld\n", scriptUni.write(1,2).c_str(), output.nValue, shareCheck);
+                LogPrintf("%s, \"shareratio\": %ld, \"total\": %ld\n", scriptUni.write(1,2).c_str(), output.nValue, shareCheck);
+                if (shareCheck > INT_MAX)
+                {
+                    printf("OVERFLOW, value greater than %d\n", INT_MAX);
+                    LogPrintf("OVERFLOW, value greater than %d\n", INT_MAX);
+                }
+            }
             if (shareCheck < 0 ||
                 shareCheck > INT_MAX ||
                 !ExtractDestination(output.scriptPubKey, checkDest) ||
@@ -3470,8 +3486,18 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         // now that we have the total reward, update the coinbase outputs
         if (isStake)
         {
-            // TODO: need to add reserve output to stake coinbase to prevent burning of VRSC
             coinbaseTx.vout[0].nValue = rewardTotal;
+            COptCCParams stakeP;
+            if (!IsVerusActive() &&
+                verusFees &&
+                (!PBAAS_TESTMODE || pblock->nTime >= PBAAS_TESTFORK3_TIME) &&
+                coinbaseTx.vout[0].scriptPubKey.IsPayToCryptoCondition(stakeP) &&
+                stakeP.IsValid())
+            {
+                std::vector<CTxDestination> outDests = stakeP.vKeys;
+                CTokenOutput to = CTokenOutput(VERUS_CHAINID, verusFees);
+                coinbaseTx.vout.insert(coinbaseTx.vout.end() - 1, CTxOut(0, MakeMofNCCScript(CConditionObj<CTokenOutput>(EVAL_RESERVE_OUTPUT, stakeP.vKeys, stakeP.m, &to))));
+            }
         }
         else
         {
