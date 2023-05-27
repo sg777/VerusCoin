@@ -335,9 +335,6 @@ CIdentity::LookupIdentities(const CIdentityID &nameID,
     }
 
     // order from first that spends unknown to last that has no spender
-    std::set<COutPoint> spentTxOuts;
-    mempoolIdentities = mempool.FilterUnspent(mempoolIdentities, spentTxOuts);
-
     if (identityIndex.size() || mempoolIdentities.size())
     {
         std::vector<int> toRemove;
@@ -380,6 +377,10 @@ CIdentity::LookupIdentities(const CIdentityID &nameID,
         }
         for (int i = 0; i < mempoolIdentities.size(); i++)
         {
+            if (mempoolIdentities[i].first.spending)
+            {
+                continue;
+            }
             CTransaction identityTx;
             if (mempool.lookup(mempoolIdentities[i].first.txhash, identityTx))
             {

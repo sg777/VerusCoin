@@ -2055,7 +2055,6 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                                     if (extendedStake)
                                     {
                                         std::vector<CTxDestination> prevDests;
-                                        std::map<CTxDestination, CCurrencyValueMap> cbOutputs;
                                         txnouttype cbType;
                                         int numRequired;
                                         uint160 reserveDepositCurrencyID;
@@ -2092,11 +2091,25 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                                             {
                                                 if (isPBaaS)
                                                 {
-                                                    if (!(oneOut.nValue >= 0 &&
-                                                          p.evalCode == EVAL_STAKEGUARD))
+                                                    if ((IsVerusActive() && !(oneOut.nValue >= 0 && p.evalCode == EVAL_STAKEGUARD)) ||
+                                                        ((!PBAAS_TESTMODE ||
+                                                          pblock->nTime > PBAAS_TESTFORK3_TIME) &&
+                                                          !IsVerusActive() &&
+                                                          ((oneOut.nValue > 0 && p.evalCode != EVAL_STAKEGUARD) || (oneOut.nValue == 0 && p.evalCode != EVAL_RESERVE_OUTPUT))))
                                                     {
                                                         printf("ERROR: in staking block %s - invalid coinbase output 1\n", blkHash.ToString().c_str());
                                                         LogPrintf("ERROR: in staking block %s - invalid coinbase output 1\n", blkHash.ToString().c_str());
+                                                        return false;
+                                                    }
+                                                    CTokenOutput to;
+                                                    if (p.evalCode == EVAL_RESERVE_OUTPUT &&
+                                                        !(p.vData.size() &&
+                                                          (to = CTokenOutput(p.vData[0])).IsValid() &&
+                                                          to.reserveValues.valueMap.size() == 1 &&
+                                                          to.reserveValues.valueMap.count(VERUS_CHAINID)))
+                                                    {
+                                                        printf("ERROR: in staking block %s - invalid reserve coinbase output\n", blkHash.ToString().c_str());
+                                                        LogPrintf("ERROR: in staking block %s - invalid reserve coinbase output\n", blkHash.ToString().c_str());
                                                         return false;
                                                     }
                                                 }
@@ -2109,14 +2122,12 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                                                     return false;
                                                 }
 
-                                                CCurrencyValueMap outVal = oneOut.scriptPubKey.ReserveOutValue(p);
                                                 if (p.version >= p.VERSION_V3 &&
                                                     !oneOut.scriptPubKey.IsInstantSpendOrUnspendable() &&
                                                     (oneOut.scriptPubKey.IsSpendableOutputType()))
                                                 {
                                                     // we need to make sure we output only to delegate or back to the currency
-                                                    // TODO: enable currency contribution, now all goes to miner/staker
-                                                    // normalize destination to ID
+                                                    // normalize destination to destinationID
                                                     if (p.vKeys[0].which() == COptCCParams::ADDRTYPE_PK)
                                                     {
                                                         p.vKeys[0] = CKeyID(GetDestinationID(p.vKeys[0]));
@@ -2129,8 +2140,6 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                                                         LogPrintf("%s: staking block %s - invalid coinbase destinations\n", __func__, blkHash.ToString().c_str());
                                                         return false;
                                                     }
-                                                    outVal.valueMap[ASSETCHAINS_CHAINID] += oneOut.nValue;
-                                                    cbOutputs[p.vKeys[0]] += outVal;
                                                 }
                                                 else if (!oneOut.scriptPubKey.IsInstantSpendOrUnspendable() ||
                                                             oneOut.nValue ||
