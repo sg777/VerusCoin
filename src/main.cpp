@@ -3777,6 +3777,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
     bool isPBaaS = solutionVersion >= CActivationHeight::ACTIVATE_PBAAS;
     bool isVerusActive = IsVerusActive();
+    bool isPBaaSBlockOne = (nHeight == 1 && !isVerusActive);
     CAmount nFees = 0;
     int nInputs = 0;
 
@@ -4401,7 +4402,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     return false;
                 control.Add(vChecks);
             }
-            else if (nHeight == 1 && !isVerusActive)
+            else if (isPBaaSBlockOne)
             {
                 // at block one of a PBaaS chain, we have additional funds coming out of the coinbase for pre-allocation,
                 // reserve deposit into the PBaaS converter currency, launch fees, and potentially other reasons over time
@@ -4808,7 +4809,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 (feePoolVal = feePool.reserveValues.valueMap[ASSETCHAINS_CHAINID]) < (feePoolCheckVal - rewardFees) ||
                 feePoolVal > feePoolCheckVal ||
                 (!isVerusActive &&
-                 ((verusFeePoolVal = feePool.reserveValues.valueMap[VERUS_CHAINID]) < (verusCheckVal - verusFees) ||
+                 ((!isPBaaSBlockOne && (verusFeePoolVal = feePool.reserveValues.valueMap[VERUS_CHAINID]) < (verusCheckVal - verusFees)) ||
                   verusFeePoolVal > verusCheckVal)) ||
                 (feePool.reserveValues.IntersectingValues(intersectMap)).CanonicalMap().valueMap.size() != (feePool.reserveValues).CanonicalMap().valueMap.size())
             {
