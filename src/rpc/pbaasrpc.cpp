@@ -8890,7 +8890,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             uint160 exportToCurrencyID;
 
             toFractional = isConversion &&
-                           convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID &&
                            convertToCurrencyDef.IsValid() &&
                            convertToCurrencyDef.IsFractional() &&
                            convertToCurrencyDef.GetCurrenciesMap().count(sourceCurrencyID);
