@@ -1913,27 +1913,32 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                     }
                     // make sure prev block hash and block height are correct
                     CStakeParams p;
-                    if (validHash && (validHash = GetStakeParams(pblock->vtx[txn_count-1], p)))
+                    if (validHash &&
+                        (validHash = GetStakeParams(pblock->vtx[txn_count-1], p) &&
+                                     p.prevHash == pblock->hashPrevBlock &&
+                                     (int32_t)p.blkHeight == height))
                     {
                         for (int i = 0; validHash && i < pblock->vtx[0].vout.size(); i++)
                         {
                             validHash = false;
+                            CCurrencyValueMap reserveOutVal;
                             if (pblock->vtx[0].vout[i].scriptPubKey.IsInstantSpendOrUnspendable() ||
-                                (!pblock->vtx[0].vout[i].nValue && pblock->vtx[0].vout[i].ReserveOutValue() == CCurrencyValueMap()) ||
+                                (!pblock->vtx[0].vout[i].nValue &&
+                                 (((reserveOutVal = pblock->vtx[0].vout[i].ReserveOutValue()) == CCurrencyValueMap()) ||
+                                  (isPBaaS &&
+                                   !IsVerusActive() &&
+                                   reserveOutVal.valueMap.size() == 1 &&
+                                   reserveOutVal.valueMap.count(VERUS_CHAINID)))) ||
                                 ValidateMatchingStake(pblock->vtx[0], i, pblock->vtx[txn_count-1], validHash, slowflag) && !validHash)
                             {
-                                if ((p.prevHash == pblock->hashPrevBlock) && (int32_t)p.blkHeight == height)
-                                {
-                                    validHash = true;
-                                }
-                                else
-                                {
-                                    printf("ERROR: invalid block data for stake tx\nblkHash:   %s\ntxBlkHash: %s\nblkHeight: %d, txBlkHeight: %d\n",
-                                            pblock->hashPrevBlock.GetHex().c_str(), p.prevHash.GetHex().c_str(), height, p.blkHeight);
-                                    validHash = false;
-                                }
+                                validHash = true;
                             }
-                            else validHash = false;
+                            else
+                            {
+                                printf("ERROR: invalid block data for stake tx\nblkHash:   %s\ntxBlkHash: %s\nblkHeight: %d, txBlkHeight: %d\n",
+                                        pblock->hashPrevBlock.GetHex().c_str(), p.prevHash.GetHex().c_str(), height, p.blkHeight);
+                                validHash = false;
+                            }
                         }
                     }
                 }
