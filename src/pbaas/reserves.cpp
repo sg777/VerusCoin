@@ -5098,7 +5098,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         if ((isVerusMainnet && height > PBAAS_MAINDEFI3_HEIGHT) ||
             nonVerusMainnet ||
             (chainActive.Height() >= (height - 1) &&
-             chainActive[height]->nTime >= PBAAS_TESTFORK3_TIME) ||
+             chainActive[height - 1]->nTime >= PBAAS_TESTFORK3_TIME) ||
             (chainActive.Height() < (height - 1) &&
              chainActive.LastTip()->nTime >= PBAAS_TESTFORK3_TIME))
         {
