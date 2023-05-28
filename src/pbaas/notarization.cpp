@@ -10510,7 +10510,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     !(proofDescr = CPrimaryProofDescriptor(((CChainObject<CEvidenceData> *)
                         (((CChainObject<CCrossChainProof> *)(autoProof.chainObjects[0]))->object.chainObjects[0]))->object.dataVec)).IsValid() ||
                     !proofDescr.challengeOutputs.size() ||
-                    !proofDescr.challengeOutputs[0].GetOutputTransaction(tipTx, tipBlockHash) ||
+                    !proofDescr.challengeOutputs[0].GetOutputTransaction(tipTx, tipBlockHash, false) ||
                     tipBlockHash.IsNull() ||
                     (tipTxBlockIt = mapBlockIndex.find(tipBlockHash)) == mapBlockIndex.end() ||
                     tipTxBlockIt->second->GetHeight() > (height - 1) ||
@@ -10520,13 +10520,13 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                 {
                     if (LogAcceptCategory("notarization") && proofDescr.IsValid() && proofDescr.challengeOutputs.size())
                     {
-                        LogPrintf("%s: Invalid confirmation evidence for transaction output: %s\n", __func__, proofDescr.challengeOutputs[0].ToString().c_str());
+                        LogPrintf("%s: Invalid confirmation evidence for transaction output: %s, tipTxId: %s\n", __func__, proofDescr.challengeOutputs[0].ToString().c_str(), tipTx.GetHash().GetHex().c_str());
                     }
                     if ((i + 1) < evidenceVec.size())
                     {
                         continue;
                     }
-                    if (confirmNeedsEvidence && (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK2_TIME))
+                    if (confirmNeedsEvidence && (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK3_TIME))
                     {
                         return state.Error("Invalid confirmation evidence 1");
                     }
@@ -11320,27 +11320,27 @@ bool IsFinalizeNotarizationInput(const CScript &scriptSig)
     return scriptSig.IsPayToCryptoCondition(&ecode) && ecode == EVAL_FINALIZE_NOTARIZATION;
 }
 
-bool CObjectFinalization::GetOutputTransaction(const CTransaction &initialTx, CTransaction &tx, uint256 &blockHash) const
+bool CObjectFinalization::GetOutputTransaction(const CTransaction &initialTx, CTransaction &tx, uint256 &blockHash, bool checkMempool) const
 {
     if (output.hash.IsNull())
     {
         tx = initialTx;
         return true;
     }
-    else if (myGetTransaction(output.hash, tx, blockHash) && tx.vout.size() > output.n)
+    else if (myGetTransaction(output.hash, tx, blockHash, checkMempool) && tx.vout.size() > output.n)
     {
         return true;
     }
     return false;
 }
 
-bool CUTXORef::GetOutputTransaction(CTransaction &tx, uint256 &blockHash) const
+bool CUTXORef::GetOutputTransaction(CTransaction &tx, uint256 &blockHash, bool checkMempool) const
 {
     if (hash.IsNull())
     {
         return false;
     }
-    else if (myGetTransaction(hash, tx, blockHash) && tx.vout.size() > n)
+    else if (myGetTransaction(hash, tx, blockHash, checkMempool) && tx.vout.size() > n)
     {
         return true;
     }

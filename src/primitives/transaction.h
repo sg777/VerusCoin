@@ -1715,7 +1715,7 @@ public:
     }
 
     // returns false if hash is null
-    bool GetOutputTransaction(CTransaction &tx, uint256 &blockHash) const;
+    bool GetOutputTransaction(CTransaction &tx, uint256 &blockHash, bool checkMemPool=true) const;
 
     UniValue ToUniValue() const;
 };
