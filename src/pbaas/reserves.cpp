@@ -3174,6 +3174,14 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                                 const uint256 &existingTxHash) const
 {
     bool makeNormalOutput = true;
+
+    bool setAuxDests = !PBAAS_TESTMODE ||
+           (PBAAS_TESTMODE &&
+            ((chainActive.Height() >= (height - 1) &&
+              chainActive[height - 1]->nTime >= PBAAS_TESTFORK3_TIME) ||
+             (chainActive.Height() < (height - 1) &&
+              chainActive.LastTip()->nTime >= PBAAS_TESTFORK3_TIME)));
+
     CTxDestination dest = TransferDestinationToDestination(destination);
     CCurrencyDefinition exportCurDef;
     if (HasNextLeg())
@@ -3226,6 +3234,10 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                         lastLegDest.type = lastLegDest.DEST_REGISTERCURRENCY;
                         lastLegDest.destination = ::AsVector(exportCurDef);
                         newFlags |= CURRENCY_EXPORT;
+                        if (setAuxDests && destination.AuxDestCount())
+                        {
+                            lastLegDest.type |= lastLegDest.FLAG_DEST_AUX;
+                        }
                     }
                 }
                 else
@@ -3254,6 +3266,10 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 fullID.contentMultiMap.clear();
                 lastLegDest.type = lastLegDest.DEST_FULLID;
                 lastLegDest.destination = ::AsVector(fullID);
+                if (setAuxDests && destination.AuxDestCount())
+                {
+                    lastLegDest.type |= lastLegDest.FLAG_DEST_AUX;
+                }
             }
 
             if (destination.gatewayID != destSystem.GetID())
