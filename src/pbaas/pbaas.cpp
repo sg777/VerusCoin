@@ -2100,7 +2100,7 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                                                         ((!PBAAS_TESTMODE ||
                                                           pblock->nTime > PBAAS_TESTFORK3_TIME) &&
                                                           !IsVerusActive() &&
-                                                          ((oneOut.nValue > 0 && p.evalCode != EVAL_STAKEGUARD) || (oneOut.nValue == 0 && p.evalCode != EVAL_RESERVE_OUTPUT))))
+                                                          ((oneOut.nValue > 0 && p.evalCode != EVAL_STAKEGUARD) || (oneOut.nValue == 0 && p.evalCode != EVAL_RESERVE_OUTPUT && p.evalCode != EVAL_STAKEGUARD))))
                                                     {
                                                         printf("ERROR: in staking block %s - invalid coinbase output 1\n", blkHash.ToString().c_str());
                                                         LogPrintf("ERROR: in staking block %s - invalid coinbase output 1\n", blkHash.ToString().c_str());
