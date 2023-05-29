@@ -5368,7 +5368,7 @@ bool CPBaaSNotarization::CheckCrossNotarizationProgression(const CCurrencyDefini
 
     // ensure that we can always find one after the first and that we have not moved backwards in the one we find
     // any cross confirmed notarization also must have first been confirmed on this chain, so verify that as well
-    if (foundPriorLocalCrossConfirmed && 
+    if (foundPriorLocalCrossConfirmed &&
         (!foundLocalCrossConfirmed ||
             lastConfirmedAddressIndexKey.first.blockHeight < priorLastConfirmedAddressIndexKey.first.blockHeight))
     {
@@ -9303,7 +9303,7 @@ bool PreCheckAcceptedOrEarnedNotarization(const CTransaction &tx, int32_t outNum
                         bool posNewFormat = (!PBAAS_TESTMODE ||
                                              chainActive[lastConfirmedAddressIndexKey.first.blockHeight]->nTime >= PBAAS_TESTFORK2_TIME);
 
-                        if (foundPriorLocalCrossConfirmed && 
+                        if (foundPriorLocalCrossConfirmed &&
                             (!foundLocalCrossConfirmed ||
                              (posNewFormat &&
                               lastConfirmedAddressIndexKey.first.blockHeight < priorLastConfirmedAddressIndexKey.first.blockHeight)))
@@ -10526,6 +10526,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     {
                         continue;
                     }
+                    LogPrint("notarization", "%s: notarization finalization tip transaction not in prior chain at height %u\n", __func__, height);
                     if (confirmNeedsEvidence && (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK3_TIME))
                     {
                         return state.Error("Invalid confirmation evidence 1");
