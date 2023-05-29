@@ -7097,6 +7097,11 @@ UniValue takeoffer(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "identity, " + acceptedIdentity.GetID().GetHex() + ", not found ");
         }
 
+        if (oldID.HasTokenizedControl())
+        {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Do not buy an ID with tokenized ID control via the marketplace. Buy the token for a revoked ID with all authorities instead. ID: " + acceptedIdentity.GetID().GetHex());
+        }
+
         oldID.revocationAuthority = oldID.GetID();
         oldID.recoveryAuthority = oldID.GetID();
         oldID.privateAddresses.clear();
