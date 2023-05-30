@@ -5472,7 +5472,7 @@ void CConnectedChains::CheckOracleUpgrades()
         if (magicNumberFixIt->second.minDaemonVersion > GetVerusVersion())
         {
             stoppingIt = magicNumberFixIt;
-            gracefulStop = "APPLY PROTOCOL CHANGE FOR ZERO EMISSION PBAAS CHAIN MAGIC NUMBER FIX";
+            gracefulStop = "PROTOCOL CHANGE FOR ZERO EMISSION PBAAS CHAIN MAGIC NUMBER FIX";
         }
     }
     if (disableDeFiIt != activeUpgradesByKey.end() ||
