@@ -3161,7 +3161,11 @@ extern void vcalc_sha256(char deprecated[(256 >> 3) * 2 + 1], uint8_t hash[256 >
 
 uint32_t CCurrencyDefinition::MagicNumber() const
 {
+    // this applies to the "this" pointer
     bool isVerusMainnet = (!PBAAS_TESTMODE && GetID() == VERUS_CHAINID);
+
+    // make separate bool to emphasize the difference between this being Verus or running Verus at this time
+    bool isVerusOrVerusTestRunning = IsVerusActive();
 
     std::vector<unsigned char> extraBuffer;
     extraBuffer.reserve(384);
@@ -3170,7 +3174,8 @@ uint32_t CCurrencyDefinition::MagicNumber() const
     int lastSize = 0;
 
     // TODO: REMOVED AFTER MAGIC NUMBER FIX IS APPLIED 
-    if (!((eraEnd.size() && eraEnd[0]) ||
+    if (isVerusOrVerusTestRunning &&
+        !((eraEnd.size() && eraEnd[0]) ||
           (rewards.size() && rewards[0]) ||
           (halving.size() && rewards[0]) ||
           (rewardsDecay.size() && rewardsDecay[0])) &&
