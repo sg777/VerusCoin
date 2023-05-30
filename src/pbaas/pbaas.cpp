@@ -3167,8 +3167,7 @@ uint32_t CCurrencyDefinition::MagicNumber() const
     extraBuffer.reserve(384);
 
     // compatibility
-    extraBuffer.insert(extraBuffer.end(), 33, 0);
-    int lastSize = extraBuffer.size();
+    int lastSize = 0;
 
     if (IsPBaaSChain())
     {
@@ -3177,6 +3176,9 @@ uint32_t CCurrencyDefinition::MagicNumber() const
             (halving.size() && rewards[0]) ||
             (rewardsDecay.size() && rewardsDecay[0]))
         {
+            extraBuffer.insert(extraBuffer.end(), 33, 0);
+            lastSize = extraBuffer.size();
+
             for (int i = 0; i < rewards.size(); i++)
             {
                 int64_t wideHalving = halving[i], wideEndSubsidy = eraEnd[i];
@@ -3258,8 +3260,11 @@ uint32_t CCurrencyDefinition::MagicNumber() const
 
     LogPrint("magicnumber", "crc header buffer: %s\n", HexBytes(&crcHeader[0], crcHeader.size()).c_str());
 
-    vcalc_sha256(nullptr, hash.bytes, &(extraBuffer[0]), lastSize);
-    crc0 = hash.uints[0];
+    if (extraBuffer.size() && extraBuffer.size() >= lastSize)
+    {
+        vcalc_sha256(nullptr, hash.bytes, &(extraBuffer[0]), lastSize);
+        crc0 = hash.uints[0];
+    }
     return(calc_crc32(crc0, &crcHeader[0], sizeof(supply) + nameLen));
 }
 
