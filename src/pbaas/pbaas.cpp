@@ -3169,6 +3169,18 @@ uint32_t CCurrencyDefinition::MagicNumber() const
     // compatibility
     int lastSize = 0;
 
+    // TODO: REMOVED AFTER MAGIC NUMBER FIX IS APPLIED 
+    if (!((eraEnd.size() && eraEnd[0]) ||
+          (rewards.size() && rewards[0]) ||
+          (halving.size() && rewards[0]) ||
+          (rewardsDecay.size() && rewardsDecay[0])) &&
+        !ConnectedChains.activeUpgradesByKey.count(ConnectedChains.MagicNumberFixKey()))
+    {
+        extraBuffer.insert(extraBuffer.end(), 33, 0);
+        lastSize = extraBuffer.size();
+    }
+    else
+
     if (IsPBaaSChain())
     {
         if ((eraEnd.size() && eraEnd[0]) ||
@@ -5427,11 +5439,6 @@ void CConnectedChains::CheckOracleUpgrades()
                   txInDesc.prevout.n);
     }
 
-    if (oracleID.contentMap.count(PBaaSUpgradeKey()))
-    {
-        upgradeData.resize(upgradeData.size() + 1);
-        std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[PBaaSUpgradeKey()].GetHex());
-    }
     if (oracleID.contentMap.count(OptionalPBaaSUpgradeKey()))
     {
         upgradeData.resize(upgradeData.size() + 1);
@@ -5452,14 +5459,22 @@ void CConnectedChains::CheckOracleUpgrades()
         }
     }
 
-    std::map<uint160, CUpgradeDescriptor>::iterator upgradePBaaSIt = activeUpgradesByKey.find(PBaaSUpgradeKey());
     std::map<uint160, CUpgradeDescriptor>::iterator disableDeFiIt = activeUpgradesByKey.find(DisableDeFiKey());
     std::map<uint160, CUpgradeDescriptor>::iterator disablePBaaSCrossChainIt = activeUpgradesByKey.find(DisablePBaaSCrossChainKey());
     std::map<uint160, CUpgradeDescriptor>::iterator disableGatewayCrossChainIt = activeUpgradesByKey.find(DisableGatewayCrossChainKey());
+    std::map<uint160, CUpgradeDescriptor>::iterator magicNumberFixIt = activeUpgradesByKey.find(MagicNumberFixKey());
     std::map<uint160, CUpgradeDescriptor>::iterator stoppingIt = activeUpgradesByKey.end();
 
     std::string gracefulStop;
 
+    if (magicNumberFixIt != activeUpgradesByKey.end())
+    {
+        if (magicNumberFixIt->second.minDaemonVersion > GetVerusVersion())
+        {
+            stoppingIt = magicNumberFixIt;
+            gracefulStop = "APPLY PROTOCOL CHANGE FOR ZERO EMISSION PBAAS CHAIN MAGIC NUMBER FIX";
+        }
+    }
     if (disableDeFiIt != activeUpgradesByKey.end() ||
         disablePBaaSCrossChainIt != activeUpgradesByKey.end() ||
         disableGatewayCrossChainIt != activeUpgradesByKey.end())
@@ -5486,7 +5501,9 @@ void CConnectedChains::CheckOracleUpgrades()
             activeUpgradesByKey[DisableGatewayCrossChainKey()] = waterfallDescriptor;
             disableGatewayCrossChainIt = disablePBaaSCrossChainIt;
         }
-        if (disableGatewayCrossChainIt->second.minDaemonVersion > GetVerusVersion())
+        if (disableGatewayCrossChainIt->second.minDaemonVersion > GetVerusVersion() &&
+            (stoppingIt == activeUpgradesByKey.end() ||
+             disableGatewayCrossChainIt->second.minDaemonVersion > stoppingIt->second.minDaemonVersion))
         {
             stoppingIt = disableGatewayCrossChainIt;
             gracefulStop = pauseDeFi ? "CRITICAL TEMPORARY PAUSE ALL CROSS CHAIN AND DEFI FUNCTIONS ISSUED FROM ORACLE" :
@@ -5495,19 +5512,10 @@ void CConnectedChains::CheckOracleUpgrades()
         }
     }
 
-    if (upgradePBaaSIt != activeUpgradesByKey.end())
-    {
-        CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV7, upgradePBaaSIt->second.upgradeBlockHeight);
-        if (upgradePBaaSIt->second.minDaemonVersion > GetVerusVersion())
-        {
-            stoppingIt = upgradePBaaSIt;
-            gracefulStop = "PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0";
-        }
-    }
     if (stoppingIt != activeUpgradesByKey.end())
     {
         printf("%s: ERROR - THE NETWORK IS ACTIVATING \"%s\" - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE %s CHAIN\n", __func__, gracefulStop.c_str(), VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1, ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID).c_str());
-        if (KOMODO_STOPAT == 0 || KOMODO_STOPAT > (upgradePBaaSIt->second.upgradeBlockHeight - 1))
+        if (KOMODO_STOPAT == 0 || KOMODO_STOPAT > (stoppingIt->second.upgradeBlockHeight - 1))
         {
             LogPrintf("%s: ERROR - THE NETWORK IS ACTIVATING \"%s\" - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE %s CHAIN\n", __func__, gracefulStop.c_str(), VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1, ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID).c_str());
             KOMODO_STOPAT = stoppingIt->second.upgradeBlockHeight - 1;
