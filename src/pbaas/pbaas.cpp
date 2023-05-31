@@ -2100,7 +2100,7 @@ bool verusCheckPOSBlock(int32_t slowflag, const CBlock *pblock, int32_t height)
                                                         ((!PBAAS_TESTMODE ||
                                                           pblock->nTime > PBAAS_TESTFORK3_TIME) &&
                                                           !IsVerusActive() &&
-                                                          ((oneOut.nValue > 0 && p.evalCode != EVAL_STAKEGUARD) || (oneOut.nValue == 0 && p.evalCode != EVAL_RESERVE_OUTPUT))))
+                                                          ((oneOut.nValue > 0 && p.evalCode != EVAL_STAKEGUARD) || (oneOut.nValue == 0 && p.evalCode != EVAL_RESERVE_OUTPUT && p.evalCode != EVAL_STAKEGUARD))))
                                                     {
                                                         printf("ERROR: in staking block %s - invalid coinbase output 1\n", blkHash.ToString().c_str());
                                                         LogPrintf("ERROR: in staking block %s - invalid coinbase output 1\n", blkHash.ToString().c_str());
@@ -3161,14 +3161,30 @@ extern void vcalc_sha256(char deprecated[(256 >> 3) * 2 + 1], uint8_t hash[256 >
 
 uint32_t CCurrencyDefinition::MagicNumber() const
 {
+    // this applies to the "this" pointer
     bool isVerusMainnet = (!PBAAS_TESTMODE && GetID() == VERUS_CHAINID);
+
+    // make separate bool to emphasize the difference between this being Verus or running Verus at this time
+    bool isVerusOrVerusTestRunning = IsVerusActive();
 
     std::vector<unsigned char> extraBuffer;
     extraBuffer.reserve(384);
 
     // compatibility
-    extraBuffer.insert(extraBuffer.end(), 33, 0);
-    int lastSize = extraBuffer.size();
+    int lastSize = 0;
+
+    // TODO: REMOVED AFTER MAGIC NUMBER FIX IS APPLIED 
+    if (isVerusOrVerusTestRunning &&
+        !((eraEnd.size() && eraEnd[0]) ||
+          (rewards.size() && rewards[0]) ||
+          (halving.size() && rewards[0]) ||
+          (rewardsDecay.size() && rewardsDecay[0])) &&
+        !ConnectedChains.activeUpgradesByKey.count(ConnectedChains.MagicNumberFixKey()))
+    {
+        extraBuffer.insert(extraBuffer.end(), 33, 0);
+        lastSize = extraBuffer.size();
+    }
+    else
 
     if (IsPBaaSChain())
     {
@@ -3177,6 +3193,9 @@ uint32_t CCurrencyDefinition::MagicNumber() const
             (halving.size() && rewards[0]) ||
             (rewardsDecay.size() && rewardsDecay[0]))
         {
+            extraBuffer.insert(extraBuffer.end(), 33, 0);
+            lastSize = extraBuffer.size();
+
             for (int i = 0; i < rewards.size(); i++)
             {
                 int64_t wideHalving = halving[i], wideEndSubsidy = eraEnd[i];
@@ -3258,8 +3277,11 @@ uint32_t CCurrencyDefinition::MagicNumber() const
 
     LogPrint("magicnumber", "crc header buffer: %s\n", HexBytes(&crcHeader[0], crcHeader.size()).c_str());
 
-    vcalc_sha256(nullptr, hash.bytes, &(extraBuffer[0]), lastSize);
-    crc0 = hash.uints[0];
+    if (extraBuffer.size() && extraBuffer.size() >= lastSize)
+    {
+        vcalc_sha256(nullptr, hash.bytes, &(extraBuffer[0]), lastSize);
+        crc0 = hash.uints[0];
+    }
     return(calc_crc32(crc0, &crcHeader[0], sizeof(supply) + nameLen));
 }
 
@@ -5422,11 +5444,6 @@ void CConnectedChains::CheckOracleUpgrades()
                   txInDesc.prevout.n);
     }
 
-    if (oracleID.contentMap.count(PBaaSUpgradeKey()))
-    {
-        upgradeData.resize(upgradeData.size() + 1);
-        std::get<0>(*upgradeData.rbegin()) = ParseHex(oracleID.contentMap[PBaaSUpgradeKey()].GetHex());
-    }
     if (oracleID.contentMap.count(OptionalPBaaSUpgradeKey()))
     {
         upgradeData.resize(upgradeData.size() + 1);
@@ -5447,14 +5464,22 @@ void CConnectedChains::CheckOracleUpgrades()
         }
     }
 
-    std::map<uint160, CUpgradeDescriptor>::iterator upgradePBaaSIt = activeUpgradesByKey.find(PBaaSUpgradeKey());
     std::map<uint160, CUpgradeDescriptor>::iterator disableDeFiIt = activeUpgradesByKey.find(DisableDeFiKey());
     std::map<uint160, CUpgradeDescriptor>::iterator disablePBaaSCrossChainIt = activeUpgradesByKey.find(DisablePBaaSCrossChainKey());
     std::map<uint160, CUpgradeDescriptor>::iterator disableGatewayCrossChainIt = activeUpgradesByKey.find(DisableGatewayCrossChainKey());
+    std::map<uint160, CUpgradeDescriptor>::iterator magicNumberFixIt = IsVerusActive() ? activeUpgradesByKey.find(MagicNumberFixKey()) : activeUpgradesByKey.end();
     std::map<uint160, CUpgradeDescriptor>::iterator stoppingIt = activeUpgradesByKey.end();
 
     std::string gracefulStop;
 
+    if (magicNumberFixIt != activeUpgradesByKey.end())
+    {
+        if (magicNumberFixIt->second.minDaemonVersion > GetVerusVersion())
+        {
+            stoppingIt = magicNumberFixIt;
+            gracefulStop = "PROTOCOL CHANGE FOR ZERO EMISSION PBAAS CHAIN MAGIC NUMBER FIX";
+        }
+    }
     if (disableDeFiIt != activeUpgradesByKey.end() ||
         disablePBaaSCrossChainIt != activeUpgradesByKey.end() ||
         disableGatewayCrossChainIt != activeUpgradesByKey.end())
@@ -5481,7 +5506,9 @@ void CConnectedChains::CheckOracleUpgrades()
             activeUpgradesByKey[DisableGatewayCrossChainKey()] = waterfallDescriptor;
             disableGatewayCrossChainIt = disablePBaaSCrossChainIt;
         }
-        if (disableGatewayCrossChainIt->second.minDaemonVersion > GetVerusVersion())
+        if (disableGatewayCrossChainIt->second.minDaemonVersion > GetVerusVersion() &&
+            (stoppingIt == activeUpgradesByKey.end() ||
+             disableGatewayCrossChainIt->second.minDaemonVersion > stoppingIt->second.minDaemonVersion))
         {
             stoppingIt = disableGatewayCrossChainIt;
             gracefulStop = pauseDeFi ? "CRITICAL TEMPORARY PAUSE ALL CROSS CHAIN AND DEFI FUNCTIONS ISSUED FROM ORACLE" :
@@ -5490,19 +5517,10 @@ void CConnectedChains::CheckOracleUpgrades()
         }
     }
 
-    if (upgradePBaaSIt != activeUpgradesByKey.end())
-    {
-        CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV7, upgradePBaaSIt->second.upgradeBlockHeight);
-        if (upgradePBaaSIt->second.minDaemonVersion > GetVerusVersion())
-        {
-            stoppingIt = upgradePBaaSIt;
-            gracefulStop = "PUBLIC BLOCKCHAINS AS A SERVICE PROTOCOL (PBAAS) 1.0";
-        }
-    }
     if (stoppingIt != activeUpgradesByKey.end())
     {
         printf("%s: ERROR - THE NETWORK IS ACTIVATING \"%s\" - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE %s CHAIN\n", __func__, gracefulStop.c_str(), VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1, ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID).c_str());
-        if (KOMODO_STOPAT == 0 || KOMODO_STOPAT > (upgradePBaaSIt->second.upgradeBlockHeight - 1))
+        if (KOMODO_STOPAT == 0 || KOMODO_STOPAT > (stoppingIt->second.upgradeBlockHeight - 1))
         {
             LogPrintf("%s: ERROR - THE NETWORK IS ACTIVATING \"%s\" - UPGRADE TO VERSION %s TO SYNC PAST BLOCK %u ON THE %s CHAIN\n", __func__, gracefulStop.c_str(), VersionString(stoppingIt->second.minDaemonVersion).c_str(), stoppingIt->second.upgradeBlockHeight - 1, ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID).c_str());
             KOMODO_STOPAT = stoppingIt->second.upgradeBlockHeight - 1;
