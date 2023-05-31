@@ -1561,13 +1561,12 @@ uint32_t komodo_assetmagic(const char *symbol,uint64_t supply,uint8_t *extraptr,
     strcpy((char *)&buf[len], name.c_str());
     len += strlen(name.c_str());
 
-    if (LogAcceptCategory("magicnumber"))
-    {
-        std::vector<unsigned char> extraBuffer(extraptr, extraptr + extralen);
-        LogPrintf("original hashing buffer: %s\n", HexBytes(&extraBuffer[0], extraBuffer.size()).c_str());
-        std::vector<unsigned char> crcHeader(buf, buf + len);
-        LogPrintf("original crc header: %s\n", HexBytes(&crcHeader[0], crcHeader.size()).c_str());
-    }
+    /*
+    std::vector<unsigned char> extraBuffer(extraptr, extraptr + extralen);
+    LogPrintf("original hashing buffer: %s\n", HexBytes(&extraBuffer[0], extraBuffer.size()).c_str());
+    std::vector<unsigned char> crcHeader(buf, buf + len);
+    LogPrintf("original crc header: %s\n", HexBytes(&crcHeader[0], crcHeader.size()).c_str());
+    */
 
     if ( extraptr != 0 && extralen != 0 )
     {

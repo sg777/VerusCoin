@@ -3787,9 +3787,11 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                                 UniValue txUniv(UniValue::VOBJ);
                                 TxToUniv(outTx, uint256(), txUniv);
                                 LogPrintf("%s: Validation failure - stake transaction winner:\n%s\n", __func__, txUniv.write(1,2).c_str());
+                                //LogPrintf("Currency:\n%s\n", externalCurrency.ToUniValue().write(1,2).c_str());
 
-                                LogPrintf("Solution version: %u\nMagic number: %d\nNonce: %s\nHeight: %u\n",
+                                LogPrintf("Solution version: %u\nPoS target: %s\nMagic number: %d\nNonce: %s\nHeight: %u\n",
                                             CConstVerusSolutionVector::Version(posBlockHeaderAndProof.blockHeader.nSolution),
+                                            ArithToUint256(posTarget).GetHex().c_str(),
                                             (int)externalCurrency.MagicNumber(),
                                             posBlockHeaderAndProof.blockHeader.nNonce.GetHex().c_str(),
                                             ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight());

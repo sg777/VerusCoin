@@ -1275,6 +1275,18 @@ public:
         return key;
     }
 
+    static std::string MagicNumberFixKeyName()
+    {
+        return "vrsc::system.upgradedata.magicnumberfix";
+    }
+
+    static uint160 MagicNumberFixKey()
+    {
+        static uint160 nameSpace;
+        static uint160 key = CVDXF_Data::GetDataKey(MagicNumberFixKeyName(), nameSpace);
+        return key;
+    }
+
     static std::string DisableGatewayCrossChainKeyName()
     {
         return "vrsc::system.upgradedata.disablegatewaycrosschain";
