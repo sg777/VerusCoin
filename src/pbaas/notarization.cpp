@@ -3730,7 +3730,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                         {
                             if (LogAcceptCategory("notarization") || LogAcceptCategory("stakeheaders"))
                             {
-                                LogPrintf("STAKE TX PASSED\nblockheight: %u\n", posEntropyHeadersAsTxes[0].GetBlockHeight());
+                                LogPrintf("STAKE TX PASSED\nblockheight: %s\n", posEntropyHeadersAsTxes.size() ? std::to_string(posEntropyHeadersAsTxes[0].GetBlockHeight()) : "unknown");
                             }
                         }
                         else
