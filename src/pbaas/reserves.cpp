@@ -717,7 +717,7 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
 // ensure that all conversions are within limits far enough away from int64 overflow to reduce risk of accidental overflow
 // to as close to zero as possible. any currency outside of these limits cannot launch, and imports that result in exceeding
 // these limits will refund conversions or fail if it is due to inadequate fee reserves.
-bool CCoinbaseCurrencyState::ValidateConversionLimits() const
+bool CCoinbaseCurrencyState::ValidateConversionLimits(bool checkZeroViaOnlyPostLaunch) const
 {
     if (!IsFractional())
     {
@@ -732,7 +732,8 @@ bool CCoinbaseCurrencyState::ValidateConversionLimits() const
             pricesVec[i] > MAX_SUPPLY ||
             conversionPrice[i] <= 0 ||
             conversionPrice[i] > MAX_SUPPLY ||
-            viaConversionPrice[i] <= 0 ||
+            viaConversionPrice[i] < (checkZeroViaOnlyPostLaunch ? 0 : 1) ||
+            (checkZeroViaOnlyPostLaunch ? (IsLaunchCompleteMarker() && viaConversionPrice[i] == 0) : false) ||
             viaConversionPrice[i] > MAX_SUPPLY)
         {
             return false;
@@ -3709,6 +3710,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 {
     std::vector<CTxOut> vOldOutputs = vOutputs;
 
+    CReserveTransactionDescriptor checkPointThis = *this;
+
     // easy way to refer to return currency state or a dummy without conditionals
     CCoinbaseCurrencyState _newCurrencyState;
     if (!pNewCurrencyState)
@@ -5655,7 +5658,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     if (finalValidation &&
         !newCurrencyState.IsRefunding() &&
         (newCurrencyState.IsLaunchClear() || newCurrencyState.IsLaunchCompleteMarker()) &&
-        !newCurrencyState.ValidateConversionLimits())
+        !newCurrencyState.ValidateConversionLimits(ConnectedChains.CheckZeroViaOnlyPostLaunch(height)))
     {
         // if this is the launch, we need to refund the currency
         if (newCurrencyState.IsLaunchClear() && newCurrencyState.IsPrelaunch())
@@ -5663,6 +5666,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             CCoinbaseCurrencyState recursiveCurrencyState = importCurrencyState;
             recursiveCurrencyState.supply = 0;
             recursiveCurrencyState.reserves = std::vector<int64_t>(recursiveCurrencyState.reserves.size(), 0);
+            if (ConnectedChains.CheckZeroViaOnlyPostLaunch(height))
+            {
+                *this = checkPointThis;
+                recursiveCurrencyState.SetLaunchConfirmed(false);
+            }
+
             recursiveCurrencyState.SetRefunding(true);
 
             // reset vOutputs to what they were before processing and recurse once
@@ -5711,6 +5720,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 gatewayDepositsIn.valueMap.clear();
                 spentCurrencyOut.valueMap.clear();
                 CCurrencyDefinition refundDef = ConnectedChains.GetCachedCurrency(importCurrencyDef.launchSystemID);
+
+                if (ConnectedChains.CheckZeroViaOnlyPostLaunch(height))
+                {
+                    *this = checkPointThis;
+                }
                 return AddReserveTransferImportOutputs(refundDef,
                                                        refundDef,
                                                        importCurrencyDef,

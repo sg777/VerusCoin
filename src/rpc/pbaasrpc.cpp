@@ -1962,6 +1962,7 @@ UniValue getcurrency(const UniValue& params, bool fHelp)
         ret = chainDef.ToUniValue();
         ret.pushKV("currencyidhex", chainDef.GetID().GetHex());
         ret.pushKV("fullyqualifiedname", ConnectedChains.GetFriendlyCurrencyName(chainID));
+        ret.pushKV("magicnumber", ((int32_t)chainDef.MagicNumber()));
 
         if (chainDef.currencies.size())
         {

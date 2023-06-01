@@ -5442,6 +5442,7 @@ void CConnectedChains::CheckOracleUpgrades()
                   foundIDAt,
                   txInDesc.prevout.hash.GetHex().c_str(),
                   txInDesc.prevout.n);
+        LogPrintf("UpgradeDataKey: %s\n", EncodeDestination(CIdentityID(UpgradeDataKey(ASSETCHAINS_CHAINID))));
     }
 
     if (oracleID.contentMap.count(OptionalPBaaSUpgradeKey()))
@@ -5546,6 +5547,20 @@ bool CConnectedChains::IsUpgradeActive(const uint160 &upgradeID, uint32_t blockH
                 (it->second.upgradeTargetTime && blockTime >= it->second.upgradeTargetTime));
     }
     return false;
+}
+
+bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
+{
+    if (IsVerusActive())
+    {
+        if ((PBAAS_TESTMODE && height > 58000) ||
+            (!PBAAS_TESTMODE && height > 2567480))
+        {
+            return true;
+        }
+        return false;
+    }
+    return true;
 }
 
 bool CConnectedChains::ConfigureEthBridge(bool callToCheck)

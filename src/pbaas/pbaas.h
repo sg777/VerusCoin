@@ -1192,6 +1192,7 @@ public:
     bool ConfigureEthBridge(bool callToCheck=false);
     void CheckOracleUpgrades();
     bool IsUpgradeActive(const uint160 &upgradeID, uint32_t blockHeight=UINT32_MAX, uint32_t blockTime=UINT32_MAX) const;
+    bool CheckZeroViaOnlyPostLaunch(uint32_t height) const;
 
     std::vector<CCurrencyDefinition> GetMergeMinedChains()
     {
