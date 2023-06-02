@@ -1423,7 +1423,7 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 {
                     destinations.insert(CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(defIT->first, identity.GetID())));
 
-                    if (LogAcceptCategory("oracleupgrades"))
+                    if (LogAcceptCategory("oracles"))
                     {
                         LogPrintf("%s: defIT->first: %s, identity.GetID(): %s, lookupKey: %s\n", __func__,
                                     EncodeDestination(CIdentityID(defIT->first)).c_str(),

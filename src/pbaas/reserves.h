@@ -1541,7 +1541,7 @@ public:
 
     CCoinbaseCurrencyState(const CTransaction &tx, int *pOutIdx=NULL);
 
-    bool ValidateConversionLimits() const;
+    bool ValidateConversionLimits(bool checkZeroViaOnlyPostLaunch=false) const;
 
     ADD_SERIALIZE_METHODS;
 
