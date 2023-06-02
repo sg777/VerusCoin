@@ -5561,7 +5561,7 @@ bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
 {
     if (IsVerusActive())
     {
-        if ((PBAAS_TESTMODE && height > 59400) ||
+        if ((PBAAS_TESTMODE && height > 59300) ||
             (!PBAAS_TESTMODE && height > 2567480))
         {
             return true;
