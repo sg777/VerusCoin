@@ -4285,7 +4285,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     // check if it exceeds pre-conversion maximums, and refund if so
                     CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({curTransfer.FirstCurrency()}),
                                                                     std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())}));
-                    CCurrencyValueMap newTotalReserves = CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.primaryCurrencyIn) + newReserveIn + preConvertedReserves;
+                    bool cumulativeReserveFix = ConnectedChains.CheckZeroViaOnlyPostLaunch(height);
+                    CCurrencyValueMap newTotalReserves = CCurrencyValueMap(importCurrencyState.currencies, cumulativeReserveFix ? importCurrencyState.reserveIn : importCurrencyState.primaryCurrencyIn) + newReserveIn + preConvertedReserves;
 
                     if (newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert))
                     {
