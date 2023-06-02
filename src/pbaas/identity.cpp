@@ -335,6 +335,10 @@ CIdentity::LookupIdentities(const CIdentityID &nameID,
         for (int i = 0; i < identityIndex.size(); i++)
         {
             auto &oneIdx = identityIndex[i];
+            if (oneIdx.first.spending)
+            {
+                continue;
+            }
             sortMap.insert(std::make_pair(std::make_pair(((uint32_t)oneIdx.first.blockHeight), oneIdx.first.txindex), i));
         }
         for (auto &idx : sortMap)
@@ -448,6 +452,10 @@ CIdentity::GetAggregatedIdentityMultimap(const uint160 &idID,
             indexKeys.push_back(
                 CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(CVDXF_Data::ContentMultiMapRemoveKey(), idID))
             );
+            if (LogAcceptCategory("oracles"))
+            {
+                LogPrintf("%s: lookupKey: %s\n", __func__, EncodeDestination(CIdentityID(CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(CVDXF_Data::ContentMultiMapRemoveKey(), idID)))).c_str());
+            }
         }
     }
 
