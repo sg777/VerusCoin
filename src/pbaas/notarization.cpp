@@ -1297,7 +1297,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                     // check our currency and any co-launch currency to determine our eligibility, as ALL
                     // co-launch currencies must launch for one to launch
                     if (coLaunchState.IsRefunding() ||
-                        !coLaunchState.ValidateConversionLimits() ||
+                        !coLaunchState.ValidateConversionLimits(true) ||
                         CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn) < CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert) ||
                         (coLaunchCurrency.IsFractional() &&
                          CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn).CanonicalMap().valueMap.size() != coLaunchCurrency.currencies.size()))
@@ -3730,7 +3730,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                         {
                             if (LogAcceptCategory("notarization") || LogAcceptCategory("stakeheaders"))
                             {
-                                LogPrintf("STAKE TX PASSED\nblockheight: %u\n", posEntropyHeadersAsTxes[0].GetBlockHeight());
+                                LogPrintf("STAKE TX PASSED\nblockheight: %s\n", posEntropyHeadersAsTxes.size() ? std::to_string(posEntropyHeadersAsTxes[0].GetBlockHeight()) : "unknown");
                             }
                         }
                         else

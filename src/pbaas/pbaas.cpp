@@ -3173,11 +3173,11 @@ uint32_t CCurrencyDefinition::MagicNumber() const
     // compatibility
     int lastSize = 0;
 
-    // TODO: REMOVED AFTER MAGIC NUMBER FIX IS APPLIED 
+    // TODO: REMOVED AFTER MAGIC NUMBER FIX IS APPLIED
     if (isVerusOrVerusTestRunning &&
         !((eraEnd.size() && eraEnd[0]) ||
           (rewards.size() && rewards[0]) ||
-          (halving.size() && rewards[0]) ||
+          (halving.size() && halving[0]) ||
           (rewardsDecay.size() && rewardsDecay[0])) &&
         !ConnectedChains.activeUpgradesByKey.count(ConnectedChains.MagicNumberFixKey()))
     {
@@ -3190,7 +3190,7 @@ uint32_t CCurrencyDefinition::MagicNumber() const
     {
         if ((eraEnd.size() && eraEnd[0]) ||
             (rewards.size() && rewards[0]) ||
-            (halving.size() && rewards[0]) ||
+            (halving.size() && halving[0]) ||
             (rewardsDecay.size() && rewardsDecay[0]))
         {
             extraBuffer.insert(extraBuffer.end(), 33, 0);
@@ -5429,7 +5429,15 @@ void CConnectedChains::CheckOracleUpgrades()
     std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>> upgradeData;
     if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) >= CActivationHeight::ACTIVATE_PBAAS)
     {
-        upgradeData = CIdentity::GetIdentityContentByKey(PBAAS_NOTIFICATION_ORACLE, UpgradeDataKey(ASSETCHAINS_CHAINID), 0, 0, false, false, 0);
+        upgradeData = CIdentity::GetIdentityContentByKey(PBAAS_NOTIFICATION_ORACLE,
+                                                         UpgradeDataKey(ASSETCHAINS_CHAINID),
+                                                         0,
+                                                         0,
+                                                         false,
+                                                         false,
+                                                         0,
+                                                         false,
+                                                         ConnectedChains.CheckZeroViaOnlyPostLaunch(chainActive.Height()));
     }
     uint32_t foundIDAt;
     CTxIn txInDesc;
@@ -5442,6 +5450,7 @@ void CConnectedChains::CheckOracleUpgrades()
                   foundIDAt,
                   txInDesc.prevout.hash.GetHex().c_str(),
                   txInDesc.prevout.n);
+        LogPrintf("UpgradeDataKey: %s\n", EncodeDestination(CIdentityID(UpgradeDataKey(ASSETCHAINS_CHAINID))));
     }
 
     if (oracleID.contentMap.count(OptionalPBaaSUpgradeKey()))
@@ -5546,6 +5555,20 @@ bool CConnectedChains::IsUpgradeActive(const uint160 &upgradeID, uint32_t blockH
                 (it->second.upgradeTargetTime && blockTime >= it->second.upgradeTargetTime));
     }
     return false;
+}
+
+bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
+{
+    if (IsVerusActive())
+    {
+        if ((PBAAS_TESTMODE && height > 59300) ||
+            (!PBAAS_TESTMODE && height > 2567480))
+        {
+            return true;
+        }
+        return false;
+    }
+    return true;
 }
 
 bool CConnectedChains::ConfigureEthBridge(bool callToCheck)
