@@ -4636,9 +4636,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                 // either the destination currency must be fractional or the source currency
                 // must be native
-                if (!isFractional && convertFromID != importCurrencyDef.launchSystemID)
+                if (!isFractional && convertFromID != importCurrencyDef.launchSystemID && !ConnectedChains.CheckZeroViaOnlyPostLaunch(height))
                 {
-                    printf("%s: Invalid conversion %s. Source must be launch system native or destinaton must be fractional.\n", __func__, curTransfer.ToUniValue().write().c_str());
+                    printf("%s: Invalid conversion %s. Source must be launch system native or destinaton must be fractional\n", __func__, curTransfer.ToUniValue().write().c_str());
                     LogPrintf("%s: Invalid conversion %s. Source must be launch system native or destinaton must be fractional\n", __func__, curTransfer.ToUniValue().write().c_str());
                     return false;
                 }
