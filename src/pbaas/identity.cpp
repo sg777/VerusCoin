@@ -341,6 +341,7 @@ CIdentity::LookupIdentities(const CIdentityID &nameID,
         {
             sortedIdentityIndex.push_back(identityIndex[idx.second]);
         }
+        identityIndex = sortedIdentityIndex;
     }
 
     LOCK(mempool.cs);
