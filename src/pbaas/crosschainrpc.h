@@ -153,7 +153,7 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(networkAddress);
+        READWRITE(LIMITED_STRING(networkAddress, 512));
         READWRITE(nodeIdentity);
     }
 
