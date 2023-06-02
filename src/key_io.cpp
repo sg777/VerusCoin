@@ -1102,8 +1102,9 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
     std::string parentStr = uni_get_str(parentUni);
     if (!parentStr.empty())
     {
-        parent = GetDestinationID(DecodeDestination(parentStr));
-        if (parent.IsNull() && parentStr.back() != '@')
+        CTxDestination parentDest = DecodeDestination(parentStr);
+        parent = GetDestinationID(parentDest);
+        if (parent.IsNull() && parentStr.back() != '@' && parentDest.which() != COptCCParams::ADDRTYPE_ID)
         {
             parent = GetDestinationID(DecodeDestination(parentStr + "@"));
         }

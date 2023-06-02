@@ -13111,8 +13111,9 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         returnTx = uni_get_bool(params[1], false);
     }
 
-    uint160 parentID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(params[0], "parent")))));
-    if (parentID.IsNull())
+    CTxDestination parentDest = DecodeDestination(uni_get_str(find_value(params[0], "parent")));
+    uint160 parentID = uint160(GetDestinationID(parentDest));
+    if (parentID.IsNull() && parentDest.which() != COptCCParams::ADDRTYPE_ID)
     {
         parentID = ValidateCurrencyName(uni_get_str(find_value(params[0], "parent")), true);
     }
