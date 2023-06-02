@@ -304,7 +304,8 @@ CIdentity::LookupIdentities(const CIdentityID &nameID,
                             bool checkMempool,
                             bool getProofs,
                             uint32_t proofHeight,
-                            const std::vector<uint160> &_indexKeys)
+                            const std::vector<uint160> &_indexKeys,
+                            bool sorted)
 {
     // if we don't have an endHeight, we also check the mempool
     if (!lteHeight || lteHeight == -1)
@@ -325,6 +326,21 @@ CIdentity::LookupIdentities(const CIdentityID &nameID,
     {
         GetAddressIndex(oneKey, CScript::P2IDX, identityIndex, gteHeight, lteHeight);
         indexVec.push_back({oneKey, CScript::P2IDX});
+    }
+
+    if (sorted)
+    {
+        std::map<std::pair<uint32_t, uint32_t>, int> sortMap;
+        std::vector<CAddressIndexDbEntry> sortedIdentityIndex;
+        for (int i = 0; i < identityIndex.size(); i++)
+        {
+            auto &oneIdx = identityIndex[i];
+            sortMap.insert(std::make_pair(std::make_pair(((uint32_t)oneIdx.first.blockHeight), oneIdx.first.txindex), i));
+        }
+        for (auto &idx : sortMap)
+        {
+            sortedIdentityIndex.push_back(identityIndex[idx.second]);
+        }
     }
 
     LOCK(mempool.cs);
@@ -416,7 +432,8 @@ CIdentity::GetAggregatedIdentityMultimap(const uint160 &idID,
                                          bool getProofs,
                                          uint32_t proofHeight,
                                          const uint160 &indexKey,
-                                         bool keepDeleted)
+                                         bool keepDeleted,
+                                         bool sorted)
 {
     std::multimap<uint160, std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>>
         retMap;
@@ -433,7 +450,7 @@ CIdentity::GetAggregatedIdentityMultimap(const uint160 &idID,
         }
     }
 
-    auto identityHistory = LookupIdentities(idID, startHeight, endHeight, checkMempool, getProofs, proofHeight, indexKeys);
+    auto identityHistory = LookupIdentities(idID, startHeight, endHeight, checkMempool, getProofs, proofHeight, indexKeys, sorted);
     for (auto &oneIdentity : identityHistory)
     {
         for (auto it = std::get<0>(oneIdentity).contentMultiMap.begin(); it != std::get<0>(oneIdentity).contentMultiMap.end(); it++)
@@ -510,16 +527,17 @@ CIdentity::GetIdentityContentByKey(const uint160 &idID,
                                    bool checkMempool,
                                    bool getProofs,
                                    uint32_t proofHeight,
-                                   bool keepDeleted)
+                                   bool keepDeleted,
+                                   bool sorted)
 {
     uint160 lookupKey = CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(vdxfKey, idID));
 
-    if (LogAcceptCategory("oracleupgrades"))
+    if (LogAcceptCategory("oracles"))
     {
         LogPrintf("%s: vdxfKey: %s, idID: %s, lookupKey: %s\n", __func__, EncodeDestination(CIdentityID(vdxfKey)).c_str(), EncodeDestination(CIdentityID(idID)).c_str(), EncodeDestination(CIdentityID(lookupKey)).c_str());
     }
 
-    auto aggregatedMap = GetAggregatedIdentityMultimap(idID, startHeight, endHeight, checkMempool, getProofs, proofHeight, lookupKey, keepDeleted);
+    auto aggregatedMap = GetAggregatedIdentityMultimap(idID, startHeight, endHeight, checkMempool, getProofs, proofHeight, lookupKey, keepDeleted, sorted);
 
     std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>> retVec;
     auto keyRange = aggregatedMap.equal_range(vdxfKey);

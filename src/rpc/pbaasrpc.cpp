@@ -14241,7 +14241,7 @@ UniValue getidentityhistory(const UniValue& params, bool fHelp)
         ret.push_back(Pair("txid", idTxIn.prevout.hash.GetHex()));
         ret.push_back(Pair("vout", (int32_t)idTxIn.prevout.n));
 
-        auto identities = CIdentity::LookupIdentities(GetDestinationID(idID), gteHeight, lteHeight, useMempool, txProof, txProofHeight);
+        auto identities = CIdentity::LookupIdentities(GetDestinationID(idID), gteHeight, lteHeight, useMempool, txProof, txProofHeight, std::vector<uint160>(), true);
 
         UniValue identityArrUni(UniValue::VARR);
         for (auto &oneIdentity : identities)

@@ -5429,7 +5429,15 @@ void CConnectedChains::CheckOracleUpgrades()
     std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>> upgradeData;
     if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) >= CActivationHeight::ACTIVATE_PBAAS)
     {
-        upgradeData = CIdentity::GetIdentityContentByKey(PBAAS_NOTIFICATION_ORACLE, UpgradeDataKey(ASSETCHAINS_CHAINID), 0, 0, false, false, 0);
+        upgradeData = CIdentity::GetIdentityContentByKey(PBAAS_NOTIFICATION_ORACLE,
+                                                         UpgradeDataKey(ASSETCHAINS_CHAINID),
+                                                         0,
+                                                         0,
+                                                         false,
+                                                         false,
+                                                         0,
+                                                         false,
+                                                         ConnectedChains.CheckZeroViaOnlyPostLaunch(chainActive.Height()));
     }
     uint32_t foundIDAt;
     CTxIn txInDesc;
