@@ -4333,7 +4333,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                     if (newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert))
                     {
-                        LogPrint("defi", "%s: refunding pre-conversion over maximum\n", __func__);
+                        LogPrint("defi", "%s: refunding pre-conversion over maximum: %s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
                         curTransfer = curTransfer.GetRefundTransfer();
                     }
                 }
