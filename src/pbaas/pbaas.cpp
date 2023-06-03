@@ -2796,17 +2796,68 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
             return eval->Error(std::string(__func__) + ": invalid currencies in export: " + ccxSource.ToUniValue().write(1,2));
         }
 
-        checkState.RevertReservesAndSupply(ASSETCHAINS_CHAINID,
-                                           (destCurDef.IsGatewayConverter() && destCurDef.gatewayID == ASSETCHAINS_CHAINID) ||
-                                           (!IsVerusActive() && destCurDef.GetID() == ASSETCHAINS_CHAINID));
+        bool isClearLaunch = ccxSource.IsClearLaunch();
+
+        if (ConnectedChains.CheckZeroViaOnlyPostLaunch(nHeight) &&
+            isClearLaunch &&
+            reserveTransfers.size())
+        {
+            // we need the prior import's notarization as a starting point
+            CValidationState state;
+            CTransaction priorTx;
+            int32_t priorOutNum = 0;
+            CCrossChainImport priorCCI = mainImport.GetPriorImport(tx, state, &priorTx, &priorOutNum);
+            // clearlaunch should always have a prior
+            if (!priorCCI.IsValid())
+            {
+                if (LogAcceptCategory("defi"))
+                {
+                    LogPrintf("%s: Invalid prior import: %s\n", __func__, mainImport.ToUniValue().write(1,2).c_str());
+                }
+                return eval->Error(std::string(__func__) + ": invalid prior import: " + mainImport.ToUniValue().write(1,2));
+            }
+            bool validNotarization = false;
+            // get the prior output notarization
+            for (int o = priorOutNum; o < priorTx.vout.size(); o++)
+            {
+                COptCCParams priorP;
+                CPBaaSNotarization priorNotar;
+                if (priorTx.vout[o].scriptPubKey.IsPayToCryptoCondition(priorP) &&
+                    priorP.IsValid() &&
+                    priorP.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
+                    (priorNotar = CPBaaSNotarization(priorP.vData[0])).IsValid() &&
+                    priorNotar.currencyID == mainImport.importCurrencyID)
+                {
+                    checkState = priorNotar.currencyState;
+                    checkState.SetPrelaunch(false);
+                    validNotarization = true;
+                    break;
+                }
+            }
+            if (!validNotarization)
+            {
+                if (LogAcceptCategory("defi"))
+                {
+                    LogPrintf("%s: Invalid prior notarization at clear launch for import: %s\n", __func__, mainImport.ToUniValue().write(1,2).c_str());
+                }
+                return eval->Error(std::string(__func__) + ": invalid prior notarization for clear launch import: " + mainImport.ToUniValue().write(1,2));
+            }
+            checkState.SetLaunchClear(false);
+        }
+        else
+        {
+            checkState.RevertReservesAndSupply(ASSETCHAINS_CHAINID,
+                                            (destCurDef.IsGatewayConverter() && destCurDef.gatewayID == ASSETCHAINS_CHAINID) ||
+                                            (!IsVerusActive() && destCurDef.GetID() == ASSETCHAINS_CHAINID));
+
+            if (ccxSource.IsClearLaunch() && ccxSource.sourceSystemID == destCurDef.launchSystemID)
+            {
+                checkState.SetLaunchCompleteMarker(false);
+            }
+        }
 
         std::vector<CTxOut> vOutputs;
         CCurrencyValueMap importedCurrency, gatewayCurrencyUsed, spentCurrencyOut;
-
-        if (ccxSource.IsClearLaunch() && ccxSource.sourceSystemID == destCurDef.launchSystemID)
-        {
-            checkState.SetLaunchCompleteMarker(false);
-        }
 
         if (!rtxd.AddReserveTransferImportOutputs(sourceSysDef,
                                                   destSysDef,
@@ -5561,8 +5612,8 @@ bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
 {
     if (IsVerusActive())
     {
-        if ((PBAAS_TESTMODE && height > 59300) ||
-            (!PBAAS_TESTMODE && height > 2567480))
+        if ((PBAAS_TESTMODE && height > 60740) ||
+            (!PBAAS_TESTMODE && height > 2568920))
         {
             return true;
         }
@@ -6898,7 +6949,8 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                                                        importedCurrency,
                                                        gatewayDepositsUsed,
                                                        spentCurrencyOut,
-                                                       ccx.exporter))
+                                                       ccx.exporter,
+                                                       ccx.IsClearLaunch()))
             {
                 LogPrintf("%s: invalid export for currency %s on system %s\n", __func__, destCur.name.c_str(), EncodeDestination(CIdentityID(destCur.systemID)).c_str());
                 return false;
@@ -8650,8 +8702,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
                                                         importedCurrency,
                                                         gatewayDepositsUsed,
                                                         spentCurrencyOut,
-                                                        feeRecipient,
-                                                        false))
+                                                        feeRecipient))
     {
         printf("%s: cannot create notarization\n", __func__);
         LogPrintf("%s: cannot create notarization\n", __func__);
