@@ -2774,6 +2774,40 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                                            (importCurrencyDef.IsGatewayConverter() && importCurrencyDef.gatewayID == ASSETCHAINS_CHAINID) ||
                                                            (!IsVerusActive() && importCurrencyDef.GetID() == ASSETCHAINS_CHAINID));
 
+                        if (ConnectedChains.CheckZeroViaOnlyPostLaunch(nHeight) &&
+                            isClearLaunch &&
+                            importTransfers.size())
+                        {
+                            // we need the prior import's notarization as a starting point
+                            CValidationState state;
+                            CTransaction priorTx;
+                            int32_t priorOutNum = 0;
+                            CCrossChainImport priorCCI = cci.GetPriorImport(tx, state, &priorTx, &priorOutNum);
+                            // clearlaunch should always have a prior
+                            if (!priorCCI.IsValid())
+                            {
+                                flags &= ~IS_VALID;
+                                flags |= IS_REJECT;
+                                return;
+                            }
+                            // get the prior output notarization
+                            for (int o = priorOutNum; o < priorTx.vout.size(); o++)
+                            {
+                                COptCCParams priorP;
+                                CPBaaSNotarization priorNotar;
+                                if (priorTx.vout[o].scriptPubKey.IsPayToCryptoCondition(priorP) &&
+                                    priorP.IsValid() &&
+                                    priorP.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
+                                    (priorNotar = CPBaaSNotarization(priorP.vData[0])).IsValid() &&
+                                    priorNotar.currencyID == cci.importCurrencyID)
+                                {
+                                    checkState = priorNotar.currencyState;
+                                    checkState.SetPrelaunch(false);
+                                    break;
+                                }
+                            }
+                        }
+
                         if (LogAcceptCategory("defi"))
                         {
                             LogPrintf("%s: reverted currency state: %s\n", __func__, checkState.ToUniValue().write(1,2).c_str());
@@ -3803,6 +3837,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     uint32_t solveTime = (chainActive.Height() >= (height - 1)) ? chainActive[height - 1]->nTime : chainActive.LastTip()->nTime;
     bool fullUpgrade = !PBAAS_TESTMODE || PBAAS_TESTFORK2_TIME <= solveTime;
+    bool updatedPostLaunch = ConnectedChains.CheckZeroViaOnlyPostLaunch(height);
 
     for (int i = 0; i <= exportObjects.size(); i++)
     {
@@ -4276,7 +4311,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     // check if it exceeds pre-conversion maximums, and refund if so
                     CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({curTransfer.FirstCurrency()}),
                                                                     std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())}));
-                    CCurrencyValueMap newTotalReserves = CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.primaryCurrencyIn) + newReserveIn + preConvertedReserves;
+                    CCurrencyValueMap newTotalReserves = CCurrencyValueMap(importCurrencyState.currencies, updatedPostLaunch ? importCurrencyState.reserveIn : importCurrencyState.primaryCurrencyIn) + newReserveIn + preConvertedReserves;
 
                     if (newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert))
                     {
@@ -4626,7 +4661,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                 // either the destination currency must be fractional or the source currency
                 // must be native
-                if (!isFractional && convertFromID != importCurrencyDef.launchSystemID && !ConnectedChains.CheckZeroViaOnlyPostLaunch(height))
+                if (!isFractional && convertFromID != importCurrencyDef.launchSystemID && !updatedPostLaunch)
                 {
                     printf("%s: Invalid conversion %s. Source must be launch system native or destinaton must be fractional\n", __func__, curTransfer.ToUniValue().write().c_str());
                     LogPrintf("%s: Invalid conversion %s. Source must be launch system native or destinaton must be fractional\n", __func__, curTransfer.ToUniValue().write().c_str());
@@ -5246,7 +5281,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     }
                 }
             }
-            if (!hasCrossConversions && ConnectedChains.CheckZeroViaOnlyPostLaunch(height))
+            if (!hasCrossConversions && updatedPostLaunch)
             {
                 newCurrencyState.viaConversionPrice = newPrices;
             }
@@ -5665,7 +5700,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     if (finalValidation &&
         !newCurrencyState.IsRefunding() &&
         (newCurrencyState.IsLaunchClear() || newCurrencyState.IsLaunchCompleteMarker()) &&
-        !newCurrencyState.ValidateConversionLimits(ConnectedChains.CheckZeroViaOnlyPostLaunch(height)))
+        !newCurrencyState.ValidateConversionLimits(updatedPostLaunch))
     {
         // if this is the launch, we need to refund the currency
         if (newCurrencyState.IsLaunchClear() && newCurrencyState.IsPrelaunch())
@@ -5673,7 +5708,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             CCoinbaseCurrencyState recursiveCurrencyState = importCurrencyState;
             recursiveCurrencyState.supply = 0;
             recursiveCurrencyState.reserves = std::vector<int64_t>(recursiveCurrencyState.reserves.size(), 0);
-            if (ConnectedChains.CheckZeroViaOnlyPostLaunch(height))
+            if (updatedPostLaunch)
             {
                 *this = checkPointThis;
                 recursiveCurrencyState.SetLaunchConfirmed(false);
@@ -5728,7 +5763,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 spentCurrencyOut.valueMap.clear();
                 CCurrencyDefinition refundDef = ConnectedChains.GetCachedCurrency(importCurrencyDef.launchSystemID);
 
-                if (ConnectedChains.CheckZeroViaOnlyPostLaunch(height))
+                if (updatedPostLaunch)
                 {
                     *this = checkPointThis;
                 }
