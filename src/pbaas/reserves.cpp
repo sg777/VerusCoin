@@ -3824,7 +3824,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                  (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()) ||
                  (exportObjects[i].IsConversion() && !exportObjects[i].IsPreConversion() && !importCurrencyState.IsLaunchCompleteMarker()))
         {
-            curTransfer = exportObjects[i].GetRefundTransfer(importCurrencyState.IsRefunding() && !(systemSourceID != systemDestID && exportObjects[i].IsCrossSystem()), fullUpgrade);
+            curTransfer = exportObjects[i].GetRefundTransfer(!(systemSourceID != systemDestID && exportObjects[i].IsCrossSystem()), fullUpgrade);
         }
         else
         {
@@ -4281,7 +4281,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     if (newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert))
                     {
                         LogPrint("defi", "%s: refunding pre-conversion over maximum\n", __func__);
-                        curTransfer = curTransfer.GetRefundTransfer(!ConnectedChains.CheckZeroViaOnlyPostLaunch(height));
+                        curTransfer = curTransfer.GetRefundTransfer();
                     }
                 }
 
@@ -5716,7 +5716,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 else
                 {
                     notRefund = true;
-                    refundedExports.push_back(oneTransfer.GetRefundTransfer(!ConnectedChains.CheckZeroViaOnlyPostLaunch(height) || newCurrencyState.IsRefunding()));
+                    refundedExports.push_back(oneTransfer.GetRefundTransfer());
                 }
             }
             if (notRefund)
