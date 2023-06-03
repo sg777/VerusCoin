@@ -1090,10 +1090,12 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                               CCurrencyValueMap &gatewayDepositsUsed,
                                               CCurrencyValueMap &spentCurrencyOut,
                                               CTransferDestination feeRecipient,
-                                              bool forcedRefund) const
+                                              bool lastImportBeforeComplete) const
 {
     uint160 sourceSystemID = sourceSystem.GetID();
     uint160 destSystemID = destCurrency.IsGateway() ? destCurrency.gatewayID : destCurrency.systemID;
+
+    bool forcedRefund = false;
 
     newNotarization = *this;
     newNotarization.SetDefinitionNotarization(false);
@@ -1461,7 +1463,10 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             tempState.reserveOut =
                     tempState.AddVectors(tempState.reserveOut,
                                          (CCurrencyValueMap(tempState.currencies, tempState.reserveIn) * -1).AsCurrencyVector(tempState.currencies));
-            tempState.reserveIn = tempReserves.AsCurrencyVector(tempState.currencies);
+            if (!lastImportBeforeComplete)
+            {
+                tempState.reserveIn = tempReserves.AsCurrencyVector(tempState.currencies);
+            }
         }
         if (destCurrency.IsPBaaSChain() && tempState.IsLaunchClear() && this->currencyState.IsLaunchClear())
         {

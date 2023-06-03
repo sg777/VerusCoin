@@ -4285,7 +4285,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     // check if it exceeds pre-conversion maximums, and refund if so
                     CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({curTransfer.FirstCurrency()}),
                                                                     std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())}));
-                    CCurrencyValueMap newTotalReserves = CCurrencyValueMap(importCurrencyState.currencies, ConnectedChains.CheckZeroViaOnlyPostLaunch(height) ? importCurrencyState.reserveIn : importCurrencyState.primaryCurrencyIn) + newReserveIn + preConvertedReserves;
+                    CCurrencyValueMap newTotalReserves = CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.primaryCurrencyIn) + newReserveIn + preConvertedReserves;
 
                     if (newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert))
                     {
@@ -5243,6 +5243,22 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                                     dummyCurState,
                                                     &crossConversions,
                                                     &newCurrencyState.viaConversionPrice);
+            bool hasCrossConversions = false;
+            for (auto &oneConversionVec : crossConversions)
+            {
+                for (auto oneConversionVal : oneConversionVec)
+                {
+                    if (oneConversionVal)
+                    {
+                        hasCrossConversions = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasCrossConversions && ConnectedChains.CheckZeroViaOnlyPostLaunch(height))
+            {
+                newCurrencyState.viaConversionPrice = newPrices;
+            }
             if (!dummyCurState.IsValid())
             {
                 printf("%s: Invalid currency conversions for import to %s : %s\n", __func__, importCurrencyDef.name.c_str(), EncodeDestination(CIdentityID(importCurrencyDef.GetID())).c_str());

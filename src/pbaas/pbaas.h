@@ -321,7 +321,8 @@ public:
         FLAG_BLOCKONE_NOTARIZATION = 0x40,  // block 1 notarizations are auto-finalized, the blockchain itself will be worthless if it is wrong
         FLAG_SAME_CHAIN = 0x80,             // set if all currency information is verifiable on this chain
         FLAG_LAUNCH_COMPLETE = 0x100,       // set if all currency information is verifiable on this chain
-        FLAG_CONTRACT_UPGRADE = 0x200       // if set, this notarization agrees to the contract ugrade referenced in the first auxdest
+        FLAG_CONTRACT_UPGRADE = 0x200,      // if set, this notarization agrees to the contract ugrade referenced in the first auxdest
+        FLAGS_MASK = 0x3ff
     };
 
     uint32_t nVersion;
@@ -639,7 +640,7 @@ public:
                               CCurrencyValueMap &gatewayDepositsUsed,
                               CCurrencyValueMap &spentCurrencyOut,
                               CTransferDestination feeRecipient=CTransferDestination(),
-                              bool forcedRefunding=false) const;
+                              bool lastImportBeforeComplete=false) const;
 
     static int GetBlocksPerCheckpoint(int heightChange);
     static int GetNumCheckpoints(int heightChange);
