@@ -3421,6 +3421,14 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
         return state.Error("Serialized currency is too large to send across PBaaS networks");
     }
 
+    bool postViaUpdate = ConnectedChains.CheckZeroViaOnlyPostLaunch(height);
+    if (postViaUpdate &&
+        newCurrency.currencies.size() &&
+        !(newCurrency.launchSystemID.IsNull() || newCurrency.GetCurrenciesMap().count(newCurrency.launchSystemID)))
+    {
+        return state.Error("Currency definition must include launch system native currency in currencies");
+    }
+
     if (!isBlockOneDefinition)
     {
         CCrossChainImport launchCCI;

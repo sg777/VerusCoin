@@ -4678,12 +4678,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                 uint160 convertFromID = curTransfer.FirstCurrency();
 
-                // either the destination currency must be fractional or the source currency
-                // must be native
-                if (!isFractional && convertFromID != importCurrencyDef.launchSystemID && !updatedPostLaunch)
+                // source currency must be in definition
+                auto currencyMap = importCurrencyDef.GetCurrenciesMap();
+                if (((!isFractional && convertFromID != importCurrencyDef.launchSystemID) ||
+                     (isFractional && !currencyMap.count(convertFromID)))&&
+                    !(updatedPostLaunch && currencyMap.count(convertFromID)))
                 {
-                    printf("%s: Invalid conversion %s. Source must be launch system native or destinaton must be fractional\n", __func__, curTransfer.ToUniValue().write().c_str());
-                    LogPrintf("%s: Invalid conversion %s. Source must be launch system native or destinaton must be fractional\n", __func__, curTransfer.ToUniValue().write().c_str());
+                    printf("%s: Invalid conversion %s. Source currency must be included in definition currencies\n", __func__, curTransfer.ToUniValue().write().c_str());
+                    LogPrintf("%s: Invalid conversion %s. Source currency must be included in definition currencies\n", __func__, curTransfer.ToUniValue().write().c_str());
                     return false;
                 }
 
@@ -5302,7 +5304,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             }
             if (!hasCrossConversions && updatedPostLaunch)
             {
-                newCurrencyState.viaConversionPrice = newPrices;
+                for (int viaIdx = 0; viaIdx < newCurrencyState.viaConversionPrice.size(); viaIdx++)
+                {
+                    if (!newCurrencyState.viaConversionPrice[viaIdx])
+                    {
+                        newCurrencyState.viaConversionPrice[viaIdx] = newPrices[viaIdx];
+                    }
+                }
             }
             if (!dummyCurState.IsValid())
             {
