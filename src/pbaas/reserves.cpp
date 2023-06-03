@@ -4332,7 +4332,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                                                     std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())}));
                     CCurrencyValueMap newTotalReserves = CCurrencyValueMap(importCurrencyState.currencies, updatedPostLaunch ? importCurrencyState.reserveIn : importCurrencyState.primaryCurrencyIn) + newReserveIn + preConvertedReserves;
 
-                    if (newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert))
+                    if ((!updatedPostLaunch &&
+                         newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert)) ||
+                        (updatedPostLaunch &&
+                         (CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert) - newTotalReserves).HasNegative()))
                     {
                         LogPrint("defi", "%s: refunding pre-conversion over maximum: %s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
                         curTransfer = curTransfer.GetRefundTransfer();
@@ -4676,13 +4679,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     return false;
                 }
 
-                uint160 convertFromID = curTransfer.FirstCurrency();
+                uint160 convertFromCur = curTransfer.FirstCurrency();
 
                 // source currency must be in definition
                 auto currencyMap = importCurrencyDef.GetCurrenciesMap();
-                if (((!isFractional && convertFromID != importCurrencyDef.launchSystemID) ||
-                     (isFractional && !currencyMap.count(convertFromID)))&&
-                    !(updatedPostLaunch && currencyMap.count(convertFromID)))
+                if (!(updatedPostLaunch && currencyMap.count(convertFromCur)) &&
+                    ((!isFractional && convertFromCur != importCurrencyDef.launchSystemID) ||
+                     (isFractional && !currencyMap.count(convertFromCur))))
                 {
                     printf("%s: Invalid conversion %s. Source currency must be included in definition currencies\n", __func__, curTransfer.ToUniValue().write().c_str());
                     LogPrintf("%s: Invalid conversion %s. Source currency must be included in definition currencies\n", __func__, curTransfer.ToUniValue().write().c_str());
@@ -4690,7 +4693,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 }
 
                 // get currency index
-                auto curIndexIt = currencyIndexMap.find(convertFromID);
+                auto curIndexIt = currencyIndexMap.find(convertFromCur);
                 if (curIndexIt == currencyIndexMap.end())
                 {
                     printf("%s: Invalid currency for conversion %s\n", __func__, curTransfer.ToUniValue().write().c_str());

@@ -971,7 +971,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                 }
             }
 
-            if (nVersion != PBAAS_VERSION_INVALID && IsFractional())
+            if (nVersion != PBAAS_VERSION_INVALID)
             {
                 if (minPreconvertArr.isArray() && minPreconvertArr.size() && minPreconvertArr.size() != currencyArr.size())
                 {
