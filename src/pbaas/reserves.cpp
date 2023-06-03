@@ -2764,16 +2764,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
                         bool isClearLaunch = (ccx.IsClearLaunch() && ccx.sourceSystemID == importCurrencyDef.launchSystemID);
 
-                        // if clear launch, don't set launch complete beforehand to match outputs
-                        if (isClearLaunch)
-                        {
-                            checkState.SetLaunchCompleteMarker(false);
-                        }
-
-                        checkState.RevertReservesAndSupply(ASSETCHAINS_CHAINID,
-                                                           (importCurrencyDef.IsGatewayConverter() && importCurrencyDef.gatewayID == ASSETCHAINS_CHAINID) ||
-                                                           (!IsVerusActive() && importCurrencyDef.GetID() == ASSETCHAINS_CHAINID));
-
                         if (ConnectedChains.CheckZeroViaOnlyPostLaunch(nHeight) &&
                             isClearLaunch &&
                             importTransfers.size())
@@ -2786,10 +2776,15 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             // clearlaunch should always have a prior
                             if (!priorCCI.IsValid())
                             {
+                                if (LogAcceptCategory("defi"))
+                                {
+                                    LogPrintf("%s: Invalid prior import: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
+                                }
                                 flags &= ~IS_VALID;
                                 flags |= IS_REJECT;
                                 return;
                             }
+                            bool validNotarization = false;
                             // get the prior output notarization
                             for (int o = priorOutNum; o < priorTx.vout.size(); o++)
                             {
@@ -2803,9 +2798,32 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 {
                                     checkState = priorNotar.currencyState;
                                     checkState.SetPrelaunch(false);
+                                    validNotarization = true;
                                     break;
                                 }
                             }
+                            if (!validNotarization)
+                            {
+                                if (LogAcceptCategory("defi"))
+                                {
+                                    LogPrintf("%s: Invalid prior notarization at clear launch for import: %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
+                                }
+                                flags &= ~IS_VALID;
+                                flags |= IS_REJECT;
+                                return;
+                            }
+                        }
+                        else
+                        {
+                            // if clear launch, don't set launch complete beforehand to match outputs
+                            if (isClearLaunch)
+                            {
+                                checkState.SetLaunchCompleteMarker(false);
+                            }
+
+                            checkState.RevertReservesAndSupply(ASSETCHAINS_CHAINID,
+                                                            (importCurrencyDef.IsGatewayConverter() && importCurrencyDef.gatewayID == ASSETCHAINS_CHAINID) ||
+                                                            (!IsVerusActive() && importCurrencyDef.GetID() == ASSETCHAINS_CHAINID));
                         }
 
                         if (LogAcceptCategory("defi"))
