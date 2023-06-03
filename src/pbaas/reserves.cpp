@@ -5302,14 +5302,15 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     }
                 }
             }
-            if (!hasCrossConversions && updatedPostLaunch)
+            if (!hasCrossConversions &&
+                (updatedPostLaunch &&
+                 (!PBAAS_TESTMODE ||
+                  IsVerusActive() ||
+                  (chainActive.Height() >= (height - 1) && chainActive[height - 1]->nTime >= PBAAS_TESTFORK4_TIME))))
             {
                 for (int viaIdx = 0; viaIdx < newCurrencyState.viaConversionPrice.size(); viaIdx++)
                 {
-                    if (!newCurrencyState.viaConversionPrice[viaIdx])
-                    {
-                        newCurrencyState.viaConversionPrice[viaIdx] = newPrices[viaIdx];
-                    }
+                    newCurrencyState.viaConversionPrice[viaIdx] = newPrices[viaIdx];
                 }
             }
             if (!dummyCurState.IsValid())
