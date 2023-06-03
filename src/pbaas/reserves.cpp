@@ -3679,15 +3679,6 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
     return false;
 }
 
-CReserveTransfer RefundExport(const CBaseChainObject *objPtr)
-{
-    if (objPtr->objectType == CHAINOBJ_RESERVETRANSFER)
-    {
-        return ((CChainObject<CReserveTransfer> *)objPtr)->object.GetRefundTransfer();
-    }
-    return CReserveTransfer();
-}
-
 // the source currency indicates the system from which the import comes, but the imports may contain additional
 // currencies that are supported in that system and are not limited to the native currency. Fees are assumed to
 // be covered by the native currency of the source or source currency, if this is a reserve conversion. That
@@ -3833,7 +3824,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                  (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()) ||
                  (exportObjects[i].IsConversion() && !exportObjects[i].IsPreConversion() && !importCurrencyState.IsLaunchCompleteMarker()))
         {
-            curTransfer = exportObjects[i].GetRefundTransfer(!(systemSourceID != systemDestID && exportObjects[i].IsCrossSystem()), fullUpgrade);
+            curTransfer = exportObjects[i].GetRefundTransfer(importCurrencyState.IsRefunding() && !(systemSourceID != systemDestID && exportObjects[i].IsCrossSystem()), fullUpgrade);
         }
         else
         {
@@ -4290,7 +4281,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     if (newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert))
                     {
                         LogPrint("defi", "%s: refunding pre-conversion over maximum\n", __func__);
-                        curTransfer = curTransfer.GetRefundTransfer();
+                        curTransfer = curTransfer.GetRefundTransfer(!ConnectedChains.CheckZeroViaOnlyPostLaunch(height));
                     }
                 }
 
@@ -5725,7 +5716,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 else
                 {
                     notRefund = true;
-                    refundedExports.push_back(oneTransfer.GetRefundTransfer());
+                    refundedExports.push_back(oneTransfer.GetRefundTransfer(!ConnectedChains.CheckZeroViaOnlyPostLaunch(height) || newCurrencyState.IsRefunding()));
                 }
             }
             if (notRefund)

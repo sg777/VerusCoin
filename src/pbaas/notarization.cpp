@@ -1167,6 +1167,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         newPreConversionReservesIn = CCurrencyValueMap(currencyState.currencies, currencyState.primaryCurrencyIn);
     }
 
+    // once we are past the late solo preconvert, don't clear cross chain in some refunds
+    bool dontClearCrossChain = !ConnectedChains.CheckZeroViaOnlyPostLaunch(currentHeight);
+
     for (int i = 0; i < exportTransfers.size(); i++)
     {
         CReserveTransfer reserveTransfer = exportTransfers[i];
@@ -1190,7 +1193,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             {
                 //printf("%s: Invalid pre-conversion, mined on or after start block\n", __func__);
                 LogPrintf("%s: Invalid pre-conversion, mined on or after start block\n", __func__);
-                reserveTransfer = reserveTransfer.GetRefundTransfer();
+                reserveTransfer = reserveTransfer.GetRefundTransfer(dontClearCrossChain);
             }
             else
             {
@@ -1210,7 +1213,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 if (destCurrency.maxPreconvert.size() && newTotalReserves > CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert))
                 {
                     LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
-                    reserveTransfer = reserveTransfer.GetRefundTransfer();
+                    reserveTransfer = reserveTransfer.GetRefundTransfer(dontClearCrossChain);
                 }
                 else
                 {
@@ -1224,7 +1227,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             {
                 //printf("%s: Invalid conversion, mined before start block\n", __func__);
                 LogPrintf("%s: Invalid conversion, mined before start block\n", __func__);
-                reserveTransfer = reserveTransfer.GetRefundTransfer();
+                reserveTransfer = reserveTransfer.GetRefundTransfer(dontClearCrossChain);
             }
         }
     }
