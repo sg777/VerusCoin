@@ -10236,8 +10236,9 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
     CTransaction finalizedTx;
     uint256 txBlockHash;
     CPBaaSNotarization notarization;
+    BlockMap::iterator notaTxBlockIt;
 
-    if (!(currentFinalization.GetOutputTransaction(tx, finalizedTx, txBlockHash) &&
+    if (!(currentFinalization.GetOutputTransaction(tx, finalizedTx, txBlockHash, false) &&
           finalizedTx.vout[currentFinalization.output.n].scriptPubKey.IsPayToCryptoCondition(p) &&
           p.IsValid() &&
           (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
@@ -10249,6 +10250,14 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             return true;
         }
         return state.Error("Invalid notarization output for finalization");
+    }
+
+    if (!(!txBlockHash.IsNull() &&
+         (notaTxBlockIt = mapBlockIndex.find(txBlockHash)) != mapBlockIndex.end() &&
+         chainActive.Contains(notaTxBlockIt->second)) &&
+        (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK4_TIME))
+    {
+        return state.Error("Uncommitted notarization output is invalid for finalization");
     }
 
     for (int i = outNum + 1; i < tx.vout.size(); i++)
