@@ -2812,6 +2812,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 flags |= IS_REJECT;
                                 return;
                             }
+                            checkState.SetLaunchClear(false);
                         }
                         else
                         {
