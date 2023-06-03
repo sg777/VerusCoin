@@ -1319,8 +1319,10 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                     minPreMap = CCurrencyValueMap(destCurrency.currencies, destCurrency.minPreconvert).CanonicalMap();
                 }
 
+                bool improvedMinCheck = ConnectedChains.CheckZeroViaOnlyPostLaunch(currentHeight);
                 if (forcedRefund ||
-                    (minPreMap.valueMap.size() && preConvertedMap < minPreMap) ||
+                    (minPreMap.valueMap.size() &&
+                     ((!improvedMinCheck && preConvertedMap < minPreMap) || (improvedMinCheck && (preConvertedMap - minPreMap).HasNegative()))) ||
                     (destCurrency.IsFractional() &&
                      (CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserveIn) +
                                         newPreConversionReservesIn).CanonicalMap().valueMap.size() != destCurrency.currencies.size()))
@@ -10236,8 +10238,9 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
     CTransaction finalizedTx;
     uint256 txBlockHash;
     CPBaaSNotarization notarization;
+    BlockMap::iterator notaTxBlockIt;
 
-    if (!(currentFinalization.GetOutputTransaction(tx, finalizedTx, txBlockHash) &&
+    if (!(currentFinalization.GetOutputTransaction(tx, finalizedTx, txBlockHash, false) &&
           finalizedTx.vout[currentFinalization.output.n].scriptPubKey.IsPayToCryptoCondition(p) &&
           p.IsValid() &&
           (p.evalCode == EVAL_ACCEPTEDNOTARIZATION || p.evalCode == EVAL_EARNEDNOTARIZATION) &&
@@ -10249,6 +10252,14 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
             return true;
         }
         return state.Error("Invalid notarization output for finalization");
+    }
+
+    if (!(!txBlockHash.IsNull() &&
+         (notaTxBlockIt = mapBlockIndex.find(txBlockHash)) != mapBlockIndex.end() &&
+         chainActive.Contains(notaTxBlockIt->second)) &&
+        (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK4_TIME))
+    {
+        return state.Error("Uncommitted notarization output is invalid for finalization");
     }
 
     for (int i = outNum + 1; i < tx.vout.size(); i++)
@@ -10520,6 +10531,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     !proofDescr.challengeOutputs[0].GetOutputTransaction(tipTx, tipBlockHash, false) ||
                     tipBlockHash.IsNull() ||
                     (tipTxBlockIt = mapBlockIndex.find(tipBlockHash)) == mapBlockIndex.end() ||
+                    !chainActive.Contains(tipTxBlockIt->second) ||
                     tipTxBlockIt->second->GetHeight() > (height - 1) ||
                     tipTxBlockIt->second->GetHeight() < pCurNotarizationBlkIndex->GetHeight() ||
                     tipTx.vout.size() <= proofDescr.challengeOutputs[0].n ||
@@ -10534,7 +10546,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                         continue;
                     }
                     LogPrint("notarization", "%s: notarization finalization tip transaction not in prior chain at height %u\n", __func__, height);
-                    if (confirmNeedsEvidence && (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK3_TIME))
+                    if (confirmNeedsEvidence && (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK4_TIME))
                     {
                         return state.Error("Invalid confirmation evidence 1");
                     }
