@@ -10520,6 +10520,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                     !proofDescr.challengeOutputs[0].GetOutputTransaction(tipTx, tipBlockHash, false) ||
                     tipBlockHash.IsNull() ||
                     (tipTxBlockIt = mapBlockIndex.find(tipBlockHash)) == mapBlockIndex.end() ||
+                    !chainActive.Contains(tipTxBlockIt->second) ||
                     tipTxBlockIt->second->GetHeight() > (height - 1) ||
                     tipTxBlockIt->second->GetHeight() < pCurNotarizationBlkIndex->GetHeight() ||
                     tipTx.vout.size() <= proofDescr.challengeOutputs[0].n ||
@@ -10534,7 +10535,7 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
                         continue;
                     }
                     LogPrint("notarization", "%s: notarization finalization tip transaction not in prior chain at height %u\n", __func__, height);
-                    if (confirmNeedsEvidence && (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK3_TIME))
+                    if (confirmNeedsEvidence && (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK4_TIME))
                     {
                         return state.Error("Invalid confirmation evidence 1");
                     }
