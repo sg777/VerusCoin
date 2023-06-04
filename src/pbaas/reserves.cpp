@@ -4327,6 +4327,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 // enforce maximum if present
                 if (curTransfer.IsPreConversion() && importCurrencyDef.maxPreconvert.size())
                 {
+                    CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({curTransfer.FirstCurrency()}),
+                                                                std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())}));
+
                     if (updatedPostLaunch)
                     {
                         CCurrencyValueMap cumulativeReservesIn = 
@@ -4335,9 +4338,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                     importCurrencyState.NativeToReserveRaw(importCurrencyState.primaryCurrencyIn, importCurrencyState.conversionPrice);
 
                         // check if it exceeds pre-conversion maximums, and refund if so
-                        CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({curTransfer.FirstCurrency()}),
-                                                                    std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())}));
-
                         CCurrencyValueMap newTotalReserves = cumulativeReservesIn + newReserveIn + preConvertedReserves;
 
                         if ((CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert) - newTotalReserves).HasNegative())
@@ -4350,8 +4350,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     {
                         CCurrencyValueMap cumulativeReservesIn = importCurrencyState.NativeToReserveRaw(importCurrencyState.primaryCurrencyIn, importCurrencyState.conversionPrice);
 
-                        // check if it exceeds pre-conversion maximums, and refund if so
-                        CCurrencyValueMap newReserveIn = CCurrencyValueMap newTotalReserves = cumulativeReservesIn + newReserveIn + preConvertedReserves;
+                        CCurrencyValueMap newTotalReserves = cumulativeReservesIn + newReserveIn + preConvertedReserves;
 
                         if (newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert))
                         {
