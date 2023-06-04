@@ -2764,6 +2764,9 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
                         bool isClearLaunch = (ccx.IsClearLaunch() && ccx.sourceSystemID == importCurrencyDef.launchSystemID);
 
+                        CReserveTransactionDescriptor rtxd = *this;
+                        uint256 weakEntropyHash = EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), importNotarization.notarizationHeight, importCurrencyDef.GetID());
+
                         if (ConnectedChains.CheckZeroViaOnlyPostLaunch(nHeight) &&
                             isClearLaunch &&
                             importTransfers.size())
@@ -2798,8 +2801,27 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 {
                                     checkState = priorNotar.currencyState;
                                     checkState.SetPrelaunch(false);
-                                    validNotarization = true;
-                                    break;
+                                    if (rtxd.AddReserveTransferImportOutputs(sourceSystemDef,
+                                                                             ConnectedChains.thisChain,
+                                                                             importCurrencyDef,
+                                                                             checkState,
+                                                                             importTransfers,
+                                                                             nHeight,
+                                                                             checkOutputs,
+                                                                             importedCurrency,
+                                                                             gatewayDeposits,
+                                                                             spentCurrencyOut,
+                                                                             &newState,
+                                                                             ccx.exporter,
+                                                                             importNotarization.proposer,
+                                                                             weakEntropyHash))
+                                    {
+                                        checkState.conversionPrice = newState.conversionPrice;
+                                        checkState.viaConversionPrice = newState.viaConversionPrice;
+                                        validNotarization = true;
+                                        checkOutputs.clear();
+                                        break;
+                                    }
                                 }
                             }
                             if (!validNotarization)
@@ -2849,8 +2871,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             checkState.SetLaunchClear();
                         }
 
-                        CReserveTransactionDescriptor rtxd = *this;
-                        uint256 weakEntropyHash = EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), importNotarization.notarizationHeight, importCurrencyDef.GetID());
+                        rtxd = *this;
 
                         if (!rtxd.AddReserveTransferImportOutputs(sourceSystemDef,
                                                                   ConnectedChains.thisChain,
@@ -4334,7 +4355,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     {
                         CCurrencyValueMap cumulativeReservesIn = 
                                 importCurrencyDef.IsFractional() ?
-                                    CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.reserveIn) :
+                                    CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.primaryCurrencyIn) :
                                     importCurrencyState.NativeToReserveRaw(importCurrencyState.primaryCurrencyIn, importCurrencyState.conversionPrice);
 
                         // check if it exceeds pre-conversion maximums, and refund if so
@@ -6363,6 +6384,8 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID, bo
             // reverse last changes
             auto currencyMap = GetReserveMap();
 
+            CCurrencyValueMap negativePreReserves(currencies, reserveIn);
+
             // revert changes in reserves and supply to pre conversion state, add reserve outs and subtract reserve ins
             for (auto &oneCur : currencyMap)
             {
@@ -6379,20 +6402,15 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID, bo
                 {
                     supply += primaryCurrencyIn[oneCur.second];
                 }
-                else
+                else if (processingPreconverts)
                 {
-                    CCurrencyValueMap negativePreReserves(currencies, reserveIn);
-                    negativePreReserves = negativePreReserves * -1;
-
-                    if (!IsPrelaunch())
-                    {
-                        primaryCurrencyIn = AddVectors(primaryCurrencyIn, negativePreReserves.AsCurrencyVector(currencies));
-                        for (auto &oneVal : reserveIn)
-                        {
-                            oneVal = 0;
-                        }
-                    }
+                    reserveIn[oneCur.second] = 0;
                 }
+            }
+            if (processingPreconverts)
+            {
+                negativePreReserves = negativePreReserves * -1;
+                primaryCurrencyIn = AddVectors(primaryCurrencyIn, negativePreReserves.AsCurrencyVector(currencies));
             }
         }
     }

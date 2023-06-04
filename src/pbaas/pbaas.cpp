@@ -7425,10 +7425,29 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         {
             tb.SetReserveFee(reserveFees);
         }
-        if (reserveChange > CCurrencyValueMap() &&
-            !VERUS_NOTARYID.IsNull())
+        if (reserveChange > CCurrencyValueMap())
         {
-            tb.SendChangeTo(VERUS_NOTARYID);
+            CTxDestination changeDest;
+            if (!VERUS_NOTARYID.IsNull())
+            {
+                changeDest = VERUS_NOTARYID;
+            }
+            else if (!VERUS_DEFAULTID.IsNull())
+            {
+                changeDest = VERUS_DEFAULTID;
+            }
+            else if (!IsValidDestination(changeDest = DecodeDestination(GetArg("-mineraddress", ""))))
+            {
+                extern CWallet *pwalletMain;
+                LOCK(pwalletMain->cs_wallet);
+                CPubKey key;
+
+                if (pwalletMain->GetKeyFromPool(key))
+                {
+                    changeDest = key.GetID();
+                }
+            }
+            tb.SendChangeTo(changeDest);
         }
 
         if (LogAcceptCategory("crosschainimports"))
