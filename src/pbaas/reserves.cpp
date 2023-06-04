@@ -4327,15 +4327,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 // enforce maximum if present
                 if (curTransfer.IsPreConversion() && importCurrencyDef.maxPreconvert.size())
                 {
+                    CCurrencyValueMap cumulativeReservesIn = importCurrencyState.NativeToReserveRaw(importCurrencyState.primaryCurrencyIn, importCurrencyState.conversionPrice);
                     // check if it exceeds pre-conversion maximums, and refund if so
-                    CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({curTransfer.FirstCurrency()}),
-                                                                    std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())}));
-                    CCurrencyValueMap newTotalReserves = CCurrencyValueMap(importCurrencyState.currencies,
-                                                                           ((updatedPostLaunch && importCurrencyState.IsFractional()) ?
-                                                                                importCurrencyState.reserveIn :
-                                                                                importCurrencyState.primaryCurrencyIn)) +
-                                                         newReserveIn +
-                                                         preConvertedReserves;
+                    CCurrencyValueMap newReserveIn = updatedPostLaunch ?
+                        CCurrencyValueMap(std::vector<uint160>({curTransfer.FirstCurrency()}),
+                                                                std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())})) :
+                        CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.primaryCurrencyIn);
+
+                    CCurrencyValueMap newTotalReserves = cumulativeReservesIn + newReserveIn + preConvertedReserves;
 
                     if ((!updatedPostLaunch &&
                          newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert)) ||
