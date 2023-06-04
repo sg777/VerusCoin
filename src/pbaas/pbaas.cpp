@@ -5620,8 +5620,8 @@ bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
 {
     if (IsVerusActive())
     {
-        if ((PBAAS_TESTMODE && height > 60740) ||
-            (!PBAAS_TESTMODE && height > 2568920))
+        if ((PBAAS_TESTMODE && height > 61982) ||
+            (!PBAAS_TESTMODE && height > 2570264))
         {
             return true;
         }
@@ -7411,10 +7411,24 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         // pay the fee out to the miner
         CReserveTransactionDescriptor rtxd(tb.mtx, view, nHeight + 1);
         tb.SetFee(rtxd.nativeIn - rtxd.nativeOut);
+
+        CCurrencyValueMap intersectMap;
+        intersectMap.valueMap[ASSETCHAINS_CHAINID] = 1;
+        if (!IsVerusActive())
+        {
+            intersectMap.valueMap[VERUS_CHAINID] = 1;
+        }
         CCurrencyValueMap reserveFees = rtxd.ReserveFees();
+        CCurrencyValueMap reserveChange = reserveFees.NonIntersectingValues(intersectMap);
+        reserveFees = reserveFees.IntersectingValues(intersectMap);
         if (reserveFees > CCurrencyValueMap())
         {
             tb.SetReserveFee(reserveFees);
+        }
+        if (reserveChange > CCurrencyValueMap() &&
+            !VERUS_NOTARYID.IsNull())
+        {
+            tb.SendChangeTo(VERUS_NOTARYID);
         }
 
         if (LogAcceptCategory("crosschainimports"))
