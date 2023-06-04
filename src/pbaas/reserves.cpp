@@ -4327,22 +4327,37 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 // enforce maximum if present
                 if (curTransfer.IsPreConversion() && importCurrencyDef.maxPreconvert.size())
                 {
-                    CCurrencyValueMap cumulativeReservesIn = importCurrencyState.NativeToReserveRaw(importCurrencyState.primaryCurrencyIn, importCurrencyState.conversionPrice);
-                    // check if it exceeds pre-conversion maximums, and refund if so
-                    CCurrencyValueMap newReserveIn = updatedPostLaunch ?
-                        CCurrencyValueMap(std::vector<uint160>({curTransfer.FirstCurrency()}),
-                                                                std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())})) :
-                        CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.primaryCurrencyIn);
-
-                    CCurrencyValueMap newTotalReserves = cumulativeReservesIn + newReserveIn + preConvertedReserves;
-
-                    if ((!updatedPostLaunch &&
-                         newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert)) ||
-                        (updatedPostLaunch &&
-                         (CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert) - newTotalReserves).HasNegative()))
+                    if (updatedPostLaunch)
                     {
-                        LogPrint("defi", "%s: refunding pre-conversion over maximum: %s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
-                        curTransfer = curTransfer.GetRefundTransfer();
+                        CCurrencyValueMap cumulativeReservesIn = 
+                                importCurrencyDef.IsFractional() ?
+                                    CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.primaryCurrencyIn) :
+                                    importCurrencyState.NativeToReserveRaw(importCurrencyState.primaryCurrencyIn, importCurrencyState.conversionPrice);
+
+                        // check if it exceeds pre-conversion maximums, and refund if so
+                        CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({curTransfer.FirstCurrency()}),
+                                                                    std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())}));
+
+                        CCurrencyValueMap newTotalReserves = cumulativeReservesIn + newReserveIn + preConvertedReserves;
+
+                        if ((CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert) - newTotalReserves).HasNegative())
+                        {
+                            LogPrint("defi", "%s: refunding pre-conversion over maximum: %s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
+                            curTransfer = curTransfer.GetRefundTransfer();
+                        }
+                    }
+                    else
+                    {
+                        CCurrencyValueMap cumulativeReservesIn = importCurrencyState.NativeToReserveRaw(importCurrencyState.primaryCurrencyIn, importCurrencyState.conversionPrice);
+
+                        // check if it exceeds pre-conversion maximums, and refund if so
+                        CCurrencyValueMap newReserveIn = CCurrencyValueMap newTotalReserves = cumulativeReservesIn + newReserveIn + preConvertedReserves;
+
+                        if (newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert))
+                        {
+                            LogPrint("defi", "%s: refunding pre-conversion over maximum: %s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
+                            curTransfer = curTransfer.GetRefundTransfer();
+                        }
                     }
                 }
 
