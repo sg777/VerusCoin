@@ -4369,7 +4369,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     }
                     else
                     {
-                        CCurrencyValueMap cumulativeReservesIn = importCurrencyState.NativeToReserveRaw(importCurrencyState.primaryCurrencyIn, importCurrencyState.conversionPrice);
+                        CCurrencyValueMap cumulativeReservesIn = CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.primaryCurrencyIn);
 
                         CCurrencyValueMap newTotalReserves = cumulativeReservesIn + newReserveIn + preConvertedReserves;
 
