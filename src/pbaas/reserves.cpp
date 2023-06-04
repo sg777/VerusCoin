@@ -2912,14 +2912,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         {
                             if (LogAcceptCategory("defi"))
                             {
-                                LogPrintf("%s: Expected - reserveIn: %ld, reserveOut: %ld, primaryCurrencyIn: %ld\n     Actual - reserveIn: %ld, reserveOut: %ld, primaryCurrencyIn: %ld\n",
-                                        __func__,
-                                        newState.reserveIn,
-                                        newState.reserveOut,
-                                        newState.primaryCurrencyIn,
-                                        importNotarization.currencyState.reserveIn,
-                                        importNotarization.currencyState.reserveOut,
-                                        importNotarization.currencyState.primaryCurrencyIn);
+                                LogPrintf("%s: Expected: %s\nActual: %s\n", __func__, newState.ToUniValue().write(1,2).c_str(), importNotarization.currencyState.ToUniValue().write(1,2).c_str());
                             }
                         }
                         newState.reserveIn = importNotarization.currencyState.reserveIn;
