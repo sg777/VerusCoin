@@ -4331,7 +4331,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     {
                         CCurrencyValueMap cumulativeReservesIn = 
                                 importCurrencyDef.IsFractional() ?
-                                    CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.primaryCurrencyIn) :
+                                    CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.reserveIn) :
                                     importCurrencyState.NativeToReserveRaw(importCurrencyState.primaryCurrencyIn, importCurrencyState.conversionPrice);
 
                         // check if it exceeds pre-conversion maximums, and refund if so
