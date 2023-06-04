@@ -2906,6 +2906,22 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         }
 
                         // these affect comparison, but not calculations
+                        if (newState.reserveIn != importNotarization.currencyState.reserveIn ||
+                            newState.reserveOut != importNotarization.currencyState.reserveOut ||
+                            newState.primaryCurrencyIn != importNotarization.currencyState.primaryCurrencyIn)
+                        {
+                            if (LogAcceptCategory("defi"))
+                            {
+                                LogPrintf("%s: Expected - reserveIn: %ld, reserveOut: %ld, primaryCurrencyIn: %ld\n     Actual - reserveIn: %ld, reserveOut: %ld, primaryCurrencyIn: %ld\n",
+                                        __func__,
+                                        newState.reserveIn,
+                                        newState.reserveOut,
+                                        newState.primaryCurrencyIn,
+                                        importNotarization.currencyState.reserveIn,
+                                        importNotarization.currencyState.reserveOut,
+                                        importNotarization.currencyState.primaryCurrencyIn);
+                            }
+                        }
                         newState.reserveIn = importNotarization.currencyState.reserveIn;
                         newState.reserveOut = importNotarization.currencyState.reserveOut;
                         newState.primaryCurrencyIn = importNotarization.currencyState.primaryCurrencyIn;
@@ -4355,7 +4371,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     {
                         CCurrencyValueMap cumulativeReservesIn = 
                                 importCurrencyDef.IsFractional() ?
-                                    CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.primaryCurrencyIn) :
+                                    (importCurrencyState.IsPrelaunch() ?
+                                        CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.reserveIn) :
+                                        CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.primaryCurrencyIn)) :
                                     importCurrencyState.NativeToReserveRaw(importCurrencyState.primaryCurrencyIn, importCurrencyState.conversionPrice);
 
                         // check if it exceeds pre-conversion maximums, and refund if so

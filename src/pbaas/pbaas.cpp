@@ -7410,6 +7410,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
         // pay the fee out to the miner
         CReserveTransactionDescriptor rtxd(tb.mtx, view, nHeight + 1);
+        if (!rtxd.IsValid())
+        {
+            printf("%s: Created invalid import transaction for currency %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str());
+            LogPrintf("%s: Created invalid import transaction for currency %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str());
+            return false;
+        }
+
         tb.SetFee(rtxd.nativeIn - rtxd.nativeOut);
 
         CCurrencyValueMap intersectMap;
