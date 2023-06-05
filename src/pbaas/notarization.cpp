@@ -1472,17 +1472,18 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             CCurrencyValueMap tempReserves;
             CCurrencyValueMap cumulativeReserves;
             auto currencyIdxMap = tempState.GetReserveMap();
+            bool newCumulative = improvedMinCheck && tempState.IsFractional();
             for (auto &oneCurrencyID : tempState.currencies)
             {
                 if (rtxd.currencies.count(oneCurrencyID))
                 {
-                    int64_t reservesIn = improvedMinCheck ?
+                    int64_t reservesIn = newCumulative ?
                         oneCurrencyID == ASSETCHAINS_CHAINID ?
                             (rtxd.nativeIn - rtxd.nativeOut) :
                             (rtxd.currencies[oneCurrencyID].reserveIn - (rtxd.currencies[oneCurrencyID].reserveConversionFees + rtxd.currencies[oneCurrencyID].reserveOut)) :
                         rtxd.currencies[oneCurrencyID].nativeOutConverted;
 
-                    if (improvedMinCheck)
+                    if (newCumulative)
                     {
                         int idx = currencyIdxMap[oneCurrencyID];
                         if (oneCurrencyID == ASSETCHAINS_CHAINID)
@@ -1507,7 +1508,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             // reverting supply and reserves, we end up with what we started, after prelaunch and
             // before all post launch functions are complete, we use primaryCurrencyIn to accumulate
             // reserves to enforce maxPreconvert
-            if (!improvedMinCheck)
+            if (!newCumulative)
             {
                 tempState.primaryCurrencyIn = tempState.AddVectors(this->currencyState.primaryCurrencyIn, tempReserves.AsCurrencyVector(tempState.currencies));
             }
