@@ -1470,6 +1470,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         {
             // accumulate reserves during pre-conversions import to enforce max pre-convert
             CCurrencyValueMap tempReserves;
+            CCurrencyValueMap cumulativeReserves;
+            auto currencyIdxMap = tempState.GetReserveMap();
             for (auto &oneCurrencyID : tempState.currencies)
             {
                 if (rtxd.currencies.count(oneCurrencyID))
@@ -1479,6 +1481,21 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                             (rtxd.nativeIn - rtxd.nativeOut) :
                             (rtxd.currencies[oneCurrencyID].reserveIn - (rtxd.currencies[oneCurrencyID].reserveConversionFees + rtxd.currencies[oneCurrencyID].reserveOut)) :
                         rtxd.currencies[oneCurrencyID].nativeOutConverted;
+
+                    if (improvedMinCheck)
+                    {
+                        int idx = currencyIdxMap[oneCurrencyID];
+                        if (oneCurrencyID == ASSETCHAINS_CHAINID)
+                        {
+                            tempState.primaryCurrencyIn[idx] =
+                                (this->currencyState.primaryCurrencyIn[idx] + rtxd.nativeIn + tempState.reserveOut[idx]) - rtxd.nativeOut;
+                        }
+                        else
+                        {
+                            tempState.primaryCurrencyIn[idx] = this->currencyState.primaryCurrencyIn[idx] + reservesIn;
+                        }
+                    }
+
                     if (reservesIn)
                     {
                         tempReserves.valueMap[oneCurrencyID] = reservesIn;
@@ -1490,7 +1507,10 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             // reverting supply and reserves, we end up with what we started, after prelaunch and
             // before all post launch functions are complete, we use primaryCurrencyIn to accumulate
             // reserves to enforce maxPreconvert
-            tempState.primaryCurrencyIn = tempState.AddVectors(this->currencyState.primaryCurrencyIn, tempReserves.AsCurrencyVector(tempState.currencies));
+            if (!improvedMinCheck)
+            {
+                tempState.primaryCurrencyIn = tempState.AddVectors(this->currencyState.primaryCurrencyIn, tempReserves.AsCurrencyVector(tempState.currencies));
+            }
             tempState.reserveOut =
                     tempState.AddVectors(tempState.reserveOut,
                                          (CCurrencyValueMap(tempState.currencies, tempState.reserveIn) * -1).AsCurrencyVector(tempState.currencies));

@@ -2935,6 +2935,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 {
                                     // accumulate reserves during pre-conversions import to enforce max pre-convert
                                     CCurrencyValueMap tempReserves;
+                                    auto currencyIdxMap = newState.GetReserveMap();
                                     for (auto &oneCurrencyID : checkState.currencies)
                                     {
                                         if (rtxd.currencies.count(oneCurrencyID))
@@ -2943,6 +2944,20 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                                 (rtxd.nativeIn - rtxd.nativeOut) :
                                                 rtxd.currencies[oneCurrencyID].reserveIn -
                                                     (rtxd.currencies[oneCurrencyID].reserveConversionFees + rtxd.currencies[oneCurrencyID].reserveOut);
+
+                                            if (updatedChecks)
+                                            {
+                                                int idx = currencyIdxMap[oneCurrencyID];
+                                                if (oneCurrencyID == ASSETCHAINS_CHAINID)
+                                                {
+                                                    newState.primaryCurrencyIn[idx] =
+                                                        (checkState.primaryCurrencyIn[idx] + rtxd.nativeIn + newState.reserveOut[idx]) - rtxd.nativeOut;
+                                                }
+                                                else
+                                                {
+                                                    newState.primaryCurrencyIn[idx] = checkState.primaryCurrencyIn[idx] + reservesIn;
+                                                }
+                                            }
 
                                             if (reservesIn)
                                             {
@@ -2955,7 +2970,11 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                     // reverting supply and reserves, we end up with what we started, after prelaunch and
                                     // before all post launch functions are complete, we use primaryCurrencyIn to accumulate
                                     // reserves to enforce maxPreconvert
-                                    newState.primaryCurrencyIn = newState.AddVectors(checkState.primaryCurrencyIn, tempReserves.AsCurrencyVector(newState.currencies));
+                                    if (!updatedChecks)
+                                    {
+                                        newState.primaryCurrencyIn =
+                                            newState.AddVectors(checkState.primaryCurrencyIn, tempReserves.AsCurrencyVector(newState.currencies));
+                                    }
                                     newState.reserveOut =
                                             newState.AddVectors(newState.reserveOut,
                                                                 (CCurrencyValueMap(newState.currencies, newState.reserveIn) * -1).AsCurrencyVector(newState.currencies));
