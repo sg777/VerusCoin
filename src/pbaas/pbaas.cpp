@@ -3884,6 +3884,13 @@ std::set<uint160> BaseBridgeCurrencies(const CCurrencyDefinition &systemDest, ui
             if (!feeOnly || systemDest.launchSystemID == ASSETCHAINS_CHAINID)
             {
                 retVal.insert(ASSETCHAINS_CHAINID);
+                for (auto &oneCur : systemDest.currencies)
+                {
+                    if (!oneCur.IsNull())
+                    {
+                        retVal.insert(oneCur);
+                    }
+                }
             }
             uint160 converterID = systemDest.launchSystemID == ASSETCHAINS_CHAINID ?
                                     systemDest.GatewayConverterID() :
