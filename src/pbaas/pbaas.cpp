@@ -4311,6 +4311,14 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                         }
                         validExportCurrencies.insert(oneVEID);
                     }
+                    if (importCurrencyDef.GetID() != systemDestID &&
+                        systemDest.IsValid())
+                    {
+                        for (auto &oneVEID : systemDest.currencies)
+                        {
+                            validExportCurrencies.insert(oneVEID);
+                        }
+                    }
                     if (!validExportCurrencies.count(rt.FirstCurrency()))
                     {
                         return state.Error("Invalid currency preconversion in reserve transfer " + rt.ToUniValue().write(1,2));
@@ -4623,9 +4631,14 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         }
         else
         {
-            if (systemDestID != ASSETCHAINS_CHAINID && !rt.IsPreConversion())
+            if (systemDestID != ASSETCHAINS_CHAINID)
             {
                 validExportCurrencies = ValidExportCurrencies(systemDest, height);
+                if (rt.IsPreConversion() &&
+                    !importCurrencyDef.GetCurrenciesMap().count(rt.FirstCurrency()))
+                {
+                    return state.Error("Invalid currency export in reserve transfer " + rt.ToUniValue().write(1,2));
+                }
             }
 
             if ((validExportCurrencies.size() && !validExportCurrencies.count(rt.FirstCurrency())) ||
