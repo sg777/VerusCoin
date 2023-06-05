@@ -2797,6 +2797,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         }
 
         bool isClearLaunch = ccxSource.IsClearLaunch();
+        std::vector<CTxOut> vOutputs;
 
         if (ConnectedChains.CheckZeroViaOnlyPostLaunch(nHeight) &&
             isClearLaunch &&
@@ -2829,9 +2830,43 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                     priorNotar.currencyID == mainImport.importCurrencyID)
                 {
                     checkState = priorNotar.currencyState;
+
                     checkState.SetPrelaunch(false);
-                    validNotarization = true;
-                    break;
+                    // clear launch export is not clear launch import
+                    checkState.SetLaunchClear(false);
+                    CCoinbaseCurrencyState pricingState;
+                    CCurrencyValueMap dummyCurrency, dummyCurrencyUsed, dummyCurrencyOut;
+
+                    if (rtxd.AddReserveTransferImportOutputs(sourceSysDef,
+                                                             destSysDef,
+                                                             destCurDef,
+                                                             checkState,
+                                                             reserveTransfers,
+                                                             nHeight,
+                                                             vOutputs,
+                                                             dummyCurrency,
+                                                             dummyCurrencyUsed,
+                                                             dummyCurrencyOut,
+                                                             &pricingState,
+                                                             ccxSource.exporter,
+                                                             importNotarization.proposer,
+                                                             EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), importNotarization.notarizationHeight, destCurDef.GetID())))
+                    {
+                        checkState.conversionPrice = pricingState.conversionPrice;
+                        checkState.viaConversionPrice = pricingState.viaConversionPrice;
+                        validNotarization = true;
+                        vOutputs.clear();
+                        rtxd = CReserveTransactionDescriptor();
+                        break;
+                    }
+                    else
+                    {
+                        if (LogAcceptCategory("defi"))
+                        {
+                            LogPrintf("%s: Invalid currency state for import: %s\n", __func__, checkState.ToUniValue().write(1,2).c_str());
+                        }
+                        return eval->Error(std::string(__func__) + ": invalid prior notarization for clear launch import: " + mainImport.ToUniValue().write(1,2));
+                    }
                 }
             }
             if (!validNotarization)
@@ -2842,7 +2877,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                 }
                 return eval->Error(std::string(__func__) + ": invalid prior notarization for clear launch import: " + mainImport.ToUniValue().write(1,2));
             }
-            checkState.SetLaunchClear(false);
+            //checkState.SetLaunchClear(false);
         }
         else
         {
@@ -2856,7 +2891,6 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
             }
         }
 
-        std::vector<CTxOut> vOutputs;
         CCurrencyValueMap importedCurrency, gatewayCurrencyUsed, spentCurrencyOut;
 
         if (!rtxd.AddReserveTransferImportOutputs(sourceSysDef,
@@ -5620,8 +5654,8 @@ bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
 {
     if (IsVerusActive())
     {
-        if ((PBAAS_TESTMODE && height > 61982) ||
-            (!PBAAS_TESTMODE && height > 2570264))
+        if ((PBAAS_TESTMODE && height > 62378) ||
+            (!PBAAS_TESTMODE && height > 2573055))
         {
             return true;
         }
@@ -7410,6 +7444,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
 
         // pay the fee out to the miner
         CReserveTransactionDescriptor rtxd(tb.mtx, view, nHeight + 1);
+        if (!rtxd.IsValid())
+        {
+            printf("%s: Created invalid import transaction for currency %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str());
+            LogPrintf("%s: Created invalid import transaction for currency %s\n", __func__, EncodeDestination(CIdentityID(ccx.destCurrencyID)).c_str());
+            return false;
+        }
+
         tb.SetFee(rtxd.nativeIn - rtxd.nativeOut);
 
         CCurrencyValueMap intersectMap;
