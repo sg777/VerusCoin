@@ -1147,6 +1147,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                 1 :
                                 chainActive.Height() + 1;
 
+    bool improvedMinCheck = ConnectedChains.CheckZeroViaOnlyPostLaunch(currentHeight);
+
     CTransferDestination notaryPayee;
 
     if (!externalSystemID.IsNull())
@@ -1161,10 +1163,22 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     CNativeHashWriter hw(hashType);
 
     CCurrencyValueMap newPreConversionReservesIn;
+    CCurrencyValueMap prelaunchReserveIn;
 
     if (!IsPreLaunch() && !IsLaunchComplete())
     {
         newPreConversionReservesIn = CCurrencyValueMap(currencyState.currencies, currencyState.primaryCurrencyIn);
+        prelaunchReserveIn = newPreConversionReservesIn;
+    }
+    else if (improvedMinCheck && IsPreLaunch())
+    {
+        prelaunchReserveIn = CCurrencyValueMap(currencyState.currencies, currencyState.reserveIn);
+    }
+
+    CCurrencyValueMap maxPreconvertMap = CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert);
+    if (destCurrency.maxPreconvert.size())
+    {
+        maxPreconvertMap = CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert);
     }
 
     for (int i = 0; i < exportTransfers.size(); i++)
@@ -1200,14 +1214,21 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 CCurrencyValueMap newTotalReserves;
                 if (IsPreLaunch())
                 {
-                    newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserves) + newReserveIn + newPreConversionReservesIn;
+                    newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserves) + newReserveIn + prelaunchReserveIn;
                 }
                 else
                 {
-                    newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.primaryCurrencyIn) + newReserveIn + newPreConversionReservesIn;
+                    newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.primaryCurrencyIn) + newReserveIn + prelaunchReserveIn;
                 }
 
-                if (destCurrency.maxPreconvert.size() && newTotalReserves > CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert))
+                if (improvedMinCheck)
+                {
+                    newTotalReserves = newTotalReserves.IntersectingValues(newReserveIn);
+                }
+
+                if (destCurrency.maxPreconvert.size() &&
+                    ((!improvedMinCheck && newTotalReserves > maxPreconvertMap) ||
+                     (improvedMinCheck && (maxPreconvertMap - newTotalReserves).HasNegative())))
                 {
                     LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
                     reserveTransfer = reserveTransfer.GetRefundTransfer();
@@ -1215,6 +1236,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 else
                 {
                     newPreConversionReservesIn += newReserveIn;
+                    prelaunchReserveIn += newReserveIn;
                 }
             }
         }
@@ -1298,9 +1320,12 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
                     // check our currency and any co-launch currency to determine our eligibility, as ALL
                     // co-launch currencies must launch for one to launch
+                    CCurrencyValueMap coLaunchReserveIn = CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn);
+                    CCurrencyValueMap coLaunchMinMap = CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert);
                     if (coLaunchState.IsRefunding() ||
                         !coLaunchState.ValidateConversionLimits(true) ||
-                        CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn) < CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert) ||
+                        (!improvedMinCheck && coLaunchReserveIn < coLaunchMinMap) ||
+                        (improvedMinCheck && (coLaunchReserveIn - coLaunchMinMap).HasNegative()) ||
                         (coLaunchCurrency.IsFractional() &&
                          CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn).CanonicalMap().valueMap.size() != coLaunchCurrency.currencies.size()))
                     {
@@ -1319,10 +1344,10 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                     minPreMap = CCurrencyValueMap(destCurrency.currencies, destCurrency.minPreconvert).CanonicalMap();
                 }
 
-                bool improvedMinCheck = ConnectedChains.CheckZeroViaOnlyPostLaunch(currentHeight);
                 if (forcedRefund ||
                     (minPreMap.valueMap.size() &&
-                     ((!improvedMinCheck && preConvertedMap < minPreMap) || (improvedMinCheck && (preConvertedMap - minPreMap).HasNegative()))) ||
+                     ((!improvedMinCheck && preConvertedMap < minPreMap) ||
+                      (improvedMinCheck && (preConvertedMap - minPreMap).HasNegative()))) ||
                     (destCurrency.IsFractional() &&
                      (CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserveIn) +
                                         newPreConversionReservesIn).CanonicalMap().valueMap.size() != destCurrency.currencies.size()))
@@ -1445,14 +1470,36 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         {
             // accumulate reserves during pre-conversions import to enforce max pre-convert
             CCurrencyValueMap tempReserves;
+            CCurrencyValueMap cumulativeReserves;
+            auto currencyIdxMap = tempState.GetReserveMap();
+            bool newCumulative = improvedMinCheck && tempState.IsFractional();
             for (auto &oneCurrencyID : tempState.currencies)
             {
                 if (rtxd.currencies.count(oneCurrencyID))
                 {
-                    int64_t reservesConverted = rtxd.currencies[oneCurrencyID].nativeOutConverted;
-                    if (reservesConverted)
+                    int64_t reservesIn = newCumulative ?
+                        oneCurrencyID == ASSETCHAINS_CHAINID ?
+                            (rtxd.nativeIn - rtxd.nativeOut) :
+                            (rtxd.currencies[oneCurrencyID].reserveIn - (rtxd.currencies[oneCurrencyID].reserveConversionFees + rtxd.currencies[oneCurrencyID].reserveOut)) :
+                        rtxd.currencies[oneCurrencyID].nativeOutConverted;
+
+                    if (newCumulative)
                     {
-                        tempReserves.valueMap[oneCurrencyID] = reservesConverted;
+                        int idx = currencyIdxMap[oneCurrencyID];
+                        if (oneCurrencyID == ASSETCHAINS_CHAINID)
+                        {
+                            tempState.primaryCurrencyIn[idx] =
+                                (this->currencyState.primaryCurrencyIn[idx] + rtxd.nativeIn + tempState.reserveOut[idx]) - rtxd.nativeOut;
+                        }
+                        else
+                        {
+                            tempState.primaryCurrencyIn[idx] = this->currencyState.primaryCurrencyIn[idx] + reservesIn;
+                        }
+                    }
+
+                    if (reservesIn)
+                    {
+                        tempReserves.valueMap[oneCurrencyID] = reservesIn;
                     }
                 }
             }
@@ -1461,7 +1508,10 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             // reverting supply and reserves, we end up with what we started, after prelaunch and
             // before all post launch functions are complete, we use primaryCurrencyIn to accumulate
             // reserves to enforce maxPreconvert
-            tempState.primaryCurrencyIn = tempState.AddVectors(this->currencyState.primaryCurrencyIn, tempReserves.AsCurrencyVector(tempState.currencies));
+            if (!newCumulative)
+            {
+                tempState.primaryCurrencyIn = tempState.AddVectors(this->currencyState.primaryCurrencyIn, tempReserves.AsCurrencyVector(tempState.currencies));
+            }
             tempState.reserveOut =
                     tempState.AddVectors(tempState.reserveOut,
                                          (CCurrencyValueMap(tempState.currencies, tempState.reserveIn) * -1).AsCurrencyVector(tempState.currencies));
@@ -10254,10 +10304,12 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         return state.Error("Invalid notarization output for finalization");
     }
 
-    if (!(!txBlockHash.IsNull() &&
-         (notaTxBlockIt = mapBlockIndex.find(txBlockHash)) != mapBlockIndex.end() &&
-         chainActive.Contains(notaTxBlockIt->second)) &&
-        (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK4_TIME))
+    if ((!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK4_TIME) &&
+         currentFinalization.IsConfirmed() &&
+         height != 1 &&
+         !(!txBlockHash.IsNull() &&
+           (notaTxBlockIt = mapBlockIndex.find(txBlockHash)) != mapBlockIndex.end() &&
+           chainActive.Contains(notaTxBlockIt->second)))
     {
         return state.Error("Uncommitted notarization output is invalid for finalization");
     }

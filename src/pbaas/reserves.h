@@ -1338,15 +1338,13 @@ public:
 
     std::vector<CAmount> PricesInReserve(bool roundUp=false) const;
 
-    // This considers one currency at a time
-    CAmount ConvertAmounts(CAmount inputReserve, CAmount inputFractional, CCurrencyState &newState, int32_t reserveIndex=0) const;
-
     // convert amounts for multi-reserve fractional reserve currencies
     // one entry in the vector for each currency in and one fractional input for each
     // currency expected as output
     std::vector<CAmount> ConvertAmounts(const std::vector<CAmount> &inputReserve,    // reserves to convert to fractional
                                         const std::vector<CAmount> &inputFractional,    // fractional to convert to each reserve
                                         CCurrencyState &newState,
+                                        CValidationState &validationState,
                                         const std::vector<std::vector<CAmount>> *pCrossConversions=nullptr,
                                         std::vector<CAmount> *pViaPrices=nullptr) const;
 
