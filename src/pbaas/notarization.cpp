@@ -10304,10 +10304,12 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         return state.Error("Invalid notarization output for finalization");
     }
 
-    if (!(!txBlockHash.IsNull() &&
-         (notaTxBlockIt = mapBlockIndex.find(txBlockHash)) != mapBlockIndex.end() &&
-         chainActive.Contains(notaTxBlockIt->second)) &&
-        (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK4_TIME))
+    if ((!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK4_TIME) &&
+         currentFinalization.IsConfirmed() &&
+         height != 1 &&
+         !(!txBlockHash.IsNull() &&
+           (notaTxBlockIt = mapBlockIndex.find(txBlockHash)) != mapBlockIndex.end() &&
+           chainActive.Contains(notaTxBlockIt->second)))
     {
         return state.Error("Uncommitted notarization output is invalid for finalization");
     }
