@@ -1782,6 +1782,78 @@ CAmount CalculateReserveOut(CAmount FractionalIn, CAmount Supply, CAmount Normal
     return reserveOut;
 }
 
+
+void DumpConvertData(const std::vector<CAmount> &_inputReserves,
+                     const std::vector<CAmount> &_inputFractional,
+                     CCurrencyState &_newState,
+                     std::vector<std::vector<CAmount>> const *pCrossConversions,
+                     std::vector<CAmount> *pViaPrices)
+{
+    LogPrintf("inputReserves: \n");
+    for (int i = 0; i < _inputReserves.size(); i++)
+    {
+        LogPrintf("%ld", _inputReserves[i]);
+        if ((i + 1) == _inputReserves.size())
+        {
+            LogPrintf("\n");
+        }
+        else
+        {
+            LogPrintf(", ");
+        }
+    }
+    LogPrintf("inputFractional: \n");
+    for (int i = 0; i < _inputFractional.size(); i++)
+    {
+        LogPrintf("%ld", _inputFractional[i]);
+        if ((i + 1) == _inputFractional.size())
+        {
+            LogPrintf("\n");
+        }
+        else
+        {
+            LogPrintf(", ");
+        }
+    }
+    if (pViaPrices)
+    {
+        LogPrintf("viaPrices: \n");
+        for (int i = 0; i < pViaPrices->size(); i++)
+        {
+            LogPrintf("%ld", (*pViaPrices)[i]);
+            if ((i + 1) == pViaPrices->size())
+            {
+                LogPrintf("\n");
+            }
+            else
+            {
+                LogPrintf(", ");
+            }
+        }
+    }
+    if (pCrossConversions)
+    {
+        LogPrintf("crossConversions: \n");
+        for (int i = 0; i < pCrossConversions->size(); i++)
+        {
+            LogPrintf("conversions vector %d:\n", i);
+            for (int j = 0; j < (*pCrossConversions)[i].size(); j++)
+            {
+                LogPrintf("%ld", (*pCrossConversions)[i][j]);
+                if ((j + 1) == (*pCrossConversions)[i].size())
+                {
+                    LogPrintf("\n");
+                }
+                else
+                {
+                    LogPrintf(", ");
+                }
+            }
+        }
+    }
+    LogPrintf("currencystate: %s\n", _newState.ToUniValue().write(1,2).c_str());
+}
+
 // This can handle multiple aggregated, bidirectional conversions in one block of transactions. To determine the conversion price, it
 // takes both input amounts of any number of reserves and the fractional currencies targeting those reserves to merge the conversion into one
 // merged calculation with the same price across currencies for all transactions in the block. It returns the newly calculated
@@ -2153,15 +2225,35 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
     }
 
     supplyAfterSell = supply + addSupply;
+    if (supplyAfterSell < 0)
+    {
+        printf("%s: supplyAfterSell < 0\n", __func__);
+        DumpConvertData(_inputReserves, _inputFractional, _newState, pCrossConversions, pViaPrices);
+    }
     assert(supplyAfterSell >= 0);
 
     supplyAfterBuySell = supplyAfterBuy + addSupply;
+    if (supplyAfterBuySell < 0)
+    {
+        printf("%s: supplyAfterBuySell < 0\n", __func__);
+        DumpConvertData(_inputReserves, _inputFractional, _newState, pCrossConversions, pViaPrices);
+    }
     assert(supplyAfterBuySell >= 0);
 
     reserveAfterSell = supply + addNormalizedReservesBB;
+    if (reserveAfterSell < 0)
+    {
+        printf("%s: reserveAfterSell < 0\n", __func__);
+        DumpConvertData(_inputReserves, _inputFractional, _newState, pCrossConversions, pViaPrices);
+    }
     assert(reserveAfterSell >= 0);
 
     reserveAfterBuySell = reserveAfterBuy + addNormalizedReservesAB;
+    if (reserveAfterBuySell < 0)
+    {
+        printf("%s: reserveAfterBuySell < 0\n", __func__);
+        DumpConvertData(_inputReserves, _inputFractional, _newState, pCrossConversions, pViaPrices);
+    }
     assert(reserveAfterBuySell >= 0);
 
     addSupply = 0;
