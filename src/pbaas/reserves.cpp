@@ -2765,9 +2765,16 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         bool isClearLaunch = (ccx.IsClearLaunch() && ccx.sourceSystemID == importCurrencyDef.launchSystemID);
 
                         CReserveTransactionDescriptor rtxd = *this;
+                        rtxd.currencies.clear();
+                        rtxd.nativeIn = 0;
+                        rtxd.nativeConversionFees = 0;
+                        rtxd.nativeOut = 0;
+
                         uint256 weakEntropyHash = EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), importNotarization.notarizationHeight, importCurrencyDef.GetID());
 
-                        if (ConnectedChains.CheckZeroViaOnlyPostLaunch(nHeight) &&
+                        bool updatedChecks = ConnectedChains.CheckZeroViaOnlyPostLaunch(nHeight);
+
+                        if (updatedChecks &&
                             isClearLaunch &&
                             importTransfers.size())
                         {
@@ -2788,6 +2795,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 return;
                             }
                             bool validNotarization = false;
+
                             // get the prior output notarization
                             for (int o = priorOutNum; o < priorTx.vout.size(); o++)
                             {
@@ -2801,6 +2809,10 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 {
                                     checkState = priorNotar.currencyState;
                                     checkState.SetPrelaunch(false);
+
+                                    // clear launch export is not clear launch import
+                                    checkState.SetLaunchClear(false);
+
                                     if (rtxd.AddReserveTransferImportOutputs(sourceSystemDef,
                                                                              ConnectedChains.thisChain,
                                                                              importCurrencyDef,
@@ -2834,7 +2846,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 flags |= IS_REJECT;
                                 return;
                             }
-                            checkState.SetLaunchClear(false);
                         }
                         else
                         {
@@ -2872,6 +2883,10 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         }
 
                         rtxd = *this;
+                        rtxd.currencies.clear();
+                        rtxd.nativeIn = 0;
+                        rtxd.nativeConversionFees = 0;
+                        rtxd.nativeOut = 0;
 
                         if (!rtxd.AddReserveTransferImportOutputs(sourceSystemDef,
                                                                   ConnectedChains.thisChain,
@@ -2913,6 +2928,56 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             if (LogAcceptCategory("defi"))
                             {
                                 LogPrintf("%s: Expected: %s\nActual: %s\n", __func__, newState.ToUniValue().write(1,2).c_str(), importNotarization.currencyState.ToUniValue().write(1,2).c_str());
+                            }
+                            if (updatedChecks && !checkState.IsRefunding())
+                            {
+                                if (!(checkState.IsPrelaunch() || checkState.IsLaunchCompleteMarker()))
+                                {
+                                    // accumulate reserves during pre-conversions import to enforce max pre-convert
+                                    CCurrencyValueMap tempReserves;
+                                    for (auto &oneCurrencyID : checkState.currencies)
+                                    {
+                                        if (rtxd.currencies.count(oneCurrencyID))
+                                        {
+                                            int64_t reservesIn = oneCurrencyID == ASSETCHAINS_CHAINID ?
+                                                (rtxd.nativeIn - rtxd.nativeOut) :
+                                                rtxd.currencies[oneCurrencyID].reserveIn -
+                                                    (rtxd.currencies[oneCurrencyID].reserveConversionFees + rtxd.currencies[oneCurrencyID].reserveOut);
+
+                                            if (reservesIn)
+                                            {
+                                                tempReserves.valueMap[oneCurrencyID] = reservesIn;
+                                            }
+                                        }
+                                    }
+
+                                    // use double entry to enable pass through of the accumulated reserve such that when
+                                    // reverting supply and reserves, we end up with what we started, after prelaunch and
+                                    // before all post launch functions are complete, we use primaryCurrencyIn to accumulate
+                                    // reserves to enforce maxPreconvert
+                                    newState.primaryCurrencyIn = newState.AddVectors(checkState.primaryCurrencyIn, tempReserves.AsCurrencyVector(newState.currencies));
+                                    newState.reserveOut =
+                                            newState.AddVectors(newState.reserveOut,
+                                                                (CCurrencyValueMap(newState.currencies, newState.reserveIn) * -1).AsCurrencyVector(newState.currencies));
+                                    if (!isClearLaunch)
+                                    {
+                                        newState.reserveIn = tempReserves.AsCurrencyVector(newState.currencies);
+                                    }
+                                }
+                                if (newState.reserveIn != importNotarization.currencyState.reserveIn ||
+                                    newState.reserveOut != importNotarization.currencyState.reserveOut ||
+                                    newState.primaryCurrencyIn != importNotarization.currencyState.primaryCurrencyIn)
+                                {
+                                    if (LogAcceptCategory("defi"))
+                                    {
+                                        LogPrintf("%s: Mismatched currency states - Expected: %s\nActual: %s\n", __func__, newState.ToUniValue().write(1,2).c_str(), importNotarization.currencyState.ToUniValue().write(1,2).c_str());
+                                        /*
+                                        flags &= ~IS_VALID;
+                                        flags |= IS_REJECT;
+                                        return;
+                                        */
+                                    }
+                                }
                             }
                         }
                         newState.reserveIn = importNotarization.currencyState.reserveIn;
@@ -3872,6 +3937,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     CCurrencyValueMap convertedFees;                    // post conversion transfer fees
     CCurrencyValueMap liquidityFees;                    // for fractionals, this value is added to the currency itself
 
+    CCurrencyValueMap maxPreconvert;
+    if (importCurrencyDef.maxPreconvert.size())
+    {
+        maxPreconvert = CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert);
+    }
+
     bool feeOutputStart = false;                        // fee outputs must come after all others, this indicates they have started
     int nFeeOutputs = 0;                                // number of fee outputs
 
@@ -4107,6 +4178,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                                                     std::make_pair(systemDestID, convertedFractionalFee)));
                         }
                     }
+
                     // loop through, subtract "from" and add "to"
                     convertedFees = transferFees;
                     if (feeConversions.size())
@@ -4355,7 +4427,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 }
 
                 // enforce maximum if present
-                if (curTransfer.IsPreConversion() && importCurrencyDef.maxPreconvert.size())
+                if (curTransfer.IsPreConversion() && maxPreconvert.valueMap.size())
                 {
                     CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({curTransfer.FirstCurrency()}),
                                                                 std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())}));
@@ -4370,9 +4442,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                     importCurrencyState.NativeToReserveRaw(importCurrencyState.primaryCurrencyIn, importCurrencyState.conversionPrice);
 
                         // check if it exceeds pre-conversion maximums, and refund if so
-                        CCurrencyValueMap newTotalReserves = cumulativeReservesIn + newReserveIn + preConvertedReserves;
+                        CCurrencyValueMap newTotalReserves = (cumulativeReservesIn + newReserveIn + preConvertedReserves).IntersectingValues(newReserveIn);
 
-                        if ((CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert) - newTotalReserves).HasNegative())
+                        // check without regard to other currencies
+                        if ((maxPreconvert - newTotalReserves).HasNegative())
                         {
                             LogPrint("defi", "%s: refunding pre-conversion over maximum: %s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
                             curTransfer = curTransfer.GetRefundTransfer();
@@ -4773,7 +4846,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                 if (newCurrencyConverted == -1)
                 {
-                    // if we have an overflow, this isn't going to work
+                    // if we have an overflow, this isn't going to work, so, return error
+                    printf("%s: ERROR - conversion overflow in reserve transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
+                    LogPrintf("%s: ERROR - conversion overflow in reserve transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
+                    if (updatedPostLaunch)
+                    {
+                        return false;
+                    }
                     newCurrencyConverted = 0;
                 }
 

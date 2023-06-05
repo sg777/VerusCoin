@@ -1175,6 +1175,12 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         prelaunchReserveIn = CCurrencyValueMap(currencyState.currencies, currencyState.reserveIn);
     }
 
+    CCurrencyValueMap maxPreconvertMap = CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert);
+    if (destCurrency.maxPreconvert.size())
+    {
+        maxPreconvertMap = CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert);
+    }
+
     for (int i = 0; i < exportTransfers.size(); i++)
     {
         CReserveTransfer reserveTransfer = exportTransfers[i];
@@ -1215,9 +1221,14 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                     newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.primaryCurrencyIn) + newReserveIn + prelaunchReserveIn;
                 }
 
+                if (improvedMinCheck)
+                {
+                    newTotalReserves = newTotalReserves.IntersectingValues(newReserveIn);
+                }
+
                 if (destCurrency.maxPreconvert.size() &&
-                    ((!improvedMinCheck && newTotalReserves > CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert)) ||
-                     (improvedMinCheck && (CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert) - newTotalReserves).HasNegative())))
+                    ((!improvedMinCheck && newTotalReserves > maxPreconvertMap) ||
+                     (improvedMinCheck && (maxPreconvertMap - newTotalReserves).HasNegative())))
                 {
                     LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
                     reserveTransfer = reserveTransfer.GetRefundTransfer();
@@ -1463,10 +1474,14 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             {
                 if (rtxd.currencies.count(oneCurrencyID))
                 {
-                    int64_t reservesConverted = rtxd.currencies[oneCurrencyID].nativeOutConverted;
-                    if (reservesConverted)
+                    int64_t reservesIn = improvedMinCheck ?
+                        oneCurrencyID == ASSETCHAINS_CHAINID ?
+                            (rtxd.nativeIn - rtxd.nativeOut) :
+                            (rtxd.currencies[oneCurrencyID].reserveIn - (rtxd.currencies[oneCurrencyID].reserveConversionFees + rtxd.currencies[oneCurrencyID].reserveOut)) :
+                        rtxd.currencies[oneCurrencyID].nativeOutConverted;
+                    if (reservesIn)
                     {
-                        tempReserves.valueMap[oneCurrencyID] = reservesConverted;
+                        tempReserves.valueMap[oneCurrencyID] = reservesIn;
                     }
                 }
             }
