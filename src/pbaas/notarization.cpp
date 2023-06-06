@@ -1165,17 +1165,33 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
     CCurrencyValueMap newPreConversionReservesIn;
     CCurrencyValueMap prelaunchReserveIn;
 
-    if (!IsPreLaunch() && !IsLaunchComplete())
+    if (improvedMinCheck)
     {
-        newPreConversionReservesIn = CCurrencyValueMap(currencyState.currencies, currencyState.primaryCurrencyIn);
-        prelaunchReserveIn = newPreConversionReservesIn;
+        if (IsPreLaunch() || (!IsPreLaunch() && !IsLaunchComplete()))
+        {
+            newPreConversionReservesIn = IsPreLaunch() ?
+                        (currencyState.IsFractional() ?
+                            CCurrencyValueMap(currencyState.currencies, currencyState.reserves) :
+                            CCurrencyValueMap(currencyState.currencies, currencyState.reserveIn)) :
+                        CCurrencyValueMap(currencyState.currencies, currencyState.primaryCurrencyIn);
+            if (!currencyState.IsFractional())
+            {
+                newPreConversionReservesIn =
+                    currencyState.NativeToReserveRaw(newPreConversionReservesIn.AsCurrencyVector(currencyState.currencies),
+                                                     currencyState.PricesInReserve());
+            }
+            prelaunchReserveIn = newPreConversionReservesIn;
+        }
     }
-    else if (improvedMinCheck && IsPreLaunch())
+    else
     {
-        prelaunchReserveIn = CCurrencyValueMap(currencyState.currencies, currencyState.reserveIn);
+        if (!IsPreLaunch() && !IsLaunchComplete())
+        {
+            newPreConversionReservesIn = CCurrencyValueMap(currencyState.currencies, currencyState.primaryCurrencyIn);
+        }
     }
 
-    CCurrencyValueMap maxPreconvertMap = CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert);
+    CCurrencyValueMap maxPreconvertMap;
     if (destCurrency.maxPreconvert.size())
     {
         maxPreconvertMap = CCurrencyValueMap(destCurrency.currencies, destCurrency.maxPreconvert);
@@ -1212,18 +1228,20 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({reserveTransfer.FirstCurrency()}),
                                                                    std::vector<int64_t>({reserveTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(reserveTransfer.FirstValue())}));
                 CCurrencyValueMap newTotalReserves;
-                if (IsPreLaunch())
+                if (improvedMinCheck)
                 {
-                    newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserves) + newReserveIn + prelaunchReserveIn;
+                    newTotalReserves = (prelaunchReserveIn + newReserveIn).IntersectingValues(newReserveIn);
                 }
                 else
                 {
-                    newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.primaryCurrencyIn) + newReserveIn + prelaunchReserveIn;
-                }
-
-                if (improvedMinCheck)
-                {
-                    newTotalReserves = newTotalReserves.IntersectingValues(newReserveIn);
+                    if (IsPreLaunch())
+                    {
+                        newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserves) + newReserveIn;
+                    }
+                    else
+                    {
+                        newTotalReserves = CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.primaryCurrencyIn) + newReserveIn;
+                    }
                 }
 
                 if (destCurrency.maxPreconvert.size() &&

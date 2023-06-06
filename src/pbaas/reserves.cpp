@@ -4553,40 +4553,56 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 }
 
                 // enforce maximum if present
-                if (curTransfer.IsPreConversion() && maxPreconvert.valueMap.size())
+                if (curTransfer.IsPreConversion())
                 {
-                    CCurrencyValueMap newReserveIn = CCurrencyValueMap(std::vector<uint160>({curTransfer.FirstCurrency()}),
-                                                                std::vector<int64_t>({curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue())}));
+                    CAmount newReserveIn = curTransfer.FirstValue() - CReserveTransactionDescriptor::CalculateConversionFee(curTransfer.FirstValue());
 
-                    if (updatedPostLaunch)
+                    auto reserveIdx = currencyIndexMap.find(curTransfer.FirstCurrency());
+                    if (reserveIdx == currencyIndexMap.end())
                     {
-                        CCurrencyValueMap cumulativeReservesIn = 
-                                importCurrencyDef.IsFractional() ?
-                                    (importCurrencyState.IsPrelaunch() ?
-                                        CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.reserveIn) :
-                                        CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.primaryCurrencyIn)) :
-                                    importCurrencyState.NativeToReserveRaw(importCurrencyState.primaryCurrencyIn, importCurrencyState.conversionPrice);
-
-                        // check if it exceeds pre-conversion maximums, and refund if so
-                        CCurrencyValueMap newTotalReserves = (cumulativeReservesIn + newReserveIn + preConvertedReserves).IntersectingValues(newReserveIn);
-
-                        // check without regard to other currencies
-                        if ((maxPreconvert - newTotalReserves).HasNegative())
-                        {
-                            LogPrint("defi", "%s: refunding pre-conversion over maximum: %s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
-                            curTransfer = curTransfer.GetRefundTransfer();
-                        }
+                        curTransfer = curTransfer.GetRefundTransfer();
                     }
-                    else
+                    else if (maxPreconvert.valueMap.size())
                     {
-                        CCurrencyValueMap cumulativeReservesIn = CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.primaryCurrencyIn);
-
-                        CCurrencyValueMap newTotalReserves = cumulativeReservesIn + newReserveIn + preConvertedReserves;
-
-                        if (newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert))
+                        int rIdx = reserveIdx->second;
+                        if (updatedPostLaunch)
                         {
-                            LogPrint("defi", "%s: refunding pre-conversion over maximum: %s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
-                            curTransfer = curTransfer.GetRefundTransfer();
+                            bool preLaunch = importCurrencyState.IsPrelaunch();
+                            int64_t cumulativeReservesIn = 
+                                    importCurrencyDef.IsFractional() ?
+                                        (preLaunch ?
+                                            importCurrencyState.reserves[rIdx] :
+                                            importCurrencyState.primaryCurrencyIn[rIdx]) :
+                                        (preLaunch ?
+                                            importCurrencyState.NativeToReserveRaw(importCurrencyState.reserveIn[rIdx],
+                                                                                    importCurrencyState.conversionPrice[rIdx]) :
+                                            importCurrencyState.NativeToReserveRaw(importCurrencyState.primaryCurrencyIn[rIdx],
+                                                                                    importCurrencyState.conversionPrice[rIdx]));
+
+                            // check if it exceeds pre-conversion maximums, and refund if so
+                            CAmount newTotalReserves = cumulativeReservesIn + newReserveIn +
+                                                            (preConvertedReserves.valueMap.count(reserveIdx->first) ?
+                                                                preConvertedReserves.valueMap[reserveIdx->first] :
+                                                                0);
+
+                            // check without regard to other currencies
+                            if (newTotalReserves > maxPreconvert.valueMap[reserveIdx->first])
+                            {
+                                LogPrint("defi", "%s: refunding pre-conversion over maximum: %s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
+                                curTransfer = curTransfer.GetRefundTransfer();
+                            }
+                        }
+                        else
+                        {
+                            CCurrencyValueMap cumulativeReservesIn = CCurrencyValueMap(importCurrencyState.currencies, importCurrencyState.primaryCurrencyIn);
+
+                            CCurrencyValueMap newTotalReserves = cumulativeReservesIn + newReserveIn + preConvertedReserves;
+
+                            if (newTotalReserves > CCurrencyValueMap(importCurrencyDef.currencies, importCurrencyDef.maxPreconvert))
+                            {
+                                LogPrint("defi", "%s: refunding pre-conversion over maximum: %s\n", __func__, curTransfer.ToUniValue().write(1,2).c_str());
+                                curTransfer = curTransfer.GetRefundTransfer();
+                            }
                         }
                     }
                 }
