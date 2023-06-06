@@ -3053,7 +3053,6 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 if (!(checkState.IsPrelaunch() || checkState.IsLaunchCompleteMarker()))
                                 {
                                     // accumulate reserves during pre-conversions import to enforce max pre-convert
-                                    CCurrencyValueMap tempReserves;
                                     auto currencyIdxMap = newState.GetReserveMap();
                                     bool newCumulative = newState.IsFractional();
                                     bool isPBaaSBridge = importCurrencyDef.IsGatewayConverter() && importCurrencyDef.systemID == ASSETCHAINS_CHAINID;
@@ -3080,16 +3079,11 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                                 newState.primaryCurrencyIn[idx] = checkState.primaryCurrencyIn[idx] + reservesIn;
                                             }
 
-                                            if (reservesIn)
-                                            {
-                                                tempReserves.valueMap[oneCurrencyID] = reservesIn;
-                                            }
-
                                             if (!isPBaaSBridge)
                                             {
                                                 newState.reserveOut[idx] -= newState.reserveIn[idx];
                                             }
-                                            if (!isClearLaunch)
+                                            if (!isClearLaunch || isPBaaSBridge)
                                             {
                                                 newState.reserveIn[idx] = reservesIn;
                                             }
