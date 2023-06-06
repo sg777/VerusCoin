@@ -4631,7 +4631,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         }
         else
         {
-            if (systemDestID != ASSETCHAINS_CHAINID)
+            if (systemDestID != ASSETCHAINS_CHAINID && !validExportCurrencies.size())
             {
                 validExportCurrencies = ValidExportCurrencies(systemDest, height);
                 if (rt.IsPreConversion() &&
