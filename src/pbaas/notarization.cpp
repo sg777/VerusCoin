@@ -1644,6 +1644,16 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                         {
                             tempState.primaryCurrencyIn = tempState.AddVectors(this->currencyState.primaryCurrencyIn, tempReserves.AsCurrencyVector(tempState.currencies));
                         }
+                        if (!destCurrency.IsPBaaSChain())
+                        {
+                            tempState.reserveOut =
+                                    tempState.AddVectors(tempState.reserveOut,
+                                                        (CCurrencyValueMap(tempState.currencies, tempState.reserveIn) * -1).AsCurrencyVector(tempState.currencies));
+                            if (!lastImportBeforeComplete)
+                            {
+                                tempState.reserveIn = tempReserves.AsCurrencyVector(tempState.currencies);
+                            }
+                        }
                     }
                 }
                 newNotarization.currencyState = tempState;

@@ -3097,12 +3097,15 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                         newState.primaryCurrencyIn =
                                             newState.AddVectors(checkState.primaryCurrencyIn, tempReserves.AsCurrencyVector(newState.currencies));
                                     }
-                                    newState.reserveOut =
-                                            newState.AddVectors(newState.reserveOut,
-                                                                (CCurrencyValueMap(newState.currencies, newState.reserveIn) * -1).AsCurrencyVector(newState.currencies));
-                                    if (!isClearLaunch)
+                                    if (importCurrencyDef.IsPBaaSChain())
                                     {
-                                        newState.reserveIn = tempReserves.AsCurrencyVector(newState.currencies);
+                                        newState.reserveOut =
+                                                newState.AddVectors(newState.reserveOut,
+                                                                    (CCurrencyValueMap(newState.currencies, newState.reserveIn) * -1).AsCurrencyVector(newState.currencies));
+                                        if (!isClearLaunch)
+                                        {
+                                            newState.reserveIn = tempReserves.AsCurrencyVector(newState.currencies);
+                                        }
                                     }
                                 }
                                 if (newState.reserveIn != importNotarization.currencyState.reserveIn ||
