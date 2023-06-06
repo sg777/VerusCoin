@@ -1568,6 +1568,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             CCoinbaseCurrencyState tempCurState = intermediateState;
             tempCurState.conversionPrice = newNotarization.currencyState.conversionPrice;
             tempCurState.viaConversionPrice = newNotarization.currencyState.viaConversionPrice;
+            CCoinbaseCurrencyState tempState;
             rtxd = CReserveTransactionDescriptor();
             isValidExport = rtxd.AddReserveTransferImportOutputs(sourceSystem,
                                                                  destSystem,
@@ -1579,15 +1580,84 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                  importedCurrency,
                                                                  gatewayDepositsUsed,
                                                                  spentCurrencyOut,
-                                                                 &newNotarization.currencyState,
+                                                                 &tempState,
                                                                  feeRecipient,
                                                                  proposer,
                                                                  weakEntropy,
                                                                  true);
             if (isValidExport)
             {
-                newNotarization.currencyState.conversionPrice = tempCurState.conversionPrice;
-                newNotarization.currencyState.viaConversionPrice = tempCurState.viaConversionPrice;
+                tempState.conversionPrice = tempCurState.conversionPrice;
+                tempState.viaConversionPrice = tempCurState.viaConversionPrice;
+                uint32_t heightCheck = currentHeight == 1 ? 1 : currentHeight - 1;
+                if (heightCheck < chainActive.Height())
+                {
+                    heightCheck = chainActive.Height();
+                }
+                if (improvedMinCheck && (!PBAAS_TESTMODE || chainActive[heightCheck]->nTime >= PBAAS_TESTFORK4_TIME))
+                {
+                    if (!tempState.IsLaunchCompleteMarker() &&
+                        !tempState.IsRefunding() &&
+                        !tempState.IsPrelaunch())
+                    {
+                        // accumulate reserves during pre-conversions import to enforce max pre-convert
+                        CCurrencyValueMap tempReserves;
+                        CCurrencyValueMap cumulativeReserves;
+                        auto currencyIdxMap = tempState.GetReserveMap();
+                        bool newCumulative = tempState.IsFractional();
+                        for (auto &oneCurrencyID : tempState.currencies)
+                        {
+                            if (rtxd.currencies.count(oneCurrencyID))
+                            {
+                                int64_t reservesIn = newCumulative ?
+                                    oneCurrencyID == ASSETCHAINS_CHAINID ?
+                                        (rtxd.nativeIn - rtxd.nativeOut) :
+                                        (rtxd.currencies[oneCurrencyID].reserveIn - (rtxd.currencies[oneCurrencyID].reserveConversionFees + rtxd.currencies[oneCurrencyID].reserveOut)) :
+                                    rtxd.currencies[oneCurrencyID].nativeOutConverted;
+
+                                if (newCumulative)
+                                {
+                                    int idx = currencyIdxMap[oneCurrencyID];
+                                    if (oneCurrencyID == ASSETCHAINS_CHAINID)
+                                    {
+                                        tempState.primaryCurrencyIn[idx] =
+                                            (this->currencyState.primaryCurrencyIn[idx] + rtxd.nativeIn + tempState.reserveOut[idx]) - rtxd.nativeOut;
+                                    }
+                                    else
+                                    {
+                                        tempState.primaryCurrencyIn[idx] = this->currencyState.primaryCurrencyIn[idx] + reservesIn;
+                                    }
+                                }
+
+                                if (reservesIn)
+                                {
+                                    tempReserves.valueMap[oneCurrencyID] = reservesIn;
+                                }
+                            }
+                        }
+
+                        // use double entry to enable pass through of the accumulated reserve such that when
+                        // reverting supply and reserves, we end up with what we started, after prelaunch and
+                        // before all post launch functions are complete, we use primaryCurrencyIn to accumulate
+                        // reserves to enforce maxPreconvert
+                        if (!newCumulative)
+                        {
+                            tempState.primaryCurrencyIn = tempState.AddVectors(this->currencyState.primaryCurrencyIn, tempReserves.AsCurrencyVector(tempState.currencies));
+                        }
+                        tempState.reserveOut =
+                                tempState.AddVectors(tempState.reserveOut,
+                                                    (CCurrencyValueMap(tempState.currencies, tempState.reserveIn) * -1).AsCurrencyVector(tempState.currencies));
+                        if (!lastImportBeforeComplete)
+                        {
+                            tempState.reserveIn = tempReserves.AsCurrencyVector(tempState.currencies);
+                        }
+                    }
+                    if (destCurrency.IsPBaaSChain() && tempState.IsLaunchClear() && this->currencyState.IsLaunchClear())
+                    {
+                        tempState.reserveIn = this->currencyState.reserveIn;
+                    }
+                }
+                newNotarization.currencyState = tempState;
             }
         }
         else if (isValidExport)
