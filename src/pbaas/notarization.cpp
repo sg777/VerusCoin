@@ -1601,57 +1601,30 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                         !tempState.IsPrelaunch())
                     {
                         // accumulate reserves during pre-conversions import to enforce max pre-convert
-                        CCurrencyValueMap tempReserves;
                         CCurrencyValueMap cumulativeReserves;
                         auto currencyIdxMap = tempState.GetReserveMap();
                         bool newCumulative = tempState.IsFractional();
+                        bool isPBaaSBridge = destCurrency.IsGatewayConverter() && destCurrency.systemID == ASSETCHAINS_CHAINID;
                         for (auto &oneCurrencyID : tempState.currencies)
                         {
                             if (rtxd.currencies.count(oneCurrencyID))
                             {
                                 int64_t reservesIn = newCumulative ?
                                     oneCurrencyID == ASSETCHAINS_CHAINID ?
-                                        (rtxd.nativeIn - rtxd.nativeOut) :
+                                        (isPBaaSBridge ? 0 : (rtxd.nativeIn - rtxd.nativeOut)) :
                                         (rtxd.currencies[oneCurrencyID].reserveIn - (rtxd.currencies[oneCurrencyID].reserveConversionFees + rtxd.currencies[oneCurrencyID].reserveOut)) :
                                     rtxd.currencies[oneCurrencyID].nativeOutConverted;
 
-                                if (newCumulative)
+                                int idx = currencyIdxMap[oneCurrencyID];
+                                if (newCumulative && oneCurrencyID == ASSETCHAINS_CHAINID)
                                 {
-                                    int idx = currencyIdxMap[oneCurrencyID];
-                                    if (oneCurrencyID == ASSETCHAINS_CHAINID)
-                                    {
-                                        tempState.primaryCurrencyIn[idx] =
-                                            (this->currencyState.primaryCurrencyIn[idx] + rtxd.nativeIn + tempState.reserveOut[idx]) - rtxd.nativeOut;
-                                    }
-                                    else
-                                    {
-                                        tempState.primaryCurrencyIn[idx] = this->currencyState.primaryCurrencyIn[idx] + reservesIn;
-                                    }
+                                    tempState.reserveIn[idx] = (rtxd.nativeIn + tempState.reserveOut[idx]) - rtxd.nativeOut;
                                 }
-
-                                if (reservesIn)
+                                else
                                 {
-                                    tempReserves.valueMap[oneCurrencyID] = reservesIn;
+                                    tempState.reserveIn[idx] = reservesIn;
                                 }
-                            }
-                        }
-
-                        // use double entry to enable pass through of the accumulated reserve such that when
-                        // reverting supply and reserves, we end up with what we started, after prelaunch and
-                        // before all post launch functions are complete, we use primaryCurrencyIn to accumulate
-                        // reserves to enforce maxPreconvert
-                        if (!newCumulative)
-                        {
-                            tempState.primaryCurrencyIn = tempState.AddVectors(this->currencyState.primaryCurrencyIn, tempReserves.AsCurrencyVector(tempState.currencies));
-                        }
-                        if (!destCurrency.IsPBaaSChain())
-                        {
-                            tempState.reserveOut =
-                                    tempState.AddVectors(tempState.reserveOut,
-                                                        (CCurrencyValueMap(tempState.currencies, tempState.reserveIn) * -1).AsCurrencyVector(tempState.currencies));
-                            if (!lastImportBeforeComplete)
-                            {
-                                tempState.reserveIn = tempReserves.AsCurrencyVector(tempState.currencies);
+                                tempState.primaryCurrencyIn[idx] = this->currencyState.primaryCurrencyIn[idx] + tempState.reserveIn[idx];
                             }
                         }
                     }

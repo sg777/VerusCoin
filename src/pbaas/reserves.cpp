@@ -2975,8 +2975,8 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             }
 
                             checkState.RevertReservesAndSupply(ASSETCHAINS_CHAINID,
-                                                            (importCurrencyDef.IsGatewayConverter() && importCurrencyDef.gatewayID == ASSETCHAINS_CHAINID) ||
-                                                            (!IsVerusActive() && importCurrencyDef.GetID() == ASSETCHAINS_CHAINID));
+                                                               (importCurrencyDef.IsGatewayConverter() && importCurrencyDef.gatewayID == ASSETCHAINS_CHAINID) ||
+                                                               (!IsVerusActive() && importCurrencyDef.GetID() == ASSETCHAINS_CHAINID));
 
                             // between clear launch and complete, we need to adjust supply for verification
                             if (!checkState.IsFractional() &&
@@ -3056,55 +3056,43 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                     CCurrencyValueMap tempReserves;
                                     auto currencyIdxMap = newState.GetReserveMap();
                                     bool newCumulative = newState.IsFractional();
+                                    bool isPBaaSBridge = importCurrencyDef.IsGatewayConverter() && importCurrencyDef.systemID == ASSETCHAINS_CHAINID;
+
                                     for (auto &oneCurrencyID : checkState.currencies)
                                     {
                                         if (rtxd.currencies.count(oneCurrencyID))
                                         {
                                             int64_t reservesIn = newCumulative ?
                                                 (oneCurrencyID == ASSETCHAINS_CHAINID ?
-                                                    (rtxd.nativeIn - rtxd.nativeOut) :
+                                                    (isPBaaSBridge ? 0 : (rtxd.nativeIn - rtxd.nativeOut)) :
                                                     rtxd.currencies[oneCurrencyID].reserveIn -
                                                         (rtxd.currencies[oneCurrencyID].reserveConversionFees + rtxd.currencies[oneCurrencyID].reserveOut)) :
                                                 rtxd.currencies[oneCurrencyID].nativeOutConverted;
 
-                                            if (newCumulative)
+                                            int idx = currencyIdxMap[oneCurrencyID];
+                                            if (newCumulative && oneCurrencyID == ASSETCHAINS_CHAINID)
                                             {
-                                                int idx = currencyIdxMap[oneCurrencyID];
-                                                if (oneCurrencyID == ASSETCHAINS_CHAINID)
-                                                {
-                                                    newState.primaryCurrencyIn[idx] =
-                                                        (checkState.primaryCurrencyIn[idx] + rtxd.nativeIn + newState.reserveOut[idx]) - rtxd.nativeOut;
-                                                }
-                                                else
-                                                {
-                                                    newState.primaryCurrencyIn[idx] = checkState.primaryCurrencyIn[idx] + reservesIn;
-                                                }
+                                                newState.primaryCurrencyIn[idx] =
+                                                    (checkState.primaryCurrencyIn[idx] + rtxd.nativeIn + newState.reserveOut[idx]) - rtxd.nativeOut;
+                                            }
+                                            else
+                                            {
+                                                newState.primaryCurrencyIn[idx] = checkState.primaryCurrencyIn[idx] + reservesIn;
                                             }
 
                                             if (reservesIn)
                                             {
                                                 tempReserves.valueMap[oneCurrencyID] = reservesIn;
                                             }
-                                        }
-                                    }
 
-                                    // use double entry to enable pass through of the accumulated reserve such that when
-                                    // reverting supply and reserves, we end up with what we started, after prelaunch and
-                                    // before all post launch functions are complete, we use primaryCurrencyIn to accumulate
-                                    // reserves to enforce maxPreconvert
-                                    if (!newCumulative)
-                                    {
-                                        newState.primaryCurrencyIn =
-                                            newState.AddVectors(checkState.primaryCurrencyIn, tempReserves.AsCurrencyVector(newState.currencies));
-                                    }
-                                    if (importCurrencyDef.IsPBaaSChain())
-                                    {
-                                        newState.reserveOut =
-                                                newState.AddVectors(newState.reserveOut,
-                                                                    (CCurrencyValueMap(newState.currencies, newState.reserveIn) * -1).AsCurrencyVector(newState.currencies));
-                                        if (!isClearLaunch)
-                                        {
-                                            newState.reserveIn = tempReserves.AsCurrencyVector(newState.currencies);
+                                            if (!importCurrencyDef.IsGatewayConverter())
+                                            {
+                                                newState.reserveOut[idx] -= newState.reserveIn[idx];
+                                                if (!isClearLaunch)
+                                                {
+                                                    newState.reserveIn[idx] = reservesIn;
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -6618,6 +6606,12 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID, bo
             // leave all currencies in
             // revert only fees at launch pricing
             RevertFees(viaConversionPrice, viaConversionPrice, systemID);
+            if (processingPreconverts)
+            {
+                CCurrencyValueMap negativePreReserves(currencies, reserveIn);
+                negativePreReserves = negativePreReserves * -1;
+                primaryCurrencyIn = AddVectors(primaryCurrencyIn, negativePreReserves.AsCurrencyVector(currencies));
+            }
         }
         else
         {
