@@ -3085,13 +3085,13 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                                 tempReserves.valueMap[oneCurrencyID] = reservesIn;
                                             }
 
-                                            if (!importCurrencyDef.IsGatewayConverter())
+                                            if (!isPBaaSBridge)
                                             {
                                                 newState.reserveOut[idx] -= newState.reserveIn[idx];
-                                                if (!isClearLaunch)
-                                                {
-                                                    newState.reserveIn[idx] = reservesIn;
-                                                }
+                                            }
+                                            if (!isClearLaunch)
+                                            {
+                                                newState.reserveIn[idx] = reservesIn;
                                             }
                                         }
                                     }
