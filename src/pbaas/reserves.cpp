@@ -4568,19 +4568,34 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                         if (updatedPostLaunch)
                         {
                             bool preLaunch = importCurrencyState.IsPrelaunch();
-                            int64_t cumulativeReservesIn = 
-                                    importCurrencyDef.IsFractional() ?
-                                        (preLaunch ?
-                                            importCurrencyState.reserves[rIdx] :
-                                            importCurrencyState.primaryCurrencyIn[rIdx]) :
-                                        (preLaunch ?
-                                            importCurrencyState.NativeToReserveRaw(importCurrencyState.reserveIn[rIdx],
-                                                                                    importCurrencyState.conversionPrice[rIdx]) :
-                                            importCurrencyState.NativeToReserveRaw(importCurrencyState.primaryCurrencyIn[rIdx],
-                                                                                    importCurrencyState.conversionPrice[rIdx]));
+                            int64_t cumulativeReserveIn;
+                            if (preLaunch)
+                            {
+                                if (importCurrencyDef.IsFractional())
+                                {
+                                    cumulativeReserveIn = importCurrencyState.reserves[rIdx];
+                                }
+                                else
+                                {
+                                    cumulativeReserveIn = importCurrencyState.NativeToReserveRaw(importCurrencyState.reserveIn[rIdx],
+                                                                                                 importCurrencyState.conversionPrice[rIdx]);
+                                }
+                            }
+                            else
+                            {
+                                if (importCurrencyDef.IsFractional())
+                                {
+                                    cumulativeReserveIn = importCurrencyState.primaryCurrencyIn[rIdx];
+                                }
+                                else
+                                {
+                                    cumulativeReserveIn = importCurrencyState.NativeToReserveRaw(importCurrencyState.primaryCurrencyIn[rIdx],
+                                                                                                 importCurrencyState.conversionPrice[rIdx]);
+                                }
+                            }
 
                             // check if it exceeds pre-conversion maximums, and refund if so
-                            CAmount newTotalReserves = cumulativeReservesIn + newReserveIn +
+                            CAmount newTotalReserves = cumulativeReserveIn + newReserveIn +
                                                             (preConvertedReserves.valueMap.count(reserveIdx->first) ?
                                                                 preConvertedReserves.valueMap[reserveIdx->first] :
                                                                 0);

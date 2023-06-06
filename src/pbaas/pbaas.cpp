@@ -7667,6 +7667,11 @@ bool CConnectedChains::GetSystemExports(const uint160 &systemID,
             CTransaction exportTx;
             if (!idx.first.spending && myGetTransaction(idx.first.txhash, exportTx, blkHash))
             {
+                auto exportIndexIt = mapBlockIndex.find(blkHash);
+                if (blkHash.IsNull() || exportIndexIt == mapBlockIndex.end() || !chainActive.Contains(exportIndexIt->second))
+                {
+                    continue;
+                }
                 std::vector<CBaseChainObject *> opretTransfers;
                 CCrossChainExport ccx;
                 int exportOutputNum = idx.first.index;
