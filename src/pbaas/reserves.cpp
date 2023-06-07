@@ -252,7 +252,7 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
 
     exportNotarization = CPBaaSNotarization();
 
-    if (IsSameChain() && !IsChainDefinition())
+    if ((IsSameChain() || IsPrelaunch()) && !IsChainDefinition())
     {
         // checking sourceHeightEnd being creater than 1 ensures that we can legitimately
         // expect an export finalization to follow
@@ -6617,7 +6617,7 @@ CCurrencyValueMap CCoinbaseCurrencyState::CalculateConvertedFees(const std::vect
     return originalFees;
 }
 
-void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID, bool pbaasInitialChainCurrency)
+void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID, bool pbaasInitialChainCurrency, ReversionUpdate reversionUpdate)
 {
     bool processingPreconverts = !IsLaunchCompleteMarker() && !IsPrelaunch();
     if (IsFractional())
@@ -6675,14 +6675,17 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID, bo
     }
     // between prelaunch and launch complete phases of non-fractional, we have accumulation of reserves
     // and must also remove preConvertedOut from supply
-    else if (processingPreconverts)
+    else
     {
-        CCurrencyValueMap negativePreReserves(currencies, reserveIn);
-        negativePreReserves = negativePreReserves * -1;
-        primaryCurrencyIn = AddVectors(primaryCurrencyIn, negativePreReserves.AsCurrencyVector(currencies));
-        for (auto &oneVal : reserveIn)
+        if (processingPreconverts)
         {
-            oneVal = 0;
+            CCurrencyValueMap negativePreReserves(currencies, reserveIn);
+            negativePreReserves = negativePreReserves * -1;
+            primaryCurrencyIn = AddVectors(primaryCurrencyIn, negativePreReserves.AsCurrencyVector(currencies));
+            for (auto &oneVal : reserveIn)
+            {
+                oneVal = 0;
+            }
         }
     }
 

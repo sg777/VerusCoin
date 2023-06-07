@@ -1476,6 +1476,20 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         // chain must be either output to specific addresses, taken as fees by miners, or stored in reserve deposits.
         if (tempState.IsPrelaunch())
         {
+            if (improvedMinCheck && destCurrency.IsPBaaSChain())
+            {
+                // total up all reserves entered in prelaunch except fees, even if refunded
+                auto currencyIdxMap = tempState.GetReserveMap();
+                for (auto &oneCurrencyID : tempState.currencies)
+                {
+                    if (rtxd.currencies.count(oneCurrencyID))
+                    {
+                        int idx = currencyIdxMap[oneCurrencyID];
+                        tempState.primaryCurrencyIn[idx] = this->currencyState.primaryCurrencyIn[idx] +
+                            (rtxd.currencies[oneCurrencyID].reserveIn - tempState.fees[idx]);
+                    }
+                }
+            }
             tempState.reserveIn = tempState.AddVectors(tempState.reserveIn, this->currencyState.reserveIn);
             if (!destCurrency.IsFractional() && !this->IsDefinitionNotarization() && !tempState.IsLaunchClear())
             {
