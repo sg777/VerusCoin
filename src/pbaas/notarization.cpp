@@ -1147,7 +1147,11 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                 1 :
                                 chainActive.Height() + 1;
 
-    bool improvedMinCheck = ConnectedChains.CheckZeroViaOnlyPostLaunch(currentHeight);
+    bool improvedMinCheck = (destCurrency.IsPBaaSChain() &&
+                             notaHeight == 1 &&
+                             proofRoots.count(VERUS_CHAINID) &&
+                             proofRoots.find(VERUS_CHAINID)->second.rootHeight >= ConnectedChains.GetZeroViaHeight(PBAAS_TESTMODE)) ||
+                            (ConnectedChains.CheckZeroViaOnlyPostLaunch(currentHeight));
 
     CTransferDestination notaryPayee;
 
