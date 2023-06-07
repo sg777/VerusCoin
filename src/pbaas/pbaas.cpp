@@ -5670,18 +5670,14 @@ bool CConnectedChains::IsUpgradeActive(const uint160 &upgradeID, uint32_t blockH
     return false;
 }
 
+uint32_t CConnectedChains::GetZeroViaHeight(bool getVerusHeight) const
+{
+    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 62378 : 2573055) : 0;
+}
+
 bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
 {
-    if (IsVerusActive())
-    {
-        if ((PBAAS_TESTMODE && height > 62378) ||
-            (!PBAAS_TESTMODE && height > 2573055))
-        {
-            return true;
-        }
-        return false;
-    }
-    return true;
+    return height > GetZeroViaHeight(false);
 }
 
 bool CConnectedChains::ConfigureEthBridge(bool callToCheck)

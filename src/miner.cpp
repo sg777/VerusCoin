@@ -978,6 +978,15 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             }
 
             std::vector<CReserveTransfer> exportTransfers(_exportTransfers);
+
+            bool updatedMinMax = newCurrency.IsPBaaSChain() &&
+                                 lastNotarization.proofRoots.count(VERUS_CHAINID) &&
+                                 lastNotarization.proofRoots.find(VERUS_CHAINID)->second.rootHeight >= ConnectedChains.GetZeroViaHeight(PBAAS_TESTMODE);
+ 
+            if (updatedMinMax)
+            {
+                tempLastNotarization.currencyState.primaryCurrencyIn = std::vector<int64_t>(tempLastNotarization.currencyState.primaryCurrencyIn.size(), 0);
+            }
             if (!tempLastNotarization.NextNotarizationInfo(_launchChain.chainDefinition,
                                                            newCurrency,
                                                            0,
@@ -1063,7 +1072,14 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 originalFees.ToUniValue().write(1,2).c_str()); */
 
             // to determine left over reserves for deposit, consider imported and emitted as the same
-            gatewayDeposits = CCurrencyValueMap(lastNotarization.currencyState.currencies, lastNotarization.currencyState.reserveIn);
+            if (updatedMinMax)
+            {
+                gatewayDeposits = CCurrencyValueMap(lastNotarization.currencyState.currencies, lastNotarization.currencyState.primaryCurrencyIn);
+            }
+            else
+            {
+                gatewayDeposits = CCurrencyValueMap(lastNotarization.currencyState.currencies, lastNotarization.currencyState.reserveIn);
+            }
             if (!newCurrency.IsFractional())
             {
                 gatewayDeposits += originalFees;
