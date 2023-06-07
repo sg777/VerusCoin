@@ -252,7 +252,7 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
 
     exportNotarization = CPBaaSNotarization();
 
-    if ((IsSameChain() || IsPrelaunch()) && !IsChainDefinition())
+    if ((IsSameChain() || (sourceSystemID == ASSETCHAINS_CHAINID && IsPrelaunch())) && !IsChainDefinition())
     {
         // checking sourceHeightEnd being creater than 1 ensures that we can legitimately
         // expect an export finalization to follow
