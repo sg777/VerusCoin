@@ -1479,9 +1479,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         // pre-launch state for validation. we continue adding fees up to pre-launch to easily get a total of unconverted
         // fees, which we need when creating a PBaaS chain, as all currency, both reserves and fees exported to the new
         // chain must be either output to specific addresses, taken as fees by miners, or stored in reserve deposits.
-        if (tempState.IsPrelaunch())
+        if (!newNotarization.IsRefunding() && tempState.IsPrelaunch())
         {
-            if (improvedMinCheck && destCurrency.IsPBaaSChain())
+            if (improvedMinCheck && (destCurrency.IsPBaaSChain() || (destCurrency.IsGatewayConverter() && destSystemID != destCurrency.launchSystemID)))
             {
                 // total up all reserves entered in prelaunch except fees, even if refunded
                 auto currencyIdxMap = tempState.GetReserveMap();
