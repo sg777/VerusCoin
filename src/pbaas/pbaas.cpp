@@ -1102,6 +1102,11 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                 if (!pbn.IsValid())
                 {
+                    // block one is checked completely elsewhere
+                    if (height == 1)
+                    {
+                        return true;
+                    }
                     return state.Error("Unable to retrieve prior notarization for import: " + cci.ToUniValue().write(1,2));
                 }
 
