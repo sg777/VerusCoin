@@ -642,8 +642,8 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                                (importCurrency.GetID() != VERUS_CHAINID ||
                                 importCurrency.launchSystemID != VERUS_CHAINID ||
                                 !notarization.proofRoots.count(VERUS_CHAINID) ||
-                                notarization.proofRoots[importCurrency.launchSystemID].rootHeight >= ConnectedChains.GetZeroViaHeight(true))) &&
-                            primaryInMap > CCurrencyValueMap())))
+                                notarization.proofRoots[importCurrency.launchSystemID].rootHeight >= ConnectedChains.GetZeroViaHeight(true)))) &&
+                            primaryInMap > CCurrencyValueMap()))
                         {
                             return state.Error("Invalid starting data in notarization for currency definition in tx 1: " + tx.GetHash().GetHex());
                         }
