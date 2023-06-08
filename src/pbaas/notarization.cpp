@@ -1145,9 +1145,11 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
     uint32_t currentHeight = IsPreLaunch() && IsLaunchConfirmed() && destCurrency.SystemOrGatewayID() == externalSystemID ?
                                 1 :
-                                chainActive.Height() + 1;
+                                notaHeight + 1;
 
-    bool improvedMinCheck = (PBAAS_TESTMODE &&
+    bool improvedMinCheck = (externalSystemID == ASSETCHAINS_CHAINID && ConnectedChains.CheckZeroViaOnlyPostLaunch(currentHeight)) ||
+                            (!PBAAS_TESTMODE && externalSystemID != ASSETCHAINS_CHAINID) ||
+                            (PBAAS_TESTMODE &&
                              destCurrency.IsPBaaSChain() &&
                              notaHeight == 1 &&
                              proofRoots.count(VERUS_CHAINID) &&
