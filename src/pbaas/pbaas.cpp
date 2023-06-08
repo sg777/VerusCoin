@@ -608,8 +608,8 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                 CCurrencyValueMap emptyMap;
                 CCurrencyValueMap primaryInMap = CCurrencyValueMap(notarization.currencyState.currencies, notarization.currencyState.primaryCurrencyIn).CanonicalMap();
-                CCurrencyValueMap reserveInMap = CCurrencyValueMap(notarization.currencyState.currencies, notarization.currencyState.reserveIn);
-                CCurrencyValueMap reserveMap = CCurrencyValueMap(notarization.currencyState.currencies, notarization.currencyState.reserves);
+                CCurrencyValueMap reserveInMap = CCurrencyValueMap(notarization.currencyState.currencies, notarization.currencyState.reserveIn).CanonicalMap();
+                CCurrencyValueMap reserveMap = CCurrencyValueMap(notarization.currencyState.currencies, notarization.currencyState.reserves).CanonicalMap();
 
                 if (importCurrency.IsFractional())
                 {
@@ -643,7 +643,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                                 importCurrency.launchSystemID != VERUS_CHAINID ||
                                 !notarization.proofRoots.count(VERUS_CHAINID) ||
                                 notarization.proofRoots[importCurrency.launchSystemID].rootHeight >= ConnectedChains.GetZeroViaHeight(true))) &&
-                            primaryInMap != expectedReserves)))
+                            primaryInMap > CCurrencyValueMap())))
                         {
                             return state.Error("Invalid starting data in notarization for currency definition in tx 1: " + tx.GetHash().GetHex());
                         }
@@ -669,7 +669,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                           (importCurrency.launchSystemID != VERUS_CHAINID ||
                            !notarization.proofRoots.count(VERUS_CHAINID) ||
                            notarization.proofRoots[importCurrency.launchSystemID].rootHeight >= ConnectedChains.GetZeroViaHeight(true)))) &&
-                        primaryInMap != expectedReserves)
+                        primaryInMap > CCurrencyValueMap())
                     {
                         return state.Error("Invalid starting data in notarization for currency definition in tx 2: " + tx.GetHash().GetHex());
                     }
