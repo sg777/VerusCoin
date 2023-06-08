@@ -1081,6 +1081,11 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 {
                     return state.Error("Invalid import to incorrect system: " + cci.ToUniValue().write(1,2));
                 }
+                // block one is checked completely elsewhere
+                if (height == 1)
+                {
+                    return true;
+                }
                 if (!importingToDef.IsValid() || !((notarization.IsRefunding() && importingToDef.launchSystemID == ASSETCHAINS_CHAINID) ||
                                                 importingToDef.SystemOrGatewayID() == ASSETCHAINS_CHAINID))
                 {
@@ -1102,11 +1107,6 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                 if (!pbn.IsValid())
                 {
-                    // block one is checked completely elsewhere
-                    if (height == 1)
-                    {
-                        return true;
-                    }
                     return state.Error("Unable to retrieve prior notarization for import: " + cci.ToUniValue().write(1,2));
                 }
 
