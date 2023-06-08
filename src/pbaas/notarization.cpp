@@ -1674,21 +1674,26 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                     newNotarization.currencyState = tempState;
                 }
             }
-            else if (improvedMinCheck && !newNotarization.IsPreLaunch() && !newNotarization.currencyState.IsLaunchCompleteMarker())
+            else 
             {
-                auto currencyIdxMap = newNotarization.currencyState.GetReserveMap();
-                for (auto &oneCurrencyID : newNotarization.currencyState.currencies)
+                if (improvedMinCheck && !newNotarization.IsPreLaunch() && !newNotarization.currencyState.IsLaunchCompleteMarker())
                 {
-                    if (rtxd.currencies.count(oneCurrencyID))
+                    auto currencyIdxMap = newNotarization.currencyState.GetReserveMap();
+                    for (auto &oneCurrencyID : newNotarization.currencyState.currencies)
                     {
-                        if (oneCurrencyID == destSystem.GetID())
+                        if (rtxd.currencies.count(oneCurrencyID))
                         {
-                            continue;
+                            if (oneCurrencyID == destSystem.GetID())
+                            {
+                                continue;
+                            }
+                            int idx = currencyIdxMap[oneCurrencyID];
+                            newNotarization.currencyState.reserveIn[idx] = rtxd.currencies[oneCurrencyID].nativeOutConverted;
+                            newNotarization.currencyState.primaryCurrencyIn[idx] = this->currencyState.primaryCurrencyIn[idx] + newNotarization.currencyState.reserveIn[idx];
                         }
-                        int idx = currencyIdxMap[oneCurrencyID];
-                        newNotarization.currencyState.primaryCurrencyIn[idx] = this->currencyState.primaryCurrencyIn[idx] + rtxd.currencies[oneCurrencyID].nativeOutConverted;
                     }
                 }
+                importOutputs.insert(importOutputs.end(), dummyImportOutputs.begin(), dummyImportOutputs.end());
             }
         }
         else if (isValidExport)
