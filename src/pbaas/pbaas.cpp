@@ -1200,7 +1200,8 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                                                 importedCurrency,
                                                 gatewayDepositsIn,
                                                 spentCurrencyOut,
-                                                ccx.exporter) ||
+                                                ccx.exporter,
+                                                ccx.IsClearLaunch()) ||
                     !checkNotarization.IsValid() ||
                     checkNotarization.IsRefunding() != notarization.IsRefunding())
                 {
