@@ -1144,10 +1144,17 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     }
                 }
 
-                if (!ConnectedChains.CheckZeroViaOnlyPostLaunch(height) &&
-                    notarization.IsLaunchCleared() &&
-                    !notarization.currencyState.IsLaunchClear())
+                if ((pbn.currencyState.IsLaunchCompleteMarker() && !notarization.currencyState.IsLaunchCompleteMarker()) ||
+                    (pbn.currencyState.IsRefunding() && !notarization.currencyState.IsRefunding()) ||
+                    (pbn.currencyState.IsFractional() != notarization.currencyState.IsFractional()) ||
+                    (!pbn.currencyState.IsPrelaunch() && notarization.currencyState.IsPrelaunch()))
                 {
+                    return state.Error("Invalid currency state change for import: " + cci.ToUniValue().write(1,2));
+                }
+
+                if (notarization.IsLaunchCleared() &&
+                    !notarization.currencyState.IsLaunchClear())
+                {                    
                     if (pbn.IsPreLaunch())
                     {
                         pbn.currencyState.SetLaunchClear(false);
