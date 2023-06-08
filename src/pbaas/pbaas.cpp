@@ -645,7 +645,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                                 notarization.proofRoots[importCurrency.launchSystemID].rootHeight >= ConnectedChains.GetZeroViaHeight(true))) &&
                             primaryInMap != expectedReserves)))
                         {
-                            return state.Error("Invalid starting data in notarization for currency definition in tx: " + tx.GetHash().GetHex());
+                            return state.Error("Invalid starting data in notarization for currency definition in tx 1: " + tx.GetHash().GetHex());
                         }
                     }
                 }
@@ -664,14 +664,14 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                         return state.Error("Invalid values in notarization currency state of definition tx: " + tx.GetHash().GetHex());
                     }
                     if (((notarization.currencyState.IsPrelaunch() && ConnectedChains.CheckZeroViaOnlyPostLaunch(height)) || 
-                        (!notarization.currencyState.IsPrelaunch() &&
-                         importCurrency.GetID() != VERUS_CHAINID &&
-                         (importCurrency.launchSystemID != VERUS_CHAINID ||
-                          !notarization.proofRoots.count(VERUS_CHAINID) ||
-                          notarization.proofRoots[importCurrency.launchSystemID].rootHeight >= ConnectedChains.GetZeroViaHeight(true))) &&
-                         primaryInMap != expectedReserves))
+                         (!notarization.currencyState.IsPrelaunch() &&
+                          importCurrency.GetID() != VERUS_CHAINID &&
+                          (importCurrency.launchSystemID != VERUS_CHAINID ||
+                           !notarization.proofRoots.count(VERUS_CHAINID) ||
+                           notarization.proofRoots[importCurrency.launchSystemID].rootHeight >= ConnectedChains.GetZeroViaHeight(true)))) &&
+                        primaryInMap != expectedReserves)
                     {
-                        return state.Error("Invalid starting data in notarization for currency definition in tx: " + tx.GetHash().GetHex());
+                        return state.Error("Invalid starting data in notarization for currency definition in tx 2: " + tx.GetHash().GetHex());
                     }
                 }
             }
@@ -5891,7 +5891,7 @@ bool CConnectedChains::IsUpgradeActive(const uint160 &upgradeID, uint32_t blockH
 
 uint32_t CConnectedChains::GetZeroViaHeight(bool getVerusHeight) const
 {
-    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? /* 186 */ 63807 : 2574465) : 0;
+    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 67631 : 2577258) : 0;
 }
 
 bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
