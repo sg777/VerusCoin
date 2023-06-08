@@ -1303,7 +1303,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 newNotarization.SetPreLaunch(false);
                 newNotarization.currencyState.SetLaunchClear();
                 newNotarization.currencyState.SetPrelaunch(false);
-                newNotarization.currencyState.RevertReservesAndSupply(destCurrency.systemID, false);
+                newNotarization.currencyState.RevertReservesAndSupply(destCurrency.systemID, false, improvedMinCheck ? 
+                                                                                                        CCoinbaseCurrencyState::PBAAS_1_0_8 :
+                                                                                                        CCoinbaseCurrencyState::PBAAS_1_0_0);
             }
             else
             {

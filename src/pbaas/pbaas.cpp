@@ -1171,6 +1171,12 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 CPBaaSNotarization checkNotarization;
                 std::vector<CTxOut> outputs;
                 CCurrencyValueMap importedCurrency, gatewayDepositsIn, spentCurrencyOut;
+
+                if (notarization.IsLaunchComplete() && !pbn.IsLaunchComplete())
+                {
+                    pbn.currencyState.SetLaunchCompleteMarker(false);
+                }
+
                 if (!pbn.NextNotarizationInfo(sourceSystem,
                                                 importingToDef,
                                                 ccx.sourceHeightStart,
@@ -1196,8 +1202,10 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 if (::AsVector(checkNotarization.currencyState) != ::AsVector(notarization.currencyState))
                 {
                     checkNotarization.currencyState.primaryCurrencyIn = notarization.currencyState.primaryCurrencyIn;
-                    if (ConnectedChains.CheckZeroViaOnlyPostLaunch(height) ||
-                        (PBAAS_TESTMODE && chainActive[height - 1]->nTime > PBAAS_TESTFORK3_TIME) ||
+                    checkNotarization.currencyState.reserveIn = notarization.currencyState.reserveIn;
+                    checkNotarization.currencyState.reserveOut = notarization.currencyState.reserveOut;
+                    if ((ConnectedChains.CheckZeroViaOnlyPostLaunch(height) &&
+                         (!PBAAS_TESTMODE || chainActive[height - 1]->nTime > PBAAS_TESTFORK3_TIME)) ||
                         ::AsVector(checkNotarization.currencyState) != ::AsVector(notarization.currencyState))
                     {
                         if (LogAcceptCategory("defi"))
@@ -2994,7 +3002,10 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         bool isClearLaunch = ccxSource.IsClearLaunch();
         std::vector<CTxOut> vOutputs;
 
-        if (ConnectedChains.CheckZeroViaOnlyPostLaunch(nHeight) &&
+        bool isUpdatedConversion = ConnectedChains.CheckZeroViaOnlyPostLaunch(nHeight + 1) &&
+                                    (!PBAAS_TESTMODE || chainActive[nHeight]->nTime > PBAAS_TESTFORK3_TIME);
+
+        if (isUpdatedConversion &&
             isClearLaunch &&
             reserveTransfers.size())
         {
@@ -3077,8 +3088,11 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         else
         {
             checkState.RevertReservesAndSupply(ASSETCHAINS_CHAINID,
-                                            (destCurDef.IsGatewayConverter() && destCurDef.gatewayID == ASSETCHAINS_CHAINID) ||
-                                            (!IsVerusActive() && destCurDef.GetID() == ASSETCHAINS_CHAINID));
+                                                (destCurDef.IsGatewayConverter() && destCurDef.gatewayID == ASSETCHAINS_CHAINID) ||
+                                                (!IsVerusActive() && destCurDef.GetID() == ASSETCHAINS_CHAINID),
+                                                isUpdatedConversion ? 
+                                                    CCoinbaseCurrencyState::PBAAS_1_0_8 :
+                                                    CCoinbaseCurrencyState::PBAAS_1_0_0);
 
             if (ccxSource.IsClearLaunch() && ccxSource.sourceSystemID == destCurDef.launchSystemID)
             {

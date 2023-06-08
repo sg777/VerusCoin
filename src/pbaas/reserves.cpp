@@ -6631,7 +6631,7 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID, bo
             // leave all currencies in
             // revert only fees at launch pricing
             RevertFees(viaConversionPrice, viaConversionPrice, systemID);
-            if (processingPreconverts)
+            if (reversionUpdate >= ReversionUpdate::PBAAS_1_0_8 && processingPreconverts)
             {
                 CCurrencyValueMap negativePreReserves(currencies, reserveIn);
                 negativePreReserves = negativePreReserves * -1;
