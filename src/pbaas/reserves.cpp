@@ -2976,7 +2976,9 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
 
                             checkState.RevertReservesAndSupply(ASSETCHAINS_CHAINID,
                                                                (importCurrencyDef.IsGatewayConverter() && importCurrencyDef.gatewayID == ASSETCHAINS_CHAINID) ||
-                                                               (!IsVerusActive() && importCurrencyDef.GetID() == ASSETCHAINS_CHAINID));
+                                                                    (!IsVerusActive() && importCurrencyDef.GetID() == ASSETCHAINS_CHAINID),
+                                                                updatedChecks ? CCoinbaseCurrencyState::PBAAS_1_0_8 :
+                                                                    CCoinbaseCurrencyState::PBAAS_1_0_0);
 
                             // between clear launch and complete, we need to adjust supply for verification
                             if (!checkState.IsFractional() &&
