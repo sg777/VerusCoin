@@ -1179,7 +1179,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                 if (!pbn.NextNotarizationInfo(sourceSystem,
                                                 importingToDef,
-                                                ccx.sourceHeightStart,
+                                                ccx.sourceHeightStart ? ccx.sourceHeightStart - 1 : 0,
                                                 notarization.notarizationHeight,
                                                 reserveTransfers,
                                                 transferHash,
@@ -1842,22 +1842,32 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             std::vector<CTxOut> outputs;
             CCurrencyValueMap importedCurrency, gatewayDepositsIn, spentCurrencyOut;
             if (!pbn.NextNotarizationInfo(ConnectedChains.ThisChain(),
-                                        destCurrency,
-                                        ccx.sourceHeightStart - 1,
-                                        notarization.notarizationHeight,
-                                        reserveTransfers,
-                                        transferHash,
-                                        checkNotarization,
-                                        outputs,
-                                        importedCurrency,
-                                        gatewayDepositsIn,
-                                        spentCurrencyOut,
-                                        ccx.exporter) ||
+                                          destCurrency,
+                                          ccx.sourceHeightStart ? ccx.sourceHeightStart - 1 : 0,
+                                          notarization.notarizationHeight,
+                                          reserveTransfers,
+                                          transferHash,
+                                          checkNotarization,
+                                          outputs,
+                                          importedCurrency,
+                                          gatewayDepositsIn,
+                                          spentCurrencyOut,
+                                          ccx.exporter) ||
                 !checkNotarization.IsValid() ||
                 (checkNotarization.IsRefunding() != notarization.IsRefunding()) ||
                 ::AsVector(checkNotarization.currencyState) != ::AsVector(notarization.currencyState))
             {
-                return state.Error("Invalid notarization mutation\n");
+                checkNotarization.currencyState.reserveIn = notarization.currencyState.reserveIn;
+                if (notarization.IsRefunding() &&
+                    (ConnectedChains.CheckZeroViaOnlyPostLaunch(height) ||
+                     ::AsVector(checkNotarization.currencyState) != ::AsVector(notarization.currencyState)))
+                {
+                    if (LogAcceptCategory("defi"))
+                    {
+                        LogPrintf("%s: Mismatched currency states on export - Expected: %s\nActual: %s\n", __func__, checkNotarization.currencyState.ToUniValue().write(1,2).c_str(), notarization.currencyState.ToUniValue().write(1,2).c_str());
+                    }
+                    return state.Error("Invalid notarization mutation\n");
+                }
             }
 
             if (ccx.totalFees != CCurrencyValueMap(notarization.currencyState.currencies, notarization.currencyState.fees))
