@@ -4107,7 +4107,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         else if (importCurrencyState.IsRefunding() ||
                  exportObjects[i].IsRefund() ||
                  (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()) ||
-                 (updatedPastTestFork4 &&
+                 (importCurrencyState.GetID() != VERUS_CHAINID &&
                   ((exportObjects[i].IsConversion() && !exportObjects[i].IsPreConversion()) ||
                    (exportObjects[i].IsCurrencyExport() || exportObjects[i].IsIdentityExport() || exportObjects[i].HasNextLeg())) &&
                   !importCurrencyState.IsLaunchCompleteMarker()))
