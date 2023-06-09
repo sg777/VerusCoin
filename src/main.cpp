@@ -4475,17 +4475,17 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
                                 std::vector<CReserveTransfer> exportTransfers(reserveTransfers);
                                 if (!tempLastNotarization.NextNotarizationInfo(ConnectedChains.FirstNotaryChain().chainDefinition,
-                                                                            cbCurDef,
-                                                                            0,
-                                                                            1,
-                                                                            exportTransfers,
-                                                                            transferHash,
-                                                                            newNotarization,
-                                                                            importOutputs,
-                                                                            importedCurrency,
-                                                                            gatewayDepositsUsed,
-                                                                            spentCurrencyOut,
-                                                                            ccx.exporter))
+                                                                                cbCurDef,
+                                                                                0,
+                                                                                1,
+                                                                                exportTransfers,
+                                                                                transferHash,
+                                                                                newNotarization,
+                                                                                importOutputs,
+                                                                                importedCurrency,
+                                                                                gatewayDepositsUsed,
+                                                                                spentCurrencyOut,
+                                                                                ccx.exporter))
                                 {
                                     return state.DoS(10,
                                                     error("%s: invalid coinbase import for currency %s on system %s\n",
@@ -4499,7 +4499,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 // less liquidity fees, which go into the currency reserves
                                 bool feesConverted;
                                 CCurrencyValueMap cbFees;
-                                CCurrencyValueMap gatewayDeposits;
                                 CCurrencyValueMap extraCurrencyOut;
                                 CCurrencyValueMap liquidityFees;
                                 CCurrencyValueMap originalFees =
@@ -4534,8 +4533,24 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 //*/
 
                                 // to determine left over reserves for deposit, consider imported and emitted as the same
-                                gatewayDeposits = CCurrencyValueMap(tempLastNotarization.currencyState.currencies,
-                                                                    tempLastNotarization.currencyState.reserveIn);
+                                bool improvedMinCheck = cbCurDef.IsPBaaSChain() &&
+                                                        (!PBAAS_TESTMODE ||
+                                                         (PBAAS_TESTMODE &&
+                                                          lastNotarization.proofRoots.count(VERUS_CHAINID) &&
+                                                          lastNotarization.proofRoots.find(VERUS_CHAINID)->second.rootHeight >= ConnectedChains.GetZeroViaHeight(PBAAS_TESTMODE)));
+
+                                CCurrencyValueMap gatewayDeposits;
+                                if (improvedMinCheck)
+                                {
+                                    gatewayDeposits = CCurrencyValueMap(tempLastNotarization.currencyState.currencies,
+                                                                        tempLastNotarization.currencyState.primaryCurrencyIn);
+                                }
+                                else
+                                {
+                                    gatewayDeposits = CCurrencyValueMap(tempLastNotarization.currencyState.currencies,
+                                                                        tempLastNotarization.currencyState.reserveIn);
+                                }
+
                                 if (!cbCurDef.IsFractional())
                                 {
                                     gatewayDeposits += originalFees;
