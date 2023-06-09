@@ -1312,6 +1312,14 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 newNotarization.SetLaunchCleared();
                 newNotarization.currencyState.SetLaunchClear();
 
+                forcedRefund = (destCurrency.IsFractional() &&
+                                        PBAAS_TESTMODE &&
+                                        destSystemID == VERUS_CHAINID &&
+                                        lastExportHeight < ConnectedChains.GetZeroViaHeight(true) &&
+                                        GetTime() > PBAAS_TESTFORK4_TIME &&
+                                        newPreConversionReservesIn.valueMap[destSystemID] &&
+                                        !newNotarization.currencyState.reserves[newNotarization.currencyState.GetReserveMap()[destSystemID]]);
+
                 // if we are connected to another currency, make sure it will also start before we confirm that we can
                 CCurrencyDefinition coLaunchCurrency;
                 CCoinbaseCurrencyState coLaunchState;
