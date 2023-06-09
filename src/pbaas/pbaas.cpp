@@ -4682,6 +4682,17 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 return state.Error("Preconversion transfers must use the native fee currency of the launching system " + rt.ToUniValue().write(1,2));
             }
         }
+        else if (haveFullChain &&
+                 ConnectedChains.CheckZeroViaOnlyPostLaunch(height) &&
+                 !importState.IsLaunchCompleteMarker())
+        {
+            if (rt.IsCurrencyExport() ||
+                rt.IsConversion() ||
+                rt.IsIdentityExport())
+            {
+                return state.Error("No conversions, currency exports, or identity exports are allowed before currency launch is complete " + rt.ToUniValue().write(1,2));
+            }
+        }
 
         if (importCurrencyDef.IsFractional() && importState.IsLaunchConfirmed())
         {
