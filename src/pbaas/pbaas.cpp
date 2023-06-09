@@ -6609,6 +6609,8 @@ bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, const CCoin
     std::vector<CAddressUnspentDbEntry> confirmedUTXOs;
     std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> unconfirmedUTXOs;
 
+    LOCK(mempool.cs);
+
     CCoins coin;
 
     uint160 depositIndexKey = CReserveDeposit::ReserveDepositIndexKey(currencyID);
@@ -6652,7 +6654,7 @@ bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<std
     std::set<COutPoint> spentInMempool;
     auto memPoolOuts = mempool.FilterUnspent(unconfirmedUTXOs, spentInMempool);
 
-    LRUCache<uint256, std::pair<CTransaction, uint256>> txesBeingSpent(50, 0.3);
+    static LRUCache<uint256, std::pair<CTransaction, uint256>> txesBeingSpent(50, 0.3);
 
     for (auto &oneConfirmed : confirmedUTXOs)
     {
@@ -6666,10 +6668,6 @@ bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<std
             (blockIt = mapBlockIndex.find(txAndBlkHash.second)) == mapBlockIndex.end() ||
             !chainActive.Contains(blockIt->second))
         {
-            if (fromChain)
-            {
-                txesBeingSpent.Put(oneConfirmed.first.txhash, txAndBlkHash);
-            }
             continue;
         }
         txesBeingSpent.Put(oneConfirmed.first.txhash, txAndBlkHash);

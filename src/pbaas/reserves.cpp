@@ -4086,6 +4086,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     uint32_t solveTime = (chainActive.Height() >= (height - 1)) ? chainActive[height - 1]->nTime : chainActive.LastTip()->nTime;
     bool fullUpgrade = !PBAAS_TESTMODE || PBAAS_TESTFORK2_TIME <= solveTime;
     bool updatedPostLaunch = ConnectedChains.CheckZeroViaOnlyPostLaunch(height);
+    bool updatedPastTestFork4 = updatedPostLaunch && chainActive.Height() >= (height - 1) && (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK4_TIME);
 
     for (int i = 0; i <= exportObjects.size(); i++)
     {
@@ -4105,7 +4106,9 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         else if (importCurrencyState.IsRefunding() ||
                  exportObjects[i].IsRefund() ||
                  (exportObjects[i].IsPreConversion() && importCurrencyState.IsLaunchCompleteMarker()) ||
-                 (exportObjects[i].IsConversion() && !exportObjects[i].IsPreConversion() && !importCurrencyState.IsLaunchCompleteMarker()))
+                 (((exportObjects[i].IsConversion() && !exportObjects[i].IsPreConversion()) ||
+                   (exportObjects[i].IsCurrencyExport() || exportObjects[i].IsIdentityExport() || exportObjects[i].HasNextLeg())) &&
+                  !importCurrencyState.IsLaunchCompleteMarker()))
         {
             curTransfer = exportObjects[i].GetRefundTransfer(!(systemSourceID != systemDestID && exportObjects[i].IsCrossSystem()), fullUpgrade);
         }
@@ -5601,9 +5604,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     }
                 }
             }
-            if (!hasCrossConversions &&
-                (updatedPostLaunch &&
-                 (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK4_TIME)))
+            if (!hasCrossConversions && updatedPastTestFork4)
             {
                 for (int viaIdx = 0; viaIdx < newCurrencyState.viaConversionPrice.size(); viaIdx++)
                 {
@@ -5938,6 +5939,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             gatewayDepositsIn.valueMap[importCurrencyID] -= newLaunchNative;
             newCurrencyState.primaryCurrencyOut += newLaunchNative;
             newCurrencyState.preConvertedOut += newLaunchNative;
+            if (updatedPastTestFork4)
+            {
+                importedCurrency = (importedCurrency - preConvertedReserves).CanonicalMap();
+                gatewayDepositsIn += preConvertedReserves;
+            }
         }
         else
         {
