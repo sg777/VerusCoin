@@ -4243,17 +4243,16 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                 CCurrencyValueMap exporterReserveFees;
 
+                bool passSomeFailedTestnetCurrencies = (!importCurrencyState.reserves[systemDestIdx] &&
+                                                        PBAAS_TESTMODE &&
+                                                        GetTime() > PBAAS_TESTFORK4_TIME &&
+                                                        preConvertedReserves.valueMap[systemDestID]);
+
                 if (importCurrencyState.IsLaunchConfirmed() &&
                     isFractional &&
-                    (importCurrencyState.reserves[systemDestIdx] ||
-                     (PBAAS_TESTMODE &&
-                      updatedPostLaunch &&
-                      preConvertedReserves.valueMap[systemDestID])))
+                    (importCurrencyState.reserves[systemDestIdx] || passSomeFailedTestnetCurrencies))
                 {
-                    if (!importCurrencyState.reserves[systemDestIdx] &&
-                        PBAAS_TESTMODE &&
-                        updatedPostLaunch &&
-                        preConvertedReserves.valueMap[systemDestID])
+                    if (!importCurrencyState.reserves[systemDestIdx] &&)
                     {
                         newCurrencyState.reserves[systemDestIdx] = preConvertedReserves.valueMap[systemDestID];
                     }
