@@ -4088,6 +4088,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     bool fullUpgrade = !PBAAS_TESTMODE || PBAAS_TESTFORK2_TIME <= solveTime;
     bool updatedPostLaunch = ConnectedChains.CheckZeroViaOnlyPostLaunch(height);
     bool updatedPastTestFork4 = updatedPostLaunch && chainActive.Height() >= (height - 1) && (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK4_TIME);
+    bool passSomeFailedTestnetCurrencies = false;
 
     for (int i = 0; i <= exportObjects.size(); i++)
     {
@@ -4243,11 +4244,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                 CCurrencyValueMap exporterReserveFees;
 
-                bool passSomeFailedTestnetCurrencies = (isFractional &&
-                                                        !importCurrencyState.reserves[systemDestIdx] &&
-                                                        PBAAS_TESTMODE &&
-                                                        GetTime() > PBAAS_TESTFORK4_TIME &&
-                                                        preConvertedReserves.valueMap[systemDestID]);
+                passSomeFailedTestnetCurrencies = (isFractional &&
+                                                    !importCurrencyState.reserves[systemDestIdx] &&
+                                                    PBAAS_TESTMODE &&
+                                                    GetTime() > PBAAS_TESTFORK4_TIME &&
+                                                    preConvertedReserves.valueMap[systemDestID]);
 
                 if (importCurrencyState.IsLaunchConfirmed() &&
                     isFractional &&
@@ -5524,6 +5525,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     if (isFractional && importCurrencyState.IsLaunchConfirmed())
     {
         CCoinbaseCurrencyState scratchCurrencyState = importCurrencyState;
+
+        if (passSomeFailedTestnetCurrencies)
+        {
+            scratchCurrencyState.reserves = newCurrencyState.reserves;
+        }
 
         if (burnedChangePrice > 0)
         {
