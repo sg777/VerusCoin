@@ -1496,6 +1496,11 @@ public:
     std::vector<CAmount> conversionFees;    // total of only conversion fees, which will accrue to the conversion transaction
     std::vector<int32_t> priorWeights;      // previous weights to enable reversal of state
 
+    enum ReversionUpdate {
+        PBAAS_1_0_0 = 0,
+        PBAAS_1_0_8 = 1
+    };
+
     CCoinbaseCurrencyState() : primaryCurrencyOut(0), preConvertedOut(0), primaryCurrencyFees(0), primaryCurrencyConversionFees(0) {}
 
     CCoinbaseCurrencyState(const CCurrencyState &CurrencyState,
@@ -1602,7 +1607,7 @@ public:
                                              CCurrencyValueMap &liquidityFees,
                                              CCurrencyValueMap &convertedFees) const;
 
-    void RevertReservesAndSupply(const uint160 &systemID=ASSETCHAINS_CHAINID, bool pbaasInitialChainCurrency=false);
+    void RevertReservesAndSupply(const uint160 &systemID=ASSETCHAINS_CHAINID, bool pbaasInitialChainCurrency=false, ReversionUpdate reversionUpdate=PBAAS_1_0_0);
 
     template <typename NUMBERVECTOR>
     static NUMBERVECTOR AddVectors(const NUMBERVECTOR &a, const NUMBERVECTOR &b)
