@@ -4088,7 +4088,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     bool fullUpgrade = !PBAAS_TESTMODE || PBAAS_TESTFORK2_TIME <= solveTime;
     bool updatedPostLaunch = ConnectedChains.CheckZeroViaOnlyPostLaunch(height);
     bool updatedPastTestFork4 = updatedPostLaunch && chainActive.Height() >= (height - 1) && (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK4_TIME);
-    bool passSomeFailedTestnetCurrencies = false;
 
     for (int i = 0; i <= exportObjects.size(); i++)
     {
@@ -4244,21 +4243,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                 CCurrencyValueMap exporterReserveFees;
 
-                passSomeFailedTestnetCurrencies = (isFractional &&
-                                                    !importCurrencyState.reserves[systemDestIdx] &&
-                                                    PBAAS_TESTMODE &&
-                                                    GetTime() > PBAAS_TESTFORK4_TIME &&
-                                                    preConvertedReserves.valueMap[systemDestID]);
-
                 if (importCurrencyState.IsLaunchConfirmed() &&
                     isFractional &&
-                    (importCurrencyState.reserves[systemDestIdx] || passSomeFailedTestnetCurrencies))
+                    importCurrencyState.reserves[systemDestIdx])
                 {
-                    if (passSomeFailedTestnetCurrencies)
-                    {
-                        newCurrencyState.reserves[systemDestIdx] = preConvertedReserves.valueMap[systemDestID];
-                    }
-
                     // 1/2 of all conversion fees go directly into the fractional currency itself
                     liquidityFees = conversionFees / 2;
                     transferFees -= liquidityFees;
@@ -5516,11 +5504,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         }
     }
 
-    CCurrencyValueMap adjustedReserveConverted = reserveConverted;
-    if (!passSomeFailedTestnetCurrencies || finalValidation)
-    {
-        adjustedReserveConverted -= preConvertedReserves;
-    }
+    CCurrencyValueMap adjustedReserveConverted = reserveConverted - preConvertedReserves;
 
     int32_t issuedWeight = 0;
     CAmount totalRatio = 0;
@@ -6049,7 +6033,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     if (finalValidation &&
         !newCurrencyState.IsRefunding() &&
         (newCurrencyState.IsLaunchClear() || newCurrencyState.IsLaunchCompleteMarker()) &&
-        !newCurrencyState.ValidateConversionLimits(updatedPostLaunch || passSomeFailedTestnetCurrencies))
+        !newCurrencyState.ValidateConversionLimits(updatedPostLaunch))
     {
         // if this is the launch, we need to refund the currency
         if (newCurrencyState.IsLaunchClear() && newCurrencyState.IsPrelaunch())
