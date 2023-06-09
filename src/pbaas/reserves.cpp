@@ -5516,7 +5516,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         }
     }
 
-    CCurrencyValueMap adjustedReserveConverted = reserveConverted - preConvertedReserves;
+    CCurrencyValueMap adjustedReserveConverted = reserveConverted;
+    if (!passSomeFailedTestnetCurrencies || finalValidation)
+    {
+        adjustedReserveConverted -= preConvertedReserves;
+    }
 
     int32_t issuedWeight = 0;
     CAmount totalRatio = 0;
@@ -5525,11 +5529,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     if (isFractional && importCurrencyState.IsLaunchConfirmed())
     {
         CCoinbaseCurrencyState scratchCurrencyState = importCurrencyState;
-
-        if (passSomeFailedTestnetCurrencies)
-        {
-            scratchCurrencyState.reserves = newCurrencyState.reserves;
-        }
 
         if (burnedChangePrice > 0)
         {
@@ -6050,7 +6049,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     if (finalValidation &&
         !newCurrencyState.IsRefunding() &&
         (newCurrencyState.IsLaunchClear() || newCurrencyState.IsLaunchCompleteMarker()) &&
-        !newCurrencyState.ValidateConversionLimits(updatedPostLaunch))
+        !newCurrencyState.ValidateConversionLimits(updatedPostLaunch || passSomeFailedTestnetCurrencies))
     {
         // if this is the launch, we need to refund the currency
         if (newCurrencyState.IsLaunchClear() && newCurrencyState.IsPrelaunch())
