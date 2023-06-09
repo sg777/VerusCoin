@@ -4243,7 +4243,8 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                 CCurrencyValueMap exporterReserveFees;
 
-                bool passSomeFailedTestnetCurrencies = (!importCurrencyState.reserves[systemDestIdx] &&
+                bool passSomeFailedTestnetCurrencies = (isFractional &&
+                                                        !importCurrencyState.reserves[systemDestIdx] &&
                                                         PBAAS_TESTMODE &&
                                                         GetTime() > PBAAS_TESTFORK4_TIME &&
                                                         preConvertedReserves.valueMap[systemDestID]);
@@ -4252,7 +4253,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                     isFractional &&
                     (importCurrencyState.reserves[systemDestIdx] || passSomeFailedTestnetCurrencies))
                 {
-                    if (!importCurrencyState.reserves[systemDestIdx] &&)
+                    if (passSomeFailedTestnetCurrencies)
                     {
                         newCurrencyState.reserves[systemDestIdx] = preConvertedReserves.valueMap[systemDestID];
                     }
