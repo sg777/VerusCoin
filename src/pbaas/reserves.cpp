@@ -4245,7 +4245,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                 if (importCurrencyState.IsLaunchConfirmed() &&
                     isFractional &&
-                    importCurrencyState.reserves[systemDestIdx])
+                    (importCurrencyState.reserves[systemDestIdx] ||
+                     (PBAAS_TESTMODE &&
+                      updatedPostLaunch &&
+                      preConvertedReserves > CCurrencyValueMap())))
                 {
                     // 1/2 of all conversion fees go directly into the fractional currency itself
                     liquidityFees = conversionFees / 2;
