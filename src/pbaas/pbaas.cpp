@@ -3490,19 +3490,6 @@ uint32_t CCurrencyDefinition::MagicNumber() const
     // compatibility
     int lastSize = 0;
 
-    // TODO: REMOVED AFTER MAGIC NUMBER FIX IS APPLIED
-    if (isVerusOrVerusTestRunning &&
-        !((eraEnd.size() && eraEnd[0]) ||
-          (rewards.size() && rewards[0]) ||
-          (halving.size() && halving[0]) ||
-          (rewardsDecay.size() && rewardsDecay[0])) &&
-        !ConnectedChains.activeUpgradesByKey.count(ConnectedChains.MagicNumberFixKey()))
-    {
-        extraBuffer.insert(extraBuffer.end(), 33, 0);
-        lastSize = extraBuffer.size();
-    }
-    else
-
     if (IsPBaaSChain())
     {
         if ((eraEnd.size() && eraEnd[0]) ||
