@@ -5919,7 +5919,7 @@ bool CWallet::SelectReserveUTXOs(const CCurrencyValueMap& targetValues,
         nAll.valueMap.erase(ASSETCHAINS_CHAINID);
 
         // if all values are equivalent to targets, we've found the perfect output, no more searching needed
-        // TODO: should we early out, even if we have extra currencies? If so, use nTotal to commpare
+        // TODO: should we early out, even if we have extra currencies? If so, use nTotal to compare
         if (nTotal == nTotalTarget)
         {
             mapCoinsRet.insert(output);
@@ -6198,6 +6198,7 @@ bool CWallet::SelectReserveUTXOs(const CCurrencyValueMap& targetValues,
     // remove all that we've already added leaving a vector of those that we need to optimize
     for (int i = vOutputsToRemove.size() - 1; i >= 0; i--)
     {
+        vOutputsToOptimizeIndexes.erase(vOutputsToOptimizeIndexes.begin() + vOutputsToRemove[i]);
         vOutputsToOptimize.erase(vOutputsToOptimize.begin() + vOutputsToRemove[i]);
     }
 
@@ -6221,8 +6222,7 @@ bool CWallet::SelectReserveUTXOs(const CCurrencyValueMap& targetValues,
         if (vfBest[i])
         {
             mapCoinsRet.insert(vOutputsToOptimize[i]);
-
-            valueRet += vOutputsToOptimize[i].second;
+            valueRet += vCoins[vOutputsToOptimizeIndexes[i]].second;
         }
     }
     nativeValueRet += valueRet.valueMap[ASSETCHAINS_CHAINID];
