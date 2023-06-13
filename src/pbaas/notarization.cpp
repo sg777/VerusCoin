@@ -5802,6 +5802,10 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
 
     if (!isGatewayFirstContact && (!validIndexesUni.isArray() || !validIndexesUni.size()))
     {
+        if (LogAcceptCategory("earnednotarizations"))
+        {
+            LogPrintf("%s: No notarizations on notary chain agree\n", __func__);
+        }
         return state.Error("no-valid-proofroots");
     }
 
