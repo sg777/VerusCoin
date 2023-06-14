@@ -6104,7 +6104,7 @@ CCoinbaseCurrencyState CConnectedChains::AddPendingConversions(CCurrencyDefiniti
         if (_lastNotarization.NextNotarizationInfo(ConnectedChains.ThisChain(),
                                                     curDef,
                                                     fromHeight,
-                                                    std::min(height, curDef.startBlock - 1),
+                                                    std::min(height, chainActive.Height() + 1),
                                                     transfers,
                                                     transferHash,
                                                     newNotarization,
@@ -6114,6 +6114,10 @@ CCoinbaseCurrencyState CConnectedChains::AddPendingConversions(CCurrencyDefiniti
                                                     spentCurrencyOut))
         {
             return newNotarization.currencyState;
+        }
+        else
+        {
+            currencyState = CCoinbaseCurrencyState();
         }
     }
     return currencyState;
