@@ -4182,10 +4182,9 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                  (mapBlockIndex.count(checkBlockHash) &&
                   chainActive.Contains(mapBlockIndex[checkBlockHash]))) &&
                 ofCandidate.output.GetOutputTransaction(targetTx, targetBlockHash, false) &&
-                (checkBlockHash.IsNull() ||
-                 (!targetBlockHash.IsNull() &&
+                (!targetBlockHash.IsNull() &&
                   mapBlockIndex.count(targetBlockHash) &&
-                  chainActive.Contains(mapBlockIndex[targetBlockHash]))) &&
+                  chainActive.Contains(mapBlockIndex[targetBlockHash])) &&
                 (!present ||
                  oneFinalization.first == 0 ||
                  firstUnspentFinalization.first < oneFinalization.first))
