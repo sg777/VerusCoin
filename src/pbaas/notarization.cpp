@@ -4194,9 +4194,9 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                         if (checkP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
                             (!((ofCandidate = CObjectFinalization(checkP.vData[0])).IsValid() &&
                                ofCandidate.output.GetOutputTransaction(targetTx, targetBlockHash, true)) ||
-                             targetBlockHash.IsNull() ||
-                             !mapBlockIndex.count(targetBlockHash) ||
-                             !chainActive.Contains(mapBlockIndex[targetBlockHash])))
+                             (!targetBlockHash.IsNull() &&
+                              (!mapBlockIndex.count(targetBlockHash) ||
+                               !chainActive.Contains(mapBlockIndex[targetBlockHash])))))
                         {
                             // in any of these cases, the finalization has no business being in the mempool
                             // remove it and try again
