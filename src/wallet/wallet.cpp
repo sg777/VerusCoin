@@ -6057,6 +6057,7 @@ bool CWallet::SelectReserveUTXOs(const CCurrencyValueMap& targetValues,
             for (auto &oneCur : multiIt->second.second.valueMap)
             {
                 if (!satisfied.count(oneCur.first) &&
+                    adjustedTarget.valueMap.count(oneCur.first) &&
                     oneCur.second == adjustedTarget.valueMap[oneCur.first])
                 {
                     newFound++;
@@ -6082,7 +6083,7 @@ bool CWallet::SelectReserveUTXOs(const CCurrencyValueMap& targetValues,
             //printf("adjustedTarget:\n%s\n", adjustedTarget.ToUniValue().write().c_str());
             //printf("nTotalTarget.NonIntersectingValues(adjustedTarget):\n%s\n", nTotalTarget.NonIntersectingValues(adjustedTarget).ToUniValue().write().c_str());
 
-            adjustedTarget = adjustedTarget.SubtractToZero(largerTotal);
+            adjustedTarget = adjustedTarget.SubtractToZero(largerTotal.IntersectingValues(adjustedTarget));
 
             // loop through all those that have been zeroed in the adjusted target, and mark as satisfied
             for (auto &oneCur : nTotalTarget.NonIntersectingValues(adjustedTarget).valueMap)
@@ -6280,7 +6281,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& _targetValues,
         {
             nAll.valueMap[ASSETCHAINS_CHAINID] = nativeN;
         }
-        if (nAll == CCurrencyValueMap())
+        if (nAll.IntersectingValues(targetValues) == CCurrencyValueMap())
         {
             continue;
         }
