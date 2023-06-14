@@ -28,10 +28,8 @@ static const int DEFAULT_RPC_TIMEOUT=900;
 static const uint32_t PBAAS_VERSION = 1;
 static const uint32_t PBAAS_VERSION_INVALID = 0;
 
-extern uint32_t PBAAS_TESTFORK_TIME;
 extern const uint32_t PBAAS_PREMAINNET_ACTIVATION;
-
-extern std::string PBAAS_TEST_ETH_CONTRACT;
+extern const uint32_t PBAAS_TESTFORK_TIME;
 
 class CTransaction;
 class CScript;
@@ -155,7 +153,7 @@ public:
 
     template <typename Stream, typename Operation>
     inline void SerializationOp(Stream& s, Operation ser_action) {
-        READWRITE(networkAddress);
+        READWRITE(LIMITED_STRING(networkAddress, 512));
         READWRITE(nodeIdentity);
     }
 
@@ -468,12 +466,12 @@ public:
         DEFAULT_START_TARGET = 0x1e01e1e1,
         MAX_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 20,
         MAX_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK = 100,
-        MAX_TRANSFER_EXPORTS_PER_BLOCK = 1000,
-        MAX_TRANSFER_EXPORTS_SIZE_PER_BLOCK = 400000,
+        MAX_TRANSFER_EXPORTS_PER_BLOCK = 500,       // this is per block, and up to two of these limits go into an export
+        MAX_TRANSFER_EXPORTS_SIZE_PER_BLOCK = 100000, // same as above, but regarding space
         MAX_ETH_CURRENCY_DEFINITION_EXPORTS_PER_BLOCK = 1,
         MAX_ETH_IDENTITY_DEFINITION_EXPORTS_PER_BLOCK = 0,
         MAX_ETH_TRANSFER_EXPORTS_PER_BLOCK = 50,
-        MAX_ETH_TRANSFER_EXPORTS_SIZE_PER_BLOCK = 100000,
+        MAX_ETH_TRANSFER_EXPORTS_SIZE_PER_BLOCK = 50000,
         DEFAULT_BLOCK_NOTARIZATION_TIME = 600,      // default target time for block notarizations
         MIN_BLOCK_NOTARIZATION_PERIOD = 5,          // minimum target blocks for notarization period
         MAX_NOTARIZATION_CONVERSION_PRICING_INTERVAL = 100,  // there must be a notarization with conversion at least 100 blocks before reserve transfer
@@ -503,7 +501,8 @@ public:
         OPTION_GATEWAY_CONVERTER = 0x200,   // this means that for a specific PBaaS gateway, this is the default converter and will publish prices
         OPTION_GATEWAY_NAMECONTROLLER = 0x400, // when not set on a gateway, top level ID and currency registration happen on launch chain
         OPTION_NFT_TOKEN = 0x800,           // single satoshi NFT token, tokenizes control over the root ID
-        OPTIONS_FLAG_MASK = 0xfff
+        OPTION_NO_IDS = 0x1000,             // this currency cannot issue IDs
+        OPTIONS_FLAG_MASK = 0x1fff
     };
 
     // these should be pluggable in function
@@ -1108,6 +1107,7 @@ public:
         return (nVersion != PBAAS_VERSION_INVALID) &&
                 (!notaries.size() || minNotariesConfirm > (notaries.size() >> 1)) &&
                 !(options & ~OPTIONS_FLAG_MASK) &&
+                !(IsPBaaSChain() && (NoIDs() || IsToken() || IsFractional())) &&
                 idReferralLevels <= MAX_ID_REFERRAL_LEVELS &&
                 name.size() > 0 &&
                 name.size() <= (KOMODO_ASSETCHAIN_MAXLEN - 1) &&
@@ -1136,6 +1136,11 @@ public:
     bool IsNFTToken() const
     {
         return ChainOptions() & OPTION_NFT_TOKEN;
+    }
+
+    bool NoIDs() const
+    {
+        return IsNFTToken() || ChainOptions() & OPTION_NO_IDS;
     }
 
     bool IsGateway() const
@@ -1185,6 +1190,18 @@ public:
         else
         {
             options &= ~OPTION_NFT_TOKEN;
+        }
+    }
+
+    void SetNoIDs(bool noIDs)
+    {
+        if (noIDs)
+        {
+            options |= OPTION_NO_IDS;
+        }
+        else
+        {
+            options &= ~OPTION_NO_IDS;
         }
     }
 
@@ -1276,8 +1293,6 @@ public:
 class CIdentitySignature
 {
 public:
-    // TODO HARDENING - move all instances post PBaaS to
-    // VERSION_ETHBRIDGE
     enum EVersions {
         VERSION_INVALID = 0,
         VERSION_VERUSID = 1,

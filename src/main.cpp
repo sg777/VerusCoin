@@ -1275,6 +1275,15 @@ bool ContextualCheckTransaction(
                             REJECT_INVALID, "bad-txns-oversize");
     }
 
+    // Rules that apply to PBaaS or later:
+    if (isPBaaS) {
+        for (const JSDescription& joinsplit : tx.vJoinSplit) {
+            if (joinsplit.vpub_old > 0) {
+                return state.DoS(100, error("ContextualCheckTransaction(): joinsplit.vpub_old nonzero"), REJECT_INVALID, "bad-txns-vpub_old-nonzero");
+            }
+        }
+    }
+
     uint256 dataToBeSigned;
 
     if (!tx.IsMint() &&
@@ -1402,15 +1411,14 @@ bool ContextualCheckTransaction(
     }
 
     // precheck all crypto conditions
-    bool invalid = false;
     for (int i = 0; i < tx.vout.size(); i++)
     {
         COptCCParams p;
         if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p))
         {
-            if (!p.IsValid())
+            if (!p.IsValid(isPBaaS, nHeight) && isPBaaS)
             {
-                invalid = true;
+                return state.DoS(10, error(state.GetRejectReason().c_str()), REJECT_INVALID, "bad-txns-failed-params-precheck");
             }
             if (p.evalCode == EVAL_NONE)
             {
@@ -1424,15 +1432,11 @@ bool ContextualCheckTransaction(
                 CCcontract_info CC;
                 CCcontract_info *cp;
                 if (!((p.evalCode <= EVAL_LAST) &&
-                    (cp = CCinit(&CC, p.evalCode))))
+                      (cp = CCinit(&CC, p.evalCode))))
                 {
                     return state.DoS(100, error("ContextualCheckTransaction(): Invalid smart transaction eval code"), REJECT_INVALID, "bad-txns-evalcode-invalid");
                 }
-                if (isPBaaS &&
-                    (!IsVerusActive() ||
-                     IsVerusMainnetActive() ||
-                     chainActive[std::min((uint32_t)chainActive.Height(), (uint32_t)nHeight)]->nTime > PBAAS_PREMAINNET_ACTIVATION) &&
-                    p.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
+                if (isPBaaS && p.AsVector().size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
                 {
                     if (LogAcceptCategory("notarization"))
                     {
@@ -2014,42 +2018,99 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
 
         // if this is an identity, determine the identtyFeeFactor
         CAmount identityFeeFactor = 0;
-        if (txDesc.IsValid() && txDesc.IsIdentity() && !txDesc.IsImport())
+        if (fLimitFree && txDesc.IsValid())
         {
-            for (int j = 0; j < tx.vout.size(); j++)
+            if (txDesc.IsImport())
             {
-                auto &oneOut = tx.vout[j];
+                // find the first import and check for adequate fees
                 COptCCParams p;
-                uint160 oneIdID;
-                if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
-                    p.IsValid() &&
-                    p.version >= p.VERSION_V3 &&
-                    p.vData.size() &&
-                    p.evalCode == EVAL_IDENTITY_PRIMARY)
-                {
-                    CIdentity identity;
-                    if ((identity = CIdentity(p.vData[0])).IsValid())
-                    {
-                        if (!tx.IsCoinBase())
-                        {
-                            if (identity.contentMultiMap.size())
-                            {
-                                CDataStream ss(SER_DISK, PROTOCOL_VERSION);
-                                auto tempID = identity;
-                                tempID.contentMultiMap.clear();
-                                size_t serSize = GetSerializeSize(ss, identity) - GetSerializeSize(ss, tempID);
-                                identityFeeFactor += (serSize / 128) + ((serSize % 128) ? 1 : 0);
-                            }
+                CCrossChainImport cci, sysCCI;
+                CCrossChainExport ccx;
+                CPBaaSNotarization notarization;
+                std::vector<CReserveTransfer> reserveTransfers;
+                CCurrencyDefinition importCurDef;
 
-                            // if we have more primary addresses than 1 or more private addresses than 1, pay appropriate fee
-                            identityFeeFactor += identity.contentMap.size();
-                            identityFeeFactor += identity.primaryAddresses.size() > 1 ? identity.primaryAddresses.size() - 1 : 0;
-                            identityFeeFactor += identity.privateAddresses.size() > 1 ? identity.privateAddresses.size() - 1 : 0;
-                        }
-                    }
-                    else
+                for (int32_t outNum = 0; outNum < tx.vout.size(); outNum++)
+                {
+                    int32_t sysOutNum = -1, notarizationOut = -1, evidenceOutStart = -1, evidenceOutEnd = -1;
+                    if (tx.vout[outNum].scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() &&
+                        p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                        p.vData.size() > 1 &&
+                        p.IsEvalPKOut() &&
+                        (cci = CCrossChainImport(p.vData[0])).IsValid() &&
+                        ((cci.IsDefinitionImport() || cci.IsInitialLaunchImport()) || cci.IsSourceSystemImport() ||
+                         ((importCurDef = ConnectedChains.GetCachedCurrency(cci.importCurrencyID)).IsValid() &&
+                          cci.GetImportInfo(tx,
+                                            nextBlockHeight,
+                                            outNum,
+                                            ccx,
+                                            sysCCI,
+                                            sysOutNum,
+                                            notarization,
+                                            notarizationOut,
+                                            evidenceOutStart,
+                                            evidenceOutEnd,
+                                            reserveTransfers,
+                                            state))))
                     {
-                        return state.DoS(10, error("%s: invalid identity", __func__), REJECT_INVALID, "bad-txn-invalid-id");
+                        if (!(cci.sourceSystemID == ASSETCHAINS_CHAINID ||
+                              cci.IsDefinitionImport() ||
+                              cci.IsInitialLaunchImport() ||
+                              cci.IsSourceSystemImport() ||
+                              (notarization.IsValid() && notarization.IsRefunding())) &&
+                              reserveTransfers.size())
+                        {
+                            if (cci.sourceSystemID != ASSETCHAINS_CHAINID &&
+                                !ConnectedChains.NotarySystems().count(cci.sourceSystemID) &&
+                                !FREE_CURRENCY_IMPORTS.count(cci.sourceSystemID) &&
+                                !ImportHasAdequateFees(tx, outNum, importCurDef, cci, ccx, notarization, reserveTransfers, state, nextBlockHeight))
+                            {
+                                LogPrint("crosschainimports", "%s: Inadequate fees for import %s\n", __func__, cci.ToUniValue().write(1,2).c_str());
+                                return state.DoS(10, error("%s: inadequate fees for import", __func__), REJECT_INVALID, "bad-txn-invalid-id");
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+            else if (txDesc.IsIdentity())
+            {
+                for (int j = 0; j < tx.vout.size(); j++)
+                {
+                    auto &oneOut = tx.vout[j];
+                    COptCCParams p;
+                    uint160 oneIdID;
+                    if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                        p.IsValid() &&
+                        p.version >= p.VERSION_V3 &&
+                        p.vData.size() &&
+                        p.evalCode == EVAL_IDENTITY_PRIMARY)
+                    {
+                        CIdentity identity;
+                        if ((identity = CIdentity(p.vData[0])).IsValid())
+                        {
+                            if (!tx.IsCoinBase())
+                            {
+                                if (identity.contentMultiMap.size())
+                                {
+                                    CDataStream ss(SER_DISK, PROTOCOL_VERSION);
+                                    auto tempID = identity;
+                                    tempID.contentMultiMap.clear();
+                                    size_t serSize = GetSerializeSize(ss, identity) - GetSerializeSize(ss, tempID);
+                                    identityFeeFactor += (serSize / 128) + ((serSize % 128) ? 1 : 0);
+                                }
+
+                                // if we have more primary addresses than 1 or more private addresses than 1, pay appropriate fee
+                                identityFeeFactor += identity.contentMap.size();
+                                identityFeeFactor += identity.primaryAddresses.size() > 1 ? identity.primaryAddresses.size() - 1 : 0;
+                                identityFeeFactor += identity.privateAddresses.size() > 1 ? identity.privateAddresses.size() - 1 : 0;
+                            }
+                        }
+                        else
+                        {
+                            return state.DoS(10, error("%s: invalid identity", __func__), REJECT_INVALID, "bad-txn-invalid-id");
+                        }
                     }
                 }
             }
@@ -2342,7 +2403,15 @@ bool myGetTransaction(const uint256 &hash, CTransaction &txOut, uint256 &hashBlo
             }
             hashBlock = header.GetHash();
             if (txOut.GetHash() != hash)
+            {
+                if (LogAcceptCategory("notarization"))
+                {
+                    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+                    hw << txOut;
+                    LogPrintf("%s: txid mismatch, read: %s, expected: %s, CHashWriter hash: %s\n", __func__, txOut.GetHash().GetHex().c_str(), hash.GetHex().c_str(), hw.GetHash().GetHex().c_str());
+                }
                 return error("%s: txid mismatch", __func__);
+            }
             //fprintf(stderr,"found on disk\n");
             return true;
         }
@@ -2635,7 +2704,7 @@ void CheckForkWarningConditions(const CChainParams& chainParams)
         }
         if (pindexBestForkTip && pindexBestForkBase)
         {
-            LogPrintf("%s: Warning: Large valid fork found\n  forking the chain at height %d (%s)\n  lasting to height %d (%s).\nChain state database corruption likely.\n", __func__,
+            LogPrintf("%s: Warning: Large valid fork found\n  forking the chain at height %d (%s)\n  lasting to height %d (%s).\n", __func__,
                       pindexBestForkBase->GetHeight(), pindexBestForkBase->phashBlock->ToString(),
                       pindexBestForkTip->GetHeight(), pindexBestForkTip->phashBlock->ToString());
             fLargeWorkForkFound = true;
@@ -3523,6 +3592,8 @@ static DisconnectResult DisconnectBlock(const CBlock& block, CValidationState& s
             return DISCONNECT_FAILED;
         }
     }
+    // unwind any consensus upgrades that may have been removed in the block
+    ConnectedChains.CheckOracleUpgrades();
     return fClean ? DISCONNECT_OK : DISCONNECT_UNCLEAN;
 }
 
@@ -3554,7 +3625,7 @@ bool FindUndoPos(CValidationState &state, int nFile, CDiskBlockPos &pos, unsigne
 static CCheckQueue<CScriptCheck> scriptcheckqueue(128);
 
 void ThreadScriptCheck() {
-    RenameThread("zcash-scriptch");
+    RenameThread("verus-scriptch");
     scriptcheckqueue.Thread();
 }
 
@@ -3649,7 +3720,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     }
 
     SetMaxScriptElementSize(nHeight);
-
     ConnectedChains.CheckOracleUpgrades();
 
     if (CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_PBAAS)
@@ -3705,7 +3775,9 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     int64_t nTimeStart = 0;
 
     uint32_t solutionVersion = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
+    bool isPBaaS = solutionVersion >= CActivationHeight::ACTIVATE_PBAAS;
     bool isVerusActive = IsVerusActive();
+    bool isPBaaSBlockOne = (nHeight == 1 && !isVerusActive);
     CAmount nFees = 0;
     int nInputs = 0;
 
@@ -3725,11 +3797,30 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     {
         LOCK2(smartTransactionCS, mempool.cs);
 
-        if (block.IsVerusPOSBlock() && !verusCheckPOSBlock(true, &block, nHeight))
+        if (block.IsVerusPOSBlock())
         {
-            LogPrint("pos", "%s: Invalid POS block at height %u\n", __func__, nHeight);
-            return state.DoS(100, error("%s: invalid PoS block in connectblock futureblock.%d\n", __func__, futureblock),
-                            REJECT_INVALID, "invalid-pos-block");
+            if (!verusCheckPOSBlock(true, &block, nHeight))
+            {
+                LogPrint("pos", "%s: Invalid POS block at height %u\n", __func__, nHeight);
+                return state.DoS(100, error("%s: invalid PoS block in connectblock futureblock.%d\n", __func__, futureblock),
+                                REJECT_INVALID, "invalid-pos-block");
+            }
+        }
+        else if (isPBaaS)
+        {
+            for (int oneOutnum = 0; oneOutnum < block.vtx[0].vout.size(); oneOutnum++)
+            {
+                auto &oneOutput = block.vtx[0].vout[oneOutnum];
+                COptCCParams stakeP;
+                if (oneOutput.scriptPubKey.IsPayToCryptoCondition(stakeP) &&
+                    stakeP.IsValid() &&
+                    stakeP.evalCode == EVAL_STAKEGUARD)
+                {
+                    LogPrint("pos", "%s: Invalid POW block with stakeguard output at height %u\n", __func__, nHeight);
+                    return state.DoS(100, error("%s: Invalid POW block with stakeguard output in connectblock futureblock.%d\n", __func__, futureblock),
+                                    REJECT_INVALID, "invalid-pow-block-stakeguard");
+                }
+            }
         }
 
         // verify that the view's current state corresponds to the previous block
@@ -3931,6 +4022,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                    nHeight < 1800000)))
             {
                 LogPrintf("%s: ERROR: %s\nBlock %s rejected\n", __func__, state.GetRejectReason().c_str(), block.GetHash().GetHex().c_str());
+                InvalidBlockFound(pindex, state, Params());
                 return false; // Failure reason has been set in validation state object
             }
             state = CValidationState();
@@ -4310,7 +4402,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     return false;
                 control.Add(vChecks);
             }
-            else if (nHeight == 1 && !isVerusActive)
+            else if (isPBaaSBlockOne)
             {
                 // at block one of a PBaaS chain, we have additional funds coming out of the coinbase for pre-allocation,
                 // reserve deposit into the PBaaS converter currency, launch fees, and potentially other reasons over time
@@ -4383,17 +4475,17 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
                                 std::vector<CReserveTransfer> exportTransfers(reserveTransfers);
                                 if (!tempLastNotarization.NextNotarizationInfo(ConnectedChains.FirstNotaryChain().chainDefinition,
-                                                                            cbCurDef,
-                                                                            0,
-                                                                            1,
-                                                                            exportTransfers,
-                                                                            transferHash,
-                                                                            newNotarization,
-                                                                            importOutputs,
-                                                                            importedCurrency,
-                                                                            gatewayDepositsUsed,
-                                                                            spentCurrencyOut,
-                                                                            ccx.exporter))
+                                                                                cbCurDef,
+                                                                                0,
+                                                                                1,
+                                                                                exportTransfers,
+                                                                                transferHash,
+                                                                                newNotarization,
+                                                                                importOutputs,
+                                                                                importedCurrency,
+                                                                                gatewayDepositsUsed,
+                                                                                spentCurrencyOut,
+                                                                                ccx.exporter))
                                 {
                                     return state.DoS(10,
                                                     error("%s: invalid coinbase import for currency %s on system %s\n",
@@ -4407,7 +4499,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 // less liquidity fees, which go into the currency reserves
                                 bool feesConverted;
                                 CCurrencyValueMap cbFees;
-                                CCurrencyValueMap gatewayDeposits;
                                 CCurrencyValueMap extraCurrencyOut;
                                 CCurrencyValueMap liquidityFees;
                                 CCurrencyValueMap originalFees =
@@ -4442,8 +4533,24 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 //*/
 
                                 // to determine left over reserves for deposit, consider imported and emitted as the same
-                                gatewayDeposits = CCurrencyValueMap(tempLastNotarization.currencyState.currencies,
-                                                                    tempLastNotarization.currencyState.reserveIn);
+                                bool improvedMinCheck = cbCurDef.IsPBaaSChain() &&
+                                                        (!PBAAS_TESTMODE ||
+                                                         (PBAAS_TESTMODE &&
+                                                          lastNotarization.proofRoots.count(VERUS_CHAINID) &&
+                                                          lastNotarization.proofRoots.find(VERUS_CHAINID)->second.rootHeight >= ConnectedChains.GetZeroViaHeight(PBAAS_TESTMODE)));
+
+                                CCurrencyValueMap gatewayDeposits;
+                                if (improvedMinCheck)
+                                {
+                                    gatewayDeposits = CCurrencyValueMap(tempLastNotarization.currencyState.currencies,
+                                                                        tempLastNotarization.currencyState.primaryCurrencyIn);
+                                }
+                                else
+                                {
+                                    gatewayDeposits = CCurrencyValueMap(tempLastNotarization.currencyState.currencies,
+                                                                        tempLastNotarization.currencyState.reserveIn);
+                                }
+
                                 if (!cbCurDef.IsFractional())
                                 {
                                     gatewayDeposits += originalFees;
@@ -4708,11 +4815,18 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             CFeePool feePool;
             CAmount feePoolVal;
             CAmount verusFeePoolVal;
+            CCurrencyValueMap intersectMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<int64_t>({1}));
+            if (!isVerusActive)
+            {
+                intersectMap.valueMap[VERUS_CHAINID] = 1;
+            }
             if (!(feePool = CFeePool(block.vtx[0])).IsValid() ||
                 (feePoolVal = feePool.reserveValues.valueMap[ASSETCHAINS_CHAINID]) < (feePoolCheckVal - rewardFees) ||
                 feePoolVal > feePoolCheckVal ||
-                (!isVerusActive && ((verusFeePoolVal = feePoolCheck.reserveValues.valueMap[VERUS_CHAINID]) < (verusCheckVal - verusFees) ||
-                verusFeePoolVal > verusCheckVal)))
+                (!isVerusActive &&
+                 (((verusFeePoolVal = feePool.reserveValues.valueMap[VERUS_CHAINID]) < (verusCheckVal - verusFees) && !isPBaaSBlockOne) ||
+                  verusFeePoolVal > verusCheckVal)) ||
+                (feePool.reserveValues.IntersectingValues(intersectMap)).CanonicalMap().valueMap.size() != (feePool.reserveValues).CanonicalMap().valueMap.size())
             {
                 printf("%s: rewardfees: %ld, verusfees: %ld, feePool: %s\nfeepoolcheck: %s\n",
                         __func__,
@@ -6092,9 +6206,28 @@ bool CheckBlock(int32_t *futureblockp,int32_t height,CBlockIndex *pindex,const C
         if ( *futureblockp == 0 )
         {
             LogPrintf("CheckBlock header error");
-            return false;
+            return state.Error("CheckBlock header error");
         }
     }
+
+    bool isPBaaS = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_PBAAS;
+    if (isPBaaS)
+    {
+        uint256 entropyHash;
+        if ((!PBAAS_TESTMODE || block.nTime >= PBAAS_TESTFORK2_TIME))
+        {
+            entropyHash = chainActive.GetVerusEntropyHash(height);
+        }
+        if (isPBaaS && block.GetBlockMMRRoot() != BlockMMView(block.GetBlockMMRTree(entropyHash)).GetRoot())
+        {
+            LogPrint("notarization", "%s: block.GetBlockMMRRoot(): %s\nBlockMMView(block.GetBlockMMRTree(entropyHash)).GetRoot(): %s\n",
+                        __func__,
+                        block.GetBlockMMRRoot().GetHex().c_str(),
+                        BlockMMView(block.GetBlockMMRTree(entropyHash)).GetRoot().GetHex().c_str());
+            return state.Error("CheckBlock Merkle Mountain Range (MMR) root mismatch");
+        }
+    }
+
     if ( fCheckPOW )
     {
         //if ( !CheckEquihashSolution(&block, Params()) )
@@ -6181,7 +6314,7 @@ bool ContextualCheckBlockHeader(
     int nHeight = pindexPrev->GetHeight()+1;
 
     // Check proof of work
-    if ((ASSETCHAINS_SYMBOL[0] != 0 || !IsVerusMainnetActive() || nHeight < 235300 || nHeight > 236000) && block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))
+    if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))
     {
         cout << block.nBits << " block.nBits vs. calc " << GetNextWorkRequired(pindexPrev, &block, consensusParams) <<
                                " for block #" << nHeight << endl;
@@ -6277,8 +6410,11 @@ bool ContextualCheckBlock(
         {
             if (IsVerusMainnetActive() && nHeight < 1564700)
             {
-                printf("%s: Invalid POS block at height %u - %s\n", __func__, nHeight, block.GetHash().GetHex().c_str());
-                LogPrintf("%s: Invalid POS block at height %u - %s\n", __func__, nHeight, block.GetHash().GetHex().c_str());
+                if (LogAcceptCategory("pos"))
+                {
+                    printf("%s: Invalid POS block at height %u - %s\n", __func__, nHeight, block.GetHash().GetHex().c_str());
+                    LogPrintf("%s: Invalid POS block at height %u - %s\n", __func__, nHeight, block.GetHash().GetHex().c_str());
+                }
             }
             else
             {
@@ -7281,7 +7417,7 @@ bool RewindBlockIndex(const CChainParams& chainparams, bool& clearWitnessCaches)
         auto networkID = chainparams.NetworkIDString();
 
         // This is true when we intend to do a long rewind.
-        bool intendedRewind = false;
+        bool intendedRewind = KOMODO_REWIND != 0;
 
         clearWitnessCaches = (rewindLength > MAX_REORG_LENGTH && intendedRewind);
 
@@ -8056,8 +8192,8 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
                     if (!isExpiringSoon) {
                         // Send stream from relay memory
                         MapRelay::iterator mi;
+                        LOCK(cs_mapRelay);
                         {
-                            LOCK(cs_mapRelay);
                             mi = mapRelay.find(inv.hash);
                             if (mi != mapRelay.end()) {
                                 pfrom->PushMessage(inv.GetCommand(), *(*mi).second);

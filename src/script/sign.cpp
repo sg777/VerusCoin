@@ -21,10 +21,10 @@ using namespace std;
 
 typedef std::vector<unsigned char> valtype;
 
-TransactionSignatureCreator::TransactionSignatureCreator(const CKeyStore* keystoreIn, const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, const CScript &scriptPubKey, uint32_t spendHeight, int nHashTypeIn) 
+TransactionSignatureCreator::TransactionSignatureCreator(const CKeyStore* keystoreIn, const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, const CScript &scriptPubKey, uint32_t spendHeight, int nHashTypeIn)
     : BaseSignatureCreator(keystoreIn), txTo(txToIn), nIn(nInIn), nHashType(nHashTypeIn), amount(amountIn), checker(txTo, nIn, amountIn, &scriptPubKey, keystoreIn, spendHeight) {}
 
-TransactionSignatureCreator::TransactionSignatureCreator(const CKeyStore* keystoreIn, const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, int nHashTypeIn) 
+TransactionSignatureCreator::TransactionSignatureCreator(const CKeyStore* keystoreIn, const CTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, int nHashTypeIn)
     : BaseSignatureCreator(keystoreIn), txTo(txToIn), nIn(nInIn), nHashType(nHashTypeIn), amount(amountIn), checker(txTo, nIn, amountIn) {}
 
 bool TransactionSignatureCreator::CreateSig(std::vector<unsigned char> &vchSig, const CKeyID& address, const CScript& scriptCode, uint32_t consensusBranchId, CKey *pprivKey, void *extraData) const
@@ -293,18 +293,19 @@ template <typename TOBJ1, typename TOBJ2, typename TOBJ3, typename TOBJ4>
 CC *MakeMofNCC(int M, TOBJ1 &condition1, TOBJ2 &condition2, TOBJ3 &condition3, TOBJ4 &condition4)
 {
     if (M > 4) M = 4;
-    std::vector<CC*> conditions({MakeCCcondMofN(condition1.evalCode, condition1.dests, condition1.m), 
-                                 MakeCCcondMofN(condition2.evalCode, condition2.dests, condition2.m), 
-                                 MakeCCcondMofN(condition3.evalCode, condition3.dests, condition3.m), 
+    std::vector<CC*> conditions({MakeCCcondMofN(condition1.evalCode, condition1.dests, condition1.m),
+                                 MakeCCcondMofN(condition2.evalCode, condition2.dests, condition2.m),
+                                 MakeCCcondMofN(condition3.evalCode, condition3.dests, condition3.m),
                                  MakeCCcondMofN(condition4.evalCode, condition4.dests, condition4.m)});
     return CCNewThreshold(M, conditions);
 }
 
 CScript _CCPubKey(const CC *cond)
 {
-    unsigned char buf[2000];
-    size_t len = cc_conditionBinary(cond, buf, 2000);
-    return CScript() << std::vector<unsigned char>(buf, buf+len) << OP_CHECKCRYPTOCONDITION;
+    std::vector<unsigned char> buffer(MAX_BINARY_CC_SIZE, 0);
+    size_t len = cc_conditionBinary(cond, &(buffer[0]), buffer.size());
+    buffer.resize(len);
+    return CScript() << buffer << OP_CHECKCRYPTOCONDITION;
 }
 
 CIdentity LookupIdentity(const BaseSignatureCreator& creator, const CIdentityID &idID)
@@ -312,8 +313,8 @@ CIdentity LookupIdentity(const BaseSignatureCreator& creator, const CIdentityID 
     std::pair<CIdentityMapKey, CIdentityMapValue> identity;
     COptCCParams p;
     //printf("Looking up %s identity\n", EncodeDestination(CTxDestination(idID)).c_str());
-    if (creator.IsKeystoreValid() && 
-        creator.KeyStore().GetIdentity(idID, identity) && 
+    if (creator.IsKeystoreValid() &&
+        creator.KeyStore().GetIdentity(idID, identity) &&
         identity.second.IsValidUnrevoked())
     {
         return identity.second;
@@ -397,20 +398,21 @@ static bool SignStepCC(const BaseSignatureCreator& creator, const CScript& scrip
                                 id = identity;
                             }
 
-                            if ((!id.IsValid() && !(id = LookupIdentity(creator, CIdentityID(destId))).IsValid()) || id.IsRevoked())
+                            if (!id.IsValid() && !(id = LookupIdentity(creator, CIdentityID(destId))).IsValid())
                             {
                                 destMap[destId] = dest;
                                 vCC.push_back(MakeCCcondOneSig(CKeyID(GetDestinationID(dest))));
                             }
                             else
                             {
+                                bool isLockedIdSpendOrRevoked = (id.IsRevoked() || (!idID.IsNull() && destId != idID && id.IsLocked()));
                                 for (auto oneKey : id.primaryAddresses)
                                 {
-                                    destMap[GetDestinationID(oneKey)] = oneKey;
+                                    destMap[GetDestinationID(oneKey)] = isLockedIdSpendOrRevoked ? CKeyID(GetDestinationID(dest)) : oneKey;
                                 }
-                                if (id.primaryAddresses.size() == 1)
+                                if (id.primaryAddresses.size() == 1 || isLockedIdSpendOrRevoked)
                                 {
-                                    vCC.push_back(MakeCCcondOneSig(CKeyID(GetDestinationID(id.primaryAddresses[0]))));
+                                    vCC.push_back(MakeCCcondOneSig(isLockedIdSpendOrRevoked ? CKeyID(GetDestinationID(dest)) : CKeyID(GetDestinationID(id.primaryAddresses[0]))));
                                 }
                                 else
                                 {
@@ -788,7 +790,7 @@ static bool SignStep(const BaseSignatureCreator& creator, const CScript& scriptP
             return true;
         }
         return false;
-    
+
     case TX_MULTISIG:
         ret.push_back(valtype()); // workaround CHECKMULTISIG bug
         return (SignN(vSolutions, creator, scriptPubKey, ret, consensusBranchId));
@@ -1118,7 +1120,7 @@ bool DummySignatureCreator::CreateSig(
     std::vector<unsigned char>& vchSig,
     const CKeyID& keyid,
     const CScript& scriptCode,
-    uint32_t consensusBranchId, 
+    uint32_t consensusBranchId,
     CKey *key,
     void *extraData) const
 {

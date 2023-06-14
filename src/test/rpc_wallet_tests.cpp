@@ -491,7 +491,7 @@ BOOST_AUTO_TEST_CASE(rpc_wallet_z_importwallet)
     std::string testKey = EncodeSpendingKey(testSpendingKey);
 
     // create test data using the random key
-    std::string format_str = "# Wallet dump created by Komodo v0.11.2.0.z8-9155cc6-dirty (2016-08-11 11:37:00 -0700)\n"
+    std::string format_str = "# Wallet dump created by Verus v0.11.2.0.z8-9155cc6-dirty (2016-08-11 11:37:00 -0700)\n"
             "# * Created on 2016-08-12T21:55:36Z\n"
             "# * Best block at time of backup was 0 (0de0a3851fef2d433b9b4f51d4342bdd24c5ddd793eb8fba57189f07e9235d52),\n"
             "#   mined on 2009-01-03T18:15:05Z\n"
@@ -1598,7 +1598,7 @@ BOOST_AUTO_TEST_CASE(rpc_z_shieldcoinbase_internals)
     if (mtx.nVersion == 1) {
         mtx.nVersion = 2;
     }
-    
+
     // Test that option -mempooltxinputlimit is respected.
     mapArgs["-mempooltxinputlimit"] = "1";
 
@@ -1737,7 +1737,7 @@ BOOST_AUTO_TEST_CASE(rpc_z_mergetoaddress_parameters)
     std::vector<char> v (2 * (ZC_MEMO_SIZE+1));     // x2 for hexadecimal string format
     std::fill(v.begin(),v.end(), 'A');
     std::string badmemo(v.begin(), v.end());
-    CheckRPCThrows("z_mergetoaddress [\"" + taddr1 + "\"] " + aSproutAddr + " 0.0001 100 100 " + badmemo, 
+    CheckRPCThrows("z_mergetoaddress [\"" + taddr1 + "\"] " + aSproutAddr + " 0.0001 100 100 " + badmemo,
         "Invalid parameter, size of memo is larger than maximum allowed 512");
 
     // Mutable tx containing contextual information we need to build tx
@@ -1777,9 +1777,9 @@ BOOST_AUTO_TEST_CASE(rpc_z_mergetoaddress_parameters)
         BOOST_CHECK( find_error(objError, "Recipient parameter missing"));
     }
 
-    std::vector<MergeToAddressInputSproutNote> sproutNoteInputs = 
+    std::vector<MergeToAddressInputSproutNote> sproutNoteInputs =
         {MergeToAddressInputSproutNote{JSOutPoint(), SproutNote(), 0, SproutSpendingKey()}};
-    std::vector<MergeToAddressInputSaplingNote> saplingNoteInputs = 
+    std::vector<MergeToAddressInputSaplingNote> saplingNoteInputs =
         {MergeToAddressInputSaplingNote{SaplingOutPoint(), SaplingNote(), 0, SaplingExpandedSpendingKey()}};
 
     // Sprout and Sapling inputs -> throw

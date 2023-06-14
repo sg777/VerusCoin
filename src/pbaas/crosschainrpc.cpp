@@ -51,6 +51,12 @@ extern string PBAAS_USERPASS;
 extern int32_t PBAAS_PORT;
 extern std::string VERUS_CHAINNAME;
 
+uint32_t PBAAS_TESTFORK2_TIME = 1684281600;
+uint32_t PBAAS_TESTFORK3_TIME = 1685379600;
+uint32_t PBAAS_TESTFORK4_TIME = 1686416400;
+uint32_t PBAAS_MAINDEFI3_HEIGHT = 2553500;
+uint32_t PBAAS_ENFORCE_CORRECT_EVIDENCE_TIME = 1684359650;
+
 //
 // Exception thrown on connection error.  This error is used to determine
 // when to wait if -rpcwait is given.
@@ -965,7 +971,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                 }
             }
 
-            if (nVersion != PBAAS_VERSION_INVALID && IsFractional())
+            if (nVersion != PBAAS_VERSION_INVALID)
             {
                 if (minPreconvertArr.isArray() && minPreconvertArr.size() && minPreconvertArr.size() != currencyArr.size())
                 {
@@ -1288,7 +1294,7 @@ CCurrencyDefinition::CCurrencyDefinition(const std::string &currencyName, bool t
             UniValue uniEra1(UniValue::VOBJ);
             uniEra1.pushKV("reward", 600000000);
             uniEra1.pushKV("decay", 0);
-            uniEra1.pushKV("halving", 1051920);
+            uniEra1.pushKV("halving", 1051922);
             uniEra1.pushKV("eraend", 0);
             uniEras.push_back(uniEra1);
 

@@ -177,7 +177,6 @@ public:
 static CCoinsViewDB *pcoinsdbview = NULL;
 static CCoinsViewErrorCatcher *pcoinscatcher = NULL;
 static boost::scoped_ptr<ECCVerifyHandle> globalVerifyHandle;
-uint160 ValidateCurrencyName(std::string currencyStr, bool ensureCurrencyValid=false, CCurrencyDefinition *pCurrencyDef=NULL);
 
 void Interrupt(boost::thread_group& threadGroup)
 {
@@ -517,10 +516,12 @@ std::string HelpMessage(HelpMessageMode mode)
     strUsage += HelpMessageOpt("-defaultid=<i-address>", _("VerusID used for default change out and staking reward recipient"));
     strUsage += HelpMessageOpt("-notaryid=<i-address>", _("VerusID used for PBaaS and Ethereum cross-chain notarization"));
     strUsage += HelpMessageOpt("-notificationoracle=<i-address>", strprintf(_("VerusID monitored for network alerts, triggers, and signals. Current default is \"%s\" for Verus and the chain ID for PBaaS chains"), PBAAS_DEFAULT_NOTIFICATION_ORACLE.c_str()));
+    strUsage += HelpMessageOpt("-acceptfreeimportsfrom=<i-address>,<i-address>,...", _(" \"%s\" no spaces - accept underpaid imports from these PBaaS chains or networks - default is empty"));
+    strUsage += HelpMessageOpt("-approvecontractupgrade=<0xf09...>", strprintf(_("When validating blocks, vote to agree to upgrade to the specific contract. Default is no upgrade.")));
     strUsage += HelpMessageOpt("-defaultzaddr=<sapling-address>", _("sapling address to receive fraud proof rewards and if used with \"-privatechange=1\", z-change address for the sendcurrency command"));
     strUsage += HelpMessageOpt("-cheatcatcher=<sapling-address>", _("same as \"-defaultzaddr\""));
     strUsage += HelpMessageOpt("-privatechange", _("directs all change from sendcurency or z_sendmany APIs to the defaultzaddr set, if it is a valid sapling address"));
-    strUsage += HelpMessageOpt("-miningdistribution={\"addressorid\":<n>,...}", _("destination addresses and relative amounts used as ratios to divide total rewards + fees"));
+    strUsage += HelpMessageOpt("-miningdistribution='{\"addressorid\":<n>,...}'", _("destination addresses and relative amounts used as ratios to divide total rewards + fees"));
     strUsage += HelpMessageOpt("-miningdistributionpassthrough", _("uses the same miningdistribution values and addresses/IDs as Verus when merge mining"));
     strUsage += HelpMessageOpt("-chain=pbaaschainname", _("loads either mainnet or resolves and loads a PBaaS chain if not vrsc or vrsctest"));
     strUsage += HelpMessageOpt("-blocktime=<n>", strprintf(_("Set target block time (in seconds) for difficulty adjustment (default: %d)"), CCurrencyDefinition::DEFAULT_BLOCKTIME_TARGET));
@@ -653,7 +654,7 @@ void CleanupBlockRevFiles()
 void ThreadImport(std::vector<boost::filesystem::path> vImportFiles)
 {
     const CChainParams& chainparams = Params();
-    RenameThread("zcash-loadblk");
+    RenameThread("verus-loadblk");
     // -reindex
     if (fReindex) {
         CImportingNow imp;
@@ -1252,6 +1253,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5, 1053660);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV5_1, 1053660);
             CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV6, 1796400);
+            CConstVerusSolutionVector::activationHeight.SetActivationHeight(CActivationHeight::SOLUTION_VERUSV7, 2549420);
         }
         else if (IsVerusActive())
         {
@@ -1287,6 +1289,35 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     // get default IDs and addresses
     auto chainUpgradeOracle = DecodeDestination(GetArg("-notificationoracle", IsVerusActive() ? PBAAS_DEFAULT_NOTIFICATION_ORACLE : EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID))));
     PBAAS_NOTIFICATION_ORACLE = chainUpgradeOracle.which() == COptCCParams::ADDRTYPE_ID ? CIdentityID(GetDestinationID(chainUpgradeOracle)) : CIdentityID();
+    auto upgradeContractAddress = CTransferDestination::DecodeEthDestination(GetArg("-approvecontractupgrade", ""));
+    if (!upgradeContractAddress.IsNull())
+    {
+        APPROVE_CONTRACT_UPGRADE = CTransferDestination(CTransferDestination::DEST_ETH, ::AsVector(upgradeContractAddress));
+    }
+
+    // free imports
+    auto freeImportsFrom = GetArg("-acceptfreeimportsfrom", "");
+    if (!freeImportsFrom.empty())
+    {
+        std::vector<std::string> freeImportCurrencies;
+        boost::split(freeImportCurrencies, freeImportsFrom, boost::is_any_of(","));
+        for (auto &oneFreeCur : freeImportCurrencies)
+        {
+            auto oneCurDest = DecodeDestination(oneFreeCur);
+            if (oneCurDest.which() == COptCCParams::ADDRTYPE_ID)
+            {
+                FREE_CURRENCY_IMPORTS.insert(GetDestinationID(oneCurDest));
+                LogPrintf("Enabling free imports from system: %s\n", oneFreeCur.c_str());
+                printf("Enabling free imports from system: %s\n", oneFreeCur.c_str());
+            }
+            else
+            {
+                LogPrintf("Invalid parameter for free imports, should be valid identity name of system root currency: %s\n", oneFreeCur.c_str());
+                printf("Invalid parameter for free imports, should be valid identity name of system root currency: %s\n", oneFreeCur.c_str());
+            }
+        }
+    }
+
     auto notaryIDDest = DecodeDestination(GetArg("-notaryid", ""));
     VERUS_NOTARYID = notaryIDDest.which() == COptCCParams::ADDRTYPE_ID ? CIdentityID(GetDestinationID(notaryIDDest)) : CIdentityID();
     auto defaultIDDest = DecodeDestination(GetArg("-defaultid", VERUS_NOTARYID.IsNull() ? "" : EncodeDestination(notaryIDDest)));
