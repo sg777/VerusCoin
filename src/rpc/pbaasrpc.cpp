@@ -5532,6 +5532,10 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
 
             "\nResult:\n"
             "   {\n"
+            "      \"inputcurrencyid\": iaddress                    i-address of source currency\n"
+            "      \"netinputamount\": value                        net amount in, after conversion fees in source currency\n"
+            "      \"outputcurrencyid\": iaddress                   i-address of destination currency\n"
+            "      \"estimatedcurrencyout\": value                  estimated amount out in destination currency\n"
             "      \"estimatedcurrencystate\": object               Estimation of all currency values, including prices and changes\n"
             "   }\n"
 
