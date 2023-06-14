@@ -4166,146 +4166,178 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
         uint256 targetBlockHash;
         CObjectFinalization ofCandidate;
 
-        // make sure we can retrieve it and get the latest
-        for (auto &oneFinalization : unspentFinalizations)
         {
-            CTransaction checkTx;
-            COptCCParams checkP;
-            uint256 checkBlockHash;
-            if (myGetTransaction(oneFinalization.second.txIn.prevout.hash, checkTx, checkBlockHash) &&
-                checkTx.vout.size() > oneFinalization.second.txIn.prevout.n &&
-                checkTx.vout[oneFinalization.second.txIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(checkP) &&
-                checkP.IsValid() &&
-                checkP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
-                (ofCandidate = CObjectFinalization(checkP.vData[0])).IsValid() &&
-                (checkBlockHash.IsNull() ||
-                 (mapBlockIndex.count(checkBlockHash) &&
-                  chainActive.Contains(mapBlockIndex[checkBlockHash]))) &&
-                ofCandidate.output.GetOutputTransaction(targetTx, targetBlockHash, false) &&
-                (!targetBlockHash.IsNull() &&
-                  mapBlockIndex.count(targetBlockHash) &&
-                  chainActive.Contains(mapBlockIndex[targetBlockHash])) &&
-                (!present ||
-                 oneFinalization.first == 0 ||
-                 firstUnspentFinalization.first < oneFinalization.first))
+            LOCK(mempool.cs);
+            bool exitLoop = true;
+            do
             {
-                firstUnspentFinalization = oneFinalization;
-                present = true;
-                continue;
-            }
+                exitLoop = true;
+                // make sure we can retrieve it and get the latest
+                for (auto &oneFinalization : unspentFinalizations)
+                {
+                    CTransaction checkTx;
+                    COptCCParams checkP;
+                    uint256 checkBlockHash;
+                    if (myGetTransaction(oneFinalization.second.txIn.prevout.hash, checkTx, checkBlockHash) &&
+                        (checkBlockHash.IsNull() ||
+                         (mapBlockIndex.count(checkBlockHash) &&
+                          chainActive.Contains(mapBlockIndex[checkBlockHash]))) &&
+                        checkTx.vout.size() > oneFinalization.second.txIn.prevout.n &&
+                        checkTx.vout[oneFinalization.second.txIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(checkP) &&
+                        checkP.IsValid() &&
+                        (checkP.evalCode == EVAL_FINALIZE_NOTARIZATION ||
+                        (checkP.evalCode == EVAL_ACCEPTEDNOTARIZATION || checkP.evalCode == EVAL_EARNEDNOTARIZATION)) &&
+                        (!present ||
+                         oneFinalization.first == 0 ||
+                         firstUnspentFinalization.first < oneFinalization.first))
+                    {
+                        if (checkP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                            (!((ofCandidate = CObjectFinalization(checkP.vData[0])).IsValid() &&
+                               ofCandidate.output.GetOutputTransaction(targetTx, targetBlockHash, true)) ||
+                             targetBlockHash.IsNull() ||
+                             !mapBlockIndex.count(targetBlockHash) ||
+                             !chainActive.Contains(mapBlockIndex[targetBlockHash])))
+                        {
+                            // in any of these cases, the finalization has no business being in the mempool
+                            // remove it and try again
+                            if (checkBlockHash.IsNull())
+                            {
+                                std::__cxx11::list<CTransaction> removed;
+                                mempool.remove(checkTx, removed, true);
+                                unspentFinalizations = CObjectFinalization::GetUnspentConfirmedFinalizations(curID);
+                                exitLoop = !unspentFinalizations.size();
+                                break;
+                            }
+                            else
+                            {
+                                continue;
+                            }
+                        }
+                        firstUnspentFinalization = oneFinalization;
+                        present = true;
+                        continue;
+                    }
+                }
+            } while (!exitLoop);
         }
 
         CObjectFinalization priorOf;
 
-        while (present && (firstUnspentFinalization.first == 0 || firstUnspentFinalization.first > height))
         {
-            // get the transaction and go backwards to get the finalized notarization it spends
-            CTransaction checkTx;
-            COptCCParams checkP;
-            CObjectFinalization checkOf;
-            uint256 checkBlockHash;
-            if (myGetTransaction(firstUnspentFinalization.second.txIn.prevout.hash, checkTx, checkBlockHash) &&
-                checkTx.vout.size() > firstUnspentFinalization.second.txIn.prevout.n &&
-                checkTx.vout[firstUnspentFinalization.second.txIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(checkP) &&
-                checkP.IsValid() &&
-                ((checkP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
-                  (checkOf = CObjectFinalization(checkP.vData[0])).IsValid() &&
-                  checkOf.IsConfirmed() &&
-                  checkOf.currencyID == curID) ||
-                 ((checkP.evalCode == EVAL_EARNEDNOTARIZATION || checkP.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
-                  (foundNotarization = CPBaaSNotarization(checkP.vData[0])).IsValid() &&
-                  foundNotarization.currencyID == curID)))
+            LOCK(mempool.cs);
+            while (present && (firstUnspentFinalization.first == 0 || firstUnspentFinalization.first > height))
             {
-                bool found = false;
-                if (foundNotarization.IsValid())
+                // get the transaction and go backwards to get the finalized notarization it spends
+                CTransaction checkTx;
+                COptCCParams checkP;
+                CObjectFinalization checkOf;
+                uint256 checkBlockHash;
+                if (myGetTransaction(firstUnspentFinalization.second.txIn.prevout.hash, checkTx, checkBlockHash) &&
+                    checkTx.vout.size() > firstUnspentFinalization.second.txIn.prevout.n &&
+                    checkTx.vout[firstUnspentFinalization.second.txIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(checkP) &&
+                    checkP.IsValid() &&
+                    ((checkP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                    (checkOf = CObjectFinalization(checkP.vData[0])).IsValid() &&
+                    checkOf.IsConfirmed() &&
+                    checkOf.currencyID == curID) ||
+                    ((checkP.evalCode == EVAL_EARNEDNOTARIZATION || checkP.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
+                    (foundNotarization = CPBaaSNotarization(checkP.vData[0])).IsValid() &&
+                    foundNotarization.currencyID == curID)))
                 {
-                    if (foundNotarization.IsSameChain())
+                    bool found = false;
+                    if (foundNotarization.IsValid())
                     {
-                        // if we found an actual notarization,
-                        // it is local to this chain and inherently confirmed
-                        // all are, so look for the last that was at that height
-                        BlockMap::iterator blockIt;
-                        firstUnspentFinalization.second.txIn.prevout = foundNotarization.prevNotarization;
-                        CTransaction priorNTx;
-                        uint256 priorBlockHash;
-                        if (foundNotarization.prevNotarization.GetOutputTransaction(priorNTx, priorBlockHash) &&
-                            (priorBlockHash.IsNull() ||
-                             ((blockIt = mapBlockIndex.find(priorBlockHash)) != mapBlockIndex.end() &&
-                             chainActive.Contains(blockIt->second))))
+                        if (foundNotarization.IsSameChain())
                         {
-                            firstUnspentFinalization.first = priorBlockHash.IsNull() ? 0 : blockIt->second->GetHeight();
-                            firstUnspentFinalization.second.nValue = priorNTx.vout[foundNotarization.prevNotarization.n].nValue;
-                            firstUnspentFinalization.second.scriptPubKey = priorNTx.vout[foundNotarization.prevNotarization.n].scriptPubKey;
-                            continue;
+                            // if we found an actual notarization,
+                            // it is local to this chain and inherently confirmed
+                            // all are, so look for the last that was at that height
+                            BlockMap::iterator blockIt;
+                            firstUnspentFinalization.second.txIn.prevout = foundNotarization.prevNotarization;
+                            CTransaction priorNTx;
+                            uint256 priorBlockHash;
+                            if (foundNotarization.prevNotarization.GetOutputTransaction(priorNTx, priorBlockHash) &&
+                                (priorBlockHash.IsNull() ||
+                                ((blockIt = mapBlockIndex.find(priorBlockHash)) != mapBlockIndex.end() &&
+                                chainActive.Contains(blockIt->second))))
+                            {
+                                firstUnspentFinalization.first = priorBlockHash.IsNull() ? 0 : blockIt->second->GetHeight();
+                                firstUnspentFinalization.second.nValue = priorNTx.vout[foundNotarization.prevNotarization.n].nValue;
+                                firstUnspentFinalization.second.scriptPubKey = priorNTx.vout[foundNotarization.prevNotarization.n].scriptPubKey;
+                                continue;
+                            }
                         }
-                    }
 
-                    present = false;
-                    foundNotarization = CPBaaSNotarization();
-                    break;
-                }
-                // go backwards and look for the prior confirmed finalization
-                for (auto &oneIn : checkTx.vin)
-                {
-                    CTransaction inTx;
-                    uint256 inBlockHash;
-                    if (myGetTransaction(oneIn.prevout.hash, inTx, inBlockHash) &&
-                        inTx.vout.size() > oneIn.prevout.n &&
-                        ((inTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(checkP) &&
-                          checkP.IsValid() &&
-                          ((checkP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
-                            (priorOf = CObjectFinalization(checkP.vData[0])).IsValid() &&
-                            priorOf.IsConfirmed() &&
-                            priorOf.currencyID == curID) ||
-                           ((checkP.evalCode == EVAL_EARNEDNOTARIZATION || checkP.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
-                            (foundNotarization = CPBaaSNotarization(checkP.vData[0])).IsValid() &&
-                            foundNotarization.currencyID == curID &&
-                            (foundNotarization.IsBlockOneNotarization() ||
-                             foundNotarization.IsPreLaunch() ||
-                             foundNotarization.IsDefinitionNotarization()))))))
-                    {
-                        found = true;
-                        firstUnspentFinalization.second = CInputDescriptor(inTx.vout[oneIn.prevout.n].scriptPubKey,
-                                                                            inTx.vout[oneIn.prevout.n].nValue,
-                                                                            oneIn);
-                        if (inBlockHash.IsNull())
-                        {
-                            firstUnspentFinalization.first = 0;
-                        }
-                        else
-                        {
-                            auto blockIt = mapBlockIndex.find(inBlockHash);
-                            if (blockIt == mapBlockIndex.end() ||
-                                !chainActive.Contains(blockIt->second))
-                            {
-                                present = false;
-                            }
-                            firstUnspentFinalization.first = blockIt->second->GetHeight();
-                            if (firstUnspentFinalization.first > height)
-                            {
-                                foundNotarization = CPBaaSNotarization();
-                            }
-                        }
+                        present = false;
+                        foundNotarization = CPBaaSNotarization();
                         break;
                     }
-                    foundNotarization = CPBaaSNotarization();
+                    // go backwards and look for the prior confirmed finalization
+                    for (auto &oneIn : checkTx.vin)
+                    {
+                        CTransaction inTx;
+                        uint256 inBlockHash;
+                        if (myGetTransaction(oneIn.prevout.hash, inTx, inBlockHash) &&
+                            inTx.vout.size() > oneIn.prevout.n &&
+                            ((inTx.vout[oneIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(checkP) &&
+                            checkP.IsValid() &&
+                            ((checkP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                                (priorOf = CObjectFinalization(checkP.vData[0])).IsValid() &&
+                                priorOf.IsConfirmed() &&
+                                priorOf.currencyID == curID) ||
+                            ((checkP.evalCode == EVAL_EARNEDNOTARIZATION || checkP.evalCode == EVAL_ACCEPTEDNOTARIZATION) &&
+                                (foundNotarization = CPBaaSNotarization(checkP.vData[0])).IsValid() &&
+                                foundNotarization.currencyID == curID &&
+                                (foundNotarization.IsBlockOneNotarization() ||
+                                foundNotarization.IsPreLaunch() ||
+                                foundNotarization.IsDefinitionNotarization()))))))
+                        {
+                            found = true;
+                            firstUnspentFinalization.second = CInputDescriptor(inTx.vout[oneIn.prevout.n].scriptPubKey,
+                                                                                inTx.vout[oneIn.prevout.n].nValue,
+                                                                                oneIn);
+                            if (inBlockHash.IsNull())
+                            {
+                                firstUnspentFinalization.first = 0;
+                            }
+                            else
+                            {
+                                auto blockIt = mapBlockIndex.find(inBlockHash);
+                                if (blockIt == mapBlockIndex.end() ||
+                                    !chainActive.Contains(blockIt->second))
+                                {
+                                    present = false;
+                                }
+                                firstUnspentFinalization.first = blockIt->second->GetHeight();
+                                if (firstUnspentFinalization.first > height)
+                                {
+                                    foundNotarization = CPBaaSNotarization();
+                                }
+                            }
+                            break;
+                        }
+                        foundNotarization = CPBaaSNotarization();
+                    }
+                    if (!found || !present)
+                    {
+                        present = false;
+                        foundNotarization = CPBaaSNotarization();
+                        break;
+                    }
                 }
-                if (!found || !present)
+                else
                 {
-                    present = false;
                     foundNotarization = CPBaaSNotarization();
-                    break;
                 }
-            }
-            else
-            {
-                foundNotarization = CPBaaSNotarization();
             }
         }
+
         if (present &&
             firstUnspentFinalization.first > 0 &&
             firstUnspentFinalization.first <= height)
         {
+            LOCK(mempool.cs);
+
             COptCCParams foundP;
             CTransaction finalTx;
             uint256 finalBlockHash;
