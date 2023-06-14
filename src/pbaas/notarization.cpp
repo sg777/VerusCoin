@@ -1303,7 +1303,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 newNotarization.SetPreLaunch(false);
                 newNotarization.currencyState.SetLaunchClear();
                 newNotarization.currencyState.SetPrelaunch(false);
-                newNotarization.currencyState.RevertReservesAndSupply(destCurrency.systemID, false, improvedMinCheck ? 
+                newNotarization.currencyState.RevertReservesAndSupply(destCurrency.systemID, false, improvedMinCheck ?
                                                                                                         CCoinbaseCurrencyState::PBAAS_1_0_8 :
                                                                                                         CCoinbaseCurrencyState::PBAAS_1_0_0);
             }
@@ -1682,7 +1682,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                     newNotarization.currencyState = tempState;
                 }
             }
-            else 
+            else
             {
                 if (improvedMinCheck && !newNotarization.IsPreLaunch() && !newNotarization.currencyState.IsLaunchCompleteMarker())
                 {
@@ -4162,6 +4162,10 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
         std::pair<uint32_t, CInputDescriptor> firstUnspentFinalization;
         bool present = false;
 
+        CTransaction targetTx;
+        uint256 targetBlockHash;
+        CObjectFinalization ofCandidate;
+
         // make sure we can retrieve it and get the latest
         for (auto &oneFinalization : unspentFinalizations)
         {
@@ -4172,6 +4176,16 @@ std::tuple<uint32_t, CUTXORef, CPBaaSNotarization> GetLastConfirmedNotarization(
                 checkTx.vout.size() > oneFinalization.second.txIn.prevout.n &&
                 checkTx.vout[oneFinalization.second.txIn.prevout.n].scriptPubKey.IsPayToCryptoCondition(checkP) &&
                 checkP.IsValid() &&
+                checkP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                (ofCandidate = CObjectFinalization(checkP.vData[0])).IsValid() &&
+                (checkBlockHash.IsNull() ||
+                 (mapBlockIndex.count(checkBlockHash) &&
+                  chainActive.Contains(mapBlockIndex[checkBlockHash]))) &&
+                ofCandidate.output.GetOutputTransaction(targetTx, targetBlockHash, false) &&
+                (checkBlockHash.IsNull() ||
+                 (!targetBlockHash.IsNull() &&
+                  mapBlockIndex.count(targetBlockHash) &&
+                  chainActive.Contains(mapBlockIndex[targetBlockHash]))) &&
                 (!present ||
                  oneFinalization.first == 0 ||
                  firstUnspentFinalization.first < oneFinalization.first))
