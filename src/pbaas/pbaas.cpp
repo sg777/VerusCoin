@@ -5757,8 +5757,15 @@ std::string VersionString(uint32_t version)
 
 void CConnectedChains::CheckOracleUpgrades()
 {
+    uint32_t height = chainActive.LastTip() && chainActive.Height() ? chainActive.Height() : 0;
+    CIdentityID oracleToUse = !PBAAS_TESTMODE || (height && chainActive[height]->nTime > PBAAS_TESTFORK4_TIME) ?
+        PBAAS_NOTIFICATION_ORACLE :
+        (IsVerusActive() ?
+            EncodeDestination(DecodeDestination("Verus Coin Foundation@")) :
+            EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)));
+
     // check for a specific oracle
-    if (PBAAS_NOTIFICATION_ORACLE.IsNull())
+    if (oracleToUse.IsNull())
     {
         LogPrintf("%s: No notification oracle defined - cannot check for upgrades");
         return;
@@ -5773,7 +5780,7 @@ void CConnectedChains::CheckOracleUpgrades()
     std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>> upgradeData;
     if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) >= CActivationHeight::ACTIVATE_PBAAS)
     {
-        upgradeData = CIdentity::GetIdentityContentByKey(PBAAS_NOTIFICATION_ORACLE,
+        upgradeData = CIdentity::GetIdentityContentByKey(oracleToUse,
                                                          UpgradeDataKey(ASSETCHAINS_CHAINID),
                                                          0,
                                                          0,
@@ -5785,7 +5792,7 @@ void CConnectedChains::CheckOracleUpgrades()
     }
     uint32_t foundIDAt;
     CTxIn txInDesc;
-    CIdentity oracleID = CIdentity::LookupIdentity(PBAAS_NOTIFICATION_ORACLE, chainActive.Height(), &foundIDAt, &txInDesc);
+    CIdentity oracleID = CIdentity::LookupIdentity(oracleToUse, chainActive.Height(), &foundIDAt, &txInDesc);
     if (LogAcceptCategory("oracles"))
     {
         LogPrintf("%s: oracle ID (%s) found at height %u in transaction %s output: %u\n",
