@@ -5758,16 +5758,16 @@ std::string VersionString(uint32_t version)
 void CConnectedChains::CheckOracleUpgrades()
 {
     uint32_t height = chainActive.LastTip() && chainActive.Height() ? chainActive.Height() : 0;
-    CIdentityID oracleToUse = !PBAAS_TESTMODE || (height && chainActive[height]->nTime > PBAAS_TESTFORK4_TIME) ?
+    CIdentityID oracleToUse = !PBAAS_TESTMODE || (height && chainActive[height]->nTime > PBAAS_TESTFORK5_TIME) ?
         PBAAS_NOTIFICATION_ORACLE :
         (IsVerusActive() ?
-            EncodeDestination(DecodeDestination("Verus Coin Foundation@")) :
-            EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)));
+            GetDestinationID(DecodeDestination("Verus Coin Foundation@")) :
+            CIdentityID(ASSETCHAINS_CHAINID));
 
     // check for a specific oracle
     if (oracleToUse.IsNull())
     {
-        LogPrintf("%s: No notification oracle defined - cannot check for upgrades");
+        LogPrintf("%s: No notification oracle defined - cannot check for upgrades", __func__);
         return;
     }
 
@@ -5793,8 +5793,10 @@ void CConnectedChains::CheckOracleUpgrades()
     uint32_t foundIDAt;
     CTxIn txInDesc;
     CIdentity oracleID = CIdentity::LookupIdentity(oracleToUse, chainActive.Height(), &foundIDAt, &txInDesc);
+
     if (LogAcceptCategory("oracles"))
     {
+        LogPrintf("%s: Using %s as oracle\n", __func__, ConnectedChains.GetFriendlyIdentityName(oracleID).c_str());
         LogPrintf("%s: oracle ID (%s) found at height %u in transaction %s output: %u\n",
                   __func__,
                   ConnectedChains.GetFriendlyIdentityName(oracleID).c_str(),
