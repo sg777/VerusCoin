@@ -626,10 +626,10 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                             }
                         }
                         if (!systemCurrency.IsValid() ||
-                            !systemCurrency.IsPBaaSChain() ||
+                            !(systemCurrency.IsPBaaSChain() || systemCurrency.IsGateway()) ||
                             systemCurrency.gatewayConverterIssuance != importCurrency.gatewayConverterIssuance)
                         {
-                            return state.Error("Gateway currency issuance mismatch in definition transaction: " + tx.GetHash().GetHex());
+                            return state.Error("Bridge currency issuance mismatch in definition transaction: " + tx.GetHash().GetHex());
                         }
                         if (importCurrency.gatewayConverterIssuance)
                         {
@@ -5820,19 +5820,10 @@ void CConnectedChains::CheckOracleUpgrades()
     std::map<uint160, CUpgradeDescriptor>::iterator disableDeFiIt = activeUpgradesByKey.find(DisableDeFiKey());
     std::map<uint160, CUpgradeDescriptor>::iterator disablePBaaSCrossChainIt = activeUpgradesByKey.find(DisablePBaaSCrossChainKey());
     std::map<uint160, CUpgradeDescriptor>::iterator disableGatewayCrossChainIt = activeUpgradesByKey.find(DisableGatewayCrossChainKey());
-    std::map<uint160, CUpgradeDescriptor>::iterator magicNumberFixIt = IsVerusActive() ? activeUpgradesByKey.find(MagicNumberFixKey()) : activeUpgradesByKey.end();
     std::map<uint160, CUpgradeDescriptor>::iterator stoppingIt = activeUpgradesByKey.end();
 
     std::string gracefulStop;
 
-    if (magicNumberFixIt != activeUpgradesByKey.end())
-    {
-        if (magicNumberFixIt->second.minDaemonVersion > GetVerusVersion())
-        {
-            stoppingIt = magicNumberFixIt;
-            gracefulStop = "PROTOCOL CHANGE FOR ZERO EMISSION PBAAS CHAIN MAGIC NUMBER FIX";
-        }
-    }
     if (disableDeFiIt != activeUpgradesByKey.end() ||
         disablePBaaSCrossChainIt != activeUpgradesByKey.end() ||
         disableGatewayCrossChainIt != activeUpgradesByKey.end())

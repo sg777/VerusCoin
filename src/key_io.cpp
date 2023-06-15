@@ -29,7 +29,7 @@ CIdentityID VERUS_DEFAULTID;
 CIdentityID VERUS_NOTARYID;
 CIdentityID PBAAS_NOTIFICATION_ORACLE;                                  // an identity that can be used to coordinate on-chain actions or upgrades
 CTransferDestination APPROVE_CONTRACT_UPGRADE;                          // approve a contract to be upgraded on the ETH bridge, enables the network to decide
-std::string PBAAS_DEFAULT_NOTIFICATION_ORACLE = "Verus Coin Foundation@"; // please see "-notificationoracle" and coordinate with community to change this default
+std::string PBAAS_DEFAULT_NOTIFICATION_ORACLE = "VRSC@";                // please see "-notificationoracle" and coordinate with community to change this default
 
 std::set<uint160> FREE_CURRENCY_IMPORTS;
 
