@@ -626,10 +626,10 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                             }
                         }
                         if (!systemCurrency.IsValid() ||
-                            !systemCurrency.IsPBaaSChain() ||
+                            !(systemCurrency.IsPBaaSChain() || systemCurrency.IsGateway()) ||
                             systemCurrency.gatewayConverterIssuance != importCurrency.gatewayConverterIssuance)
                         {
-                            return state.Error("Gateway currency issuance mismatch in definition transaction: " + tx.GetHash().GetHex());
+                            return state.Error("Bridge currency issuance mismatch in definition transaction: " + tx.GetHash().GetHex());
                         }
                         if (importCurrency.gatewayConverterIssuance)
                         {
@@ -3490,19 +3490,6 @@ uint32_t CCurrencyDefinition::MagicNumber() const
     // compatibility
     int lastSize = 0;
 
-    // TODO: REMOVED AFTER MAGIC NUMBER FIX IS APPLIED
-    if (isVerusOrVerusTestRunning &&
-        !((eraEnd.size() && eraEnd[0]) ||
-          (rewards.size() && rewards[0]) ||
-          (halving.size() && halving[0]) ||
-          (rewardsDecay.size() && rewardsDecay[0])) &&
-        !ConnectedChains.activeUpgradesByKey.count(ConnectedChains.MagicNumberFixKey()))
-    {
-        extraBuffer.insert(extraBuffer.end(), 33, 0);
-        lastSize = extraBuffer.size();
-    }
-    else
-
     if (IsPBaaSChain())
     {
         if ((eraEnd.size() && eraEnd[0]) ||
@@ -5843,7 +5830,7 @@ void CConnectedChains::CheckOracleUpgrades()
         if (magicNumberFixIt->second.minDaemonVersion > GetVerusVersion())
         {
             stoppingIt = magicNumberFixIt;
-            gracefulStop = "PROTOCOL CHANGE FOR ZERO EMISSION PBAAS CHAIN MAGIC NUMBER FIX";
+            gracefulStop = "PROTOCOL CHANGE FOR PBAAS CHAIN VERSION UPDATE";
         }
     }
     if (disableDeFiIt != activeUpgradesByKey.end() ||
@@ -6117,7 +6104,7 @@ CCoinbaseCurrencyState CConnectedChains::AddPendingConversions(CCurrencyDefiniti
         if (_lastNotarization.NextNotarizationInfo(ConnectedChains.ThisChain(),
                                                     curDef,
                                                     fromHeight,
-                                                    std::min(height, curDef.startBlock - 1),
+                                                    std::min(height, chainActive.Height() + 1),
                                                     transfers,
                                                     transferHash,
                                                     newNotarization,
@@ -6127,6 +6114,10 @@ CCoinbaseCurrencyState CConnectedChains::AddPendingConversions(CCurrencyDefiniti
                                                     spentCurrencyOut))
         {
             return newNotarization.currencyState;
+        }
+        else
+        {
+            currencyState = CCoinbaseCurrencyState();
         }
     }
     return currencyState;
