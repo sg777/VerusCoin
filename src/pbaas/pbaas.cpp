@@ -1662,7 +1662,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         return state.Error("Clear launch export or post launch of anything but a gateway on same chain must include export finalization output");
     }
 
-    CCurrencyValueMap extraLaunchFee;
+    CCurrencyValueMap extraLaunchFee, localFeeShare;
 
     if (ccx.IsClearLaunch() || ccx.IsChainDefinition())
     {
@@ -1719,12 +1719,14 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         if (ccx.IsChainDefinition())
         {
             totalCurrencyExported.valueMap[sourceDef.GetID()] += sourceDef.LaunchFeeImportShare(thisDef.ChainOptions());
+            localFeeShare.valueMap[sourceDef.GetID()] = sourceDef.LaunchFeeExportShare(thisDef.ChainOptions());
             if (thisDef.IsGatewayConverter())
             {
                 if (!destSystem.IsValid())
                 {
                     return state.Error("Invalid system currency or system definition not found");
                 }
+                localFeeShare.valueMap[sourceDef.GetID()] += sourceDef.LaunchFeeExportShare(destSystem.ChainOptions());
                 extraLaunchFee.valueMap[sourceDef.GetID()] = sourceDef.LaunchFeeImportShare(destSystem.ChainOptions());
             }
             else if (thisDef.IsPBaaSChain() || thisDef.IsGateway())
@@ -1733,6 +1735,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                 {
                     return state.Error("Invalid gateway converter currency or definition not found");
                 }
+                localFeeShare.valueMap[sourceDef.GetID()] += sourceDef.LaunchFeeExportShare(destSystem.ChainOptions());
                 extraLaunchFee.valueMap[sourceDef.GetID()] = sourceDef.LaunchFeeImportShare(gatewayConverter.ChainOptions());
             }
         }
@@ -1952,13 +1955,27 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             {
                 return state.Error("Cross system currency export error");
             }
-            if (ccx.IsChainDefinition())
-            {
-                expectedReserveDeposits += extraLaunchFee;
-            }
-            if (expectedReserveDeposits != reserveDepositOutput)
+            if ((expectedReserveDeposits + extraLaunchFee) != reserveDepositOutput)
             {
                 return state.Error("Incorrect reserve deposits for export transaction");
+            }
+            if (ccx.IsChainDefinition())
+            {
+                const CCoins *coins;
+                CCoinsView dummy;
+                CCoinsViewCache view(&dummy);
+
+                LOCK(mempool.cs);
+
+                CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
+                view.SetBackend(viewMemPool);
+                CReserveTransactionDescriptor rtxd(tx, view, height);
+                CCurrencyValueMap totalFees = rtxd.ReserveFees();
+                totalFees.valueMap[ASSETCHAINS_CHAINID] = rtxd.NativeFees();
+                if ((totalFees - localFeeShare).HasNegative())
+                {
+                    return state.Error("Insufficient fees for currency definition with export");
+                }
             }
         }
     }
