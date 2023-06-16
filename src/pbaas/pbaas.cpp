@@ -1662,10 +1662,13 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         return state.Error("Clear launch export or post launch of anything but a gateway on same chain must include export finalization output");
     }
 
+    CCurrencyValueMap extraLaunchFee;
+
     if (ccx.IsClearLaunch() || ccx.IsChainDefinition())
     {
         // if this is a PBaaS launch, this should be the coinbase, and we need to get the parent chain definition,
         // including currency launch prices from the current transaction
+        CCurrencyDefinition gatewayConverter;
         if (height == 1 || ccx.IsChainDefinition())
         {
             std::vector<CCurrencyDefinition> currencyDefs = CCurrencyDefinition::GetCurrencyDefinitions(tx);
@@ -1679,6 +1682,14 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                 else if (curID == ccx.sourceSystemID)
                 {
                     sourceDef = oneCur;
+                }
+                else if (curID == ccx.destSystemID)
+                {
+                    destSystem = oneCur;
+                }
+                else if (oneCur.IsGatewayConverter() && oneCur.gatewayID == ccx.destCurrencyID)
+                {
+                    gatewayConverter = oneCur;
                 }
             }
             if (!sourceDef.IsValid() && ccx.IsChainDefinition())
@@ -1708,6 +1719,22 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         if (ccx.IsChainDefinition())
         {
             totalCurrencyExported.valueMap[sourceDef.GetID()] += sourceDef.LaunchFeeImportShare(thisDef.ChainOptions());
+            if (thisDef.IsGatewayConverter())
+            {
+                if (!destSystem.IsValid())
+                {
+                    return state.Error("Invalid system currency or system definition not found");
+                }
+                extraLaunchFee.valueMap[sourceDef.GetID()] = sourceDef.LaunchFeeImportShare(destSystem.ChainOptions());
+            }
+            else if (thisDef.IsPBaaSChain() || thisDef.IsGateway())
+            {
+                if (!gatewayConverter.IsValid())
+                {
+                    return state.Error("Invalid gateway converter currency or definition not found");
+                }
+                extraLaunchFee.valueMap[sourceDef.GetID()] = sourceDef.LaunchFeeImportShare(gatewayConverter.ChainOptions());
+            }
         }
     }
 
@@ -1889,10 +1916,53 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             }
         }
     }
-    if (ccx.totalAmounts != totalCurrencyExported)
+    if (ccx.totalAmounts != totalCurrencyExported && !isPreSync)
     {
-        return state.Error("Exported currency totals warning - may only be result of async loading and not error");
+        return state.Error("Exported currency totals error");
     }
+
+    // now, check that all amounts taken in have gone into reserve deposits
+    if (height != 1 &&
+        totalCurrencyExported > CCurrencyValueMap())
+    {
+        // figure out how much are in reserve deposits. there should not be too much or too little
+        bool isCrossSystem = ccx.destSystemID != ASSETCHAINS_CHAINID;
+        uint160 reserveDepositHolder = isCrossSystem ? ccx.destSystemID : ccx.destCurrencyID;
+        CCurrencyValueMap reserveDepositOutput;
+        CCurrencyValueMap expectedReserveDeposits;
+        CCurrencyValueMap expectedBurn;
+        for (int i = 0; i < tx.vout.size(); i++)
+        {
+            COptCCParams p;
+            CReserveDeposit rd;
+            if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode == EVAL_RESERVE_DEPOSIT &&
+                p.vData.size() &&
+                (rd = CReserveDeposit(p.vData[0])).IsValid() &&
+                rd.controllingCurrencyID == reserveDepositHolder)
+            {
+                reserveDepositOutput += rd.reserveValues;
+            }
+        }
+        // if cross system, we may remove some due to burning
+        if (isCrossSystem)
+        {
+            if (!ConnectedChains.CurrencyExportStatus(ccx.totalAmounts, ASSETCHAINS_CHAINID, ccx.destSystemID, expectedReserveDeposits, expectedBurn))
+            {
+                return state.Error("Cross system currency export error");
+            }
+            if (ccx.IsChainDefinition())
+            {
+                expectedReserveDeposits += extraLaunchFee;
+            }
+            if (expectedReserveDeposits != reserveDepositOutput)
+            {
+                return state.Error("Incorrect reserve deposits for export transaction");
+            }
+        }
+    }
+
     return true;
 }
 
