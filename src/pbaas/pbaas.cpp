@@ -2865,11 +2865,11 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
     std::vector<CReserveTransfer> reserveTransfers;
 
     // looking for an import output to the controlling currency
-    int i;
-    for (i = 0; i < tx.vout.size(); i++)
+    int importOutNum;
+    for (importOutNum = 0; importOutNum < tx.vout.size(); importOutNum++)
     {
         COptCCParams p;
-        if (tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+        if (tx.vout[importOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
             p.IsValid() &&
             p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
             p.vData.size() &&
@@ -2885,7 +2885,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
             {
                 if (authorizingImport.GetImportInfo(tx,
                                                     chainActive.Height(),
-                                                    i,
+                                                    importOutNum,
                                                     ccxSource,
                                                     authorizingImport,
                                                     sysCCIOut,
@@ -2911,7 +2911,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         }
     }
 
-    if (i >= tx.vout.size())
+    if (importOutNum >= tx.vout.size())
     {
         LogPrint("reservedeposits", "%s: non import transaction %s attempting to spend reserve deposit %s\n", __func__, EncodeHexTx(tx).c_str(), tx.vin[nIn].ToString().c_str());
         return eval->Error(std::string(__func__) + ": non import transaction attempting to spend reserve deposit");
@@ -2922,9 +2922,9 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
     if (gatewaySource = authorizingImport.IsSourceSystemImport())
     {
         COptCCParams p;
-        i--;        // set i to the actual import
-        if (!(i >= 0 &
-              tx.vout[i].scriptPubKey.IsPayToCryptoCondition(p) &&
+        importOutNum--;        // set i to the actual import
+        if (!(importOutNum >= 0 &
+              tx.vout[importOutNum].scriptPubKey.IsPayToCryptoCondition(p) &&
               p.IsValid() &&
               p.evalCode == EVAL_CROSSCHAIN_IMPORT &&
               p.vData.size() &&
@@ -2939,10 +2939,12 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         mainImport = authorizingImport;
     }
 
+    uint32_t nHeight = chainActive.Height();
+
     if (importNotarization.IsValid() ||
         mainImport.GetImportInfo(tx,
-                                 chainActive.Height(),
-                                 i,
+                                 nHeight,
+                                 importOutNum,
                                  ccxSource,
                                  authorizingImport,
                                  sysCCIOut,
@@ -2958,8 +2960,6 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         CCoinsViewCache view(&dummy);
         CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
         view.SetBackend(viewMemPool);
-
-        uint32_t nHeight = chainActive.Height();
 
         CCurrencyValueMap totalDeposits;
 
@@ -3025,8 +3025,11 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         bool isClearLaunch = ccxSource.IsClearLaunch();
         std::vector<CTxOut> vOutputs;
 
-        bool isUpdatedConversion = ConnectedChains.CheckZeroViaOnlyPostLaunch(nHeight + 1) &&
+        bool isUpdatedConversion = ConnectedChains.CheckZeroViaOnlyPostLaunch(nHeight) &&
                                     (!PBAAS_TESTMODE || chainActive[nHeight]->nTime > PBAAS_TESTFORK3_TIME);
+
+        bool clearConvertTransition = !ConnectedChains.CheckClearConvert(std::max(((int32_t)nHeight) - 100, 1)) &&
+                                      ConnectedChains.CheckClearConvert(nHeight);
 
         if (isUpdatedConversion &&
             isClearLaunch &&
@@ -3114,7 +3117,9 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                                                 (destCurDef.IsGatewayConverter() && destCurDef.gatewayID == ASSETCHAINS_CHAINID) ||
                                                 (!IsVerusActive() && destCurDef.GetID() == ASSETCHAINS_CHAINID),
                                                 isUpdatedConversion ? 
-                                                    CCoinbaseCurrencyState::PBAAS_1_0_8 :
+                                                    (ConnectedChains.CheckClearConvert(nHeight) ?
+                                                        CCoinbaseCurrencyState::PBAAS_1_0_10 :
+                                                        CCoinbaseCurrencyState::PBAAS_1_0_8) :
                                                     CCoinbaseCurrencyState::PBAAS_1_0_0);
 
             if (ccxSource.IsClearLaunch() && ccxSource.sourceSystemID == destCurDef.launchSystemID)
@@ -3145,6 +3150,25 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
 
         // get outputs total amount to this reserve deposit
         CCurrencyValueMap reserveDepositChange;
+        CCurrencyValueMap extraOutputsValue;
+        CCurrencyValueMap feeCurrencyMap;
+        feeCurrencyMap.valueMap[ASSETCHAINS_CHAINID] = 1;
+        if (!IsVerusActive() && ConnectedChains.NotarySystems().size())
+        {
+            feeCurrencyMap.valueMap[ConnectedChains.FirstNotaryChain().GetID()] = 1;
+        }
+        if (clearConvertTransition)
+        {
+            feeCurrencyMap.valueMap[destCurDef.GetID()] = 1;
+        }
+
+        int startingOutput = importNotarizationOut + 1;
+        if (evidenceOutEnd > 0)
+        {
+            startingOutput = evidenceOutEnd + 1;
+        }
+        int endingOutput = startingOutput + std::min(((int32_t)vOutputs.size()), mainImport.numOutputs);
+
         for (int i = 0; i < tx.vout.size(); i++)
         {
             COptCCParams p;
@@ -3157,7 +3181,20 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                 rd.controllingCurrencyID == sourceRD.controllingCurrencyID)
             {
                 reserveDepositChange += rd.reserveValues;
+                continue;
             }
+            if (nHeight != 1 &&
+                (i < importOutNum || i > endingOutput))
+            {
+                extraOutputsValue += tx.vout[i].ReserveOutValue();
+                extraOutputsValue.valueMap[ASSETCHAINS_CHAINID] = tx.vout[i].nValue;
+            }
+        }
+
+        if (extraOutputsValue.IntersectingValues(feeCurrencyMap).valueMap.size())
+        {
+            LogPrintf("%s: invalid spend of fee currency on import transaction for: %s\n", __func__, EncodeDestination(CIdentityID(destCurDef.GetID())).c_str());
+            return eval->Error(std::string(__func__) + ": invalid spend of fee currency on import transaction for: " + EncodeDestination(CIdentityID(destCurDef.GetID())));
         }
 
         if (gatewaySource)
@@ -3191,9 +3228,30 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
 
             if ((totalDeposits + currenciesIn) != (reserveDepositChange + spentCurrencyOut))
             {
-                LogPrintf("%s: Invalid use of reserve deposits -- (totalDeposits + currenciesIn):\n%s\n(reserveDepositChange + spentCurrencyOut):\n%s\n",
-                       __func__, (totalDeposits + currenciesIn).ToUniValue().write().c_str(), (reserveDepositChange + spentCurrencyOut).ToUniValue().write().c_str());
-                return eval->Error(std::string(__func__) + ": invalid use of reserve deposits for currency: " + EncodeDestination(CIdentityID(destCurDef.GetID())));
+                bool cleanConvertedPrimary = false;
+                if (newCurState.IsFractional() && clearConvertTransition)
+                {
+                    CCurrencyValueMap primaryCheck = ((totalDeposits + currenciesIn) - (reserveDepositChange + spentCurrencyOut)).CanonicalMap();
+                    if (primaryCheck.valueMap.size() == 1 &&
+                        primaryCheck.valueMap.count(newCurState.GetID()))
+                    {
+                        cleanConvertedPrimary = true;
+                    }
+                }
+                if (!cleanConvertedPrimary)
+                {
+                    if (LogAcceptCategory("reservedeposits"))
+                    {
+                        UniValue jsonTx(UniValue::VOBJ);
+                        uint256 hashBlk;
+                        TxToUniv(tx, hashBlk, jsonTx);
+                        LogPrintf("%s: Reserve deposit error in tx:\n%s\n", __func__, jsonTx.write(1,2).c_str()); //*/
+                        printf("%s: Reserve deposit error in tx:\n%s\n", __func__, jsonTx.write(1,2).c_str()); //*/
+                    }
+                    LogPrintf("%s: Invalid use of reserve deposits -- (totalDeposits + currenciesIn):\n%s\n(reserveDepositChange + spentCurrencyOut):\n%s\n",
+                        __func__, (totalDeposits + currenciesIn).ToUniValue().write().c_str(), (reserveDepositChange + spentCurrencyOut).ToUniValue().write().c_str());
+                    return eval->Error(std::string(__func__) + ": invalid use of reserve deposits for currency: " + EncodeDestination(CIdentityID(destCurDef.GetID())));
+                }
             }
         }
 
@@ -7295,6 +7353,25 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             newLocalDepositsRequired.valueMap[destCurID] -= newPrimaryCurrency;
         }
 
+        bool clearConvertTransition = !ConnectedChains.CheckClearConvert(std::max(((int32_t)nHeight) - 99, 1)) &&
+                                      ConnectedChains.CheckClearConvert(nHeight + 1) &&
+                                      !ConnectedChains.CheckClearConvert(lastNotarization.notarizationHeight) && ConnectedChains.CheckClearConvert(nHeight);
+
+        if (destCur.IsFractional() &&
+            lastNotarization.currencyState.IsLaunchCompleteMarker() &&
+            clearConvertTransition)
+        {
+            CCurrencyValueMap localExtra;
+            
+            for (auto &oneDeposit : localDeposits)
+            {
+                localExtra += oneDeposit.scriptPubKey.ReserveOutValue();
+            }
+
+            CAmount extraPrimary = localExtra.valueMap[destCurID];
+            newLocalDepositsRequired.valueMap[destCurID] = extraPrimary;
+        }
+
         LogPrint("crosschainimports", "%s: newNotarization:\n%s\n", __func__, newNotarization.ToUniValue().write(1,2).c_str());
         LogPrint("crosschainimports", "%s: ccx.totalAmounts: %s\ngatewayDepositsUsed: %s\nimportedCurrency: %s\nspentCurrencyOut: %s\n",
             __func__,
@@ -7642,6 +7719,10 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
                           spentCurrencyOut.ToUniValue().write(1,2).c_str());
                 return false;
             }
+            if (clearConvertTransition)
+            {
+                newLocalReserveDeposits.valueMap.erase(destCurID);
+            }
         }
 
         // add local deposit inputs
@@ -7725,6 +7806,11 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         }
         CCurrencyValueMap reserveFees = rtxd.ReserveFees();
         CCurrencyValueMap reserveChange = reserveFees.NonIntersectingValues(intersectMap);
+        if (clearConvertTransition && destCur.IsFractional())
+        {
+            reserveChange.valueMap.erase(destCurID);
+            intersectMap.valueMap[destCurID] = 1;
+        }
         reserveFees = reserveFees.IntersectingValues(intersectMap);
         if (reserveFees > CCurrencyValueMap())
         {
