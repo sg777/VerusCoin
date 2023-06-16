@@ -1671,6 +1671,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         CCurrencyDefinition gatewayConverter;
         if (height == 1 || ccx.IsChainDefinition())
         {
+            thisDef = CCurrencyDefinition();
             std::vector<CCurrencyDefinition> currencyDefs = CCurrencyDefinition::GetCurrencyDefinitions(tx);
             for (auto &oneCur : currencyDefs)
             {
