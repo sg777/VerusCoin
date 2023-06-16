@@ -1501,7 +1501,7 @@ public:
     enum ReversionUpdate {
         PBAAS_1_0_0 = 0,
         PBAAS_1_0_8 = 1,
-        PBAAS_1_0_10 = 1
+        PBAAS_1_0_10 = 2
     };
 
     CCoinbaseCurrencyState() : primaryCurrencyOut(0), preConvertedOut(0), primaryCurrencyFees(0), primaryCurrencyConversionFees(0) {}
