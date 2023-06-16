@@ -5695,6 +5695,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             }
         }
         newCurrencyState.supply += (netPrimaryOut - netPrimaryIn);
+        if (ConnectedChains.CheckClearConvert(height))
+        {
+            spentCurrencyOut.valueMap[importCurrencyID] += netPrimaryIn;
+        }
         netPrimaryIn += totalNewFrac;
     }
     else

@@ -5920,6 +5920,12 @@ bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
     return height > GetZeroViaHeight(false);
 }
 
+bool CConnectedChains::CheckClearConvert(uint32_t height) const
+{
+    return (PBAAS_TESTMODE && chainActive.Height() >= (height - 1) && chainActive[height - 1]->nTime >= PBAAS_TESTFORK5_TIME) ||
+           (!PBAAS_TESTMODE && (!IsVerusActive() || height >= PBAAS_CLEARCONVERT_HEIGHT));
+}
+
 bool CConnectedChains::ConfigureEthBridge(bool callToCheck)
 {
     // first time through, we initialize the VETH gateway config file
