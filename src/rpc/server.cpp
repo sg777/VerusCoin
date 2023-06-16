@@ -233,7 +233,7 @@ UniValue stop(const UniValue& params, bool fHelp)
     if (fHelp || params.size() > 1)
         throw runtime_error(
             "stop\n"
-            "\nStop Komodo server.");
+            "\nStop the server.");
 
 #ifdef ENABLE_WALLET
     GenerateBitcoins(false, NULL, 0);
