@@ -1731,12 +1731,15 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             }
             else if (thisDef.IsPBaaSChain() || thisDef.IsGateway())
             {
-                if (!gatewayConverter.IsValid())
+                if (!thisDef.GatewayConverterID().IsNull() && !gatewayConverter.IsValid())
                 {
                     return state.Error("Invalid gateway converter currency or definition not found");
                 }
-                localFeeShare.valueMap[sourceDef.GetID()] += sourceDef.LaunchFeeExportShare(destSystem.ChainOptions());
-                extraLaunchFee.valueMap[sourceDef.GetID()] = sourceDef.LaunchFeeImportShare(gatewayConverter.ChainOptions());
+                if (gatewayConverter.IsValid())
+                {
+                    localFeeShare.valueMap[sourceDef.GetID()] += sourceDef.LaunchFeeExportShare(gatewayConverter.ChainOptions());
+                    extraLaunchFee.valueMap[sourceDef.GetID()] = sourceDef.LaunchFeeImportShare(gatewayConverter.ChainOptions());
+                }
             }
         }
     }
