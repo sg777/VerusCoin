@@ -3028,7 +3028,9 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         bool isUpdatedConversion = ConnectedChains.CheckZeroViaOnlyPostLaunch(nHeight) &&
                                     (!PBAAS_TESTMODE || chainActive[nHeight]->nTime > PBAAS_TESTFORK3_TIME);
 
-        bool clearConvertTransition = !ConnectedChains.CheckClearConvert(std::max(((int32_t)nHeight) - 100, 1)) &&
+        int32_t transitionBlocks = (PBAAS_TESTMODE ? ((24 * 60 * 60) / ConnectedChains.ThisChain().blockTime) : 100);
+        bool clearConvertTransition = destCurDef.IsFractional() &&
+                                      !ConnectedChains.CheckClearConvert(std::max(((int32_t)nHeight) - transitionBlocks, 1)) &&
                                       ConnectedChains.CheckClearConvert(nHeight);
 
         if (isUpdatedConversion &&
@@ -3229,7 +3231,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
             if ((totalDeposits + currenciesIn) != (reserveDepositChange + spentCurrencyOut))
             {
                 bool cleanConvertedPrimary = false;
-                if (newCurState.IsFractional() && clearConvertTransition)
+                if (clearConvertTransition)
                 {
                     CCurrencyValueMap primaryCheck = ((totalDeposits + currenciesIn) - (reserveDepositChange + spentCurrencyOut)).CanonicalMap();
                     if (primaryCheck.valueMap.size() == 1 &&
@@ -7353,12 +7355,13 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             newLocalDepositsRequired.valueMap[destCurID] -= newPrimaryCurrency;
         }
 
-        bool clearConvertTransition = !ConnectedChains.CheckClearConvert(std::max(((int32_t)nHeight) - 99, 1)) &&
+        int32_t transitionBlocks = (PBAAS_TESTMODE ? ((24 * 60 * 60) / ConnectedChains.ThisChain().blockTime) : 100) - 1;
+        bool clearConvertTransition = destCur.IsFractional() &&
+                                      !ConnectedChains.CheckClearConvert(std::max(((int32_t)nHeight) - transitionBlocks, 1)) &&
                                       ConnectedChains.CheckClearConvert(nHeight + 1) &&
                                       !ConnectedChains.CheckClearConvert(lastNotarization.notarizationHeight) && ConnectedChains.CheckClearConvert(nHeight);
 
-        if (destCur.IsFractional() &&
-            lastNotarization.currencyState.IsLaunchCompleteMarker() &&
+        if (lastNotarization.currencyState.IsLaunchCompleteMarker() &&
             clearConvertTransition)
         {
             CCurrencyValueMap localExtra;
@@ -7806,7 +7809,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         }
         CCurrencyValueMap reserveFees = rtxd.ReserveFees();
         CCurrencyValueMap reserveChange = reserveFees.NonIntersectingValues(intersectMap);
-        if (clearConvertTransition && destCur.IsFractional())
+        if (clearConvertTransition)
         {
             reserveChange.valueMap.erase(destCurID);
             intersectMap.valueMap[destCurID] = 1;
