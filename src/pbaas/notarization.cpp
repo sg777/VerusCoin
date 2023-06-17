@@ -1155,6 +1155,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                              proofRoots.count(VERUS_CHAINID) &&
                              proofRoots.find(VERUS_CHAINID)->second.rootHeight >= ConnectedChains.GetZeroViaHeight(PBAAS_TESTMODE)) ||
                             (ConnectedChains.CheckZeroViaOnlyPostLaunch(currentHeight));
+    
+    bool clearConvert = ConnectedChains.CheckClearConvert(notaHeight);
 
     CTransferDestination notaryPayee;
 
@@ -1304,7 +1306,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 newNotarization.currencyState.SetLaunchClear();
                 newNotarization.currencyState.SetPrelaunch(false);
                 newNotarization.currencyState.RevertReservesAndSupply(destCurrency.systemID, false, improvedMinCheck ?
-                                                                                                        CCoinbaseCurrencyState::PBAAS_1_0_8 :
+                                                                                                        (clearConvert ?
+                                                                                                            CCoinbaseCurrencyState::PBAAS_1_0_10 :
+                                                                                                            CCoinbaseCurrencyState::PBAAS_1_0_8) :
                                                                                                         CCoinbaseCurrencyState::PBAAS_1_0_0);
             }
             else
