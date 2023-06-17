@@ -4607,7 +4607,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID] == tx.vout[outNum].nValue &&
         (rt.IsArbitrageOnly() || p.IsEvalPKOut()))
     {
-        // arbitrage tranactions are determined by their context and statically setting the flags is prohibited
+        // arbitrage transactions are determined by their context and statically setting the flags is prohibited
         if (rt.IsArbitrageOnly() &&
             (rt.IsCurrencyExport() ||
              rt.IsIdentityExport() ||

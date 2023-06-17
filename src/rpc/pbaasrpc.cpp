@@ -5757,22 +5757,22 @@ UniValue estimateconversion(const UniValue& params, bool fHelp)
         startingAmount = startingAmount - CReserveTransactionDescriptor::CalculateConversionFeeNoMin(sourceAmount);
     }
     CAmount amountOut = 0;
-    if (sourceCurrencyID == pFractionalCurrency->GetID())
+    if (checkTransfer.IsImportToSource())
     {
         amountOut = currencyState.NativeToReserveRaw(startingAmount, currencyState.conversionPrice[currencyState.GetReserveMap()[convertToCurrencyID]]);
     }
     else
     {
         amountOut = currencyState.ReserveToNativeRaw(startingAmount, currencyState.conversionPrice[currencyState.GetReserveMap()[sourceCurrencyID]]);
-        if (secondCurrencyID == pFractionalCurrency->GetID())
+        if (reserveToReserve)
         {
-            currencyState.NativeToReserveRaw(amountOut, currencyState.viaConversionPrice[currencyState.GetReserveMap()[convertToCurrencyID]]);
+            amountOut = currencyState.NativeToReserveRaw(amountOut, currencyState.viaConversionPrice[currencyState.GetReserveMap()[secondCurrencyID]]);
         }
     }
 
     retVal.pushKV("inputcurrencyid", EncodeDestination(CIdentityID(sourceCurrencyID)));
     retVal.pushKV("netinputamount", ValueFromAmount(startingAmount));
-    retVal.pushKV("outputcurrencyid", EncodeDestination(CIdentityID(convertToCurrencyID)));
+    retVal.pushKV("outputcurrencyid", EncodeDestination(CIdentityID(reserveToReserve ? secondCurrencyID : convertToCurrencyID)));
     retVal.pushKV("estimatedcurrencyout", ValueFromAmount(amountOut));
     retVal.pushKV("estimatedcurrencystate", currencyState.ToUniValue());
     return retVal;
