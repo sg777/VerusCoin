@@ -1671,20 +1671,26 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
         CCurrencyDefinition gatewayConverter;
         if (height == 1 || ccx.IsChainDefinition())
         {
-            thisDef = CCurrencyDefinition();
+            CCurrencyDefinition startingDef;
             std::vector<CCurrencyDefinition> currencyDefs = CCurrencyDefinition::GetCurrencyDefinitions(tx);
+
+            for (auto &oneCur : currencyDefs)
+            {
+                if (oneCur.GetID() == ccx.destCurrencyID)
+                {
+                    startingDef = oneCur;
+                }
+            }
+
             for (auto &oneCur : currencyDefs)
             {
                 uint160 curID = oneCur.GetID();
-                if (curID == ccx.destCurrencyID)
-                {
-                    thisDef = oneCur;
-                }
-                else if (curID == ccx.sourceSystemID)
+                if (curID == ccx.sourceSystemID)
                 {
                     sourceDef = oneCur;
                 }
-                else if (curID == ccx.destSystemID)
+                else if ((oneCur.IsGateway() && height != 1 && startingDef.IsGatewayConverter() && startingDef.gatewayID == oneCur.GetID()) ||
+                         (oneCur.GetID() == ccx.destSystemID))
                 {
                     destSystem = oneCur;
                 }
@@ -1697,13 +1703,16 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             {
                 sourceDef = ConnectedChains.ThisChain();
             }
-            if (!thisDef.IsValid() ||
-                (!thisDef.launchSystemID.IsNull() &&
+            if (!startingDef.IsValid() ||
+                (!startingDef.launchSystemID.IsNull() &&
                  (!sourceDef.IsValid() ||
-                  thisDef.launchSystemID != sourceDef.GetID())))
+                  startingDef.launchSystemID != sourceDef.GetID())) ||
+                (startingDef.IsGatewayConverter() &&
+                 destSystem.GetID() != startingDef.gatewayID))
             {
                 return state.Error("Invalid launch currency");
             }
+            thisDef = startingDef;
         }
         else
         {
@@ -1723,12 +1732,15 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
             localFeeShare.valueMap[sourceDef.GetID()] = sourceDef.LaunchFeeExportShare(thisDef.ChainOptions());
             if (thisDef.IsGatewayConverter())
             {
-                if (!destSystem.IsValid())
+                if (!destSystem.IsValid() || destSystem.GatewayConverterID() != thisDef.GetID())
                 {
                     return state.Error("Invalid system currency or system definition not found");
                 }
-                localFeeShare.valueMap[sourceDef.GetID()] += sourceDef.LaunchFeeExportShare(destSystem.ChainOptions());
-                extraLaunchFee.valueMap[sourceDef.GetID()] = sourceDef.LaunchFeeImportShare(destSystem.ChainOptions());
+                if (thisDef.systemID != ASSETCHAINS_CHAINID)
+                {
+                    localFeeShare.valueMap[sourceDef.GetID()] += sourceDef.LaunchFeeExportShare(destSystem.ChainOptions());
+                    extraLaunchFee.valueMap[sourceDef.GetID()] = sourceDef.LaunchFeeImportShare(destSystem.ChainOptions());
+                }
             }
             else if (thisDef.IsPBaaSChain() || thisDef.IsGateway())
             {
@@ -1736,7 +1748,7 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                 {
                     return state.Error("Invalid gateway converter currency or definition not found");
                 }
-                if (gatewayConverter.IsValid())
+                if (gatewayConverter.IsValid() && gatewayConverter.systemID != ASSETCHAINS_CHAINID)
                 {
                     localFeeShare.valueMap[sourceDef.GetID()] += sourceDef.LaunchFeeExportShare(gatewayConverter.ChainOptions());
                     extraLaunchFee.valueMap[sourceDef.GetID()] = sourceDef.LaunchFeeImportShare(gatewayConverter.ChainOptions());
@@ -6063,7 +6075,8 @@ bool CConnectedChains::IsUpgradeActive(const uint160 &upgradeID, uint32_t blockH
 
 uint32_t CConnectedChains::GetZeroViaHeight(bool getVerusHeight) const
 {
-    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 69013 : 2578653) : 0;
+//    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 69013 : 2578653) : 0;
+    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 186 : 2578653) : 0;
 }
 
 bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
