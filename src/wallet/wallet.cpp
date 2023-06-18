@@ -6021,7 +6021,7 @@ bool CWallet::SelectReserveUTXOs(const CCurrencyValueMap& targetValues,
 
         for (auto oneOut : lowerOuts)
         {
-            mapCoinsRet.insert(oneOut);
+            mapCoinsRet.insert(std::make_pair(vCoins[oneOut.first].first, oneOut.second));
             valueRet += oneOut.second;
             nativeValueRet += valueRet.valueMap[ASSETCHAINS_CHAINID];
         }
