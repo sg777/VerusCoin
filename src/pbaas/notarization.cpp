@@ -1155,7 +1155,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                              proofRoots.count(VERUS_CHAINID) &&
                              proofRoots.find(VERUS_CHAINID)->second.rootHeight >= ConnectedChains.GetZeroViaHeight(PBAAS_TESTMODE)) ||
                             (ConnectedChains.CheckZeroViaOnlyPostLaunch(currentHeight));
-    
+
     bool clearConvert = ConnectedChains.CheckClearConvert(notaHeight);
 
     CTransferDestination notaryPayee;
@@ -1982,6 +1982,14 @@ UniValue CChainNotarizationData::ToUniValue(const std::vector<std::pair<CTransac
         UniValue notarization(UniValue::VOBJ);
         notarization.push_back(Pair("index", i));
         notarization.push_back(Pair("txid", vtx[i].first.hash.GetHex()));
+
+        if (IsConfirmed())
+        {
+            notarization.pushKV("notarizationmodulo", CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
+                                                                                                        (int32_t)vtx[lastConfirmed].second.notarizationHeight,
+                                                                                                        chainActive.Height() + 1));
+        }
+
         if (i < transactionsAndBlockHash.size())
         {
             notarization.push_back(Pair("blockhash", transactionsAndBlockHash[i].second.GetHex()));
