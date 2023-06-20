@@ -653,9 +653,13 @@ public:
                                          CPBaaSNotarization &notarization);
 
     bool FindEarnedNotarization(CObjectFinalization &finalization, CAddressIndexDbEntry *pEarnedNotarizationIndex=nullptr) const;
+    bool FindEarnedNotarizations(std::vector<CObjectFinalization> &finalization, std::vector<CAddressIndexDbEntry>  *pEarnedNotarizationIndex=nullptr) const;
     static bool FindFinalizedIndexByVDXFKey(const uint160 &notarizationIdxKey,
                                             CObjectFinalization &confirmedFinalization,
                                             CAddressIndexDbEntry &earnedNotarizationIndex);
+    static bool FindFinalizedIndexesByVDXFKey(const uint160 &notarizationIdxKey,
+                                              std::vector<CObjectFinalization> &confirmedFinalizations,
+                                              std::vector<CAddressIndexDbEntry> &earnedNotarizationIndex);
 
     bool CheckCrossNotarizationProgression(const CCurrencyDefinition &curDef,
                                            CPBaaSNotarization &priorNotarization,
@@ -700,6 +704,12 @@ public:
         }
         return proofRootIt->second;
     }
+
+    static bool CheckEntropyHashMatch(const uint256 &entropyHash,
+                                      const CHashCommitments &commitments,
+                                      const uint160 &currencyID,
+                                      uint32_t startingHeight,
+                                      uint32_t endHeight);
 
     static std::vector<std::pair<uint32_t, uint32_t>>
         GetBlockCommitmentRanges(uint32_t lastNotarizationHeight, uint32_t currentNotarizationHeight, uint256 entropy);

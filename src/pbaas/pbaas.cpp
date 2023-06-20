@@ -637,7 +637,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                         }
                         if (reserveMap != expectedReserves ||
                             reserveInMap != expectedReserves ||
-                            (((notarization.currencyState.IsPrelaunch() && ConnectedChains.CheckZeroViaOnlyPostLaunch(height)) || 
+                            (((notarization.currencyState.IsPrelaunch() && ConnectedChains.CheckZeroViaOnlyPostLaunch(height)) ||
                               (!notarization.currencyState.IsPrelaunch() &&
                                (importCurrency.GetID() != VERUS_CHAINID ||
                                 importCurrency.launchSystemID != VERUS_CHAINID ||
@@ -663,7 +663,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     {
                         return state.Error("Invalid values in notarization currency state of definition tx: " + tx.GetHash().GetHex());
                     }
-                    if (((notarization.currencyState.IsPrelaunch() && ConnectedChains.CheckZeroViaOnlyPostLaunch(height)) || 
+                    if (((notarization.currencyState.IsPrelaunch() && ConnectedChains.CheckZeroViaOnlyPostLaunch(height)) ||
                          (!notarization.currencyState.IsPrelaunch() &&
                           importCurrency.GetID() != VERUS_CHAINID &&
                           (importCurrency.launchSystemID != VERUS_CHAINID ||
@@ -1159,7 +1159,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                 if (notarization.IsLaunchCleared() &&
                     !notarization.currencyState.IsLaunchClear())
-                {                    
+                {
                     if (pbn.IsPreLaunch())
                     {
                         pbn.currencyState.SetLaunchClear(false);
@@ -3174,8 +3174,8 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                     CCoinbaseCurrencyState pricingState;
                     CCurrencyValueMap dummyCurrency, dummyCurrencyUsed, dummyCurrencyOut;
 
-                    if (rtxd.AddReserveTransferImportOutputs(sourceSysDef,
-                                                             destSysDef,
+                    if (rtxd.AddReserveTransferImportOutputs(checkState.IsRefunding() ? destSysDef : sourceSysDef,
+                                                             checkState.IsRefunding() ? sourceSysDef : destSysDef,
                                                              destCurDef,
                                                              checkState,
                                                              reserveTransfers,
@@ -3221,7 +3221,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
             checkState.RevertReservesAndSupply(ASSETCHAINS_CHAINID,
                                                 (destCurDef.IsGatewayConverter() && destCurDef.gatewayID == ASSETCHAINS_CHAINID) ||
                                                 (!IsVerusActive() && destCurDef.GetID() == ASSETCHAINS_CHAINID),
-                                                isUpdatedConversion ? 
+                                                isUpdatedConversion ?
                                                     (ConnectedChains.CheckClearConvert(nHeight) ?
                                                         CCoinbaseCurrencyState::PBAAS_1_0_10 :
                                                         CCoinbaseCurrencyState::PBAAS_1_0_8) :
@@ -3235,8 +3235,8 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
 
         CCurrencyValueMap importedCurrency, gatewayCurrencyUsed, spentCurrencyOut;
 
-        if (!rtxd.AddReserveTransferImportOutputs(sourceSysDef,
-                                                  destSysDef,
+        if (!rtxd.AddReserveTransferImportOutputs(checkState.IsRefunding() ? destSysDef : sourceSysDef,
+                                                  checkState.IsRefunding() ? sourceSysDef : destSysDef,
                                                   destCurDef,
                                                   checkState,
                                                   reserveTransfers,
@@ -3316,14 +3316,17 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
 
             // if we are not coming directly into the source system, there must be a separate source export as well,
             // so add gateway currency
-            if (ccxSource.sourceSystemID != ccxSource.destSystemID && ccxSource.sourceSystemID != ccxSource.destCurrencyID)
+            if (ccxSource.sourceSystemID != ccxSource.destSystemID)
             {
                 if (!(checkState.IsRefunding() && destCurDef.launchSystemID == ASSETCHAINS_CHAINID) &&
                     authorizingImport.importCurrencyID != ccxSource.sourceSystemID)
                 {
                     return eval->Error(std::string(__func__) + ": invalid currency system import thread for import to: " + EncodeDestination(CIdentityID(destCurDef.GetID())));
                 }
-                currenciesIn += gatewayCurrencyUsed;
+                if (!(checkState.IsRefunding() && sourceRD.controllingCurrencyID == destSysDef.GetID()))
+                {
+                    currenciesIn += gatewayCurrencyUsed;
+                }
             }
 
             if (newCurState.primaryCurrencyOut)
@@ -6835,23 +6838,17 @@ bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<std
     std::set<COutPoint> spentInMempool;
     auto memPoolOuts = mempool.FilterUnspent(unconfirmedUTXOs, spentInMempool);
 
-    static LRUCache<uint256, std::pair<CTransaction, uint256>> txesBeingSpent(50, 0.3);
-
     for (auto &oneConfirmed : confirmedUTXOs)
     {
         BlockMap::iterator blockIt;
         std::pair<CTransaction, uint256> txAndBlkHash;
-        bool fromCache = false;
-        bool fromChain = false;
         if (spentInMempool.count(COutPoint(oneConfirmed.first.txhash, oneConfirmed.first.index)) ||
-            (!(fromCache = txesBeingSpent.Get(oneConfirmed.first.txhash, txAndBlkHash)) &&
-             !(fromChain = myGetTransaction(oneConfirmed.first.txhash, txAndBlkHash.first, txAndBlkHash.second))) ||
+            !myGetTransaction(oneConfirmed.first.txhash, txAndBlkHash.first, txAndBlkHash.second) ||
             (blockIt = mapBlockIndex.find(txAndBlkHash.second)) == mapBlockIndex.end() ||
             !chainActive.Contains(blockIt->second))
         {
             continue;
         }
-        txesBeingSpent.Put(oneConfirmed.first.txhash, txAndBlkHash);
         oneConfirmed.second.blockHeight = blockIt->second->GetHeight();
 
         COptCCParams p;
@@ -7468,7 +7465,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             clearConvertTransition)
         {
             CCurrencyValueMap localExtra;
-            
+
             for (auto &oneDeposit : localDeposits)
             {
                 localExtra += oneDeposit.scriptPubKey.ReserveOutValue();
