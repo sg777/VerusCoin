@@ -11838,7 +11838,9 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
             "registernamecommitment \"name\" \"controladdress\" (\"referralidentity\") (\"parentnameorid\") (\"sourceoffunds\")\n"
             "\nRegisters a name commitment, which is required as a source for the name to be used when registering an identity. The name commitment hides the name itself\n"
             "while ensuring that the miner who mines in the registration cannot front-run the name unless they have also registered a name commitment for the same name or\n"
-            "are willing to forfeit the offer of payment for the chance that a commitment made now will allow them to register the name in the future.\n"
+            "are willing to forfeit the offer of payment for the chance that a commitment made now will allow them to register the name in the future.\n\n"
+
+            "Names must not have leading, trailing, or multiple consecutive spaces and must not include any of the following characters between parentheses (\\/:*?\"<>|@)\n"
 
             "\nArguments\n"
             "\"name\"                           (string, required)  the unique name to commit to. creating a name commitment is not a registration, and if one is\n"

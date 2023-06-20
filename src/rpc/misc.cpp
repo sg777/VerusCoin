@@ -463,10 +463,10 @@ UniValue validateaddress(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 1)
         throw runtime_error(
-            "validateaddress \"komodoaddress\"\n"
-            "\nReturn information about the given Komodo address.\n"
+            "validateaddress \"address\"\n"
+            "\nReturn information about the given transparent address.\n"
             "\nArguments:\n"
-            "1. \"komodoaddress\"     (string, required) The Komodo address to validate\n"
+            "1. \"address\"     (string, required) The transparent address to validate\n"
             "\nResult:\n"
             "{\n"
             "  \"isvalid\" : true|false,         (boolean) If the address is valid or not. If not, this is the only property returned.\n"
