@@ -765,7 +765,8 @@ public:
                          bool checkMempool=false,
                          bool getProofs=false,
                          uint32_t proofHeight=0,
-                         const std::vector<uint160> &indexKeys=std::vector<uint160>());
+                         const std::vector<uint160> &indexKeys=std::vector<uint160>(),
+                         bool sorted=true);
     static std::multimap<uint160, std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>>
         GetAggregatedIdentityMultimap(const uint160 &idID,
                                       uint32_t startHeight=0,
@@ -774,7 +775,8 @@ public:
                                       bool getProofs=false,
                                       uint32_t proofHeight=0,
                                       const uint160 &indexKey=uint160(),
-                                      bool keepDeleted=false);
+                                      bool keepDeleted=false,
+                                      bool sorted=true);
     static std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>>
         GetIdentityContentByKey(const uint160 &idID,
                                 const uint160 &vdxfKey,
@@ -783,7 +785,8 @@ public:
                                 bool checkMempool=false,
                                 bool getProofs=false,
                                 uint32_t proofHeight=0,
-                                bool keepDeleted=false);
+                                bool keepDeleted=false,
+                                bool sorted=false);
     static CIdentity LookupIdentity(const CIdentityID &nameID, uint32_t height=0, uint32_t *pHeightOut=nullptr, CTxIn *pTxIn=nullptr, bool checkMempool=false);
     static CIdentity LookupFirstIdentity(const CIdentityID &idID, uint32_t *pHeightOut=nullptr, CTxIn *idTxIn=nullptr, CTransaction *pidTx=nullptr);
 
@@ -983,7 +986,7 @@ public:
         action = uni_get_int64(find_value(uni, "action"));
         if (action != ACTION_CLEAR_MAP)
         {
-            entryKey.SetHex(uni_get_str(find_value(uni, "entrykey")));
+            entryKey = ParseVDXFKey(uni_get_str(find_value(uni, "entrykey")));
             if (action != ACTION_REMOVE_ALL_KEY)
             {
                 valueHash.SetHex(uni_get_str(find_value(uni, "valuehash")));

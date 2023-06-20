@@ -1804,20 +1804,20 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
 
     if (totalStakingAmount)
     {
-        LogPrint("staking", "Staking with %s VRSC\n", ValueFromAmount(totalStakingAmount).write().c_str());
+        LogPrint("staking", "Staking with %s %s\n", ValueFromAmount(totalStakingAmount).write().c_str(), ConnectedChains.ThisChain().name.c_str());
     }
     else
     {
-        LogPrint("staking", "No VRSC staking\n");
+        LogPrint("staking", "No %s staking\n", ConnectedChains.ThisChain().name.c_str());
         return false;
     }
 
     // we get these sources of entropy to prove all sources in the header
-    int posHeight = -1, powHeight = -1, altHeight = -1;
+    int posHeight = -1, powHeight = -1, altHeight = -1, proveBlockHeight, secondBlockHeight;
     uint256 pastHash;
     {
         LOCK(cs_main);
-        pastHash = chainActive.GetVerusEntropyHash(nHeight, &posHeight, &powHeight, &altHeight);
+        pastHash = chainActive.GetVerusEntropyHash(nHeight, &posHeight, &powHeight, &altHeight, &proveBlockHeight, &secondBlockHeight);
         if (extendedStake && (altHeight == -1 && (powHeight == -1 || posHeight == -1)))
         {
             printf("Error retrieving entropy hash at height %d, posHeight: %d, powHeight: %d, altHeight: %d\n", nHeight, posHeight, powHeight, altHeight);
@@ -1826,23 +1826,11 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
         }
     }
 
-    // secondBlockHeight is either less than first or -1 if there isn't one
-    int secondBlockHeight = altHeight != -1 ?
-                                altHeight :
-                                posHeight == -1 ?
-                                    posHeight :
-                                    powHeight == -1 ?
-                                        powHeight :
-                                        (posHeight > powHeight ?
-                                            powHeight :
-                                            posHeight);
-
-    int proveBlockHeight = posHeight > secondBlockHeight ? posHeight : ((powHeight == -1) ? posHeight : powHeight);
-
     if (proveBlockHeight == -1)
     {
         printf("No block suitable for proof for height %d, posHeight: %d, powHeight: %d, altHeight: %d\n", nHeight, posHeight, powHeight, altHeight);
         LogPrintf("No block suitable for proof for height %d, posHeight: %d, powHeight: %d, altHeight: %d\n", nHeight, posHeight, powHeight, altHeight);
+        return false;
     }
     else
     {
@@ -1871,7 +1859,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                     ((txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) &&
                     extendedStake &&
                     canSpend) ||
-                    (!p.IsValid() && (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH) && ::IsMine(*this, destinations[0]))))
+                    (!p.IsValid() && (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH) && ::IsMine(*this, destinations[0]) == ISMINE_SPENDABLE)))
                 {
                     uint256 txHash = txout.tx->GetHash();
                     checkStakeTx.vin.push_back(CTxIn(COutPoint(txHash, txout.i)));
@@ -1883,28 +1871,32 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                         {
                             bool isValid = true;
                             // after PBaaS activation,
-                            // we can't stake an output that is to an ID, which has been modified more recently than stakeage
-                            if (whichType == txnouttype::TX_CRYPTOCONDITION &&
-                                isPBaaS &&
-                                (chainActive.Height() >= (nHeight - 1) ?
-                                    chainActive[nHeight - 1]->nTime > PBAAS_TESTFORK_TIME :
-                                    chainActive.LastTip()->nTime > PBAAS_TESTFORK_TIME))
+                            // we can't stake an output that has a destination to an ID,
+                            // which has been modified more recently than stakeage
+                            if (whichType == txnouttype::TX_CRYPTOCONDITION && isPBaaS)
                             {
                                 for (auto &oneDest : destinations)
                                 {
                                     if (oneDest.which() == COptCCParams::ADDRTYPE_ID)
                                     {
                                         uint256 idTxId;
-                                        std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
-                                        if (!GetIdentity(CIdentityID(GetDestinationID(oneDest)), keyAndIdentity) ||
-                                            (nHeight - keyAndIdentity.first.blockHeight) < VERUS_MIN_STAKEAGE)
+                                        CIdentity destIdentity;
+                                        uint32_t idHeight;
+                                        if (!(destIdentity = CIdentity::LookupIdentity(GetDestinationID(oneDest), 0, &idHeight)).IsValid() ||
+                                            (nHeight - idHeight) < VERUS_MIN_STAKEAGE)
                                         {
-                                            if (LogAcceptCategory("staking") && !keyAndIdentity.second.IsValid())
+                                            if (LogAcceptCategory("staking"))
                                             {
-                                                LogPrintf("%s: Do not have ID %s in wallet\n", __func__, EncodeDestination(CIdentityID(GetDestinationID(oneDest))).c_str());
+                                                if (!destIdentity.IsValid())
+                                                {
+                                                    LogPrintf("%s: Invalid ID %s as UTXO destination\n", __func__, EncodeDestination(CIdentityID(GetDestinationID(oneDest))).c_str());
+                                                }
+                                                else
+                                                {
+                                                    LogPrintf("%s: Identity that has been updated more recently than minimum stake age (%d) blocks renders UTXO ineligible to stake\n", __func__, EncodeDestination(CIdentityID(GetDestinationID(oneDest))).c_str(), VERUS_MIN_STAKEAGE);
+                                                }
                                             }
                                             isValid = false;
-                                            break;
                                         }
                                     }
                                 }
@@ -1949,6 +1941,9 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                 LOCK(cs_main);
                 CDataStream headerStream = CDataStream(SER_NETWORK, PROTOCOL_VERSION);
 
+                pBlock->nTime = std::max(chainActive.LastTip()->GetMedianTimePast()+1, GetAdjustedTime());
+                bool posSourceInfo = isPBaaS && (!PBAAS_TESTMODE || pBlock->nTime >= PBAAS_TESTFORK2_TIME);
+
                 // store:
                 // 1. PBaaS header for this block
                 // 2. source transaction
@@ -1983,7 +1978,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
                     return false;
                 }
 
-                BlockMMRange blockMMR(block.GetBlockMMRTree());
+                BlockMMRange blockMMR(block.GetBlockMMRTree(posSourceInfo ? block.GetVerusEntropyHashComponent(srcIndex) : uint256()));
                 BlockMMView blockView(blockMMR);
 
                 int txIndexPos;
@@ -2016,22 +2011,48 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
 
                 headerStream << CPartialTransactionProof(txRootProof, txProofVec);
 
-                CMMRProof blockHeaderProof1;
-                if (!chainActive.GetBlockProof(mmrView, blockHeaderProof1, proveBlockHeight))
+                if (posSourceInfo)
                 {
-                    LogPrintf("%s: ERROR: could not create block proof for block %u\n", __func__, srcIndex);
-                    return false;
+                    CBlock entropyBlock1;
+                    if (!ReadBlockFromDisk(entropyBlock1, chainActive[proveBlockHeight], Params().GetConsensus(), false))
+                    {
+                        LogPrintf("%s: ERROR: could not read block number %u from disk for entropy component 1\n", __func__, proveBlockHeight);
+                        return false;
+                    }
+                    headerStream << chainActive.GetPreHeaderProof(entropyBlock1, proveBlockHeight, proveBlockHeight);
                 }
-                headerStream << CBlockHeaderProof(blockHeaderProof1, chainActive[proveBlockHeight]->GetBlockHeader());
+                else
+                {
+                    CMMRProof blockHeaderProof1;
+                    if (!chainActive.GetBlockProof(mmrView, blockHeaderProof1, proveBlockHeight))
+                    {
+                        LogPrintf("%s: ERROR: could not create block proof for block %u\n", __func__, srcIndex);
+                        return false;
+                    }
+                    headerStream << CBlockHeaderProof(blockHeaderProof1, chainActive[proveBlockHeight]->GetBlockHeader());
+                }
 
-                CMMRProof blockHeaderProof2;
-                if (!chainActive.GetBlockProof(mmrView, blockHeaderProof2, secondBlockHeight))
+                if (posSourceInfo)
                 {
-                    LogPrintf("%s: ERROR: could not create block proof for second entropy source block %u\n", __func__, srcIndex);
-                    chainActive.GetBlockProof(mmrView, blockHeaderProof2, secondBlockHeight); // repeat for debugging
-                    return false;
+                    CBlock entropyBlock2;
+                    if (!ReadBlockFromDisk(entropyBlock2, chainActive[secondBlockHeight], Params().GetConsensus(), false))
+                    {
+                        LogPrintf("%s: ERROR: could not read block number %u from disk for entropy component 1\n", __func__, proveBlockHeight);
+                        return false;
+                    }
+                    headerStream << chainActive.GetPreHeaderProof(entropyBlock2, secondBlockHeight, proveBlockHeight);
                 }
-                headerStream << CBlockHeaderProof(blockHeaderProof2, chainActive[secondBlockHeight]->GetBlockHeader());
+                else
+                {
+                    CMMRProof blockHeaderProof2;
+                    if (!chainActive.GetBlockProof(mmrView, blockHeaderProof2, secondBlockHeight))
+                    {
+                        LogPrintf("%s: ERROR: could not create block proof for second entropy source block %u\n", __func__, srcIndex);
+                        chainActive.GetBlockProof(mmrView, blockHeaderProof2, secondBlockHeight); // repeat for debugging
+                        return false;
+                    }
+                    headerStream << CBlockHeaderProof(blockHeaderProof2, chainActive[secondBlockHeight]->GetBlockHeader());
+                }
 
                 std::vector<unsigned char> stx(headerStream.begin(), headerStream.end());
 
@@ -2901,8 +2922,11 @@ bool CWallet::AddToWalletIfInvolvingMe(const CTransaction& tx, const CBlock* pbl
                                         // to prevent forced rescans, don't rescan anything that has too many UTXOs
                                         // unless this is a real rescan, and above a very small threshold, only dynamically scan
                                         // if this wallet holds revoke and recover as well
-                                        if (!isRescan &&
-                                            unspentOutputs.size() > MAX_UTXOS_ID_RESCAN)
+                                        CRating identityTrust = GetIdentityTrust(idID);
+                                        if ((ONLY_ADD_WHITELISTED_UTXOS_ID_RESCAN &&
+                                             !(identityTrust.IsValid() && identityTrust.trustLevel == identityTrust.TRUST_APPROVED)) ||
+                                            (!isRescan &&
+                                             unspentOutputs.size() > MAX_UTXOS_ID_RESCAN))
                                         {
                                             if (unspentOutputs.size() > MAX_OUR_UTXOS_ID_RESCAN)
                                             {
@@ -5446,6 +5470,83 @@ bool CloserToTarget(const CCurrencyValueMap &target, const CCurrencyValueMap &cu
     return false;
 }
 
+static void ApproximateBestReserveSubset(vector<std::pair<CUTXORef, CCurrencyValueMap>> vValue,
+                                         const CCurrencyValueMap &totalToOptimize,
+                                         const CCurrencyValueMap &targetValues,
+                                         vector<char>& vfBest,
+                                         CCurrencyValueMap& bestTotals,
+                                         int iterations = 1000)
+{
+    vector<char> vfIncluded;
+
+    vfBest.assign(vValue.size(), true);
+    bestTotals = totalToOptimize;
+
+    seed_insecure_rand();
+
+    for (int nRep = 0; nRep < iterations && bestTotals != targetValues; nRep++)
+    {
+        vfIncluded.assign(vValue.size(), false);
+        CCurrencyValueMap totals;
+        std::set<uint160> satisfied;
+        bool fReachedTarget = false;
+        for (int nPass = 0; nPass < 2 && !fReachedTarget; nPass++)
+        {
+            CCurrencyValueMap adjustedTarget(targetValues);
+            CCurrencyValueMap presentValues;
+            for (unsigned int i = 0; i < vValue.size(); i++)
+            {
+                std::set<uint160> satisfied;
+                //The solver here uses a randomized algorithm,
+                //the randomness serves no real security purpose but is just
+                //needed to prevent degenerate behavior and it is important
+                //that the rng is fast. We do not use a constant random sequence,
+                //because there may be some privacy improvement by making
+                //the selection random.
+                /* printf("targetValues\n%s\ntotals\n%s\nvValue[i].first\n%s\n", targetValues.ToUniValue().write(1,2).c_str(),
+                                                                              totals.ToUniValue().write(1,2).c_str(),
+                                                                              vValue[i].first.ToUniValue().write(1,2).c_str());
+                printf("iscloser: %d\n", CloserToTarget(targetValues, totals, vValue[i].first)); */
+
+                if ((nPass == 0 ? insecure_rand()&1 : !vfIncluded[i]) && CloserToTarget(targetValues, totals, vValue[i].second))
+                {
+                    CCurrencyValueMap relevantDelta = vValue[i].second.IntersectingValues(targetValues);
+                    totals += relevantDelta;
+                    vfIncluded[i] = true;
+                    // we reached the target if we fulfill all currencies
+
+                    adjustedTarget = targetValues.SubtractToZero(totals);
+
+                    // loop through all those that have been zeroed in the adjusted target, and mark as satisfied
+                    for (auto &oneCur : targetValues.NonIntersectingValues(adjustedTarget).valueMap)
+                    {
+                        satisfied.insert(oneCur.first);
+                    }
+
+                    if (satisfied.size() == targetValues.valueMap.size())
+                    {
+                        fReachedTarget = true;
+                        CompareValueMap comparator(targetValues);
+                        if (comparator.CompareMaps(totals, bestTotals))
+                        {
+                            bestTotals = totals;
+                            vfBest = vfIncluded;
+
+                            int bestcount = 0;
+                            for (auto oneBool : vfBest)
+                            {
+                                if (oneBool) bestcount++;
+                            }
+                        }
+                        totals = (totals - relevantDelta).CanonicalMap();
+                        vfIncluded[i] = false;
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void ApproximateBestReserveSubset(vector<pair<CCurrencyValueMap, pair<const CWalletTx*,unsigned int>>> vValue,
                                          const CCurrencyValueMap &totalToOptimize,
                                          const CCurrencyValueMap &targetValues,
@@ -5764,39 +5865,36 @@ bool CWallet::SelectCoins(const CAmount& nTargetValue, set<pair<const CWalletTx*
     return retval;
 }
 
-bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
-                                        CAmount targetNativeValue,
-                                        int nConfMine,
-                                        int nConfTheirs,
-                                        std::vector<COutput> vCoins,
-                                        std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet,
-                                        CCurrencyValueMap& valueRet,
-                                        CAmount &nativeValueRet) const
+bool CWallet::SelectReserveUTXOs(const CCurrencyValueMap& targetValues,
+                                 std::vector<std::pair<CUTXORef, CCurrencyValueMap>> &vCoins,
+                                 std::map<CUTXORef, CCurrencyValueMap> &mapCoinsRet,
+                                 CCurrencyValueMap& valueRet,
+                                 CAmount &nativeValueRet,
+                                 CValidationState &state)
 {
-    int32_t count = 0; //uint64_t lowest_interest = 0;
-    setCoinsRet.clear();
+    mapCoinsRet.clear();
     valueRet.valueMap.clear();
     nativeValueRet = 0;
-    //memset(interests,0,sizeof(interests));
 
     // for each currency type being looked for, store the lowest larger outputs found in order, up to a maximum of the number of
     // different currencies being looked for
-    std::map<uint160, std::multimap<CAmount, CReserveOutSelectionInfo>> coinsLowestLarger;
-    std::map<std::pair<const CWalletTx *, int>, CCurrencyValueMap> largerOuts;       // all those that are >= than amount requested in at least one currency
-    std::multimap<int, std::pair<std::vector<uint160>, CReserveOutSelectionInfo>> multiSatisfy;  // for outputs that satisfy >= one currency
+    std::map<uint160, std::multimap<CAmount, int>> coinsLowestLarger;
+    std::map<int, CCurrencyValueMap> largerOuts;                                // all those that are >= than amount requested in at least one currency
+    std::multimap<int, std::pair<int, CCurrencyValueMap>> multiSatisfy;         // for outputs that satisfy >= one currency
     CCurrencyValueMap largerTotal;
-    std::map<uint160, std::multimap<CAmount, CReserveOutSelectionInfo>> coinsLargestLower;
-    std::map<std::pair<const CWalletTx *, int>, CCurrencyValueMap> lowerOuts;        // all those that are lower or unneeded for larger and helpful
+    std::map<uint160, std::multimap<CAmount, int>> coinsLargestLower;
+    std::map<int, CCurrencyValueMap> lowerOuts;   // all those that are lower or unneeded for larger and helpful
     CCurrencyValueMap lowerTotal;
 
     CCurrencyValueMap nativeCent(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<CAmount>({CENT}));
 
     CCurrencyValueMap totalToOptimize;
-    std::vector<std::pair<CCurrencyValueMap, std::pair<const CWalletTx*, unsigned int>>> vOutputsToOptimize;
+    std::vector<std::pair<CUTXORef, CCurrencyValueMap>> vOutputsToOptimize;
+    std::vector<int> vOutputsToOptimizeIndexes;
 
     random_shuffle(vCoins.begin(), vCoins.end(), GetRandInt);
 
-    CCurrencyValueMap nTotalTarget = (targetValues + CCurrencyValueMap(std::vector<uint160>({ASSETCHAINS_CHAINID}), std::vector<CAmount>({targetNativeValue}))).CanonicalMap();
+    CCurrencyValueMap nTotalTarget = targetValues.CanonicalMap();
 
     // printf("totaltarget: %s\n", nTotalTarget.ToUniValue().write().c_str());
 
@@ -5804,28 +5902,12 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     std::set<uint160> satisfied_x4;
     CCurrencyValueMap targetx4(nTotalTarget * 4 + nativeCent);
 
-    for (const COutput &output : vCoins)
+    for (int coinIdx = 0; coinIdx < vCoins.size(); coinIdx++)
     {
-        if (!output.fSpendable)
-            continue;
+        auto &output = vCoins[coinIdx];
 
-        const CWalletTx *pcoin = output.tx;
-
-        if (output.nDepth < (pcoin->IsFromMe(ISMINE_ALL) ? nConfMine : nConfTheirs))
-            continue;
-
-        int i = output.i;
-        CCurrencyValueMap nAll(pcoin->vout[i].scriptPubKey.ReserveOutValue());  // all currencies, whether in target or not
+        CCurrencyValueMap nAll(output.second);          // all currencies, whether in target or not
         CCurrencyValueMap nTotal = nAll.IntersectingValues(targetValues); // nTotal will be all currencies, including native, that are also in target
-        CAmount nativeN = pcoin->vout[i].nValue;
-        if (nativeN)
-        {
-            nAll.valueMap[ASSETCHAINS_CHAINID] = nativeN;
-            if (targetNativeValue)
-            {
-                nTotal.valueMap[ASSETCHAINS_CHAINID] = nativeN;
-            }
-        }
 
         // if it has no output types we care about, next
         if (!nTotal.valueMap.size())
@@ -5833,16 +5915,15 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
             continue;
         }
 
-        // printf("nTotal: %s\n", nTotal.ToUniValue().write().c_str());
-
-        CReserveOutSelectionInfo coin(pcoin, i, nAll);
+        CAmount nativeN = nAll.valueMap[ASSETCHAINS_CHAINID];
+        nAll.valueMap.erase(ASSETCHAINS_CHAINID);
 
         // if all values are equivalent to targets, we've found the perfect output, no more searching needed
-        // TODO: should we early out, even if we have extra currencies? If so, use nTotal to commpare
+        // TODO: should we early out, even if we have extra currencies? If so, use nTotal to compare
         if (nTotal == nTotalTarget)
         {
-            setCoinsRet.insert(std::make_pair(coin.pWtx, coin.n));
-            valueRet = pcoin->vout[i].scriptPubKey.ReserveOutValue();
+            mapCoinsRet.insert(output);
+            valueRet = output.second;
             nativeValueRet = nativeN;
             return true;
         }
@@ -5854,24 +5935,23 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
         int numLarger = 0;
         std::vector<uint160> multiCurrencies;
 
-        COutput sanitizedOutput(output.tx, output.i, 0, true);
-
         // if we have some entries larger than target
         if (subtractedFromTarget.valueMap.size() < nTotalTarget.valueMap.size())
         {
             // printf("subtractedFromTarget:\n%s\nnTotal:\n%s\nnTotal.NonIntersectingValues(subtractedFromTarget):\n%s\n", subtractedFromTarget.ToUniValue().write().c_str(), nTotal.ToUniValue().write().c_str(), nTotalTarget.NonIntersectingValues(subtractedFromTarget).ToUniValue().write().c_str());
             for (auto oneCur : nTotal.NonIntersectingValues(subtractedFromTarget).valueMap)
             {
-                coinsLowestLarger[oneCur.first].insert(std::make_pair(oneCur.second, CReserveOutSelectionInfo(output.tx, output.i, nAll)));
+                coinsLowestLarger[oneCur.first].insert(std::make_pair(oneCur.second, coinIdx));
                 multiCurrencies.push_back(oneCur.first);
                 numLarger++;
             }
         }
+
         if (numLarger)
         {
-            largerOuts.insert(std::make_pair(std::make_pair(output.tx, output.i), nAll));
+            largerOuts.insert(std::make_pair(coinIdx, nTotal));
             largerTotal += nTotal;
-            multiSatisfy.insert(std::make_pair(numLarger, std::make_pair(multiCurrencies, coin)));
+            multiSatisfy.insert(std::make_pair(numLarger, std::make_pair(coinIdx, output.second)));
         }
         else
         {
@@ -5883,14 +5963,14 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
                     continue;
                 }
                 neededCurrency = true;
-                coinsLargestLower[oneCur.first].insert(std::make_pair(oneCur.second, coin));
+                coinsLargestLower[oneCur.first].insert(std::make_pair(oneCur.second, coinIdx));
             }
             if (!neededCurrency)
             {
                 continue;
             }
 
-            lowerOuts.insert(std::make_pair(std::make_pair(output.tx, output.i), nAll));
+            lowerOuts.insert(std::make_pair(coinIdx, nTotal));
             lowerTotal += nTotal;
 
             CCurrencyValueMap adjTargetx4 = targetx4.SubtractToZero(lowerTotal);
@@ -5912,16 +5992,15 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     }
 
     std::set<uint160> satisfied_larger;
-
     CCurrencyValueMap newLargerTotal;
     CCurrencyValueMap adjTotalTarget;
-    std::map<std::pair<const CWalletTx *, int>, CCurrencyValueMap> largerCoins; // int is the index into the vOutputsToOptimize to remove
+    std::map<int, CCurrencyValueMap> largerCoins; // int is the index into the vOutputsToOptimize to remove
 
     // if our lower total + larger total are not enough, no way we have enough
     if ((lowerTotal + largerTotal) < nTotalTarget)
     {
         // printf("AVAILABLE < nTotalTarget:\nlowerTotal:\n%s\nlargerTotal:\n%s\nnewLargerTotal:\n%s\nTotalTarget:\n%s\n", lowerTotal.ToUniValue().write().c_str(), largerTotal.ToUniValue().write().c_str(), newLargerTotal.ToUniValue().write().c_str(), nTotalTarget.ToUniValue().write().c_str());
-        return false;
+        return state.Error("Insufficient funds in UTXOs provided");
     }
 
     // printf("\nlowerTotal:\n%s\nlargerTotal:\n%s\nnewLargerTotal:\n%s\nTotalTarget:\n%s\n", lowerTotal.ToUniValue().write().c_str(), largerTotal.ToUniValue().write().c_str(), newLargerTotal.ToUniValue().write().c_str(), nTotalTarget.ToUniValue().write().c_str());
@@ -5929,7 +6008,8 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     for (auto &lowerOut : lowerOuts)
     {
         totalToOptimize += lowerOut.second;
-        vOutputsToOptimize.push_back(std::make_pair(lowerOut.second, std::make_pair(lowerOut.first.first, lowerOut.first.second)));
+        vOutputsToOptimizeIndexes.push_back(lowerOut.first);
+        vOutputsToOptimize.push_back(std::make_pair(vCoins[lowerOut.first].first, lowerOut.second));
     }
 
     // if all the lower amounts are just what we need, and we don't add too many inputs in the process, use them all
@@ -5941,16 +6021,17 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
 
         for (auto oneOut : lowerOuts)
         {
-            setCoinsRet.insert(std::make_pair(oneOut.first.first, oneOut.first.second));
-            valueRet += oneOut.first.first->vout[oneOut.first.second].ReserveOutValue();
-            nativeValueRet += oneOut.first.first->vout[oneOut.first.second].nValue;
+            mapCoinsRet.insert(std::make_pair(vCoins[oneOut.first].first, oneOut.second));
+            valueRet += oneOut.second;
         }
+        nativeValueRet += valueRet.valueMap[ASSETCHAINS_CHAINID];
+        valueRet.valueMap.erase(ASSETCHAINS_CHAINID);
         return true;
     }
 
     // printf("\nlowerTotal:\n%s\nlargerTotal:\n%s\nTotalTarget:\n%s\n", lowerTotal.ToUniValue().write().c_str(), largerTotal.ToUniValue().write().c_str(), nTotalTarget.ToUniValue().write().c_str());
 
-    std::map<std::pair<const CWalletTx *, int>, CReserveOutSelectionInfo> added;
+    std::set<int> added;
     largerTotal.valueMap.clear();
     CCurrencyValueMap adjustedTarget(nTotalTarget);
     std::set<uint160> satisfied;
@@ -5973,37 +6054,36 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
 
             // consider "satisfying" an exact match of any currency in the adjusted request, otherwise, we should fall through to the best fit solver
             int newFound = 0;
-            for (auto &oneCurID : multiIt->second.first)
+            for (auto &oneCur : multiIt->second.second.valueMap)
             {
-                if (!satisfied.count(oneCurID) &&
-                    multiIt->second.second.outVal.valueMap[oneCurID] == adjustedTarget.valueMap[oneCurID])
+                if (!satisfied.count(oneCur.first) &&
+                    adjustedTarget.valueMap.count(oneCur.first) &&
+                    oneCur.second == adjustedTarget.valueMap[oneCur.first])
                 {
                     newFound++;
                 }
             }
 
-            std::pair<const CWalletTx *, unsigned int> outPair({multiIt->second.second.pWtx, multiIt->second.second.n});
-
             // if we don't satisfy any new currency with this output, don't add it as we care more if singles are lower as a priotity
-            if (!newFound || added.count(outPair))
+            if (!newFound || added.count(multiIt->second.first))
             {
                 continue;
             }
 
             // this satisfies at least 1 new currency, so use it and also reduce other currencies by all amounts that it includes
             // don't check it again when looking later
-            added.insert(std::make_pair(outPair, multiIt->second.second));
+            added.insert(multiIt->second.first);
 
             // add all currency values in the transaction, as some may partially satisfy, and we should early out when we have enough
             // printf("multiIt->second.second.outVal:\n%s\n", multiIt->second.second.outVal.ToUniValue().write().c_str());
-            CCurrencyValueMap newAdded(multiIt->second.second.outVal.IntersectingValues(nTotalTarget));
+            CCurrencyValueMap newAdded(multiIt->second.second.IntersectingValues(nTotalTarget));
             largerTotal += newAdded;
-            largerOuts.erase(outPair);
+            largerOuts.erase(multiIt->second.first);
 
             //printf("adjustedTarget:\n%s\n", adjustedTarget.ToUniValue().write().c_str());
             //printf("nTotalTarget.NonIntersectingValues(adjustedTarget):\n%s\n", nTotalTarget.NonIntersectingValues(adjustedTarget).ToUniValue().write().c_str());
 
-            adjustedTarget = nTotalTarget.SubtractToZero(largerTotal);
+            adjustedTarget = adjustedTarget.SubtractToZero(largerTotal.IntersectingValues(adjustedTarget));
 
             // loop through all those that have been zeroed in the adjusted target, and mark as satisfied
             for (auto &oneCur : nTotalTarget.NonIntersectingValues(adjustedTarget).valueMap)
@@ -6014,13 +6094,18 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
         }
     }
 
+    if (adjustedTarget != nTotalTarget)
+    {
+        targetx4 = CCurrencyValueMap(adjustedTarget * 4 + nativeCent);
+    }
+
     // if we've satisfied all currency requirements with larger outputs that fit well, use what we have and be done
     if (satisfied.size() == nTotalTarget.valueMap.size())
     {
         for (auto &oneOut : added)
         {
-            setCoinsRet.insert(std::make_pair(oneOut.second.pWtx, oneOut.second.n));
-            valueRet += oneOut.second.outVal;
+            mapCoinsRet.insert(vCoins[oneOut]);
+            valueRet += vCoins[oneOut].second;
         }
         auto vRetIt = valueRet.valueMap.find(ASSETCHAINS_CHAINID);
         if (vRetIt != valueRet.valueMap.end())
@@ -6039,8 +6124,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     }
     for (auto &largerOut : largerOuts)
     {
-        COutput thisOutput(largerOut.first.first, largerOut.first.second, 0, true);
-        if (lowerOuts.count(std::make_pair(largerOut.first.first, largerOut.first.second)))
+        if (lowerOuts.count(largerOut.first))
         {
             continue;
         }
@@ -6050,7 +6134,7 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
         // printf("targetx4:\n%s\nlowerTotal:\n%s\nlargerOut.second:\n%s\n", targetx4.ToUniValue().write().c_str(), lowerTotal.ToUniValue().write().c_str(), largerOut.second.ToUniValue().write().c_str());
 
         bool useThis = false;
-        for (auto &oneCur : largerOut.second.IntersectingValues(nTotalTarget).valueMap)
+        for (auto &oneCur : largerOut.second.IntersectingValues(adjustedTarget).valueMap)
         {
             if (!satisfied.count(oneCur.first) && !satisfied_x4.count(oneCur.first))
             {
@@ -6060,15 +6144,12 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
 
         if (useThis)
         {
-            CReserveOutSelectionInfo coin(largerOut.first.first, largerOut.first.second, largerOut.second);
-
             for (auto &oneCur : largerOut.second.valueMap)
             {
-                coinsLargestLower[oneCur.first].insert(std::make_pair(oneCur.second, coin));
+                coinsLargestLower[oneCur.first].insert(std::make_pair(oneCur.second, largerOut.first));
             }
 
-            lowerOuts.insert(std::make_pair(std::make_pair(largerOut.first.first, largerOut.first.second), largerOut.second));
-
+            lowerOuts.insert(std::make_pair(largerOut.first, largerOut.second));
             lowerTotal += largerOut.second;
 
             CCurrencyValueMap adjTargetx4 = targetx4.SubtractToZero(lowerTotal);
@@ -6085,7 +6166,8 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
                 }
             }
             totalToOptimize += largerOut.second;
-            vOutputsToOptimize.push_back(std::make_pair(largerOut.second, std::make_pair(largerOut.first.first, largerOut.first.second)));
+            vOutputsToOptimizeIndexes.push_back(largerOut.first);
+            vOutputsToOptimize.push_back(vCoins[largerOut.first]);
         }
     }
 
@@ -6099,17 +6181,17 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     {
         for (int i = 0; i < vOutputsToOptimize.size(); i++)
         {
-            if (added.count(vOutputsToOptimize[i].second))
+            if (added.count(vOutputsToOptimizeIndexes[i]))
             {
                 vOutputsToRemove.push_back(i);
-                removedValue += vOutputsToOptimize[i].first;
+                removedValue += vOutputsToOptimize[i].second;
             }
         }
 
         for (auto &oneOutput : added)
         {
-            setCoinsRet.insert(std::make_pair(oneOutput.second.pWtx, oneOutput.second.n));
-            valueRet += oneOutput.second.outVal;
+            mapCoinsRet.insert(vCoins[oneOutput]);
+            valueRet += vCoins[oneOutput].second;
         }
         auto vRetIt = valueRet.valueMap.find(ASSETCHAINS_CHAINID);
         if (vRetIt != valueRet.valueMap.end())
@@ -6122,47 +6204,34 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
     // remove all that we've already added leaving a vector of those that we need to optimize
     for (int i = vOutputsToRemove.size() - 1; i >= 0; i--)
     {
+        vOutputsToOptimizeIndexes.erase(vOutputsToOptimizeIndexes.begin() + vOutputsToRemove[i]);
         vOutputsToOptimize.erase(vOutputsToOptimize.begin() + vOutputsToRemove[i]);
     }
 
     totalToOptimize = totalToOptimize.SubtractToZero(removedValue);
-    CCurrencyValueMap newOptimizationTarget = nTotalTarget.SubtractToZero(largerTotal);
-
-    /* printf("totalToOptimize:\n%s\nnewOptimizationTarget:\n%s\n", totalToOptimize.ToUniValue().write().c_str(), newOptimizationTarget.ToUniValue().write().c_str());
-    for (int i = 0; i < vOutputsToOptimize.size(); i++)
-    {
-        printf("output #%d:\nreserves:\n%s\nnative:\n%s\n",
-            i,
-            vOutputsToOptimize[i].first.ToUniValue().write().c_str(),
-            ValueFromAmount(vOutputsToOptimize[i].second.first->vout[vOutputsToOptimize[i].second.second].nValue).write().c_str());
-    } */
 
     vector<char> vfBest;
     CCurrencyValueMap bestTotals;
 
-    //printf("totalToOptimize:\n%s\nnewOptimizationTarget:\n%s\n", totalToOptimize.ToUniValue().write().c_str(), (newOptimizationTarget + nativeCent).ToUniValue().write().c_str());
+    //printf("totalToOptimize:\n%s\nnewOptimizationTarget:\n%s\n", totalToOptimize.ToUniValue().write().c_str(), (adjustedTarget + nativeCent).ToUniValue().write().c_str());
 
-    ApproximateBestReserveSubset(vOutputsToOptimize, totalToOptimize, newOptimizationTarget, vfBest, bestTotals, 1000);
-    if (bestTotals != newOptimizationTarget && totalToOptimize >= (newOptimizationTarget + nativeCent))
+    ApproximateBestReserveSubset(vOutputsToOptimize, totalToOptimize, adjustedTarget, vfBest, bestTotals, 1000);
+    if (bestTotals != adjustedTarget && totalToOptimize >= (adjustedTarget + nativeCent))
     {
-        //printf("bestTotals:\n%s\ntotalToOptimize:\n%s\nnewOptimizationTarget:\n%s\n", bestTotals.ToUniValue().write().c_str(), totalToOptimize.ToUniValue().write().c_str(), (newOptimizationTarget + nativeCent).ToUniValue().write().c_str());
-        ApproximateBestReserveSubset(vOutputsToOptimize, totalToOptimize, newOptimizationTarget + nativeCent, vfBest, bestTotals, 1000);
+        //printf("bestTotals:\n%s\ntotalToOptimize:\n%s\nnewOptimizationTarget:\n%s\n", bestTotals.ToUniValue().write().c_str(), totalToOptimize.ToUniValue().write().c_str(), (adjustedTarget + nativeCent).ToUniValue().write().c_str());
+        ApproximateBestReserveSubset(vOutputsToOptimize, totalToOptimize, adjustedTarget + nativeCent, vfBest, bestTotals, 1000);
     }
 
     for (unsigned int i = 0; i < vOutputsToOptimize.size(); i++)
     {
         if (vfBest[i])
         {
-            setCoinsRet.insert(vOutputsToOptimize[i].second);
-            valueRet += vOutputsToOptimize[i].second.first->vout[vOutputsToOptimize[i].second.second].ReserveOutValue();
-            nativeValueRet += vOutputsToOptimize[i].second.first->vout[vOutputsToOptimize[i].second.second].nValue;
-
-            /* printf("one selected\ntxid: %s, output: %d\nvalueOut: %s\n",
-                    vOutputsToOptimize[i].second.first->GetHash().GetHex().c_str(),
-                    vOutputsToOptimize[i].second.second,
-                    vOutputsToOptimize[i].first.ToUniValue().write(1,2).c_str()); */
+            mapCoinsRet.insert(vOutputsToOptimize[i]);
+            valueRet += vCoins[vOutputsToOptimizeIndexes[i]].second;
         }
     }
+    nativeValueRet += valueRet.valueMap[ASSETCHAINS_CHAINID];
+    valueRet.valueMap.erase(ASSETCHAINS_CHAINID);
 
     CCurrencyValueMap checkReturn(valueRet);
     checkReturn.valueMap[ASSETCHAINS_CHAINID] = nativeValueRet;
@@ -6171,20 +6240,65 @@ bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& targetValues,
 
     if (checkReturn.IntersectingValues(nTotalTarget) < nTotalTarget)
     {
-        return false;
+        return state.Error("Insufficient funds");
     }
-
-    LogPrint("selectcoins", "SelectCoins() best subset: ");
-    for (unsigned int i = 0; i < vOutputsToOptimize.size(); i++)
-    {
-        if (vfBest[i])
-        {
-            LogPrint("selectcoins", "%s", FormatMoney(vOutputsToOptimize[i].first.valueMap[targetValues.valueMap.begin()->first]));
-        }
-    }
-    LogPrint("selectcoins", "total %s\n", FormatMoney(bestTotals.valueMap[targetValues.valueMap.begin()->first]));
-
     return true;
+}
+
+bool CWallet::SelectReserveCoinsMinConf(const CCurrencyValueMap& _targetValues,
+                                        CAmount targetNativeValue,
+                                        int nConfMine,
+                                        int nConfTheirs,
+                                        std::vector<COutput> vCoins,
+                                        std::set<std::pair<const CWalletTx*,unsigned int> >& setCoinsRet,
+                                        CCurrencyValueMap& valueRet,
+                                        CAmount &nativeValueRet) const
+{
+    CCurrencyValueMap targetValues = _targetValues;
+    if (targetNativeValue)
+    {
+        targetValues.valueMap[ASSETCHAINS_CHAINID] = targetNativeValue;
+    }
+
+    std::vector<std::pair<CUTXORef, CCurrencyValueMap>> selectionVec;
+    std::map<CUTXORef, int> selectionIndexMap;
+
+    for (int i = 0; i < vCoins.size(); i++)
+    {
+        const COutput &output = vCoins[i];
+
+        if (!output.fSpendable)
+            continue;
+
+        const CWalletTx *pcoin = output.tx;
+
+        if (output.nDepth < (pcoin->IsFromMe(ISMINE_ALL) ? nConfMine : nConfTheirs))
+            continue;
+
+        CCurrencyValueMap nAll(pcoin->vout[output.i].scriptPubKey.ReserveOutValue());  // all currencies, whether in target or not
+        CAmount nativeN = pcoin->vout[output.i].nValue;
+        if (nativeN)
+        {
+            nAll.valueMap[ASSETCHAINS_CHAINID] = nativeN;
+        }
+        if (nAll.IntersectingValues(targetValues) == CCurrencyValueMap())
+        {
+            continue;
+        }
+        selectionVec.push_back(std::make_pair(CUTXORef(output.tx->GetHash(), output.i), nAll));
+        selectionIndexMap.insert(std::make_pair(selectionVec.back().first, i));
+    }
+    std::map<CUTXORef, CCurrencyValueMap> mapCoinsRet;
+    CValidationState state;
+    bool retVal = SelectReserveUTXOs(targetValues, selectionVec, mapCoinsRet, valueRet, nativeValueRet, state);
+
+    setCoinsRet.clear();
+
+    for (auto oneCoin : mapCoinsRet)
+    {
+        setCoinsRet.insert(std::make_pair(vCoins[selectionIndexMap[oneCoin.first]].tx, oneCoin.first.n));
+    }
+    return retVal;
 }
 
 bool CWallet::SelectReserveCoins(const CCurrencyValueMap& targetReserveValues,

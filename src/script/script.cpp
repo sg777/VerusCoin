@@ -664,10 +664,15 @@ bool CScript::IsInstantSpendOrUnspendable() const
     return isInstantSpend;
 }
 
-bool CScript::IsPayToCryptoCondition(COptCCParams &ccParams) const
+bool CScript::IsPayToCryptoCondition(COptCCParams &ccParams, bool doSizeCheck) const
 {
     CScript subScript;
     std::vector<std::vector<unsigned char>> vParams;
+
+    if (!size() || (doSizeCheck && size() > MAX_SCRIPT_SIZE))
+    {
+        return false;
+    }
 
     if (IsPayToCryptoCondition(&subScript, vParams))
     {
@@ -716,20 +721,6 @@ bool CScript::IsPayToCryptoCondition(uint32_t *ecode) const
     return false;
 }
 
-CScript &CScript::ReplaceCCParams(const COptCCParams &params)
-{
-    CScript subScript;
-    std::vector<std::vector<unsigned char>> vParams;
-    COptCCParams p;
-    if (this->IsPayToCryptoCondition(&subScript, vParams, p) || p.evalCode != params.evalCode)
-    {
-        // add the object to the end of the script
-        *this = subScript;
-        *this << params.AsVector() << OP_DROP;
-    }
-    return *this;
-}
-
 bool CScript::IsSpendableOutputType(const COptCCParams &p) const
 {
     bool isSpendable = true;
@@ -739,16 +730,23 @@ bool CScript::IsSpendableOutputType(const COptCCParams &p) const
     }
     switch (p.evalCode)
     {
-        case EVAL_CURRENCYSTATE:
+        case EVAL_CURRENCY_DEFINITION:
+        case EVAL_NOTARY_EVIDENCE:
+        case EVAL_EARNEDNOTARIZATION:
+        case EVAL_ACCEPTEDNOTARIZATION:
+        case EVAL_FINALIZE_NOTARIZATION:
         case EVAL_RESERVE_TRANSFER:
         case EVAL_IDENTITY_ADVANCEDRESERVATION:
         case EVAL_RESERVE_DEPOSIT:
+        case EVAL_CROSSCHAIN_EXPORT:
+        case EVAL_FINALIZE_EXPORT:
         case EVAL_CROSSCHAIN_IMPORT:
         case EVAL_IDENTITY_COMMITMENT:
         case EVAL_IDENTITY_PRIMARY:
         case EVAL_IDENTITY_REVOKE:
         case EVAL_IDENTITY_RECOVER:
         case EVAL_IDENTITY_RESERVATION:
+        case EVAL_FEE_POOL:
         {
             isSpendable = false;
             break;
@@ -836,7 +834,7 @@ CCurrencyValueMap CScript::ReserveOutValue(COptCCParams &p, bool spendableOnly) 
                 CCrossChainImport cci(p.vData[0]);
                 // reserve out amount when converting to reserve is 0, since the amount cannot be calculated in isolation as an input
                 // if reserve in, we can consider the output the same reserve value as the input
-                retVal = cci.totalReserveOutMap;
+                //retVal = cci.totalReserveOutMap;
                 break;
             }
 
@@ -1048,6 +1046,25 @@ uint160 CScript::AddressHash() const
     return addressHash;
 }
 
+bool COptCCParams::IsInstantSpendOrUnspendable() const
+{
+    bool isInstantSpend = false;
+    if (version >= VERSION_V3)
+    {
+        if (evalCode == EVAL_EARNEDNOTARIZATION ||
+            evalCode == EVAL_NOTARY_EVIDENCE ||
+            evalCode == EVAL_FINALIZE_NOTARIZATION ||
+            evalCode == EVAL_FINALIZE_EXPORT ||
+            evalCode == EVAL_CROSSCHAIN_IMPORT ||
+            evalCode == EVAL_CROSSCHAIN_EXPORT ||
+            evalCode == EVAL_FEE_POOL)
+        {
+            isInstantSpend = true;
+        }
+    }
+    return isInstantSpend;
+}
+
 std::set<CIndexID> COptCCParams::GetIndexKeys() const
 {
     std::set<CIndexID> destinations;
@@ -1183,7 +1200,10 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                         }
                     }
                 }
-                else if (notarization.IsBlockOneNotarization() && (notarization.currencyState.IsLaunchClear() || notarization.IsLaunchConfirmed()))
+                else if (notarization.IsBlockOneNotarization() &&
+                         (notarization.currencyState.IsLaunchClear() ||
+                          notarization.IsLaunchConfirmed() ||
+                          notarization.currencyID == ConnectedChains.ThisChain().launchSystemID))
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(notarization.currencyID, CPBaaSNotarization::LaunchNotarizationKey())));
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CPBaaSNotarization::LaunchConfirmKey())));
@@ -1402,6 +1422,15 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 for (auto defIT = identity.contentMultiMap.begin(); defIT != identity.contentMultiMap.end(); defIT++)
                 {
                     destinations.insert(CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(defIT->first, identity.GetID())));
+
+                    if (LogAcceptCategory("oracles"))
+                    {
+                        LogPrintf("%s: defIT->first: %s, identity.GetID(): %s, lookupKey: %s\n", __func__,
+                                    EncodeDestination(CIdentityID(defIT->first)).c_str(),
+                                    EncodeDestination(identity.GetID()).c_str(),
+                                    EncodeDestination(CIdentityID(CCrossChainRPCData::GetConditionID(CVDXF_Data::MultiMapKey(), CCrossChainRPCData::GetConditionID(defIT->first, identity.GetID())))).c_str());
+                    }
+
                     if (defIT->first == CVDXF_Data::TypeDefinitionKey())
                     {
                         CDataStream ss(defIT->second, SER_DISK, PROTOCOL_VERSION);
@@ -1562,6 +1591,183 @@ std::vector<CTxDestination> COptCCParams::GetDestinations() const
         }
     }
     return destinations;
+}
+
+bool COptCCParams::IsValid(bool strict, uint32_t nHeight) const
+{
+    // verify that the output is spendable as a normal smart transaction output with all known combinations and no others
+    // that may not be spendable
+    uint32_t solutionVer = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
+    bool isPBaaS = solutionVer >= CActivationHeight::ACTIVATE_PBAAS;
+    bool isVault = solutionVer >= CActivationHeight::ACTIVATE_VERUSVAULT;
+
+    bool versionInRange = (!isPBaaS && (version == VERSION_V1 || version == VERSION_V2 || version == VERSION_V3)) || (isPBaaS && version == VERSION_V3);
+    if (!((isPBaaS || isVault) && strict) ||
+        !versionInRange)
+    {
+        return versionInRange;
+    }
+    else
+    {
+        if (m > n ||
+            n != vKeys.size())
+        {
+            return false;
+        }
+        for (auto &oneDest : vKeys)
+        {
+            if (oneDest.which() != ADDRTYPE_ID &&
+                oneDest.which() != ADDRTYPE_PK &&
+                oneDest.which() != ADDRTYPE_PKH)
+            {
+                return false;
+            }
+        }
+
+        if (vData.size() > 1)
+        {
+            // back must be a valid master, and if we have more than 2, each must be a valid condition
+            // no subconditions can contain objects or funds in their scripts
+            COptCCParams master = COptCCParams(vData.back());
+            if (!master.IsValid() ||
+                !(master.evalCode == EVAL_NONE || master.evalCode == EVAL_STAKEGUARD) ||
+                master.m > master.n ||
+                master.n > 4 ||
+                (master.n != (vData.size() - 1) &&
+                 !(vData.size() == 2 &&
+                   master.n == std::max((int)master.vKeys.size(), 1))) ||
+                master.vData.size())
+            {
+                return false;
+            }
+            for (int i = 1; i < (vData.size() - 1); i++)
+            {
+                COptCCParams oneParam(vData[i]);
+                if (!oneParam.IsValid(true, nHeight))
+                {
+                    return false;
+                }
+                if (oneParam.m > oneParam.n ||
+                    oneParam.n > oneParam.vKeys.size())
+                {
+                    return false;
+                }
+                switch (oneParam.evalCode)
+                {
+                    case EVAL_STAKEGUARD:
+                    {
+                        // alternate spend
+                        // spendable to public key
+                        if (vData.size() != 3 ||
+                            oneParam.vData.size() ||
+                            oneParam.vKeys.size() != 1)
+                        {
+                            return false;
+                        }
+                        break;
+                    }
+                    case EVAL_NONE:
+                    case EVAL_IDENTITY_RECOVER:
+                    case EVAL_IDENTITY_REVOKE:
+                    {
+                        if (oneParam.vData.size())
+                        {
+                            return false;
+                        }
+                        break;
+                    }
+                    case EVAL_NOTARY_EVIDENCE:
+                    {
+                        if (oneParam.vData.size() != 1)
+                        {
+                            return false;
+                        }
+                        CNotaryEvidence evidence(vData[0]);
+                        if (!evidence.IsValid())
+                        {
+                            return false;
+                        }
+                        break;
+                    }
+                    default:
+                    {
+                        return false;
+                    }
+                }
+                for (auto &oneDest : vKeys)
+                {
+                    if (oneDest.which() != ADDRTYPE_ID &&
+                        oneDest.which() != ADDRTYPE_PK &&
+                        oneDest.which() != ADDRTYPE_PKH)
+                    {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+        else
+        {
+            switch (evalCode)
+            {
+                case EVAL_STAKEGUARD:
+                {
+                    if (vData.size() ||
+                        vKeys.size() != 1)
+                    {
+                        return false;
+                    }
+                    CCcontract_info CC;
+                    CCcontract_info *cp;
+
+                    cp = CCinit(&CC, evalCode);
+                    uint160 evalPKH = CPubKey(ParseHex(CC.CChexstr)).GetID();
+
+                    if ((vKeys[0].which() == ADDRTYPE_PK || vKeys[0].which() == ADDRTYPE_PKH) && GetDestinationID(vKeys[0]) == evalPKH)
+                    {
+                        return true;
+                    }
+                    return false;
+                }
+                case EVAL_NONE:
+                {
+                    if (vData.size() == 1)
+                    {
+                        COptCCParams master = COptCCParams(vData.back());
+                        if (!master.IsValid() ||
+                            master.evalCode != EVAL_NONE)
+                        {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+                case EVAL_IDENTITY_RECOVER:
+                case EVAL_IDENTITY_REVOKE:
+                {
+                    if (vData.size())
+                    {
+                        return false;
+                    }
+                    return true;
+                }
+                case EVAL_NOTARY_EVIDENCE:
+                {
+                    if (vData.size() != 1)
+                    {
+                        return false;
+                    }
+                    CNotaryEvidence evidence(vData[0]);
+                    if (!evidence.IsValid())
+                    {
+                        return false;
+                    }
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
 }
 
 bool COptCCParams::IsEvalPKOut() const

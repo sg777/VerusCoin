@@ -199,7 +199,9 @@ uint256 CTxOut::GetHash() const
 
 std::string CTxOut::ToString() const
 {
-    return strprintf("CTxOut(nValue=%d.%08d, scriptPubKey=%s)", nValue / COIN, nValue % COIN, HexStr(scriptPubKey).substr(0, 30));
+    UniValue scriptUni(UniValue::VOBJ);
+    ScriptPubKeyToUniv(scriptPubKey, scriptUni, true);
+    return strprintf("CTxOut(nValue=%s, scriptPubKey=%s)", ValueFromAmount(nValue).write().c_str(), scriptUni.write().c_str());
 }
 
 CMutableTransaction::CMutableTransaction() : nVersion(CTransaction::SPROUT_MIN_CURRENT_VERSION), fOverwintered(false), nVersionGroupId(0), nExpiryHeight(0), nLockTime(0), valueBalance(0) {}
@@ -802,13 +804,17 @@ uint256 CPartialTransactionProof::CheckPartialTransaction(CTransaction &outTx, b
     return txProof.CheckProof(GetPartialTransaction(outTx, pIsPartial));
 }
 
-uint256 CPartialTransactionProof::CheckBlockPreHeader(CPBaaSPreHeader &outPreHeader) const
+uint256 CPartialTransactionProof::CheckBlockPreHeader(CPBaaSPreHeader &outPreHeader, bool newPosFormat) const
 {
-    CPBaaSPreHeader preHeader = GetBlockPreHeader();
-    if (preHeader.IsValid())
+    outPreHeader = GetBlockPreHeader();
+    if (LogAcceptCategory("notarization"))
+    {
+        printf("%s: preHeader: %s\n", __func__, outPreHeader.ToUniValue().write(1,2).c_str());
+    }
+    if (outPreHeader.IsValid())
     {
         auto hw = CDefaultMMRNode::GetHashWriter();
-        return txProof.CheckProof((hw << preHeader).GetHash());
+        return txProof.CheckProof(newPosFormat ? (hw << outPreHeader).GetHash() : uint256());
     }
     return uint256();
 }

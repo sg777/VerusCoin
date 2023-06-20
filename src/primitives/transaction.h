@@ -1390,8 +1390,10 @@ public:
         return CPBaaSPreHeader();
     }
 
-    // this validates that a preheader is correct
-    uint256 CheckBlockPreHeader(CPBaaSPreHeader &outPreHeader) const;
+    // this validates that a preheader is correct according to the block MMR
+    // this only validates on the new PoS format, otherwise, the hash of the preheader
+    // is fixed and not dependent on the pre-header
+    uint256 CheckBlockPreHeader(CPBaaSPreHeader &outPreHeader, bool newPoSFormat=true) const;
 
     // for PBaaS chain proofs, we can determine the hash, block height, and power, depending on if we are block specific or
     // proven at the blockchain level
@@ -1713,7 +1715,7 @@ public:
     }
 
     // returns false if hash is null
-    bool GetOutputTransaction(CTransaction &tx, uint256 &blockHash) const;
+    bool GetOutputTransaction(CTransaction &tx, uint256 &blockHash, bool checkMemPool=true) const;
 
     UniValue ToUniValue() const;
 };
