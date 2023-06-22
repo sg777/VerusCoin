@@ -3174,8 +3174,8 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                     CCoinbaseCurrencyState pricingState;
                     CCurrencyValueMap dummyCurrency, dummyCurrencyUsed, dummyCurrencyOut;
 
-                    if (rtxd.AddReserveTransferImportOutputs(sourceSysDef,
-                                                             destSysDef,
+                    if (rtxd.AddReserveTransferImportOutputs(checkState.IsRefunding() ? destSysDef : sourceSysDef,
+                                                             checkState.IsRefunding() ? sourceSysDef : destSysDef,
                                                              destCurDef,
                                                              checkState,
                                                              reserveTransfers,
@@ -3235,8 +3235,8 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
 
         CCurrencyValueMap importedCurrency, gatewayCurrencyUsed, spentCurrencyOut;
 
-        if (!rtxd.AddReserveTransferImportOutputs(sourceSysDef,
-                                                  destSysDef,
+        if (!rtxd.AddReserveTransferImportOutputs(checkState.IsRefunding() ? destSysDef : sourceSysDef,
+                                                  checkState.IsRefunding() ? sourceSysDef : destSysDef,
                                                   destCurDef,
                                                   checkState,
                                                   reserveTransfers,
@@ -3316,14 +3316,17 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
 
             // if we are not coming directly into the source system, there must be a separate source export as well,
             // so add gateway currency
-            if (ccxSource.sourceSystemID != ccxSource.destSystemID && ccxSource.sourceSystemID != ccxSource.destCurrencyID)
+            if (ccxSource.sourceSystemID != ccxSource.destSystemID)
             {
                 if (!(checkState.IsRefunding() && destCurDef.launchSystemID == ASSETCHAINS_CHAINID) &&
                     authorizingImport.importCurrencyID != ccxSource.sourceSystemID)
                 {
                     return eval->Error(std::string(__func__) + ": invalid currency system import thread for import to: " + EncodeDestination(CIdentityID(destCurDef.GetID())));
                 }
-                currenciesIn += gatewayCurrencyUsed;
+                if (!(checkState.IsRefunding() && sourceRD.controllingCurrencyID == destSysDef.GetID()))
+                {
+                    currenciesIn += gatewayCurrencyUsed;
+                }
             }
 
             if (newCurState.primaryCurrencyOut)
