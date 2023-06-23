@@ -8534,9 +8534,9 @@ bool CPBaaSNotarization::FindFinalizedIndexesByVDXFKey(const uint160 &notarizati
             }
             if (!myGetTransaction(finalizationIndex.first.txhash, finalizationTx, blkHash) ||
                 finalizationIndex.first.index >= finalizationTx.vout.size() ||
-                blkHash.IsNull() ||
-                (blockIt = mapBlockIndex.find(blkHash)) == mapBlockIndex.end() ||
-                !chainActive.Contains(blockIt->second) ||
+                (!blkHash.IsNull() &&
+                 ((blockIt = mapBlockIndex.find(blkHash)) == mapBlockIndex.end() ||
+                  !chainActive.Contains(blockIt->second))) ||
                 !(finalizationTx.vout[finalizationIndex.first.index].scriptPubKey.IsPayToCryptoCondition(fP) &&
                     fP.IsValid() &&
                     fP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
