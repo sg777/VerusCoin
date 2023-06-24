@@ -1501,7 +1501,8 @@ public:
     enum ReversionUpdate {
         PBAAS_1_0_0 = 0,
         PBAAS_1_0_8 = 1,
-        PBAAS_1_0_10 = 2
+        PBAAS_1_0_10 = 2,
+        PBAAS_1_0_12 = 3
     };
 
     CCoinbaseCurrencyState() : primaryCurrencyOut(0), preConvertedOut(0), primaryCurrencyFees(0), primaryCurrencyConversionFees(0) {}
@@ -1610,6 +1611,7 @@ public:
                                              CCurrencyValueMap &liquidityFees,
                                              CCurrencyValueMap &convertedFees) const;
 
+    static ReversionUpdate ReversionUpdateForHeight(uint32_t height);
     void RevertReservesAndSupply(const uint160 &systemID=ASSETCHAINS_CHAINID, bool pbaasInitialChainCurrency=false, ReversionUpdate reversionUpdate=PBAAS_1_0_0);
 
     template <typename NUMBERVECTOR>

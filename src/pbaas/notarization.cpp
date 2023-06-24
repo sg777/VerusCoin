@@ -1166,6 +1166,12 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
     bool clearConvert = ConnectedChains.CheckClearConvert(notaHeight);
 
+    CCoinbaseCurrencyState::ReversionUpdate reversionUpdate = !improvedMinCheck ?
+                                                                CCoinbaseCurrencyState::PBAAS_1_0_0 :
+                                                                !clearConvert ?
+                                                                    CCoinbaseCurrencyState::PBAAS_1_0_8 :
+                                                                    CCoinbaseCurrencyState::ReversionUpdateForHeight(chainActive.Height());
+
     CTransferDestination notaryPayee;
 
     if (!externalSystemID.IsNull())
@@ -1313,11 +1319,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 newNotarization.SetPreLaunch(false);
                 newNotarization.currencyState.SetLaunchClear();
                 newNotarization.currencyState.SetPrelaunch(false);
-                newNotarization.currencyState.RevertReservesAndSupply(destCurrency.systemID, false, improvedMinCheck ?
-                                                                                                        (clearConvert ?
-                                                                                                            CCoinbaseCurrencyState::PBAAS_1_0_10 :
-                                                                                                            CCoinbaseCurrencyState::PBAAS_1_0_8) :
-                                                                                                        CCoinbaseCurrencyState::PBAAS_1_0_0);
+                newNotarization.currencyState.RevertReservesAndSupply(destCurrency.systemID, false, reversionUpdate);
             }
             else
             {
@@ -1561,7 +1563,13 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                         }
                         else if (includePostLaunchFees)
                         {
-                            tempState.primaryCurrencyIn[idx] = newNotarization.currencyState.primaryCurrencyIn[idx] + (reservesIn + tempState.reserveOut[idx]);
+                            tempState.primaryCurrencyIn[idx] = newNotarization.currencyState.primaryCurrencyIn[idx] + (reservesIn + tempState.reserveIn[idx] + tempState.reserveOut[idx]);
+                            CAmount conversionFee = tempState.conversionFees[idx];
+                            if (tempState.currencies[idx] == ASSETCHAINS_CHAINID)
+                            {
+                                conversionFee &= ~((int64_t)1);
+                            }
+                            tempState.primaryCurrencyIn[idx] -= conversionFee;
                         }
                         else
                         {

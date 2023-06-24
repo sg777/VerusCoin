@@ -3221,11 +3221,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
             checkState.RevertReservesAndSupply(ASSETCHAINS_CHAINID,
                                                 (destCurDef.IsGatewayConverter() && destCurDef.gatewayID == ASSETCHAINS_CHAINID) ||
                                                 (!IsVerusActive() && destCurDef.GetID() == ASSETCHAINS_CHAINID),
-                                                isUpdatedConversion ?
-                                                    (ConnectedChains.CheckClearConvert(nHeight) ?
-                                                        CCoinbaseCurrencyState::PBAAS_1_0_10 :
-                                                        CCoinbaseCurrencyState::PBAAS_1_0_8) :
-                                                    CCoinbaseCurrencyState::PBAAS_1_0_0);
+                                                !isUpdatedConversion ? CCoinbaseCurrencyState::PBAAS_1_0_0 : CCoinbaseCurrencyState::ReversionUpdateForHeight(nHeight));
 
             if (ccxSource.IsClearLaunch() && ccxSource.sourceSystemID == destCurDef.launchSystemID)
             {

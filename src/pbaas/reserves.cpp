@@ -2977,9 +2977,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             checkState.RevertReservesAndSupply(ASSETCHAINS_CHAINID,
                                                                (importCurrencyDef.IsGatewayConverter() && importCurrencyDef.gatewayID == ASSETCHAINS_CHAINID) ||
                                                                     (!IsVerusActive() && importCurrencyDef.GetID() == ASSETCHAINS_CHAINID),
-                                                                updatedChecks ? (ConnectedChains.CheckClearConvert(nHeight) ? CCoinbaseCurrencyState::PBAAS_1_0_10 :
-                                                                                 CCoinbaseCurrencyState::PBAAS_1_0_8) :
-                                                                                CCoinbaseCurrencyState::PBAAS_1_0_0);
+                                                                !updatedChecks ? CCoinbaseCurrencyState::PBAAS_1_0_0 : CCoinbaseCurrencyState::ReversionUpdateForHeight(nHeight));
 
                             // between clear launch and complete, we need to adjust supply for verification
                             if (!checkState.IsFractional() &&
@@ -6632,6 +6630,26 @@ CCurrencyValueMap CCoinbaseCurrencyState::CalculateConvertedFees(const std::vect
     return originalFees;
 }
 
+CCoinbaseCurrencyState::ReversionUpdate CCoinbaseCurrencyState::ReversionUpdateForHeight(uint32_t height)
+{
+    if (!ConnectedChains.CheckZeroViaOnlyPostLaunch(height))
+    {
+        return CCoinbaseCurrencyState::PBAAS_1_0_0;
+    }
+    else if (ConnectedChains.IncludePostLaunchFees(height))
+    {
+        return CCoinbaseCurrencyState::PBAAS_1_0_12;
+    }
+    else if (ConnectedChains.CheckClearConvert(height))
+    {
+        return CCoinbaseCurrencyState::PBAAS_1_0_10;
+    }
+    else
+    {
+        return CCoinbaseCurrencyState::PBAAS_1_0_8;
+    }
+}
+
 void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID, bool pbaasInitialChainCurrency, ReversionUpdate reversionUpdate)
 {
     bool processingPreconverts = !IsLaunchCompleteMarker() && !IsPrelaunch();
@@ -6650,7 +6668,21 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID, bo
             {
                 CCurrencyValueMap negativePreReserves(currencies, reserveIn);
                 negativePreReserves = negativePreReserves * -1;
-                primaryCurrencyIn = AddVectors(primaryCurrencyIn, negativePreReserves.AsCurrencyVector(currencies));
+                std::vector<int64_t> negativePrereserveVec = negativePreReserves.AsCurrencyVector(currencies);
+                if (reversionUpdate >= ReversionUpdate::PBAAS_1_0_12)
+                {
+                    for (int i = 0; i < negativePrereserveVec.size(); i++)
+                    {
+                        if (primaryCurrencyIn[i])
+                        {
+                            primaryCurrencyIn[i] += negativePrereserveVec[i];
+                        }
+                    }
+                }
+                else
+                {
+                    primaryCurrencyIn = AddVectors(primaryCurrencyIn, negativePrereserveVec);
+                }
             }
         }
         else
