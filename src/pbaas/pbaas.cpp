@@ -6086,6 +6086,26 @@ bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
     return height > GetZeroViaHeight(false);
 }
 
+uint32_t CConnectedChains::IncludePostLaunchFeeHeight(bool getVerusHeight) const
+{
+    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 87910 : 2590000) : 0;
+}
+
+bool CConnectedChains::IncludePostLaunchFees(uint32_t height) const
+{
+    return height > IncludePostLaunchFeeHeight(false);
+}
+
+bool CConnectedChains::IncludePostLaunchFeeTransition(uint32_t height) const
+{
+    return ConnectedChains.IncludePostLaunchFees(height) && (height < (IncludePostLaunchFeeHeight(false) + 100));
+}
+
+bool CConnectedChains::StartIncludePostLaunchFees(uint32_t height) const
+{
+    return PBAAS_TESTMODE && height >= 87121 && !IncludePostLaunchFees(height);
+}
+
 bool CConnectedChains::CheckClearConvert(uint32_t height) const
 {
     return (PBAAS_TESTMODE && chainActive.Height() >= (height - 1) && chainActive[height - 1]->nTime >= PBAAS_TESTFORK5_TIME) ||
