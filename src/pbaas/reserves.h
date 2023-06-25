@@ -1780,6 +1780,7 @@ public:
     static CAmount CalculateConversionFee(CAmount inputAmount);
     static CAmount CalculateConversionFeeNoMin(CAmount inputAmount);
     static CAmount CalculateAdditionalConversionFee(CAmount inputAmount);
+    static CAmount CalculateAdditionalConversionFeeNoMin(CAmount inputAmount);
 
     CAmount TotalNativeOutConverted() const
     {

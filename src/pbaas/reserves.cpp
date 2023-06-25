@@ -6814,6 +6814,23 @@ CAmount CReserveTransactionDescriptor::CalculateAdditionalConversionFee(CAmount 
     return fee;
 }
 
+// this calculates a fee that will be added to an amount and result in the same percentage as above,
+// such that a total of the inputAmount + this returned fee, if passed to CalculateConversionFee, would return
+// the same amount
+CAmount CReserveTransactionDescriptor::CalculateAdditionalConversionFeeNoMin(CAmount inputAmount)
+{
+    arith_uint256 bigAmount(inputAmount);
+    arith_uint256 bigSatoshi(SATOSHIDEN);
+    arith_uint256 conversionFee(CReserveTransfer::SUCCESS_FEE);
+
+    CAmount newAmount = ((bigAmount * bigSatoshi) / (bigSatoshi - conversionFee)).GetLow64();
+    CAmount fee = CalculateConversionFee(newAmount);
+    newAmount = inputAmount + fee;
+    fee = CalculateConversionFee(newAmount);            // again to account for minimum fee
+    fee += inputAmount - (newAmount - fee);             // add any additional difference
+    return fee;
+}
+
 bool CFeePool::GetCoinbaseFeePool(CFeePool &feePool, uint32_t height)
 {
     CBlock block;
