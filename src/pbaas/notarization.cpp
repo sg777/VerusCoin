@@ -1563,13 +1563,9 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                         }
                         else if (includePostLaunchFees)
                         {
-                            tempState.primaryCurrencyIn[idx] = newNotarization.currencyState.primaryCurrencyIn[idx] + (reservesIn + tempState.reserveIn[idx] + tempState.reserveOut[idx]);
-                            CAmount conversionFee = tempState.conversionFees[idx];
-                            if (tempState.currencies[idx] == ASSETCHAINS_CHAINID)
-                            {
-                                conversionFee &= ~((int64_t)1);
-                            }
-                            tempState.primaryCurrencyIn[idx] -= conversionFee;
+                            tempState.primaryCurrencyIn[idx] = newNotarization.currencyState.primaryCurrencyIn[idx] + (oneCurrencyID == ASSETCHAINS_CHAINID ?
+                                (reservesIn - (tempState.reserveIn[idx] - tempState.reserveOut[idx])) :
+                                reservesIn - tempState.reserveOut[idx]);
                         }
                         else
                         {
