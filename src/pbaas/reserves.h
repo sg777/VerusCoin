@@ -1613,7 +1613,10 @@ public:
                                              CCurrencyValueMap &convertedFees) const;
 
     static ReversionUpdate ReversionUpdateForHeight(uint32_t height);
-    void RevertReservesAndSupply(const uint160 &systemID=ASSETCHAINS_CHAINID, bool pbaasInitialChainCurrency=false, ReversionUpdate reversionUpdate=PBAAS_1_0_0);
+    void RevertReservesAndSupply(const CCurrencyDefinition &revertCur,
+                                 const uint160 &systemID=ASSETCHAINS_CHAINID,
+                                 bool pbaasInitialChainCurrency=false,
+                                 ReversionUpdate reversionUpdate=PBAAS_1_0_0);
 
     template <typename NUMBERVECTOR>
     static NUMBERVECTOR AddVectors(const NUMBERVECTOR &a, const NUMBERVECTOR &b)

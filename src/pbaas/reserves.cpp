@@ -2974,8 +2974,8 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 checkState.SetLaunchCompleteMarker(false);
                             }
 
-                            checkState.RevertReservesAndSupply(ASSETCHAINS_CHAINID,
-                                                               !(checkState.IsFractional() && checkState.IsLaunchClear()) &&
+                            checkState.RevertReservesAndSupply(importCurrencyDef,
+                                                               ASSETCHAINS_CHAINID,
                                                                ((importCurrencyDef.IsGatewayConverter() && importCurrencyDef.gatewayID == ASSETCHAINS_CHAINID) ||
                                                                     (!IsVerusActive() && importCurrencyDef.GetID() == ASSETCHAINS_CHAINID)),
                                                                 !updatedChecks ? CCoinbaseCurrencyState::PBAAS_1_0_0 : CCoinbaseCurrencyState::ReversionUpdateForHeight(nHeight));
@@ -6613,20 +6613,28 @@ CCoinbaseCurrencyState::ReversionUpdate CCoinbaseCurrencyState::ReversionUpdateF
     }
 }
 
-void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID, bool pbaasInitialChainCurrency, ReversionUpdate reversionUpdate)
+void CCoinbaseCurrencyState::RevertReservesAndSupply(const CCurrencyDefinition &revertCur,
+                                                     const uint160 &systemID,
+                                                     bool pbaasInitialChainCurrency,
+                                                     ReversionUpdate reversionUpdate)
 {
     bool processingPreconverts = !IsLaunchCompleteMarker() && !IsPrelaunch();
-    if (IsFractional())
+    if (IsFractional() && !IsRefunding())
     {
         // between prelaunch and postlaunch, we only revert fees since preConversions are accounted for differently
         auto reserveMap = GetReserveMap();
         if (((processingPreconverts && pbaasInitialChainCurrency) ||
              (IsLaunchClear() && !IsPrelaunch())) &&
-             reserveMap.count(systemID) && reserves[reserveMap[systemID]])
+             reserveMap.count(systemID) &&
+             reserves[reserveMap[systemID]])
         {
             // leave all currencies in
             // revert only fees at launch pricing
-            if (pbaasInitialChainCurrency && IsLaunchClear())
+            if (IsFractional() &&
+                IsLaunchClear() &&
+                !IsPrelaunch() &&
+                revertCur.IsGatewayConverter() &&
+                reserves[reserveMap[systemID]] == revertCur.gatewayConverterIssuance)
             {
                 int64_t storedSysReserves = reserves[reserveMap[systemID]];
                 RevertFees(viaConversionPrice, viaConversionPrice, systemID);
