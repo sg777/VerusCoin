@@ -5208,6 +5208,11 @@ bool FundTransparentTransactionBuilder(CWallet *pwallet, TransactionBuilder &tb,
                                             reservesUsed,
                                             nativeUsed))
     {
+        CTxDestination _dest;
+        if (!pFromDest)
+        {
+            pFromDest = &_dest;
+        }
         LogPrintf("%s: ERROR FUNDING TRANSACTION: Insufficient funds held by %s\n", __func__, EncodeDestination(*pFromDest).c_str());
         return false;
     }

@@ -8439,6 +8439,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         unsigned char ccode;
         string strReason;
         bool isRejectNewTx = false;
+        uint256 hash;
         try {
             vRecv >> LIMITED_STRING(strMsg, CMessageHeader::COMMAND_SIZE) >> ccode >> LIMITED_STRING(strReason, MAX_REJECT_MESSAGE_LENGTH);
 
@@ -8447,7 +8448,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 
             if (strMsg == "block" || strMsg == "tx")
             {
-                uint256 hash;
+                isRejectNewTx = strMsg == "tx";
                 vRecv >> hash;
                 ss << ": hash " << hash.ToString();
             }
@@ -8458,7 +8459,18 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             pfrom->fDisconnect = true;
             return false;
         }
-        Misbehaving(pfrom->GetId(), SanitizeString(strReason) == "tx-overwinter-not-active" ? 0 : 1);
+        int misbehavingLevel = (SanitizeString(strReason) == "tx-overwinter-not-active") ? 0 : 1;
+        if (isRejectNewTx &&
+            SanitizeString(strReason) == "bad-txns-inputs-spent")
+        {
+            CTransaction mTx;
+            LOCK(mempool.cs);
+            if (mempool.lookup(hash, mTx))
+            {
+                misbehavingLevel = 0;
+            }
+        }
+        Misbehaving(pfrom->GetId(), misbehavingLevel);
         return false;
     }
 
