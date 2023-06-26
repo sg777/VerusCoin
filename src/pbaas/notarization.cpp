@@ -1557,6 +1557,11 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             {
                 int64_t reservesIn;
 
+                if (!includePostLaunchFees && !rtxd.currencies.count(oneCurrencyID))
+                {
+                    continue;
+                }
+
                 if (newCumulative)
                 {
                     reservesIn = oneCurrencyID == ASSETCHAINS_CHAINID ?

@@ -1218,7 +1218,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     checkNotarization.currencyState.reserveIn = notarization.currencyState.reserveIn;
                     checkNotarization.currencyState.reserveOut = notarization.currencyState.reserveOut;
                     if ((ConnectedChains.CheckZeroViaOnlyPostLaunch(height) &&
-                         (!PBAAS_TESTMODE || chainActive[height - 1]->nTime > PBAAS_TESTFORK3_TIME)) ||
+                         (!PBAAS_TESTMODE || chainActive[height - 1]->nTime > PBAAS_TESTFORK3_TIME)) &&
                         ::AsVector(checkNotarization.currencyState) != ::AsVector(notarization.currencyState))
                     {
                         if (LogAcceptCategory("defi"))
