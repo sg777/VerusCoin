@@ -1195,7 +1195,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
 
             CReserveTransactionDescriptor rtxd;
             CCoinbaseCurrencyState importState = newNotarization.currencyState;
-            importState.RevertReservesAndSupply();
+            importState.RevertReservesAndSupply(_newChain);
             CCurrencyValueMap importedCurrency;
             CCurrencyValueMap gatewayDepositsIn;
             CCurrencyValueMap spentCurrencyOut;
