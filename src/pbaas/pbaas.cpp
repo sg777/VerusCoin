@@ -6089,7 +6089,15 @@ uint32_t CConnectedChains::IncludePostLaunchFeeHeight(bool getVerusHeight) const
 
 bool CConnectedChains::IncludePostLaunchFees(uint32_t height) const
 {
-    return height > IncludePostLaunchFeeHeight(false);
+    if (PBAAS_TESTMODE && !IsVerusActive())
+    {
+        height = std::min(((uint32_t)chainActive.Height()), height);
+        return height > 0 ? chainActive[height]->nTime >= PBAAS_TESTFORK6_TIME : false;
+    }
+    else
+    {
+        return height > IncludePostLaunchFeeHeight(false);
+    }
 }
 
 bool CConnectedChains::IncludePostLaunchFeeTransition(uint32_t height) const
