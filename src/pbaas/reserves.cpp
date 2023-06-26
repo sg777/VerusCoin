@@ -6633,12 +6633,11 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply(const CCurrencyDefinition &
             if (IsFractional() &&
                 IsLaunchClear() &&
                 !IsPrelaunch() &&
-                revertCur.IsGatewayConverter() &&
-                reserves[reserveMap[systemID]] == revertCur.gatewayConverterIssuance)
+                (revertCur.IsGatewayConverter() || reversionUpdate >= ReversionUpdate::PBAAS_1_0_12) &&
+                (!PBAAS_TESTMODE || reserves[reserveMap[systemID]] == revertCur.gatewayConverterIssuance))
             {
-                int64_t storedSysReserves = reserves[reserveMap[systemID]];
-                RevertFees(viaConversionPrice, viaConversionPrice, systemID);
-                reserves[reserveMap[systemID]] = storedSysReserves;
+                fees = std::vector<int64_t>(fees.size(), 0);
+                conversionFees = std::vector<int64_t>(conversionFees.size(), 0);
             }
             else
             {
