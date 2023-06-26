@@ -1314,13 +1314,15 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         if (((thisIsLaunchSys && notaHeight == (destCurrency.startBlock - 1)) || isBlockOnePBaaSLaunchNotarization) &&
             newNotarization.IsPreLaunch())
         {
+            bool initialPBaaSStart = destCurrency.IsGatewayConverter() || destCurrency.IsPBaaSChain();
+
             // the first block executes the second time through
             if (newNotarization.IsLaunchCleared())
             {
                 newNotarization.SetPreLaunch(false);
                 newNotarization.currencyState.SetLaunchClear();
                 newNotarization.currencyState.SetPrelaunch(false);
-                newNotarization.currencyState.RevertReservesAndSupply(destCurrency.systemID, false, reversionUpdate);
+                newNotarization.currencyState.RevertReservesAndSupply(destCurrency.systemID, initialPBaaSStart, reversionUpdate);
             }
             else
             {

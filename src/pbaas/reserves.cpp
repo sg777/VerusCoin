@@ -2975,8 +2975,9 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                             }
 
                             checkState.RevertReservesAndSupply(ASSETCHAINS_CHAINID,
-                                                               (importCurrencyDef.IsGatewayConverter() && importCurrencyDef.gatewayID == ASSETCHAINS_CHAINID) ||
-                                                                    (!IsVerusActive() && importCurrencyDef.GetID() == ASSETCHAINS_CHAINID),
+                                                               !(checkState.IsFractional() && checkState.IsLaunchClear()) &&
+                                                               ((importCurrencyDef.IsGatewayConverter() && importCurrencyDef.gatewayID == ASSETCHAINS_CHAINID) ||
+                                                                    (!IsVerusActive() && importCurrencyDef.GetID() == ASSETCHAINS_CHAINID)),
                                                                 !updatedChecks ? CCoinbaseCurrencyState::PBAAS_1_0_0 : CCoinbaseCurrencyState::ReversionUpdateForHeight(nHeight));
 
                             // between clear launch and complete, we need to adjust supply for verification
@@ -6625,7 +6626,16 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply(const uint160 &systemID, bo
         {
             // leave all currencies in
             // revert only fees at launch pricing
-            RevertFees(viaConversionPrice, viaConversionPrice, systemID);
+            if (pbaasInitialChainCurrency && IsLaunchClear())
+            {
+                int64_t storedSysReserves = reserves[reserveMap[systemID]];
+                RevertFees(viaConversionPrice, viaConversionPrice, systemID);
+                reserves[reserveMap[systemID]] = storedSysReserves;
+            }
+            else
+            {
+                RevertFees(viaConversionPrice, viaConversionPrice, systemID);
+            }
             if (reversionUpdate >= ReversionUpdate::PBAAS_1_0_8 && processingPreconverts)
             {
                 CCurrencyValueMap negativePreReserves(currencies, reserveIn);

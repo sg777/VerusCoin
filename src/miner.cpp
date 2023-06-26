@@ -980,8 +980,9 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             std::vector<CReserveTransfer> exportTransfers(_exportTransfers);
 
             bool updatedMinMax = newCurrency.IsPBaaSChain() &&
-                                 lastNotarization.proofRoots.count(VERUS_CHAINID) &&
-                                 lastNotarization.proofRoots.find(VERUS_CHAINID)->second.rootHeight >= ConnectedChains.GetZeroViaHeight(PBAAS_TESTMODE);
+                                 (!PBAAS_TESTMODE ||
+                                  (lastNotarization.proofRoots.count(VERUS_CHAINID) &&
+                                   lastNotarization.proofRoots.find(VERUS_CHAINID)->second.rootHeight >= ConnectedChains.GetZeroViaHeight(PBAAS_TESTMODE)));
 
             if (updatedMinMax)
             {
