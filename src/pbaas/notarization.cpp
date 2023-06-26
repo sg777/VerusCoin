@@ -1591,49 +1591,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 {
                     tempReserves.valueMap[oneCurrencyID] = reservesIn;
                 }
-
-                /*
-                if (rtxd.currencies.count(oneCurrencyID))
-                {
-                    int64_t reservesIn = newCumulative ?
-                        oneCurrencyID == ASSETCHAINS_CHAINID ?
-                            (rtxd.nativeIn - rtxd.nativeOut) :
-                            (rtxd.currencies[oneCurrencyID].reserveIn - (rtxd.currencies[oneCurrencyID].reserveConversionFees + rtxd.currencies[oneCurrencyID].reserveOut)) :
-                        rtxd.currencies[oneCurrencyID].nativeOutConverted;
-
-                    if (newCumulative)
-                    {
-                        int idx = currencyIdxMap[oneCurrencyID];
-                        if (includePostLaunchFeeTransition)
-                        {
-                            tempState.primaryCurrencyIn[idx] = newNotarization.currencyState.primaryCurrencyIn[idx] + reservesIn;
-                        }
-                        else if (includePostLaunchFees)
-                        {
-                            tempState.primaryCurrencyIn[idx] = newNotarization.currencyState.primaryCurrencyIn[idx] + (oneCurrencyID == ASSETCHAINS_CHAINID ?
-                                (reservesIn - (tempState.reserveIn[idx] - tempState.reserveOut[idx])) :
-                                reservesIn - tempState.reserveOut[idx]);
-                        }
-                        else
-                        {
-                            if (oneCurrencyID == ASSETCHAINS_CHAINID)
-                            {
-                                tempState.primaryCurrencyIn[idx] =
-                                    (this->currencyState.primaryCurrencyIn[idx] + rtxd.nativeIn + tempState.reserveOut[idx]) - rtxd.nativeOut;
-                            }
-                            else
-                            {
-                                tempState.primaryCurrencyIn[idx] = this->currencyState.primaryCurrencyIn[idx] + reservesIn;
-                            }
-                        }
-                    }
-
-                    if (reservesIn)
-                    {
-                        tempReserves.valueMap[oneCurrencyID] = reservesIn;
-                    }
-                }
-                */
             }
 
             // use double entry to enable pass through of the accumulated reserve such that when
