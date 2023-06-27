@@ -4838,7 +4838,8 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         else if (haveFullChain &&
                  ConnectedChains.CheckZeroViaOnlyPostLaunch(height) &&
                  (!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK4_TIME) &&
-                 !importState.IsLaunchCompleteMarker())
+                 !importState.IsLaunchCompleteMarker() &&
+                 !ConnectedChains.NotarySystems().count(importState.GetID()))
         {
             if (rt.IsCurrencyExport() ||
                 rt.IsConversion() ||
