@@ -6540,7 +6540,7 @@ CCurrencyValueMap CCoinbaseCurrencyState::CalculateConvertedFees(const std::vect
     CCurrencyValueMap originalFees(currencies, fees);
     auto reserveIndexMap = GetReserveMap();
     feesConverted = false;
-    if (IsFractional() && reserveIndexMap.count(systemID) && reserveIndexMap.find(systemID)->second)
+    if (IsFractional() && reserveIndexMap.count(systemID))
     {
         feesConverted = true;
 

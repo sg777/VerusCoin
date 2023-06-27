@@ -4510,15 +4510,22 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                         liquidityFees,
                                         cbFees);
 
+                                std::map<uint160, int32_t> currencyIndexMap = newNotarization.currencyState.GetReserveMap();
+                                bool newGatewayConverter = (cbCurDef.IsGatewayConverter() &&
+                                                            cbCurDef.gatewayID == ASSETCHAINS_CHAINID &&
+                                                            (!PBAAS_TESTMODE ||
+                                                            tempLastNotarization.currencyState.reserves[currencyIndexMap[ASSETCHAINS_CHAINID]] ==
+                                                                    cbCurDef.gatewayConverterIssuance));
+
                                 if (!feesConverted)
                                 {
                                     cbFees = (originalFees - liquidityFees);
                                 }
 
-                                printf("originalFees: %s\ncbFees: %s\nliquidityFees: %s\n",
-                                    originalFees.ToUniValue().write(1,2).c_str(),
-                                    cbFees.ToUniValue().write(1,2).c_str(),
-                                    liquidityFees.ToUniValue().write(1,2).c_str()); //*/
+                                LogPrint("notarization", "originalFees: %s\ncbFees: %s\nliquidityFees: %s\n",
+                                            originalFees.ToUniValue().write(1,2).c_str(),
+                                            cbFees.ToUniValue().write(1,2).c_str(),
+                                            liquidityFees.ToUniValue().write(1,2).c_str()); //*/
 
                                 // display import outputs
                                 /*CMutableTransaction debugTxOut;
@@ -4551,13 +4558,13 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                                                         tempLastNotarization.currencyState.reserveIn);
                                 }
 
-                                if (!cbCurDef.IsFractional())
+                                if (!cbCurDef.IsFractional() || newGatewayConverter)
                                 {
                                     gatewayDeposits += originalFees;
                                 }
                                 gatewayDeposits.valueMap[cbCurID] += gatewayDepositsUsed.valueMap[cbCurID] + newNotarization.currencyState.primaryCurrencyOut;
 
-                                printf("importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n",
+                                LogPrint("notarization", "importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n",
                                     importedCurrency.ToUniValue().write(1,2).c_str(),
                                     spentCurrencyOut.ToUniValue().write(1,2).c_str(),
                                     gatewayDeposits.ToUniValue().write(1,2).c_str()); //*/
@@ -4652,9 +4659,9 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
                 UniValue jsonTx(UniValue::VOBJ);
                 TxToUniv(tx, uint256(), jsonTx);
-                printf("%s: coinbase tx: %s\n", __func__, jsonTx.write(1,2).c_str());
-                printf("%s: coinbase rtxd: %s\n", __func__, rtxd.ToUniValue().write(1,2).c_str());
-                printf("%s: nativeFees: %ld, reserve fees: %s\nextra coinbase outputs: %s\n", __func__, nFees, totalReserveTxFees.ToUniValue().write(1,2).c_str(), validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str());
+                LogPrint("notarization", "%s: coinbase tx: %s\n", __func__, jsonTx.write(1,2).c_str());
+                LogPrint("notarization", "%s: coinbase rtxd: %s\n", __func__, rtxd.ToUniValue().write(1,2).c_str());
+                LogPrint("notarization", "%s: nativeFees: %ld, reserve fees: %s\nextra coinbase outputs: %s\n", __func__, nFees, totalReserveTxFees.ToUniValue().write(1,2).c_str(), validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str());
                 //*/
             }
             else if (!isVerusActive)
