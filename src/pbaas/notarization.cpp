@@ -3156,6 +3156,7 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                         bool isPartial = false;
                         uint256 txMMRRoot = ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.CheckPartialTransaction(outTx, &isPartial);
                         uint256 txHash = ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.TransactionHash();
+                        uint256 rootPower = ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetRootPower();
 
                         if (LogAcceptCategory("notarization"))
                         {
@@ -3164,26 +3165,30 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                             UniValue jsonTx(UniValue::VOBJ);
                             uint256 blockHash;
                             TxToUniv(outTx, blockHash, jsonTx);
-                            printf("%s: proof for transaction %s\nwith txid: %s\nproof: %s\nat height: %u, proofheight: %u\n",
+                            printf("%s: proof for transaction %s\nwith txid: %s\nproof: %s\nat height: %u, proofheight: %u, rootpower: %s\n",
                                     __func__,
                                     jsonTx.write(1,2).c_str(),
                                     txHash.GetHex().c_str(),
                                     ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.ToUniValue().write(1,2).c_str(),
                                     ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight(),
-                                    ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetProofHeight());
-                            LogPrintf("%s: proof for transaction %s\nwith txid: %s\nproof: %s\nat height: %u, proofheight: %u\n",
+                                    ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetProofHeight(),
+                                    rootPower.GetHex().c_str());
+                            LogPrintf("%s: proof for transaction %s\nwith txid: %s\nproof: %s\nat height: %u, proofheight: %u, rootpower: %s\n",
                                     __func__,
                                     jsonTx.write(1,2).c_str(),
                                     txHash.GetHex().c_str(),
                                     ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.ToUniValue().write(1,2).c_str(),
                                     ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetBlockHeight(),
-                                    ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetProofHeight());
+                                    ((CChainObject<CPartialTransactionProof> *)proofComponent)->object.GetProofHeight(),
+                                    rootPower.GetHex().c_str());
                         }
 
                         // find the last notarization on the transaction. if we need more proof to address a challenge, we will need to retain this
                         // either the notarization is the block 1 coinbase proof, or it is a proof of a transaction on the other chain that corresponds
                         // to a confirmed or pending transaction on this chain.
-                        if (txMMRRoot == provenNotarization.proofRoots[provenNotarization.currencyID].stateRoot)
+                        CProofRoot &checkRoot = provenNotarization.proofRoots[provenNotarization.currencyID];
+                        if (txMMRRoot == checkRoot.stateRoot &&
+                            rootPower == checkRoot.compactPower)
                         {
                             for (auto &oneOut : outTx.vout)
                             {
