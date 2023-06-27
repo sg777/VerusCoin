@@ -8944,6 +8944,29 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             LogPrint("mempool", "%s from peer=%d %s was not accepted into the memory pool: %s\n", tx.GetHash().ToString(),
                      pfrom->id, pfrom->cleanSubVer,
                      state.GetRejectReason());
+            
+            if (state.GetRejectReason() == "bad-txns-inputs-spent" && nDoS <= 1)
+            {
+                CObjectFinalization of;
+                // if it is an import or export, don't report to reduce network traffic. that will happen.
+                for (auto &oneOut : tx.vout)
+                {
+                    COptCCParams chkP;
+                    if (CCrossChainExport(oneOut.scriptPubKey).IsValid() ||
+                        CCrossChainImport(oneOut.scriptPubKey).IsValid() ||
+                        CPBaaSNotarization(oneOut.scriptPubKey).IsValid() ||
+                        (oneOut.scriptPubKey.IsPayToCryptoCondition(chkP) &&
+                         chkP.IsValid() &&
+                         chkP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                         chkP.vData.size() &&
+                         (of = CObjectFinalization(chkP.vData[0])).IsValid() &&
+                         of.IsConfirmed()))
+                    {
+                        nDoS = 0;
+                        break;
+                    }
+                }
+            }
             pfrom->PushMessage("reject", strCommand, state.GetRejectCode(),
                                state.GetRejectReason().substr(0, MAX_REJECT_MESSAGE_LENGTH), inv.hash);
             if (nDoS > 0)
