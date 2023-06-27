@@ -5943,12 +5943,19 @@ void CConnectedChains::CheckOracleUpgrades()
 
     ConnectedChains.activeUpgradesByKey.clear();
 
+    // only check on mainnet after last known clear point
+    uint32_t startHeight = 0;
+    if (IsVerusMainnetActive() && height >= PBAAS_LASTKNOWNCLEARORACLE_HEIGHT)
+    {
+        startHeight = PBAAS_LASTKNOWNCLEARORACLE_HEIGHT;
+    }
+
     std::vector<std::tuple<std::vector<unsigned char>, uint256, uint32_t, CUTXORef, CPartialTransactionProof>> upgradeData;
     if (CConstVerusSolutionVector::GetVersionByHeight(chainActive.Height()) >= CActivationHeight::ACTIVATE_PBAAS)
     {
         upgradeData = CIdentity::GetIdentityContentByKey(oracleToUse,
                                                          UpgradeDataKey(ASSETCHAINS_CHAINID),
-                                                         0,
+                                                         startHeight,
                                                          0,
                                                          false,
                                                          false,
@@ -6088,7 +6095,7 @@ bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
 
 uint32_t CConnectedChains::IncludePostLaunchFeeHeight(bool getVerusHeight) const
 {
-    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 93066 : 2603707) : 0;
+    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 93066 : 2606526) : 0;
 }
 
 bool CConnectedChains::IncludePostLaunchFees(uint32_t height) const
