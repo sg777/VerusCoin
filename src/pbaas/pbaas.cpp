@@ -7147,6 +7147,20 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             continue;
         }
 
+        // burn ctc
+        if (PBAAS_TESTMODE && destCur.name == "ctc" && destCur.parent == VERUS_CHAINID)
+        {
+            CCurrencyDefinition checkCurDef;
+            int32_t defHeight;
+            CUTXORef checkUTXORef;
+            uint256 txHash = uint256S("58cbbabe931447bd063fc0b147459af3642b0c515aa4ba46892e76935be9a4e9");
+            if (GetCurrencyDefinition(destCur.GetID(), checkCurDef, &defHeight, false, false, &checkUTXORef) &&
+                checkUTXORef.hash == txHash)
+            {
+                continue;
+            }
+        }
+
         // now, we have:
         // 1. last import output + potentially additional reserve transfer storage outputs to spend from prior import
         // 2. reserve transfers for next import
