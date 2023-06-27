@@ -5937,10 +5937,6 @@ void CConnectedChains::CheckOracleUpgrades()
         return;
     }
 
-    // limited number of upgrades considered in each client at a time currently
-    uint32_t startHeight = 0;
-    uint32_t delta = std::max((1440 * 60) / ConnectedChains.ThisChain().blockTime, (uint32_t)1440);
-
     ConnectedChains.activeUpgradesByKey.clear();
 
     // only check on mainnet after last known clear point
