@@ -1214,9 +1214,12 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                 }
                 if (::AsVector(checkNotarization.currencyState) != ::AsVector(notarization.currencyState))
                 {
-                    checkNotarization.currencyState.primaryCurrencyIn = notarization.currencyState.primaryCurrencyIn;
-                    checkNotarization.currencyState.reserveIn = notarization.currencyState.reserveIn;
-                    checkNotarization.currencyState.reserveOut = notarization.currencyState.reserveOut;
+                    if (height == 1 || !ConnectedChains.IncludePostLaunchFees(height - 1))
+                    {
+                        checkNotarization.currencyState.primaryCurrencyIn = notarization.currencyState.primaryCurrencyIn;
+                        checkNotarization.currencyState.reserveIn = notarization.currencyState.reserveIn;
+                        checkNotarization.currencyState.reserveOut = notarization.currencyState.reserveOut;
+                    }
                     if ((ConnectedChains.CheckZeroViaOnlyPostLaunch(height) &&
                          (!PBAAS_TESTMODE || chainActive[height - 1]->nTime > PBAAS_TESTFORK3_TIME)) &&
                         ::AsVector(checkNotarization.currencyState) != ::AsVector(notarization.currencyState))
