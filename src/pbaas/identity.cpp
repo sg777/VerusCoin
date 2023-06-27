@@ -2825,8 +2825,15 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                 }
                 if (i == outNum)
                 {
-                    return ConnectedChains.FirstNotaryChain().IsValid() &&
-                           IsValidBlockOneCoinbase(tx.vout, ConnectedChains.FirstNotaryChain(), ConnectedChains.ThisChain(), state);
+                    if (ConnectedChains.FirstNotaryChain().IsValid() &&
+                        IsValidBlockOneCoinbase(tx.vout, ConnectedChains.FirstNotaryChain(), ConnectedChains.ThisChain(), state))
+                    {
+                        return true;
+                    }
+                    else
+                    {
+                        return state.Error("Invalid block 1 coinbase");
+                    }
                 }
                 else
                 {
