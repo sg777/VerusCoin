@@ -12702,8 +12702,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     int64_t expectedFee = referralID.IsNull() ? feeOffer : feeOffer - idReferralFee;
 
     if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
-        (issuingCurrency.endBlock == 0 ||
-         issuingCurrency.endBlock < height))
+        (issuingCurrency.endBlock == 0 || height < issuingCurrency.endBlock))
     {
         if (issuerID == ASSETCHAINS_CHAINID)
         {
