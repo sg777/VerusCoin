@@ -4510,15 +4510,22 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                         liquidityFees,
                                         cbFees);
 
+                                std::map<uint160, int32_t> currencyIndexMap = newNotarization.currencyState.GetReserveMap();
+                                bool newGatewayConverter = (cbCurDef.IsGatewayConverter() &&
+                                                            cbCurDef.gatewayID == ASSETCHAINS_CHAINID &&
+                                                            (!PBAAS_TESTMODE ||
+                                                            tempLastNotarization.currencyState.reserves[currencyIndexMap[ASSETCHAINS_CHAINID]] ==
+                                                                    cbCurDef.gatewayConverterIssuance));
+
                                 if (!feesConverted)
                                 {
                                     cbFees = (originalFees - liquidityFees);
                                 }
 
-                                printf("originalFees: %s\ncbFees: %s\nliquidityFees: %s\n",
-                                    originalFees.ToUniValue().write(1,2).c_str(),
-                                    cbFees.ToUniValue().write(1,2).c_str(),
-                                    liquidityFees.ToUniValue().write(1,2).c_str()); //*/
+                                LogPrint("notarization", "originalFees: %s\ncbFees: %s\nliquidityFees: %s\n",
+                                            originalFees.ToUniValue().write(1,2).c_str(),
+                                            cbFees.ToUniValue().write(1,2).c_str(),
+                                            liquidityFees.ToUniValue().write(1,2).c_str()); //*/
 
                                 // display import outputs
                                 /*CMutableTransaction debugTxOut;
@@ -4551,13 +4558,13 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                                                         tempLastNotarization.currencyState.reserveIn);
                                 }
 
-                                if (!cbCurDef.IsFractional())
+                                if (!cbCurDef.IsFractional() || newGatewayConverter)
                                 {
                                     gatewayDeposits += originalFees;
                                 }
                                 gatewayDeposits.valueMap[cbCurID] += gatewayDepositsUsed.valueMap[cbCurID] + newNotarization.currencyState.primaryCurrencyOut;
 
-                                printf("importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n",
+                                LogPrint("notarization", "importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n",
                                     importedCurrency.ToUniValue().write(1,2).c_str(),
                                     spentCurrencyOut.ToUniValue().write(1,2).c_str(),
                                     gatewayDeposits.ToUniValue().write(1,2).c_str()); //*/
@@ -4652,9 +4659,9 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
                 UniValue jsonTx(UniValue::VOBJ);
                 TxToUniv(tx, uint256(), jsonTx);
-                printf("%s: coinbase tx: %s\n", __func__, jsonTx.write(1,2).c_str());
-                printf("%s: coinbase rtxd: %s\n", __func__, rtxd.ToUniValue().write(1,2).c_str());
-                printf("%s: nativeFees: %ld, reserve fees: %s\nextra coinbase outputs: %s\n", __func__, nFees, totalReserveTxFees.ToUniValue().write(1,2).c_str(), validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str());
+                LogPrint("notarization", "%s: coinbase tx: %s\n", __func__, jsonTx.write(1,2).c_str());
+                LogPrint("notarization", "%s: coinbase rtxd: %s\n", __func__, rtxd.ToUniValue().write(1,2).c_str());
+                LogPrint("notarization", "%s: nativeFees: %ld, reserve fees: %s\nextra coinbase outputs: %s\n", __func__, nFees, totalReserveTxFees.ToUniValue().write(1,2).c_str(), validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str());
                 //*/
             }
             else if (!isVerusActive)
@@ -8439,6 +8446,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         unsigned char ccode;
         string strReason;
         bool isRejectNewTx = false;
+        uint256 hash;
         try {
             vRecv >> LIMITED_STRING(strMsg, CMessageHeader::COMMAND_SIZE) >> ccode >> LIMITED_STRING(strReason, MAX_REJECT_MESSAGE_LENGTH);
 
@@ -8447,7 +8455,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 
             if (strMsg == "block" || strMsg == "tx")
             {
-                uint256 hash;
+                isRejectNewTx = strMsg == "tx";
                 vRecv >> hash;
                 ss << ": hash " << hash.ToString();
             }
@@ -8458,7 +8466,18 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             pfrom->fDisconnect = true;
             return false;
         }
-        Misbehaving(pfrom->GetId(), SanitizeString(strReason) == "tx-overwinter-not-active" ? 0 : 1);
+        int misbehavingLevel = (SanitizeString(strReason) == "tx-overwinter-not-active") ? 0 : 1;
+        if (isRejectNewTx &&
+            SanitizeString(strReason) == "bad-txns-inputs-spent")
+        {
+            CTransaction mTx;
+            LOCK(mempool.cs);
+            if (mempool.lookup(hash, mTx))
+            {
+                misbehavingLevel = 0;
+            }
+        }
+        Misbehaving(pfrom->GetId(), misbehavingLevel);
         return false;
     }
 
@@ -8925,6 +8944,29 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             LogPrint("mempool", "%s from peer=%d %s was not accepted into the memory pool: %s\n", tx.GetHash().ToString(),
                      pfrom->id, pfrom->cleanSubVer,
                      state.GetRejectReason());
+            
+            if (state.GetRejectReason() == "bad-txns-inputs-spent" && nDoS <= 1)
+            {
+                CObjectFinalization of;
+                // if it is an import or export, don't report to reduce network traffic. that will happen.
+                for (auto &oneOut : tx.vout)
+                {
+                    COptCCParams chkP;
+                    if (CCrossChainExport(oneOut.scriptPubKey).IsValid() ||
+                        CCrossChainImport(oneOut.scriptPubKey).IsValid() ||
+                        CPBaaSNotarization(oneOut.scriptPubKey).IsValid() ||
+                        (oneOut.scriptPubKey.IsPayToCryptoCondition(chkP) &&
+                         chkP.IsValid() &&
+                         chkP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                         chkP.vData.size() &&
+                         (of = CObjectFinalization(chkP.vData[0])).IsValid() &&
+                         of.IsConfirmed()))
+                    {
+                        nDoS = 0;
+                        break;
+                    }
+                }
+            }
             pfrom->PushMessage("reject", strCommand, state.GetRejectCode(),
                                state.GetRejectReason().substr(0, MAX_REJECT_MESSAGE_LENGTH), inv.hash);
             if (nDoS > 0)

@@ -980,8 +980,9 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             std::vector<CReserveTransfer> exportTransfers(_exportTransfers);
 
             bool updatedMinMax = newCurrency.IsPBaaSChain() &&
-                                 lastNotarization.proofRoots.count(VERUS_CHAINID) &&
-                                 lastNotarization.proofRoots.find(VERUS_CHAINID)->second.rootHeight >= ConnectedChains.GetZeroViaHeight(PBAAS_TESTMODE);
+                                 (!PBAAS_TESTMODE ||
+                                  (lastNotarization.proofRoots.count(VERUS_CHAINID) &&
+                                   lastNotarization.proofRoots.find(VERUS_CHAINID)->second.rootHeight >= ConnectedChains.GetZeroViaHeight(PBAAS_TESTMODE)));
 
             if (updatedMinMax)
             {
@@ -1018,6 +1019,12 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                     feesConverted,
                     liquidityFees,
                     additionalFees);
+
+            std::map<uint160, int32_t> currencyIndexMap = newNotarization.currencyState.GetReserveMap();
+            bool newGatewayConverter = (newCurrency.IsGatewayConverter() &&
+                                        newCurrency.gatewayID == newChainID &&
+                                        (!PBAAS_TESTMODE ||
+                                        tempLastNotarization.currencyState.reserves[currencyIndexMap[newChainID]] == newCurrency.gatewayConverterIssuance));
 
             if (!feesConverted)
             {
@@ -1080,7 +1087,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             {
                 gatewayDeposits = CCurrencyValueMap(lastNotarization.currencyState.currencies, lastNotarization.currencyState.reserveIn);
             }
-            if (!newCurrency.IsFractional())
+            if (!newCurrency.IsFractional() || newGatewayConverter)
             {
                 gatewayDeposits += originalFees;
             }
@@ -1113,7 +1120,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 outputs.push_back(CTxOut(nativeOut, MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, depositDests, 1, &rd))));
             }
 
-            if (newCurrency.notaries.size())
+            if (newCurrency.notaries.size() && newCurrency.IsPBaaSChain())
             {
                 // notaries all get an even share of 10% of the launch fee in the launch currency to use for notarizing
                 // they may also get pre-allocations
@@ -1194,7 +1201,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
 
             CReserveTransactionDescriptor rtxd;
             CCoinbaseCurrencyState importState = newNotarization.currencyState;
-            importState.RevertReservesAndSupply();
+            importState.RevertReservesAndSupply(_newChain);
             CCurrencyValueMap importedCurrency;
             CCurrencyValueMap gatewayDepositsIn;
             CCurrencyValueMap spentCurrencyOut;
@@ -1652,6 +1659,9 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
     std::map<uint160, CCurrencyValueMap> fundsRecipients;
     CCurrencyValueMap blockOneMinerFunds;
 
+    int64_t converterIssuance = 0;
+    bool updatedProtocol = !PBAAS_TESTMODE;
+
     int firstPBaaSOut = 0;
     bool doneMinerOuts = false;
 
@@ -1776,6 +1786,7 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
                                     blockOneCurrencies.insert(oneCurrencyID);
                                 }
                             }
+                            converterIssuance = oneCurrency.gatewayConverterIssuance;
                         }
                         blockOneCurrencies.erase(oneID);
                         removedCurrencies.insert(oneID);
@@ -1809,6 +1820,11 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
                             return state.Error("Invalid currency import info");
                         }
                         currencyImports[oneID].second = notarization;
+                        if (notarization.currencyID == converterCurrencyID &&
+                            notarization.currencyState.reserves[notarization.currencyState.GetReserveMap()[newChainID]] == converterIssuance)
+                        {
+                            updatedProtocol = true;
+                        }
                     }
                     else
                     {
@@ -1861,6 +1877,10 @@ bool IsValidBlockOneCoinbase(const std::vector<CTxOut> &_outputs,
                                   checkOutputs[i - firstPBaaSOut].nValue,
                                   uniScript1.write(1,2).c_str(),
                                   uniScript2.write(1,2).c_str());
+                    }
+                    if (updatedProtocol)
+                    {
+                        return state.Error("Mismatched block one output at #" + std::to_string(i));
                     }
                 }
             }

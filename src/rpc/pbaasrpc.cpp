@@ -5208,6 +5208,11 @@ bool FundTransparentTransactionBuilder(CWallet *pwallet, TransactionBuilder &tb,
                                             reservesUsed,
                                             nativeUsed))
     {
+        CTxDestination _dest;
+        if (!pFromDest)
+        {
+            pFromDest = &_dest;
+        }
         LogPrintf("%s: ERROR FUNDING TRANSACTION: Insufficient funds held by %s\n", __func__, EncodeDestination(*pFromDest).c_str());
         return false;
     }
@@ -8573,6 +8578,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             "      \"currency\": \"name\"   (string, required) Name of the source currency to send in this output, defaults to native of chain\n"
             "      \"amount\":amount        (numeric, required) The numeric amount of currency, denominated in source currency\n"
             "      \"convertto\":\"name\",  (string, optional) Valid currency to convert to, either a reserve of a fractional, or fractional\n"
+            "      \"addconversionfees\":\"false\", (bool, optional) Calculate additional conversion fees to convert the full amount specified after fees\n"
             "      \"exportto\":\"name\",   (string, optional) Valid chain or system name or ID to export to\n"
             "      \"exportid\":\"false\",  (bool, optional) if cross-chain export, export the full ID to the destination chain (will cost to export)\n"
             "      \"exportcurrency\":\"false\", (bool, optional) if cross-chain export, export the currency definition (will cost to export)\n"
@@ -8679,7 +8685,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
     bool hasOpRet = false;
 
-    static std::set<std::string> paramSet({"currency", "amount", "convertto", "exportto", "feecurrency", "via", "address", "exportid", "exportcurrency", "refundto", "memo", "preconvert",  "burn", "burnweight", "mintnew", "opret"});
+    static std::set<std::string> paramSet({"currency", "amount", "convertto", "exportto", "feecurrency", "via", "address", "exportid", "exportcurrency", "refundto", "memo", "preconvert",  "burn", "burnweight", "mintnew", "addconversionfees", "opret"});
 
     //printf("%s: params[1]: %s\n", __func__, params[1].write(1,2).c_str());
 
@@ -8707,6 +8713,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             bool burnCurrency = uni_get_bool(find_value(uniOutputs[i], "burn")) || uni_get_bool(find_value(uniOutputs[i], "burnweight"));
             bool burnWeight = uni_get_bool(find_value(uniOutputs[i], "burnweight"));
             bool mintNew = uni_get_bool(find_value(uniOutputs[i], "mintnew"));
+            bool addConversionFees = uni_get_bool(find_value(uniOutputs[i], "addconversionfees"));
 
             auto rawCurrencyStr = uni_get_str(find_value(uniOutputs[i], "currency"));
             auto currencyStr = TrimSpaces(rawCurrencyStr, true);
@@ -8934,6 +8941,17 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             fromFractional = isConversion &&
                              !toFractional &&
                              sourceCurrencyDef.IsFractional() && !convertToCurrencyID.IsNull() && sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID);
+
+            if (addConversionFees && isConversion)
+            {
+                CAmount additionalFee = CReserveTransactionDescriptor::CalculateAdditionalConversionFeeNoMin(sourceAmount);
+                if (isVia)
+                {
+                    additionalFee <<= 1;
+                }
+                sourceAmount += additionalFee;
+            }
+
             if (toFractional || preConvert)
             {
                 destSystemID = convertToCurrencyDef.systemID;
@@ -12684,8 +12702,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     int64_t expectedFee = referralID.IsNull() ? feeOffer : feeOffer - idReferralFee;
 
     if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
-        (issuingCurrency.endBlock == 0 ||
-         issuingCurrency.endBlock < height))
+        (issuingCurrency.endBlock == 0 || height < issuingCurrency.endBlock))
     {
         if (issuerID == ASSETCHAINS_CHAINID)
         {
@@ -12841,8 +12858,7 @@ UniValue registeridentity(const UniValue& params, bool fHelp)
     if (registrationPaymentOut >= 0)
     {
         if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
-            (issuingCurrency.endBlock == 0 ||
-             issuingCurrency.endBlock < height))
+            (issuingCurrency.endBlock == 0 || height < issuingCurrency.endBlock))
         {
             if (issuerID == ASSETCHAINS_CHAINID)
             {
