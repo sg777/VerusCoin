@@ -5944,7 +5944,7 @@ void CConnectedChains::CheckOracleUpgrades()
 
     CIdentityID oracleToUse = !PBAAS_TESTMODE || (height && chainActive[height]->nTime > PBAAS_TESTFORK5_TIME) ?
         ((PBAAS_TESTMODE && chainActive[height]->nTime < (PBAAS_TESTFORK6_TIME + (60 * 60 * 24))) ||
-         (!PBAAS_TESTMODE && IsVerusActive() && ConnectedChains.IncludePostLaunchFees(std::max(((int32_t)height) - 1000, 0))) ?
+         (!PBAAS_TESTMODE && IsVerusActive() && !ConnectedChains.IncludePostLaunchFees(std::max(((int32_t)height) - 1000, 0))) ?
                 CIdentityID(ASSETCHAINS_CHAINID) :
                 PBAAS_NOTIFICATION_ORACLE) :
         (IsVerusActive() ?
