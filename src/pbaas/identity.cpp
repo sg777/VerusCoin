@@ -1315,10 +1315,11 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
             {
                 if (isPBaaS)
                 {
+                    bool testModePreUpdate = PBAAS_TESTMODE && !ConnectedChains.IncludePostLaunchFees(height);
                     if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
                         (issuingCurrency.endBlock == 0 ||
-                         ((PBAAS_TESTMODE && !ConnectedChains.IncludePostLaunchFees(height) && issuingCurrency.endBlock <= height) ||
-                          height <= issuingCurrency.endBlock)))
+                         ((testModePreUpdate && issuingCurrency.endBlock <= height) ||
+                          (!testModePreUpdate && height <= issuingCurrency.endBlock))))
                     {
                         // if this is a purchase from centralized/DAO-based currency, ensure we have a valid output
                         // of the correct amount to the issuer ID before any of the referrals
@@ -1981,10 +1982,11 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             {
                 if (isPBaaS)
                 {
+                    bool testModePreUpdate = PBAAS_TESTMODE && !ConnectedChains.IncludePostLaunchFees(height);
                     if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
                         (issuingCurrency.endBlock == 0 ||
-                         ((PBAAS_TESTMODE && !ConnectedChains.IncludePostLaunchFees(height) && issuingCurrency.endBlock <= height) ||
-                          height <= issuingCurrency.endBlock)))
+                         ((testModePreUpdate && issuingCurrency.endBlock <= height) ||
+                          (!testModePreUpdate && height <= issuingCurrency.endBlock))))
                     {
                         // if this is a purchase from centralized/DAO-based currency, ensure we have a valid output
                         // of the correct amount to the issuer ID before any of the referrals
