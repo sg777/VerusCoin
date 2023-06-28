@@ -3235,6 +3235,22 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
 
         CCurrencyValueMap importedCurrency, gatewayCurrencyUsed, spentCurrencyOut;
 
+        if (PBAAS_TESTMODE && destCurDef.name == "ctc" && destCurDef.parent == VERUS_CHAINID && !checkState.IsLaunchCompleteMarker())
+        {
+            CCurrencyDefinition checkCurDef;
+            int32_t defHeight;
+            CUTXORef checkUTXORef;
+            uint256 txHash = uint256S("58cbbabe931447bd063fc0b147459af3642b0c515aa4ba46892e76935be9a4e9");
+            if (GetCurrencyDefinition(destCurDef.GetID(), checkCurDef, &defHeight, false, false, &checkUTXORef) &&
+                checkUTXORef.hash == txHash &&
+                !checkState.IsLaunchCompleteMarker() &&
+                checkState.primaryCurrencyIn.size() == 1 &&
+                checkState.primaryCurrencyIn[0] == int64_t(123015378844))
+            {
+                checkState.primaryCurrencyIn[0] -= 15378844;
+            }
+        }
+
         if (!rtxd.AddReserveTransferImportOutputs(checkState.IsRefunding() ? destSysDef : sourceSysDef,
                                                   checkState.IsRefunding() ? sourceSysDef : destSysDef,
                                                   destCurDef,
@@ -6110,7 +6126,7 @@ bool CConnectedChains::IncludePostLaunchFees(uint32_t height) const
 
 bool CConnectedChains::IncludePostLaunchFeeTransition(uint32_t height) const
 {
-    return ConnectedChains.IncludePostLaunchFees(height) && (height < (IncludePostLaunchFeeHeight(false) + 20));
+    return (PBAAS_TESTMODE && IsVerusActive()) ? (ConnectedChains.IncludePostLaunchFees(height + 20) && !ConnectedChains.IncludePostLaunchFees(height)) : false;
 }
 
 bool CConnectedChains::StartIncludePostLaunchFees(uint32_t height) const
@@ -7145,20 +7161,6 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
             LogPrintf("%s: invalid destination currency for export %s, %d\n", __func__, oneIT.first.first.txIn.prevout.hash.GetHex().c_str(), outputNum);
             failedCurrencyDest = ccx.destCurrencyID;
             continue;
-        }
-
-        // burn ctc
-        if (PBAAS_TESTMODE && destCur.name == "ctc" && destCur.parent == VERUS_CHAINID)
-        {
-            CCurrencyDefinition checkCurDef;
-            int32_t defHeight;
-            CUTXORef checkUTXORef;
-            uint256 txHash = uint256S("58cbbabe931447bd063fc0b147459af3642b0c515aa4ba46892e76935be9a4e9");
-            if (GetCurrencyDefinition(destCur.GetID(), checkCurDef, &defHeight, false, false, &checkUTXORef) &&
-                checkUTXORef.hash == txHash)
-            {
-                continue;
-            }
         }
 
         // now, we have:

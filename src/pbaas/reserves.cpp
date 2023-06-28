@@ -3009,6 +3009,27 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         rtxd.nativeConversionFees = 0;
                         rtxd.nativeOut = 0;
 
+                        if (ConnectedChains.IncludePostLaunchFeeTransition(nHeight))
+                        {
+                            // clear testnet ctc
+                            // TODO: TESTNET RESET - remove exception
+                            if (PBAAS_TESTMODE && importCurrencyDef.name == "ctc" && importCurrencyDef.parent == VERUS_CHAINID)
+                            {
+                                CCurrencyDefinition checkCurDef;
+                                int32_t defHeight;
+                                CUTXORef checkUTXORef;
+                                uint256 txHash = uint256S("58cbbabe931447bd063fc0b147459af3642b0c515aa4ba46892e76935be9a4e9");
+                                if (GetCurrencyDefinition(importCurrencyDef.GetID(), checkCurDef, &defHeight, false, false, &checkUTXORef) &&
+                                    checkUTXORef.hash == txHash)
+                                {
+                                    for (int roIdx = 0; roIdx < checkState.reserveOut.size(); roIdx++)
+                                    {
+                                        checkState.primaryCurrencyIn[roIdx] -= 15378844;
+                                    }
+                                }
+                            }
+                        }
+
                         if (!rtxd.AddReserveTransferImportOutputs(sourceSystemDef,
                                                                   ConnectedChains.thisChain,
                                                                   importCurrencyDef,
