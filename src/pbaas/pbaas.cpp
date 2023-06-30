@@ -6130,7 +6130,7 @@ bool CConnectedChains::IncludePostLaunchFees(uint32_t height) const
 
 bool CConnectedChains::IncludePostLaunchFeeTransition(uint32_t height) const
 {
-    return (PBAAS_TESTMODE && IsVerusActive()) ? (ConnectedChains.IncludePostLaunchFees(height + 20) && !ConnectedChains.IncludePostLaunchFees(height)) : false;
+    return (PBAAS_TESTMODE && IsVerusActive()) ? (height >= 98627 && height < 98647) : false;
 }
 
 bool CConnectedChains::StartIncludePostLaunchFees(uint32_t height) const

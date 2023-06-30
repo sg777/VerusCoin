@@ -3012,7 +3012,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                         if (ConnectedChains.IncludePostLaunchFeeTransition(nHeight))
                         {
                             // clear testnet ctc
-                            // TODO: TESTNET RESET - remove exception
+                            // TODO: TESTNET RESET - remove this code
                             if (PBAAS_TESTMODE && importCurrencyDef.name == "ctc" && importCurrencyDef.parent == VERUS_CHAINID)
                             {
                                 CCurrencyDefinition checkCurDef;
@@ -3020,7 +3020,10 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 CUTXORef checkUTXORef;
                                 uint256 txHash = uint256S("58cbbabe931447bd063fc0b147459af3642b0c515aa4ba46892e76935be9a4e9");
                                 if (GetCurrencyDefinition(importCurrencyDef.GetID(), checkCurDef, &defHeight, false, false, &checkUTXORef) &&
-                                    checkUTXORef.hash == txHash)
+                                    checkUTXORef.hash == txHash &&
+                                    checkState.primaryCurrencyIn.size() == 1 &&
+                                    !checkState.IsLaunchCompleteMarker() &&
+                                    checkState.primaryCurrencyIn[0] == int64_t(123015378844))
                                 {
                                     for (int roIdx = 0; roIdx < checkState.reserveOut.size(); roIdx++)
                                     {
