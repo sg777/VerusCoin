@@ -1156,11 +1156,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                              proofRoots.find(VERUS_CHAINID)->second.rootHeight >= ConnectedChains.GetZeroViaHeight(PBAAS_TESTMODE)) ||
                             (ConnectedChains.CheckZeroViaOnlyPostLaunch(currentHeight));
 
-    bool includePostLaunchFeeTransition = destCurrency.IsFractional() &&
-                                          !destCurrency.IsGatewayConverter() &&
-                                          ConnectedChains.StartIncludePostLaunchFees(currentHeight) &&
-                                          ConnectedChains.IncludePostLaunchFeeTransition(chainActive.Height());
-
     bool includePostLaunchFees = ConnectedChains.IncludePostLaunchFees(currentHeight) &&
                                  !destCurrency.IsGatewayConverter() &&
                                  destCurrency.IsFractional();
@@ -1450,14 +1445,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             std::vector<int64_t> newReservesVector = newPreConversionReservesIn.AsCurrencyVector(tempState.currencies);
             tempState.reserves = tempState.AddVectors(tempState.reserves, newReservesVector);
             newNotarization.currencyState.conversionPrice = tempState.PricesInReserve();
-        }
-
-        if (PBAAS_TESTMODE && includePostLaunchFeeTransition)
-        {
-            for (int roIdx = 0; roIdx < newNotarization.currencyState.reserveOut.size(); roIdx++)
-            {
-                newNotarization.currencyState.primaryCurrencyIn[roIdx] += newNotarization.currencyState.reserveOut[roIdx];
-            }
         }
 
         std::vector<CTxOut> tempOutputs;
