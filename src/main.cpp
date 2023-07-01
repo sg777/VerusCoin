@@ -8466,15 +8466,34 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             pfrom->fDisconnect = true;
             return false;
         }
-        int misbehavingLevel = (SanitizeString(strReason) == "tx-overwinter-not-active") ? 0 : 1;
+        std::string sanitizedReason = SanitizeString(strReason);
+        int misbehavingLevel = (sanitizedReason == "txoverwinternotactive") ? 0 : 1;
         if (isRejectNewTx &&
-            SanitizeString(strReason) == "bad-txns-inputs-spent")
+            sanitizedReason == "badtxnsinputsspent")
         {
             CTransaction mTx;
             LOCK(mempool.cs);
             if (mempool.lookup(hash, mTx))
             {
-                misbehavingLevel = 0;
+                CObjectFinalization of;
+                // if it is an import or export, don't report to reduce network traffic. that will happen.
+                for (auto &oneOut : mTx.vout)
+                {
+                    COptCCParams chkP;
+                    if (CCrossChainExport(oneOut.scriptPubKey).IsValid() ||
+                        CCrossChainImport(oneOut.scriptPubKey).IsValid() ||
+                        CPBaaSNotarization(oneOut.scriptPubKey).IsValid() ||
+                        (oneOut.scriptPubKey.IsPayToCryptoCondition(chkP) &&
+                         chkP.IsValid() &&
+                         chkP.vData.size() &&
+                         chkP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
+                         (of = CObjectFinalization(chkP.vData[0])).IsValid() &&
+                         of.IsConfirmed()))
+                    {
+                        misbehavingLevel = 0;
+                        break;
+                    }
+                }
             }
         }
         Misbehaving(pfrom->GetId(), misbehavingLevel);
@@ -8945,6 +8964,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                      pfrom->id, pfrom->cleanSubVer,
                      state.GetRejectReason());
             
+            bool sendReject = true;
             if (state.GetRejectReason() == "bad-txns-inputs-spent" && nDoS <= 1)
             {
                 CObjectFinalization of;
@@ -8957,20 +8977,28 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                         CPBaaSNotarization(oneOut.scriptPubKey).IsValid() ||
                         (oneOut.scriptPubKey.IsPayToCryptoCondition(chkP) &&
                          chkP.IsValid() &&
-                         chkP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
                          chkP.vData.size() &&
+                         chkP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
                          (of = CObjectFinalization(chkP.vData[0])).IsValid() &&
                          of.IsConfirmed()))
                     {
+                        sendReject = false;
                         nDoS = 0;
                         break;
                     }
                 }
             }
-            pfrom->PushMessage("reject", strCommand, state.GetRejectCode(),
-                               state.GetRejectReason().substr(0, MAX_REJECT_MESSAGE_LENGTH), inv.hash);
-            if (nDoS > 0)
-                Misbehaving(pfrom->GetId(), nDoS);
+            else if (state.GetRejectReason() == "tx-overwinter-not-active")
+            {
+                sendReject = false;
+                nDoS = 0;
+            }
+            if (sendReject)
+            {
+                pfrom->PushMessage("reject", strCommand, state.GetRejectCode(),
+                                state.GetRejectReason().substr(0, MAX_REJECT_MESSAGE_LENGTH), inv.hash);
+            }
+            Misbehaving(pfrom->GetId(), nDoS);
         }
     }
 

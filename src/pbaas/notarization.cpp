@@ -1156,11 +1156,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                              proofRoots.find(VERUS_CHAINID)->second.rootHeight >= ConnectedChains.GetZeroViaHeight(PBAAS_TESTMODE)) ||
                             (ConnectedChains.CheckZeroViaOnlyPostLaunch(currentHeight));
 
-    bool includePostLaunchFeeTransition = destCurrency.IsFractional() &&
-                                          !destCurrency.IsGatewayConverter() &&
-                                          ConnectedChains.StartIncludePostLaunchFees(currentHeight) &&
-                                          ConnectedChains.IncludePostLaunchFeeTransition(chainActive.Height());
-
     bool includePostLaunchFees = ConnectedChains.IncludePostLaunchFees(currentHeight) &&
                                  !destCurrency.IsGatewayConverter() &&
                                  destCurrency.IsFractional();
@@ -1450,14 +1445,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             std::vector<int64_t> newReservesVector = newPreConversionReservesIn.AsCurrencyVector(tempState.currencies);
             tempState.reserves = tempState.AddVectors(tempState.reserves, newReservesVector);
             newNotarization.currencyState.conversionPrice = tempState.PricesInReserve();
-        }
-
-        if (PBAAS_TESTMODE && includePostLaunchFeeTransition)
-        {
-            for (int roIdx = 0; roIdx < newNotarization.currencyState.reserveOut.size(); roIdx++)
-            {
-                newNotarization.currencyState.primaryCurrencyIn[roIdx] += newNotarization.currencyState.reserveOut[roIdx];
-            }
         }
 
         std::vector<CTxOut> tempOutputs;
@@ -2555,7 +2542,19 @@ std::tuple<uint32_t, CTransaction, CUTXORef, CPBaaSNotarization> GetPriorReferen
                         }
                         else
                         {
-                            lastNotarizationAddressEntry = lastNotarizationIndexes.back();
+                            int i;
+                            for (i = 0; i < lastOfs.size(); i++)
+                            {
+                                if (lastOfs[i].IsValid())
+                                {
+                                    lastNotarizationAddressEntry = lastNotarizationIndexes[i];
+                                    break;
+                                }
+                            }
+                            if (i >= lastOfs.size())
+                            {
+                                lastNotarizationAddressEntry = lastNotarizationIndexes.back();
+                            }
                         }
                     }
                     else
@@ -3327,7 +3326,19 @@ CPBaaSNotarization IsValidPrimaryChainEvidence(const CCurrencyDefinition &extern
                                             }
                                             else
                                             {
-                                                lastNotarizationAddressEntry = lastNotarizationIndexes.back();
+                                                int i;
+                                                for (i = 0; i < lastOfs.size(); i++)
+                                                {
+                                                    if (lastOfs[i].IsValid())
+                                                    {
+                                                        lastNotarizationAddressEntry = lastNotarizationIndexes[i];
+                                                        break;
+                                                    }
+                                                }
+                                                if (i >= lastOfs.size())
+                                                {
+                                                    lastNotarizationAddressEntry = lastNotarizationIndexes.back();
+                                                }
                                             }
                                         }
                                         else
@@ -8573,6 +8584,7 @@ bool CPBaaSNotarization::FindFinalizedIndexesByVDXFKey(const uint160 &notarizati
         uint256 blkHash;
         COptCCParams fP;
 
+        std::vector<CObjectFinalization> validOfs;
         for (auto &oneIndexEntry : addressIndex)
         {
             if (oneIndexEntry.first.spending)
@@ -8591,7 +8603,14 @@ bool CPBaaSNotarization::FindFinalizedIndexesByVDXFKey(const uint160 &notarizati
                     (confirmedFinalization[i] = CObjectFinalization(fP.vData[0])).IsValid()))
             {
                 LogPrint("notarization", "Invalid finalization transaction for index key\n");
+                continue;
             }
+            validOfs.push_back(confirmedFinalization[i]);
+            break;
+        }
+        if (validOfs.size())
+        {
+            confirmedFinalization[i] = validOfs[0];
         }
     }
     return true;
