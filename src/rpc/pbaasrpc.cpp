@@ -5250,6 +5250,11 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
 
     CheckPBaaSAPIsValid();
 
+    if (VERUS_NOTARYID.IsNull())
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Set \"-notaryid=idname@\" on startup to submit and earn from notarization transactions");
+    }
+
     uint32_t nHeight = chainActive.Height();
 
     // decode the transaction and ensure that it is formatted as expected
@@ -5306,7 +5311,7 @@ UniValue submitacceptednotarization(const UniValue& params, bool fHelp)
         }
         CTxDestination fromDest(VERUS_NOTARYID);
         if (fromDest.which() == COptCCParams::ADDRTYPE_INVALID ||
-            !FundTransparentTransactionBuilder(pwalletMain, tb, VERUS_NOTARYID.IsNull() ? nullptr : &fromDest))
+            !FundTransparentTransactionBuilder(pwalletMain, tb, &fromDest))
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Unable to fund notarization transaction");
         }
