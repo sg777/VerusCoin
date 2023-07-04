@@ -3962,12 +3962,16 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                     return state.Error("Currency definition in output violates current definition rules");
                 }
 
+                bool isMappedCurrency = (newCurrency.systemID != ASSETCHAINS_CHAINID &&
+                                         newCurrency.IsToken() &&
+                                         !newCurrency.IsFractional() &&
+                                         (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH ||
+                                          newCurrency.IsNFTToken()));
+
                 // now, make sure new currency matches any initial notarization
                 // if this is not the systemID, we must be either a gateway, PBaaS chain, mapped currency, or gateway converter
                 CCurrencyDefinition newSystemCurrency;
-                if (newCurrency.systemID != ASSETCHAINS_CHAINID &&
-                    !newCurrency.IsPBaaSChain() &&
-                    !newCurrency.IsGateway())
+                if (isMappedCurrency)
                 {
                     bool failed = true;
                     for (auto &oneCurDef : currencyDefs)
@@ -3989,14 +3993,23 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                     }
                     if (failed)
                     {
-                        return state.Error("New currency definition does not have a system ID of this chain or as a mapped currency on the new system");
+                        newSystemCurrency = ConnectedChains.GetCachedCurrency(newCurrency.systemID);
+                        if (newSystemCurrency.IsGateway() &&
+                            newCurrency.systemID == newSystemCurrency.GetID() &&
+                            (newCurrency.parent == ASSETCHAINS_CHAINID ||
+                                (newSystemCurrency.parent == ASSETCHAINS_CHAINID &&
+                                !newSystemCurrency.IsNameController() &&
+                                newCurrency.parent == newSystemCurrency.GetID())) &&
+                            newSystemCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH)
+                        {
+                            failed = false;
+                        }
+                        if (failed)
+                        {
+                            return state.Error("New currency definition does not have a system ID of this chain or as a mapped currency on the new system");
+                        }
                     }
                 }
-
-                bool isMappedCurrency = (newCurrency.systemID != ASSETCHAINS_CHAINID &&
-                                         newCurrency.IsToken() &&
-                                         !newCurrency.IsFractional() &&
-                                         newCurrency.nativeCurrencyID.TypeNoFlags() != newCurrency.nativeCurrencyID.DEST_INVALID);
 
                 if (!(isMappedCurrency && !pbn.IsValid()))
                 {
@@ -6086,7 +6099,8 @@ bool CConnectedChains::IsUpgradeActive(const uint160 &upgradeID, uint32_t blockH
 
 uint32_t CConnectedChains::GetZeroViaHeight(bool getVerusHeight) const
 {
-    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 69013 : 2578653) : 0;
+    //return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 69013 : 2578653) : 0;
+    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 1 : 2578653) : 0;
 }
 
 bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
@@ -6096,7 +6110,8 @@ bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
 
 uint32_t CConnectedChains::IncludePostLaunchFeeHeight(bool getVerusHeight) const
 {
-    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 94091 : 2606532) : 0;
+    //return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 94091 : 2606532) : 0;
+    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 1 : 2606532) : 0;
 }
 
 bool CConnectedChains::IncludePostLaunchFees(uint32_t height) const
