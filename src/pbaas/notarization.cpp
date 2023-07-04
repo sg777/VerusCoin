@@ -1157,7 +1157,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                             (ConnectedChains.CheckZeroViaOnlyPostLaunch(currentHeight));
 
     bool includePostLaunchFees = ConnectedChains.IncludePostLaunchFees(currentHeight) &&
-                                 !destCurrency.IsGatewayConverter() &&
+                                 !(destCurrency.IsGatewayConverter() && destCurrency.systemID != destCurrency.launchSystemID) &&
                                  destCurrency.IsFractional();
 
     bool clearConvert = ConnectedChains.CheckClearConvert(notaHeight);
