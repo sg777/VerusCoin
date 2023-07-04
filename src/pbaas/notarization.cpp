@@ -1168,8 +1168,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                     CCoinbaseCurrencyState::PBAAS_1_0_8 :
                                                                     CCoinbaseCurrencyState::ReversionUpdateForHeight(chainActive.Height());
 
-    CTransferDestination notaryPayee;
-
     if (!externalSystemID.IsNull())
     {
         hashType = (CCurrencyDefinition::EHashTypes)externalSystemDef.proofProtocol;

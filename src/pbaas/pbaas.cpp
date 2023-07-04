@@ -4633,7 +4633,8 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         p.vData.size() &&
         (rt = CReserveTransfer(p.vData[0])).IsValid() &&
         rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID] == tx.vout[outNum].nValue &&
-        (rt.IsArbitrageOnly() || p.IsEvalPKOut()))
+        (rt.IsArbitrageOnly() || p.IsEvalPKOut()) &&
+        rt.destination.AuxDestCount() <= 3)
     {
         // arbitrage transactions are determined by their context and statically setting the flags is prohibited
         if (rt.IsArbitrageOnly() &&
@@ -5941,7 +5942,7 @@ void CConnectedChains::CheckOracleUpgrades()
 
     CIdentityID oracleToUse = !PBAAS_TESTMODE || (height && chainActive[height]->nTime > PBAAS_TESTFORK5_TIME) ?
         ((PBAAS_TESTMODE && chainActive[height]->nTime < (PBAAS_TESTFORK6_TIME + (60 * 60 * 24))) ||
-         (!PBAAS_TESTMODE && IsVerusActive() && !ConnectedChains.IncludePostLaunchFees(std::max(((int32_t)height) - 1000, 0))) ?
+         (!PBAAS_TESTMODE && IsVerusActive() && height < 2616300) ?
                 CIdentityID(ASSETCHAINS_CHAINID) :
                 PBAAS_NOTIFICATION_ORACLE) :
         (IsVerusActive() ?
