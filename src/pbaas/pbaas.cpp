@@ -6100,8 +6100,7 @@ bool CConnectedChains::IsUpgradeActive(const uint160 &upgradeID, uint32_t blockH
 
 uint32_t CConnectedChains::GetZeroViaHeight(bool getVerusHeight) const
 {
-    //return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 69013 : 2578653) : 0;
-    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 1 : 2578653) : 0;
+    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 69013 : 2578653) : 0;
 }
 
 bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
@@ -6111,8 +6110,7 @@ bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
 
 uint32_t CConnectedChains::IncludePostLaunchFeeHeight(bool getVerusHeight) const
 {
-    //return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 94091 : 2606532) : 0;
-    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 1 : 2606532) : 0;
+    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 94091 : 2606532) : 0;
 }
 
 bool CConnectedChains::IncludePostLaunchFees(uint32_t height) const
