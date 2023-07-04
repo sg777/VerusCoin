@@ -10647,8 +10647,9 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             throw JSONRPCError(RPC_INVALID_PARAMETER, "currency cannot be both a token and also specify a mining and staking rewards schedule.");
         }
 
-        if ((newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH && !newCurrency.IsGateway()) ||
-            newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT)
+        if (!newCurrency.IsGateway() && 
+            (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH ||
+             newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT))
         {
             if (newCurrency.IsPBaaSChain() ||
                 !newCurrency.IsToken() ||
@@ -10675,7 +10676,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             CCurrencyDefinition systemCurrency = ConnectedChains.GetCachedCurrency(newCurrency.systemID);
             if (systemCurrency.IsValid() &&
                 (!systemCurrency.IsGateway() ||
-                 systemCurrency.launchSystemID != ASSETCHAINS_CHAINID ||
+                 (systemCurrency.launchSystemID != ASSETCHAINS_CHAINID && newCurrency.parent != ASSETCHAINS_CHAINID) ||
                  systemCurrency.proofProtocol != systemCurrency.PROOF_ETHNOTARIZATION))
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Ethereum protocol networks are the only mapped currency type currently supported");
