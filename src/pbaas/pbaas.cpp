@@ -3971,7 +3971,9 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                 // now, make sure new currency matches any initial notarization
                 // if this is not the systemID, we must be either a gateway, PBaaS chain, mapped currency, or gateway converter
                 CCurrencyDefinition newSystemCurrency;
-                if (isMappedCurrency)
+                if (isMappedCurrency ||
+                    (newCurrency.launchSystemID == ASSETCHAINS_CHAINID &&
+                     newCurrency.systemID != ASSETCHAINS_CHAINID))
                 {
                     bool failed = true;
                     for (auto &oneCurDef : currencyDefs)
@@ -6100,7 +6102,8 @@ bool CConnectedChains::IsUpgradeActive(const uint160 &upgradeID, uint32_t blockH
 
 uint32_t CConnectedChains::GetZeroViaHeight(bool getVerusHeight) const
 {
-    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 69013 : 2578653) : 0;
+    //return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 69013 : 2578653) : 0;
+    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 1 : 2578653) : 0;
 }
 
 bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
@@ -6110,7 +6113,8 @@ bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
 
 uint32_t CConnectedChains::IncludePostLaunchFeeHeight(bool getVerusHeight) const
 {
-    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 94091 : 2606532) : 0;
+    //return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 94091 : 2606532) : 0;
+    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 1 : 2606532) : 0;
 }
 
 bool CConnectedChains::IncludePostLaunchFees(uint32_t height) const
