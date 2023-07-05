@@ -1339,25 +1339,31 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                             }
                         }
 
-                        if (oneTransfer.IsCurrencyExport())
+                        if (oneTransfer.IsCurrencyExport() &&
+                            ConnectedChains.IncludePostLaunchFees(height))
                         {
-                            CCurrencyDefinition exportingDef = oneTransfer.destination.HasGatewayLeg() && oneTransfer.destination.TypeNoFlags() != oneTransfer.destination.DEST_REGISTERCURRENCY ?
-                                                                ConnectedChains.GetCachedCurrency(oneTransfer.FirstCurrency()) :
-                                                                CCurrencyDefinition(oneTransfer.destination.destination);
-                            if (!exportingDef.IsValid())
-                            {
-                                return state.Error(strprintf("%s: Invalid currency import", __func__));
-                            }
+                            CCurrencyDefinition nextSys = oneTransfer.destination.HasGatewayLeg() ?
+                                                            ConnectedChains.GetCachedCurrency(oneTransfer.destination.gatewayID) :
+                                                            ConnectedChains.GetCachedCurrency(oneTransfer.GetImportCurrency());
 
-                            // imported currencies do need to conform to type constraints in order
-                            // to benefit from reduced import fees. this happens on the precheck for currency definition
-                            CChainNotarizationData cnd;
-                            CCurrencyDefinition nextSys = ConnectedChains.GetCachedCurrency(exportingDef.systemID);
-                            if (nextSys.IsValid() && nextSys.IsGateway() && nextSys.proofProtocol == nextSys.PROOF_ETHNOTARIZATION)
+                            if (!nextSys.systemID.IsNull() &&
+                                !(nextSys.IsGateway() || nextSys.IsPBaaSChain()))
                             {
-                                if (!GetNotarizationData(exportingDef.systemID, cnd) ||
+                                nextSys = ConnectedChains.GetCachedCurrency(nextSys.systemID);
+                            }
+                            uint160 nextSysID = nextSys.GetID();
+                            if (nextSysID != ASSETCHAINS_CHAINID)
+                            {
+                                if (!nextSys.IsValid() ||
+                                    !(nextSys.IsGateway() || nextSys.IsPBaaSChain()))
+                                {
+                                    return state.Error("Invalid destination system for currency export: " + oneTransfer.ToUniValue().write(1,2));
+                                }
+
+                                CChainNotarizationData cnd;
+                                if (!GetNotarizationData(nextSysID, cnd) ||
                                     !cnd.IsConfirmed() ||
-                                    !cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(exportingDef.systemID))
+                                    !cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(nextSys.GetID()))
                                 {
                                     return state.Error("Cannot get notarization data for destination system of transfer: " + oneTransfer.ToUniValue().write(1,2));
                                 }
@@ -3299,6 +3305,14 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         if (extraOutputsValue.IntersectingValues(feeCurrencyMap).valueMap.size())
         {
             LogPrintf("%s: invalid spend of fee currency on import transaction for: %s\n", __func__, EncodeDestination(CIdentityID(destCurDef.GetID())).c_str());
+            if (LogAcceptCategory("defi"))
+            {
+                UniValue jsonTx(UniValue::VOBJ);
+                uint256 hashBlk;
+                TxToUniv(tx, hashBlk, jsonTx);
+                LogPrintf("tx:\n%s\n", jsonTx.write(1,2).c_str()); //*/
+                printf("tx:\n%s\n", jsonTx.write(1,2).c_str()); //*/
+            }
             return eval->Error(std::string(__func__) + ": invalid spend of fee currency on import transaction for: " + EncodeDestination(CIdentityID(destCurDef.GetID())));
         }
 
@@ -6102,8 +6116,7 @@ bool CConnectedChains::IsUpgradeActive(const uint160 &upgradeID, uint32_t blockH
 
 uint32_t CConnectedChains::GetZeroViaHeight(bool getVerusHeight) const
 {
-    //return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 69013 : 2578653) : 0;
-    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 1 : 2578653) : 0;
+    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 69013 : 2578653) : 0;
 }
 
 bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
@@ -6113,8 +6126,7 @@ bool CConnectedChains::CheckZeroViaOnlyPostLaunch(uint32_t height) const
 
 uint32_t CConnectedChains::IncludePostLaunchFeeHeight(bool getVerusHeight) const
 {
-    //return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 94091 : 2606532) : 0;
-    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 1 : 2606532) : 0;
+    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 94091 : 2606532) : 0;
 }
 
 bool CConnectedChains::IncludePostLaunchFees(uint32_t height) const
