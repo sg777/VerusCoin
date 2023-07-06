@@ -3266,7 +3266,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         feeCurrencyMap.valueMap[ASSETCHAINS_CHAINID] = 1;
         if (!IsVerusActive() && ConnectedChains.NotarySystems().size())
         {
-            feeCurrencyMap.valueMap[ConnectedChains.FirstNotaryChain().GetID()] = 1;
+            feeCurrencyMap.valueMap[VERUS_CHAINID] = 1;
         }
         if (clearConvertTransition)
         {
