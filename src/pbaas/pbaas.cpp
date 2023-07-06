@@ -3261,6 +3261,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
 
         // get outputs total amount to this reserve deposit
         CCurrencyValueMap reserveDepositChange;
+        CCurrencyValueMap crossChainAlternateValue;
         CCurrencyValueMap extraOutputsValue;
         CCurrencyValueMap feeCurrencyMap;
         feeCurrencyMap.valueMap[ASSETCHAINS_CHAINID] = 1;
@@ -3289,9 +3290,21 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                 p.evalCode == EVAL_RESERVE_DEPOSIT &&
                 p.vData.size() &&
                 (rd = CReserveDeposit(p.vData[0])).IsValid() &&
-                rd.controllingCurrencyID == sourceRD.controllingCurrencyID)
+                (rd.controllingCurrencyID == sourceRD.controllingCurrencyID ||
+                 (ccxSource.sourceSystemID != ccxSource.destSystemID &&
+                  ((sourceRD.controllingCurrencyID == ccxSource.sourceSystemID &&
+                    rd.controllingCurrencyID == ccxSource.destCurrencyID) ||
+                   (sourceRD.controllingCurrencyID != ccxSource.sourceSystemID &&
+                   rd.controllingCurrencyID == ccxSource.sourceSystemID)))))
             {
-                reserveDepositChange += rd.reserveValues;
+                if (rd.controllingCurrencyID == sourceRD.controllingCurrencyID)
+                {
+                    reserveDepositChange += rd.reserveValues;
+                }
+                else
+                {
+                    crossChainAlternateValue += rd.reserveValues;
+                }
                 continue;
             }
             if (nHeight != 1 &&
