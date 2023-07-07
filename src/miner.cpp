@@ -4335,7 +4335,7 @@ void static BitcoinMiner_noeq()
             // update PBaaS header
             if (verusSolutionPBaaS)
             {
-                if (!IsVerusActive() && ConnectedChains.IsVerusPBaaSAvailable())
+                if (!IsVerusActive() && (ConnectedChains.IsVerusPBaaSAvailable() || mergeMining))
                 {
                     UniValue params(UniValue::VARR);
                     UniValue error(UniValue::VARR);
