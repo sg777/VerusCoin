@@ -2010,13 +2010,6 @@ UniValue CChainNotarizationData::ToUniValue(const std::vector<std::pair<CTransac
         notarization.push_back(Pair("index", i));
         notarization.push_back(Pair("txid", vtx[i].first.hash.GetHex()));
 
-        if (IsConfirmed())
-        {
-            notarization.pushKV("notarizationmodulo", CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
-                                                                                                        (int32_t)vtx[lastConfirmed].second.notarizationHeight,
-                                                                                                        chainActive.Height() + 1));
-        }
-
         if (i < transactionsAndBlockHash.size())
         {
             notarization.push_back(Pair("blockhash", transactionsAndBlockHash[i].second.GetHex()));
@@ -2072,7 +2065,18 @@ UniValue CChainNotarizationData::ToUniValue(const std::vector<std::pair<CTransac
     if (IsConfirmed())
     {
         obj.push_back(Pair("lastconfirmedheight", (int32_t)vtx[lastConfirmed].second.notarizationHeight));
+        if (transactionsAndBlockHash.size() > lastConfirmed)
+        {
+            auto blockIt = mapBlockIndex.find(transactionsAndBlockHash[lastConfirmed].second);
+            if (blockIt != mapBlockIndex.end())
+            {
+                obj.pushKV("notarizationmodulo", CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
+                                                                                                            (int32_t)blockIt->second->GetHeight(),
+                                                                                                            chainActive.Height() + 1));
+            }
+        }
     }
+
     obj.push_back(Pair("lastconfirmed", lastConfirmed));
     obj.push_back(Pair("bestchain", bestChain));
     return obj;
