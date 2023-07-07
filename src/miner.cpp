@@ -4377,8 +4377,8 @@ void static BitcoinMiner_noeq()
 
                     if (mergeMining && !(params.isNull() && error.isNull()))
                     {
-                        printf("Lost connection to merge mining chain %s, restart mining to merge or solo mine\n", ConnectedChains.GetFriendlyCurrencyName(ConnectedChains.FirstNotaryChain().GetID()).c_str());
-                        LogPrintf("Lost connection to merge mining chain %s, restart mining to merge or solo mine\n", ConnectedChains.GetFriendlyCurrencyName(ConnectedChains.FirstNotaryChain().GetID()).c_str());
+                        printf("Lost connection to merge mining chain %s. Will attempt to retry. Restart mining to switch to solo\n", ConnectedChains.GetFriendlyCurrencyName(ConnectedChains.FirstNotaryChain().GetID()).c_str());
+                        LogPrintf("Lost connection to merge mining chain %s. Will attempt to retry. Restart mining to switch to solo\n", ConnectedChains.GetFriendlyCurrencyName(ConnectedChains.FirstNotaryChain().GetID()).c_str());
                         for (int loop = 0; loop < 15; loop++)
                         {
                             sleep(1);
