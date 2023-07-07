@@ -5973,7 +5973,7 @@ void CConnectedChains::CheckOracleUpgrades()
     uint32_t height = chainActive.LastTip() && chainActive.Height() ? chainActive.Height() : 0;
 
     CIdentityID oracleToUse = !PBAAS_TESTMODE || (height && chainActive[height]->nTime > PBAAS_TESTFORK5_TIME) ?
-        ((PBAAS_TESTMODE && chainActive[height]->nTime < (PBAAS_TESTFORK6_TIME + (60 * 60 * 24))) ||
+        ((PBAAS_TESTMODE && chainActive[height]->nTime < (PBAAS_TESTFORK7_TIME + (60 * 60 * 24))) ||
          (!PBAAS_TESTMODE && IsVerusActive() && height < 2620500) ?
                 CIdentityID(ASSETCHAINS_CHAINID) :
                 PBAAS_NOTIFICATION_ORACLE) :
