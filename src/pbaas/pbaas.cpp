@@ -3145,7 +3145,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                                       !ConnectedChains.CheckClearConvert(std::max(((int32_t)nHeight) - transitionBlocks, 1)) &&
                                       ConnectedChains.CheckClearConvert(nHeight);
 
-        bool postTestFork6 = !PBAAS_TESTMODE || chainActive[nHeight]->nTime >= PBAAS_TESTFORK6_TIME;
+        bool postTestFork7 = !PBAAS_TESTMODE || chainActive[nHeight]->nTime >= PBAAS_TESTFORK7_TIME;
 
         if (isUpdatedConversion &&
             isClearLaunch &&
@@ -3293,7 +3293,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                 p.vData.size() &&
                 (rd = CReserveDeposit(p.vData[0])).IsValid() &&
                 (rd.controllingCurrencyID == sourceRD.controllingCurrencyID ||
-                 (postTestFork6 &&
+                 (postTestFork7 &&
                   ccxSource.sourceSystemID != ccxSource.destSystemID &&
                   ((sourceRD.controllingCurrencyID == ccxSource.sourceSystemID &&
                     rd.controllingCurrencyID == ccxSource.destCurrencyID) ||
