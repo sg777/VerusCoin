@@ -3698,7 +3698,10 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 // drop through and make an output that will not be added
                 nativeAmount = -1;
             }
-            exportedCurrencies.insert(FirstCurrency());
+            else
+            {
+                exportedCurrencies.insert(FirstCurrency());
+            }
             txOut = CTxOut(nativeAmount, MakeMofNCCScript(CConditionObj<CCurrencyDefinition>(EVAL_CURRENCY_DEFINITION, std::vector<CTxDestination>({dest}), 1, &registeredCurrency)));
             return true;
         }

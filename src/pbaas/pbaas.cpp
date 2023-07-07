@@ -10047,9 +10047,12 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
 
                         allExportOutputs.clear();
 
-                        /* UniValue uni(UniValue::VOBJ);
-                        TxToUniv(tb.mtx, uint256(), uni);
-                        printf("%s: Ready to build tx:\n%s\n", __func__, uni.write(1,2).c_str()); // */
+                        if (LogAcceptCategory("crosschainexports"))
+                        {
+                            UniValue uni(UniValue::VOBJ);
+                            TxToUniv(tb.mtx, uint256(), uni);
+                            printf("%s: Ready to build tx:\n%s\n", __func__, uni.write(1,2).c_str()); // */
+                        }
 
                         TransactionBuilderResult buildResult(tb.Build());
 
