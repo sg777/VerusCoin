@@ -4323,21 +4323,6 @@ void static BitcoinMiner_noeq()
             // v2 hash writer with adjustments for the current height
             CVerusHashV2bWriter ss2 = CVerusHashV2bWriter(SER_GETHASH, PROTOCOL_VERSION, solutionVersion);
 
-            if ( ASSETCHAINS_SYMBOL[0] != 0 )
-            {
-                if ( ASSETCHAINS_REWARD[0] == 0 && !ASSETCHAINS_LASTERA )
-                {
-                    if ( pblock->vtx.size() == 1 && pblock->vtx[0].vout.size() == 1 && Mining_height > ASSETCHAINS_MINHEIGHT )
-                    {
-                        static uint32_t counter;
-                        if ( counter++ < 10 )
-                            fprintf(stderr,"skip generating %s on-demand block, no tx avail\n",ASSETCHAINS_SYMBOL);
-                        sleep(10);
-                        continue;
-                    } else fprintf(stderr,"%s vouts.%d mining.%d vs %d\n",ASSETCHAINS_SYMBOL,(int32_t)pblock->vtx[0].vout.size(),Mining_height,ASSETCHAINS_MINHEIGHT);
-                }
-            }
-
             // randomize the nonce for each thread
             pblock->nNonce = RandomizedNonce();
 
