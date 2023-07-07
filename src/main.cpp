@@ -1261,7 +1261,7 @@ bool ContextualCheckTransaction(
         // Check that all transactions are unexpired
         if (IsExpiredTx(tx, nHeight)) {
             // Don't increase banscore if the transaction only just expired
-            int expiredDosLevel = IsExpiredTx(tx, nHeight - 1) ? (dosLevel > 10 ? dosLevel : 10) : 0;
+            int expiredDosLevel = IsExpiredTx(tx, nHeight - 1) ? (IsExpiredTx(tx, std::max(nHeight - 2, 1)) ? (dosLevel > 10 ? dosLevel : 10) : (dosLevel > 1 ? dosLevel : 1)) : 0;
             return state.DoS(expiredDosLevel, error("ContextualCheckTransaction(): transaction is expired"), REJECT_INVALID, "tx-overwinter-expired");
         }
     }
@@ -8467,7 +8467,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             return false;
         }
         std::string sanitizedReason = SanitizeString(strReason);
-        int misbehavingLevel = (sanitizedReason == "txoverwinternotactive") ? 0 : 1;
+        int misbehavingLevel = (sanitizedReason == "txoverwinternotactive" || sanitizedReason == "txoverwinterexpired") ? 0 : 1;
         if (isRejectNewTx &&
             sanitizedReason == "badtxnsinputsspent")
         {
