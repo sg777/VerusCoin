@@ -1339,25 +1339,31 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                             }
                         }
 
-                        if (oneTransfer.IsCurrencyExport())
+                        if (oneTransfer.IsCurrencyExport() &&
+                            ConnectedChains.IncludePostLaunchFees(height))
                         {
-                            CCurrencyDefinition exportingDef = oneTransfer.destination.HasGatewayLeg() && oneTransfer.destination.TypeNoFlags() != oneTransfer.destination.DEST_REGISTERCURRENCY ?
-                                                                ConnectedChains.GetCachedCurrency(oneTransfer.FirstCurrency()) :
-                                                                CCurrencyDefinition(oneTransfer.destination.destination);
-                            if (!exportingDef.IsValid())
-                            {
-                                return state.Error(strprintf("%s: Invalid currency import", __func__));
-                            }
+                            CCurrencyDefinition nextSys = oneTransfer.destination.HasGatewayLeg() ?
+                                                            ConnectedChains.GetCachedCurrency(oneTransfer.destination.gatewayID) :
+                                                            ConnectedChains.GetCachedCurrency(oneTransfer.GetImportCurrency());
 
-                            // imported currencies do need to conform to type constraints in order
-                            // to benefit from reduced import fees. this happens on the precheck for currency definition
-                            CChainNotarizationData cnd;
-                            CCurrencyDefinition nextSys = ConnectedChains.GetCachedCurrency(exportingDef.systemID);
-                            if (nextSys.IsValid() && nextSys.IsGateway() && nextSys.proofProtocol == nextSys.PROOF_ETHNOTARIZATION)
+                            if (!nextSys.systemID.IsNull() &&
+                                !(nextSys.IsGateway() || nextSys.IsPBaaSChain()))
                             {
-                                if (!GetNotarizationData(exportingDef.systemID, cnd) ||
+                                nextSys = ConnectedChains.GetCachedCurrency(nextSys.systemID);
+                            }
+                            uint160 nextSysID = nextSys.GetID();
+                            if (nextSysID != ASSETCHAINS_CHAINID)
+                            {
+                                if (!nextSys.IsValid() ||
+                                    !(nextSys.IsGateway() || nextSys.IsPBaaSChain()))
+                                {
+                                    return state.Error("Invalid destination system for currency export: " + oneTransfer.ToUniValue().write(1,2));
+                                }
+
+                                CChainNotarizationData cnd;
+                                if (!GetNotarizationData(nextSysID, cnd) ||
                                     !cnd.IsConfirmed() ||
-                                    !cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(exportingDef.systemID))
+                                    !cnd.vtx[cnd.lastConfirmed].second.proofRoots.count(nextSys.GetID()))
                                 {
                                     return state.Error("Cannot get notarization data for destination system of transfer: " + oneTransfer.ToUniValue().write(1,2));
                                 }
@@ -3139,6 +3145,8 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                                       !ConnectedChains.CheckClearConvert(std::max(((int32_t)nHeight) - transitionBlocks, 1)) &&
                                       ConnectedChains.CheckClearConvert(nHeight);
 
+        bool postTestFork7 = !PBAAS_TESTMODE || chainActive[nHeight]->nTime >= PBAAS_TESTFORK7_TIME;
+
         if (isUpdatedConversion &&
             isClearLaunch &&
             reserveTransfers.size())
@@ -3255,12 +3263,13 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
 
         // get outputs total amount to this reserve deposit
         CCurrencyValueMap reserveDepositChange;
+        CCurrencyValueMap crossChainAlternateValue;
         CCurrencyValueMap extraOutputsValue;
         CCurrencyValueMap feeCurrencyMap;
         feeCurrencyMap.valueMap[ASSETCHAINS_CHAINID] = 1;
         if (!IsVerusActive() && ConnectedChains.NotarySystems().size())
         {
-            feeCurrencyMap.valueMap[ConnectedChains.FirstNotaryChain().GetID()] = 1;
+            feeCurrencyMap.valueMap[VERUS_CHAINID] = 1;
         }
         if (clearConvertTransition)
         {
@@ -3283,9 +3292,22 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                 p.evalCode == EVAL_RESERVE_DEPOSIT &&
                 p.vData.size() &&
                 (rd = CReserveDeposit(p.vData[0])).IsValid() &&
-                rd.controllingCurrencyID == sourceRD.controllingCurrencyID)
+                (rd.controllingCurrencyID == sourceRD.controllingCurrencyID ||
+                 (postTestFork7 &&
+                  ccxSource.sourceSystemID != ccxSource.destSystemID &&
+                  ((sourceRD.controllingCurrencyID == ccxSource.sourceSystemID &&
+                    rd.controllingCurrencyID == ccxSource.destCurrencyID) ||
+                   (sourceRD.controllingCurrencyID != ccxSource.sourceSystemID &&
+                   rd.controllingCurrencyID == ccxSource.sourceSystemID)))))
             {
-                reserveDepositChange += rd.reserveValues;
+                if (rd.controllingCurrencyID == sourceRD.controllingCurrencyID)
+                {
+                    reserveDepositChange += rd.reserveValues;
+                }
+                else
+                {
+                    crossChainAlternateValue += rd.reserveValues;
+                }
                 continue;
             }
             if (nHeight != 1 &&
@@ -3299,6 +3321,14 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
         if (extraOutputsValue.IntersectingValues(feeCurrencyMap).valueMap.size())
         {
             LogPrintf("%s: invalid spend of fee currency on import transaction for: %s\n", __func__, EncodeDestination(CIdentityID(destCurDef.GetID())).c_str());
+            if (LogAcceptCategory("defi"))
+            {
+                UniValue jsonTx(UniValue::VOBJ);
+                uint256 hashBlk;
+                TxToUniv(tx, hashBlk, jsonTx);
+                LogPrintf("tx:\n%s\n", jsonTx.write(1,2).c_str()); //*/
+                printf("tx:\n%s\n", jsonTx.write(1,2).c_str()); //*/
+            }
             return eval->Error(std::string(__func__) + ": invalid spend of fee currency on import transaction for: " + EncodeDestination(CIdentityID(destCurDef.GetID())));
         }
 
@@ -3962,12 +3992,18 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                     return state.Error("Currency definition in output violates current definition rules");
                 }
 
+                bool isMappedCurrency = (newCurrency.systemID != ASSETCHAINS_CHAINID &&
+                                         newCurrency.IsToken() &&
+                                         !newCurrency.IsFractional() &&
+                                         (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH ||
+                                          newCurrency.IsNFTToken()));
+
                 // now, make sure new currency matches any initial notarization
                 // if this is not the systemID, we must be either a gateway, PBaaS chain, mapped currency, or gateway converter
                 CCurrencyDefinition newSystemCurrency;
-                if (newCurrency.systemID != ASSETCHAINS_CHAINID &&
-                    !newCurrency.IsPBaaSChain() &&
-                    !newCurrency.IsGateway())
+                if (isMappedCurrency ||
+                    (newCurrency.launchSystemID == ASSETCHAINS_CHAINID &&
+                     newCurrency.systemID != ASSETCHAINS_CHAINID))
                 {
                     bool failed = true;
                     for (auto &oneCurDef : currencyDefs)
@@ -3989,14 +4025,23 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                     }
                     if (failed)
                     {
-                        return state.Error("New currency definition does not have a system ID of this chain or as a mapped currency on the new system");
+                        newSystemCurrency = ConnectedChains.GetCachedCurrency(newCurrency.systemID);
+                        if (newSystemCurrency.IsGateway() &&
+                            newCurrency.systemID == newSystemCurrency.GetID() &&
+                            (newCurrency.parent == ASSETCHAINS_CHAINID ||
+                                (newSystemCurrency.parent == ASSETCHAINS_CHAINID &&
+                                !newSystemCurrency.IsNameController() &&
+                                newCurrency.parent == newSystemCurrency.GetID())) &&
+                            newSystemCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH)
+                        {
+                            failed = false;
+                        }
+                        if (failed)
+                        {
+                            return state.Error("New currency definition does not have a system ID of this chain or as a mapped currency on the new system");
+                        }
                     }
                 }
-
-                bool isMappedCurrency = (newCurrency.systemID != ASSETCHAINS_CHAINID &&
-                                         newCurrency.IsToken() &&
-                                         !newCurrency.IsFractional() &&
-                                         newCurrency.nativeCurrencyID.TypeNoFlags() != newCurrency.nativeCurrencyID.DEST_INVALID);
 
                 if (!(isMappedCurrency && !pbn.IsValid()))
                 {
@@ -4620,7 +4665,8 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
         p.vData.size() &&
         (rt = CReserveTransfer(p.vData[0])).IsValid() &&
         rt.TotalCurrencyOut().valueMap[ASSETCHAINS_CHAINID] == tx.vout[outNum].nValue &&
-        (rt.IsArbitrageOnly() || p.IsEvalPKOut()))
+        (rt.IsArbitrageOnly() || p.IsEvalPKOut()) &&
+        rt.destination.AuxDestCount() <= 3)
     {
         // arbitrage transactions are determined by their context and statically setting the flags is prohibited
         if (rt.IsArbitrageOnly() &&
@@ -5927,8 +5973,8 @@ void CConnectedChains::CheckOracleUpgrades()
     uint32_t height = chainActive.LastTip() && chainActive.Height() ? chainActive.Height() : 0;
 
     CIdentityID oracleToUse = !PBAAS_TESTMODE || (height && chainActive[height]->nTime > PBAAS_TESTFORK5_TIME) ?
-        ((PBAAS_TESTMODE && chainActive[height]->nTime < (PBAAS_TESTFORK6_TIME + (60 * 60 * 24))) ||
-         (!PBAAS_TESTMODE && IsVerusActive() && !ConnectedChains.IncludePostLaunchFees(std::max(((int32_t)height) - 1000, 0))) ?
+        ((PBAAS_TESTMODE && chainActive[height]->nTime < (PBAAS_TESTFORK7_TIME + (60 * 60 * 24))) ||
+         (!PBAAS_TESTMODE && IsVerusActive() && height < 2620500) ?
                 CIdentityID(ASSETCHAINS_CHAINID) :
                 PBAAS_NOTIFICATION_ORACLE) :
         (IsVerusActive() ?
@@ -10001,9 +10047,12 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
 
                         allExportOutputs.clear();
 
-                        /* UniValue uni(UniValue::VOBJ);
-                        TxToUniv(tb.mtx, uint256(), uni);
-                        printf("%s: Ready to build tx:\n%s\n", __func__, uni.write(1,2).c_str()); // */
+                        if (LogAcceptCategory("crosschainexports"))
+                        {
+                            UniValue uni(UniValue::VOBJ);
+                            TxToUniv(tb.mtx, uint256(), uni);
+                            printf("%s: Ready to build tx:\n%s\n", __func__, uni.write(1,2).c_str()); // */
+                        }
 
                         TransactionBuilderResult buildResult(tb.Build());
 

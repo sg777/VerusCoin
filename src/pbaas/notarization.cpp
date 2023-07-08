@@ -1157,7 +1157,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                             (ConnectedChains.CheckZeroViaOnlyPostLaunch(currentHeight));
 
     bool includePostLaunchFees = ConnectedChains.IncludePostLaunchFees(currentHeight) &&
-                                 !destCurrency.IsGatewayConverter() &&
+                                 !(destCurrency.IsGatewayConverter() && destCurrency.systemID != destCurrency.launchSystemID) &&
                                  destCurrency.IsFractional();
 
     bool clearConvert = ConnectedChains.CheckClearConvert(notaHeight);
@@ -1167,8 +1167,6 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                 !clearConvert ?
                                                                     CCoinbaseCurrencyState::PBAAS_1_0_8 :
                                                                     CCoinbaseCurrencyState::ReversionUpdateForHeight(chainActive.Height());
-
-    CTransferDestination notaryPayee;
 
     if (!externalSystemID.IsNull())
     {
@@ -2012,13 +2010,6 @@ UniValue CChainNotarizationData::ToUniValue(const std::vector<std::pair<CTransac
         notarization.push_back(Pair("index", i));
         notarization.push_back(Pair("txid", vtx[i].first.hash.GetHex()));
 
-        if (IsConfirmed())
-        {
-            notarization.pushKV("notarizationmodulo", CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
-                                                                                                        (int32_t)vtx[lastConfirmed].second.notarizationHeight,
-                                                                                                        chainActive.Height() + 1));
-        }
-
         if (i < transactionsAndBlockHash.size())
         {
             notarization.push_back(Pair("blockhash", transactionsAndBlockHash[i].second.GetHex()));
@@ -2074,7 +2065,18 @@ UniValue CChainNotarizationData::ToUniValue(const std::vector<std::pair<CTransac
     if (IsConfirmed())
     {
         obj.push_back(Pair("lastconfirmedheight", (int32_t)vtx[lastConfirmed].second.notarizationHeight));
+        if (transactionsAndBlockHash.size() > lastConfirmed)
+        {
+            auto blockIt = mapBlockIndex.find(transactionsAndBlockHash[lastConfirmed].second);
+            if (blockIt != mapBlockIndex.end())
+            {
+                obj.pushKV("notarizationmodulo", CPBaaSNotarization::GetAdjustedNotarizationModulo(ConnectedChains.ThisChain().blockNotarizationModulo,
+                                                                                                            (int32_t)blockIt->second->GetHeight(),
+                                                                                                            chainActive.Height() + 1));
+            }
+        }
     }
+
     obj.push_back(Pair("lastconfirmed", lastConfirmed));
     obj.push_back(Pair("bestchain", bestChain));
     return obj;

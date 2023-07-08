@@ -1261,7 +1261,7 @@ bool ContextualCheckTransaction(
         // Check that all transactions are unexpired
         if (IsExpiredTx(tx, nHeight)) {
             // Don't increase banscore if the transaction only just expired
-            int expiredDosLevel = IsExpiredTx(tx, nHeight - 1) ? (dosLevel > 10 ? dosLevel : 10) : 0;
+            int expiredDosLevel = IsExpiredTx(tx, nHeight - 1) ? (IsExpiredTx(tx, std::max(nHeight - 2, 1)) ? (dosLevel > 10 ? dosLevel : 10) : (dosLevel > 1 ? dosLevel : 1)) : 0;
             return state.DoS(expiredDosLevel, error("ContextualCheckTransaction(): transaction is expired"), REJECT_INVALID, "tx-overwinter-expired");
         }
     }
@@ -6541,7 +6541,7 @@ static bool AcceptBlockHeader(int32_t *futureblockp,const CBlockHeader& block, C
         if ( pindex != 0 && pindex->nStatus & BLOCK_FAILED_MASK )
         {
             //printf("block height: %u, hash: %s\n", pindex->GetHeight(), pindex->GetBlockHash().GetHex().c_str());
-            LogPrint("net", "block height: %u\n", pindex->GetHeight());
+            LogPrint("net", "block height: %u, hash: %s\n", pindex->GetHeight(), pindex->GetBlockHash().GetHex().c_str());
             return state.DoS(100, error("%s: block is marked invalid", __func__), REJECT_INVALID, "banned-for-invalid-block");
         }
         /*if ( pindex != 0 && hash == komodo_requestedhash )
@@ -8467,7 +8467,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             return false;
         }
         std::string sanitizedReason = SanitizeString(strReason);
-        int misbehavingLevel = (sanitizedReason == "txoverwinternotactive") ? 0 : 1;
+        int misbehavingLevel = (sanitizedReason == "txoverwinternotactive" || sanitizedReason == "txoverwinterexpired") ? 0 : 1;
         if (isRejectNewTx &&
             sanitizedReason == "badtxnsinputsspent")
         {
