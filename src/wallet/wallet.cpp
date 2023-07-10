@@ -112,7 +112,7 @@ public:
             CCurrencyValueMap leftover1 = m1.SubtractToZero(totalTargetValues);
             CCurrencyValueMap leftover2 = m2.SubtractToZero(totalTargetValues);
 
-            if (leftover1 < leftover2 && leftover2 < leftover1)
+            if (LegacyLT(leftover1, leftover2) && LegacyLT(leftover2, leftover1))
             {
                 if (leftover1.valueMap.size() < leftover2.valueMap.size())
                 {
@@ -123,9 +123,9 @@ public:
                     return false;
                 }
             }
-            return leftover1 < leftover2;
+            return LegacyLT(leftover1, leftover2);
         }
-        else if (m1 < m2 && m2 < m1)
+        else if (LegacyLT(m1, m2) && LegacyLT(m2, m1))
         {
             // this is used for sorting
             // what we care about most in this case is that we always give the same answer,
@@ -134,12 +134,12 @@ public:
             CCurrencyValueMap checkMap1 = m1.IntersectingValues(m2);
             CCurrencyValueMap checkMap2;
             // where they intersect, they are empty, no way to know which is less for sorting
-            if (!(checkMap2 < checkMap1))
+            if (!LegacyLT(checkMap2, checkMap1))
             {
                 return false;
             }
             checkMap2 = checkMap1 - m2.IntersectingValues(m1);
-            if (!(checkMap2 < checkMap1))
+            if (!LegacyLT(checkMap2, checkMap1))
             {
                 return false;
             }
@@ -148,7 +148,7 @@ public:
                 return true;
             }
         }
-        return m1 < m2;
+        return LegacyLT(m1, m2);
     }
 };
 
@@ -5463,7 +5463,7 @@ bool CloserToTarget(const CCurrencyValueMap &target, const CCurrencyValueMap &cu
 {
     CCurrencyValueMap workingTarget = target.SubtractToZero(current);
     CCurrencyValueMap candidateTarget = workingTarget.SubtractToZero(candidate);
-    if (candidateTarget < workingTarget)
+    if (LegacyLT(candidateTarget, workingTarget))
     {
         return true;
     }
