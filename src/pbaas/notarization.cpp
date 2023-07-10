@@ -1262,7 +1262,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 }
 
                 if (destCurrency.maxPreconvert.size() &&
-                    ((!improvedMinCheck && newTotalReserves > maxPreconvertMap) ||
+                    ((!improvedMinCheck && LegacyLT(maxPreconvertMap, newTotalReserves)) ||
                      (improvedMinCheck && (maxPreconvertMap - newTotalReserves).HasNegative())))
                 {
                     LogPrintf("%s: refunding pre-conversion over maximum\n", __func__);
@@ -1369,7 +1369,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                     CCurrencyValueMap coLaunchMinMap = CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchCurrency.minPreconvert);
                     if (coLaunchState.IsRefunding() ||
                         !coLaunchState.ValidateConversionLimits(true) ||
-                        (!improvedMinCheck && coLaunchReserveIn < coLaunchMinMap) ||
+                        (!improvedMinCheck && LegacyLT(coLaunchReserveIn, coLaunchMinMap)) ||
                         (improvedMinCheck && (coLaunchReserveIn - coLaunchMinMap).HasNegative()) ||
                         (coLaunchCurrency.IsFractional() &&
                          CCurrencyValueMap(coLaunchCurrency.currencies, coLaunchState.reserveIn).CanonicalMap().valueMap.size() != coLaunchCurrency.currencies.size()))
@@ -1391,7 +1391,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
 
                 if (forcedRefund ||
                     (minPreMap.valueMap.size() &&
-                     ((!improvedMinCheck && preConvertedMap < minPreMap) ||
+                     ((!improvedMinCheck && LegacyLT(preConvertedMap, minPreMap)) ||
                       (improvedMinCheck && (preConvertedMap - minPreMap).HasNegative()))) ||
                     (destCurrency.IsFractional() &&
                      (CCurrencyValueMap(destCurrency.currencies, newNotarization.currencyState.reserveIn) +

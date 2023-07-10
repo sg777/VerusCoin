@@ -9812,7 +9812,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         if (refundValid)
                         {
                             dest.SetAuxDest(DestinationToTransferDestination(refundDestination), dest.AuxDestCount());
-                            std::vector<CTxDestination>({pk.GetID(), refundDestination});
                         }
 
                         // converting from reserve to a fractional of that reserve

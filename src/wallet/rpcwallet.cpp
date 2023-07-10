@@ -4316,6 +4316,7 @@ UniValue fundrawtransaction(const UniValue& params, bool fHelp)
             }
             const CCoins *coins = view.AccessCoins(oneRef.hash);
             if (!coins ||
+                (coins->fCoinBase && coins->nHeight != 1 && (coins->nHeight < COINBASE_MATURITY)) ||
                 coins->vout.size() <= oneRef.n ||
                 !(coins->vout[oneRef.n].nValue > 0 ||
                   (coins->vout[oneRef.n].scriptPubKey.size() &&
@@ -4369,6 +4370,8 @@ UniValue fundrawtransaction(const UniValue& params, bool fHelp)
         fundWithAmount.valueMap.erase(ASSETCHAINS_CHAINID);
 
         CCurrencyValueMap reserveChange = (valueRet - fundWithAmount).CanonicalMap();
+        reserveChange.valueMap.erase(ASSETCHAINS_CHAINID);
+
         CAmount nativeChange = nativeRet - nativeTarget;
         if (reserveChange.HasNegative() || nativeChange < 0)
         {
