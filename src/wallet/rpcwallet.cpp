@@ -4369,6 +4369,8 @@ UniValue fundrawtransaction(const UniValue& params, bool fHelp)
         fundWithAmount.valueMap.erase(ASSETCHAINS_CHAINID);
 
         CCurrencyValueMap reserveChange = (valueRet - fundWithAmount).CanonicalMap();
+        reserveChange.valueMap.erase(ASSETCHAINS_CHAINID);
+
         CAmount nativeChange = nativeRet - nativeTarget;
         if (reserveChange.HasNegative() || nativeChange < 0)
         {
