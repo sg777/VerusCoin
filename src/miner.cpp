@@ -3067,7 +3067,13 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         {
             std::list<CTransaction> removed;
             mempool.remove(oneTx, removed, true);
+            mapDependers.erase(oneTx.GetHash());
+            for (auto &oneRemovedTx : removed)
+            {
+                mapDependers.erase(oneTx.GetHash());
+            }
         }
+        txesToRemove.clear();
 
         //
         // NOW -- REALLY START TO FILL THE BLOCK
@@ -3523,6 +3529,13 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                     }
                 }
             }
+        }
+
+        // remove transactions that we should from the mempool
+        for (auto &oneTx : txesToRemove)
+        {
+            std::list<CTransaction> removed;
+            mempool.remove(oneTx, removed, true);
         }
 
         // first calculate and distribute block rewards, including fees in the minerOutputs vector
