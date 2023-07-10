@@ -9812,7 +9812,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         if (refundValid)
                         {
                             dest.SetAuxDest(DestinationToTransferDestination(refundDestination), dest.AuxDestCount());
-                            std::vector<CTxDestination>({pk.GetID(), refundDestination});
                         }
 
                         // converting from reserve to a fractional of that reserve
@@ -10650,7 +10649,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             throw JSONRPCError(RPC_INVALID_PARAMETER, "currency cannot be both a token and also specify a mining and staking rewards schedule.");
         }
 
-        if (!newCurrency.IsGateway() && 
+        if (!newCurrency.IsGateway() &&
             (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH ||
              newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT))
         {
@@ -13988,7 +13987,8 @@ UniValue getidentity(const UniValue& params, bool fHelp)
     uint160 parent;
     if (identity.IsValid() && identity.name == CleanName(identity.name, parent))
     {
-        ret.pushKV("fullyqualifiedname", ConnectedChains.GetFriendlyIdentityName(identity));
+        ret.pushKV("friendlyname", ConnectedChains.GetFriendlyIdentityName(identity));
+        ret.pushKV("fullyqualifiedname", ConnectedChains.GetFriendlyIdentityName(identity, true));
         ret.push_back(Pair("identity", identity.ToUniValue()));
         ret.push_back(Pair("status", identity.IsRevoked() ? "revoked" : "active"));
         ret.push_back(Pair("canspendfor", canSpend));

@@ -1031,9 +1031,9 @@ public:
     bool SetLatestMiningOutputs(const std::vector<CTxOut> &minerOutputs);
     void AggregateChainTransfers(const CTransferDestination &feeRecipient, uint32_t nHeight);
     CCurrencyDefinition GetCachedCurrency(const uint160 &currencyID);
-    std::string GetFriendlyCurrencyName(const uint160 &currencyID);
-    std::string GetFriendlyIdentityName(const CIdentity &identity);
-    std::string GetFriendlyIdentityName(const std::string &name, const uint160 &parentCurrencyID);
+    std::string GetFriendlyCurrencyName(const uint160 &currencyID, bool addVerus=false);
+    std::string GetFriendlyIdentityName(const CIdentity &identity, bool addVerus=false);
+    std::string GetFriendlyIdentityName(const std::string &name, const uint160 &parentCurrencyID, bool addVerus=false);
     CCurrencyDefinition UpdateCachedCurrency(const CCurrencyDefinition &currentCurrency, uint32_t height);
 
     bool GetLastImport(const uint160 &currencyID,
