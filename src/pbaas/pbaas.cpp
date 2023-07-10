@@ -6607,7 +6607,7 @@ CCurrencyDefinition CConnectedChains::UpdateCachedCurrency(const CCurrencyDefini
 }
 
 // this must be protected with main lock
-std::string CConnectedChains::GetFriendlyCurrencyName(const uint160 &currencyID)
+std::string CConnectedChains::GetFriendlyCurrencyName(const uint160 &currencyID, bool addVerus)
 {
     // basically, we lookup parent until we are at the native currency
     std::string retName;
@@ -6615,7 +6615,7 @@ std::string CConnectedChains::GetFriendlyCurrencyName(const uint160 &currencyID)
     CCurrencyDefinition curDef;
     for (curDef = GetCachedCurrency(curID); curDef.IsValid(); curDef = curID.IsNull() ? CCurrencyDefinition() : GetCachedCurrency(curID))
     {
-        if (curDef.parent.IsNull())
+        if (!addVerus && curDef.parent.IsNull())
         {
             // if we are at a Verus root, we can omit it unless there is nothing else
             if (curDef.GetID() == VERUS_CHAINID)
@@ -6647,7 +6647,7 @@ std::string CConnectedChains::GetFriendlyCurrencyName(const uint160 &currencyID)
     return retName;
 }
 
-std::string CConnectedChains::GetFriendlyIdentityName(const std::string &name, const uint160 &parentCurrencyID)
+std::string CConnectedChains::GetFriendlyIdentityName(const std::string &name, const uint160 &parentCurrencyID, bool addVerus)
 {
     uint160 parent;
     std::string cleanName = CleanName(name, parent, false, true);
@@ -6666,13 +6666,13 @@ std::string CConnectedChains::GetFriendlyIdentityName(const std::string &name, c
     }
     else
     {
-        return name + '.' + GetFriendlyCurrencyName(parentCurrencyID) + '@';
+        return name + '.' + GetFriendlyCurrencyName(parentCurrencyID, addVerus) + '@';
     }
 }
 
-std::string CConnectedChains::GetFriendlyIdentityName(const CIdentity &identity)
+std::string CConnectedChains::GetFriendlyIdentityName(const CIdentity &identity, bool addVerus)
 {
-    return GetFriendlyIdentityName(identity.name, identity.parent);
+    return GetFriendlyIdentityName(identity.name, identity.parent, addVerus);
 }
 
 // returns all unspent chain exports for a specific chain/currency
