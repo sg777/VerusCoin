@@ -408,12 +408,11 @@ CCurrencyValueMap CTransaction::GetReserveValueOut() const
 
         for (auto &oneCur : oneOut.valueMap)
         {
-            if (oneCur.second &&
-                (retVal.valueMap[oneCur.first] += oneCur.second) < 0)
+            if (!MoneyRange(oneCur.second) ||
+                !MoneyRange(retVal.valueMap[oneCur.first] += oneCur.second))
             {
-                printf("%s: currency value overflow total: %ld, adding: %ld - pegging to max\n", __func__, retVal.valueMap[oneCur.first], oneCur.second);
-                LogPrintf("%s: currency value overflow total: %ld, adding: %ld - pegging to max\n", __func__, retVal.valueMap[oneCur.first], oneCur.second);
-                retVal.valueMap[oneCur.first] = INT64_MAX;
+                LogPrint("defi", "%s: currency value overflow -- total: %ld, adding: %ld\n", __func__, retVal.valueMap[oneCur.first], oneCur.second);
+                throw std::runtime_error("CTransaction::GetReserveValueOut(): value out of range");
             }
         }
     }

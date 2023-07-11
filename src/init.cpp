@@ -2161,6 +2161,9 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     LogPrintf("No wallet support compiled in!\n");
 #endif // !ENABLE_WALLET
 
+    LogPrintf("Initialized chain: %s, ID %s\n", ConnectedChains.ThisChain().name.c_str(), ConnectedChains.ThisChain().GetID().GetHex().c_str());
+    printf("Initialized chain: %s, ID %s\n", ConnectedChains.ThisChain().name.c_str(), ConnectedChains.ThisChain().GetID().GetHex().c_str());
+
 #ifdef ENABLE_MINING
  #ifndef ENABLE_WALLET
     if (GetBoolArg("-minetolocalwallet", false)) {
