@@ -395,6 +395,7 @@ public:
     }
 
     friend bool operator<(const CCurrencyValueMap& a, const CCurrencyValueMap& b);
+    friend bool LegacyLT(const CCurrencyValueMap& a, const CCurrencyValueMap& b);
     friend bool operator>(const CCurrencyValueMap& a, const CCurrencyValueMap& b);
     friend bool operator==(const CCurrencyValueMap& a, const CCurrencyValueMap& b);
     friend bool operator!=(const CCurrencyValueMap& a, const CCurrencyValueMap& b);

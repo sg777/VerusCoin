@@ -1895,6 +1895,37 @@ bool operator<(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
             }
         }
     }
+    return isaltb;
+}
+
+bool LegacyLT(const CCurrencyValueMap& a, const CCurrencyValueMap& b)
+{
+    // to be less than means, in this order:
+    // 1. To have fewer non-zero currencies.
+    // 2. If not fewer currencies, all present currencies must be less in a than b
+    if (!a.valueMap.size() && !b.valueMap.size())
+    {
+        return false;
+    }
+
+    bool isaltb = false;
+    std::set<uint160> checked;
+
+    // ensure that we are smaller than all those present in b
+    for (auto &oneVal : b.valueMap)
+    {
+        checked.insert(oneVal.first);
+        if (oneVal.second)
+        {
+            auto it = a.valueMap.find(oneVal.first);
+
+            // negative is less than not present, which is equivalent to 0
+            if ((it == a.valueMap.end() && oneVal.second > 0) || (it != a.valueMap.end() && it->second < oneVal.second))
+            {
+                isaltb = true;
+            }
+        }
+    }
 
     // ensure that for all the currencies we have, b does not have less or equal
     for (auto &oneVal : a.valueMap)
