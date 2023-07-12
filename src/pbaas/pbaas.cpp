@@ -600,10 +600,13 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
             {
                 CCurrencyValueMap expectedReserves;
 
-                CAmount expectedSupply = importCurrency.GetTotalPreallocation();
+                CCurrencyState supplyTracker;
+                supplyTracker.supply = 0;
+
+                supplyTracker.supply = supplyTracker.AddToSupply(importCurrency.GetTotalPreallocation());
                 if (importCurrency.IsPBaaSChain())
                 {
-                    expectedSupply += importCurrency.gatewayConverterIssuance;
+                    supplyTracker.supply = supplyTracker.AddToSupply(importCurrency.gatewayConverterIssuance);
                 }
 
                 CCurrencyValueMap emptyMap;
@@ -613,7 +616,7 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
 
                 if (importCurrency.IsFractional())
                 {
-                    expectedSupply += importCurrency.initialFractionalSupply;
+                    supplyTracker.supply = supplyTracker.AddToSupply(importCurrency.initialFractionalSupply);
                     if (importCurrency.IsGatewayConverter() &&
                         importCurrency.gatewayID != importCurrency.launchSystemID)
                     {
@@ -673,6 +676,10 @@ bool PrecheckCrossChainImport(const CTransaction &tx, int32_t outNum, CValidatio
                     {
                         return state.Error("Invalid starting data in notarization for currency definition in tx 2: " + tx.GetHash().GetHex());
                     }
+                }
+                if (supplyTracker.supply > MAX_SUPPLY)
+                {
+                    return state.Error("Invalid expected supply for currency definition in tx 2: " + tx.GetHash().GetHex());
                 }
             }
 
@@ -6276,7 +6283,8 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         else
         {
             // supply is determined by purchases * current conversion rate
-            currencyState.supply = curDef.gatewayConverterIssuance + curDef.GetTotalPreallocation();
+            currencyState.supply = curDef.GetTotalPreallocation();
+            currencyState.supply = currencyState.AddToSupply(curDef.gatewayConverterIssuance);
         }
     }
 
@@ -6502,7 +6510,8 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                     else
                     {
                         // supply is determined by purchases * current conversion rate
-                        currencyState.supply = curDef.GetTotalPreallocation() + curDef.gatewayConverterIssuance;
+                        currencyState.supply = curDef.GetTotalPreallocation();
+                        currencyState.supply = currencyState.AddToSupply(curDef.gatewayConverterIssuance);
                     }
 
                     for (auto &transfer : unspentTransfers)

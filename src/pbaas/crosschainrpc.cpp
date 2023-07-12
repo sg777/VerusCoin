@@ -1324,7 +1324,12 @@ int64_t CCurrencyDefinition::GetTotalPreallocation() const
     CAmount totalPreallocatedNative = 0;
     for (auto &onePreallocation : preAllocation)
     {
-        totalPreallocatedNative += onePreallocation.second;
+        if (!MoneyRange(onePreallocation.second) ||
+            !MoneyRange(totalPreallocatedNative += onePreallocation.second))
+        {
+            totalPreallocatedNative = INT64_MAX;
+            break;
+        }
     }
     return totalPreallocatedNative;
 }
