@@ -6003,7 +6003,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     CCurrencyValueMap checkAgainstInputs(spentCurrencyOut);
 
-    if ((finalValidation || isLaunchComplete) &&
+    if ((finalValidation || (updatedPostFees && isLaunchComplete) &&
         !newCurrencyState.IsRefunding() &&
         (newCurrencyState.IsLaunchClear() || isLaunchComplete) &&
         !newCurrencyState.ValidateConversionLimits(updatedPostLaunch))
