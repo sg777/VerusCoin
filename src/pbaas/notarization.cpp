@@ -1642,7 +1642,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                   &newNotarization.currencyState,
                                                                   feeRecipient,
                                                                   proposer,
-                                                                  weakEntropy);
+                                                                  weakEntropy,
+                                                                  !destCurrency.IsFractional());
         if (!newNotarization.currencyState.IsPrelaunch() &&
             isValidExport)
         {
