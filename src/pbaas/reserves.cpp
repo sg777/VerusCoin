@@ -723,6 +723,10 @@ bool CCoinbaseCurrencyState::ValidateConversionLimits(bool checkZeroViaOnlyPostL
     {
         return true;
     }
+    if (supply > MAX_SUPPLY)
+    {
+        return false;
+    }
     // 1) ensure that no conversion rate, either from reserve to basket or between reserves is negative or exceeds MAX_SUPPLY
     // 2) ensure that 10x the transaction import fee is available in the native currency
     std::vector<int64_t> pricesVec = PricesInReserve();
@@ -3574,7 +3578,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             if ((nextSys.GetID() == ASSETCHAINS_CHAINID && nextLegTransfer.nFees < nextSys.GetTransactionTransferFee()) ||
                 (nextSys.GetID() != ASSETCHAINS_CHAINID && nextLegTransfer.nFees < txImportFee))
             {
-                LogPrintf("%s: Insufficient fee currency for next leg of transfer %s\nFee Required: %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str(), 
+                LogPrintf("%s: Insufficient fee currency for next leg of transfer %s\nFee Required: %s\n", __func__, nextLegTransfer.ToUniValue().write(1,2).c_str(),
                           ValueFromAmount(txImportFee).write(1,2).c_str());
 
                 if (nextSys.proofProtocol == nextSys.PROOF_ETHNOTARIZATION)
@@ -5640,7 +5644,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             newCurrencyState.reserveIn[i] += vResConverted[i] + vLiquidityFees[i];
             newCurrencyState.reserveOut[i] += vResOutConverted[i];
             CAmount newReservesIn = isFractional ? (vResConverted[i] - vResOutConverted[i]) + vLiquidityFees[i] : 0;
-            
+
             newCurrencyState.reserves[i] += newReservesIn;
             if (newReservesIn)
             {
