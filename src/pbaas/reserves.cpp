@@ -3026,7 +3026,8 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                                                   &newState,
                                                                   ccx.exporter,
                                                                   importNotarization.proposer,
-                                                                  weakEntropyHash))
+                                                                  weakEntropyHash,
+                                                                  true))
                         {
                             flags &= ~IS_VALID;
                             flags |= IS_REJECT;
