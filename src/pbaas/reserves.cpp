@@ -6003,7 +6003,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
     CCurrencyValueMap checkAgainstInputs(spentCurrencyOut);
 
-    if ((finalValidation || (updatedPostFees && isLaunchComplete) &&
+    if ((finalValidation || (updatedPostFees && isLaunchComplete)) &&
         !newCurrencyState.IsRefunding() &&
         (newCurrencyState.IsLaunchClear() || isLaunchComplete) &&
         !newCurrencyState.ValidateConversionLimits(updatedPostLaunch))
@@ -6067,14 +6067,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 importedCurrency.valueMap.clear();
                 gatewayDepositsIn.valueMap.clear();
                 spentCurrencyOut.valueMap.clear();
-                CCurrencyDefinition refundDef = ConnectedChains.GetCachedCurrency(importCurrencyDef.launchSystemID);
 
                 if (updatedPostLaunch)
                 {
                     *this = checkPointThis;
                 }
-                return AddReserveTransferImportOutputs(refundDef,
-                                                       refundDef,
+                return AddReserveTransferImportOutputs(systemSource,
+                                                       systemDest,
                                                        importCurrencyDef,
                                                        importCurrencyState,
                                                        refundedExports,

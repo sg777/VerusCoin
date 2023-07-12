@@ -222,7 +222,14 @@ CTxDestination GetCompatibleAuxDestination(const CTransferDestination &transferD
             {
                 if (addressProtocol != CCurrencyDefinition::PROOF_ETHNOTARIZATION)
                 {
-                    return TransferDestinationToDestination(i == -1 ? transferDest : transferDest.GetAuxDest(i));
+                    try
+                    {
+                        return TransferDestinationToDestination(i == -1 ? transferDest : transferDest.GetAuxDest(i));
+                    }
+                    catch(...)
+                    {
+                        return CTxDestination();
+                    }
                 }
                 break;
             }
@@ -231,7 +238,14 @@ CTxDestination GetCompatibleAuxDestination(const CTransferDestination &transferD
             {
                 if (addressProtocol == CCurrencyDefinition::PROOF_ETHNOTARIZATION)
                 {
-                    return TransferDestinationToDestination(i == -1 ? transferDest : transferDest.GetAuxDest(i));
+                    try
+                    {
+                        return TransferDestinationToDestination(i == -1 ? transferDest : transferDest.GetAuxDest(i));
+                    }
+                    catch(...)
+                    {
+                        return CTxDestination();
+                    }
                 }
                 break;
             }
