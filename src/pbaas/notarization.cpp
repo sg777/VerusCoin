@@ -1498,6 +1498,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             tempState.supply = 0;
             tempState.reserves = std::vector<int64_t>(newNotarization.currencyState.reserves.size(), 0);
             newNotarization.SetRefunding(true);
+            newNotarization.SetLaunchConfirmed(false);
+            newNotarization.currencyState.SetLaunchConfirmed(false);
         }
 
         // if we are in the pre-launch phase, all reserves in are cumulative and then calculated together at launch
