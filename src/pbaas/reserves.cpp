@@ -719,13 +719,13 @@ bool CCrossChainImport::GetImportInfo(const CTransaction &importTx,
 // these limits will refund conversions or fail if it is due to inadequate fee reserves.
 bool CCoinbaseCurrencyState::ValidateConversionLimits(bool checkZeroViaOnlyPostLaunch) const
 {
-    if (!IsFractional())
-    {
-        return true;
-    }
     if (supply > MAX_SUPPLY)
     {
         return false;
+    }
+    if (!IsFractional())
+    {
+        return true;
     }
     // 1) ensure that no conversion rate, either from reserve to basket or between reserves is negative or exceeds MAX_SUPPLY
     // 2) ensure that 10x the transaction import fee is available in the native currency
