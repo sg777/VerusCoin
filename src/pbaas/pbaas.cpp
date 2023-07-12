@@ -3256,7 +3256,8 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                                                   &newCurState,
                                                   ccxSource.exporter,
                                                   importNotarization.proposer,
-                                                  EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), importNotarization.notarizationHeight, destCurDef.GetID())))
+                                                  EntropyHashFromHeight(CBlockIndex::BlockEntropyKey(), importNotarization.notarizationHeight, destCurDef.GetID()),
+                                                  true))
         {
             return eval->Error(std::string(__func__) + ": invalid import transaction");
         }
