@@ -1493,6 +1493,12 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         }
 
         //printf("%s: importedCurrency: %s\ngatewaysDepositsUsed: %s\n", __func__, importedCurrency.ToUniValue().write(1,2).c_str(), gatewayDepositsUsed.ToUniValue().write(1,2).c_str());
+        if (tempState.IsRefunding() && !newNotarization.IsRefunding())
+        {
+            tempState.supply = 0;
+            tempState.reserves = std::vector<int64_t>(newNotarization.currencyState.reserves.size(), 0);
+            newNotarization.SetRefunding(true);
+        }
 
         // if we are in the pre-launch phase, all reserves in are cumulative and then calculated together at launch
         // reserves in represent all reserves in, and fees are taken out after launch or refund as well
