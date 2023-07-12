@@ -6001,6 +6001,11 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         currencies[importCurrencyID].reserveOutConverted = systemOutConverted;
     }
 
+    if (LogAcceptCategory("defi") && isLaunchComplete && !newCurrencyState.IsRefunding() && !newCurrencyState.ValidateConversionLimits(updatedPostLaunch))
+    {
+        LogPrintf("%s: currency state fails conversion limits: %s\n", __func__, newCurrencyState.ToUniValue().write(1,2).c_str());
+    }
+
     CCurrencyValueMap checkAgainstInputs(spentCurrencyOut);
 
     if ((finalValidation || (updatedPostFees && isLaunchComplete)) &&
