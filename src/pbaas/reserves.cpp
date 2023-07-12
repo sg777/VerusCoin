@@ -2351,7 +2351,7 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
             rates[i] = ((arith_uint256(inputReserve) * bigSatoshi) / arith_uint256(fractionalSizes[i])).GetLow64();
 
             // add the new reserve and supply to the currency
-            newState.supply += fractionDelta;
+            newState.supply = newState.AddToSupply(fractionDelta);
 
             // all reserves have been calculated using a substituted value, which was 1:1 for native initially
             newState.reserves[i] += inputFractional[i] ? NativeToReserveRaw(fractionDelta, rates[i]) : inputReserves[i];
@@ -2373,7 +2373,7 @@ std::vector<CAmount> CCurrencyState::ConvertAmounts(const std::vector<CAmount> &
             rates[i] = ((arith_uint256(reserveSizes[i]) * bigSatoshi) / arith_uint256(inputFraction)).GetLow64();
 
             // subtract the fractional and reserve that has left the currency
-            newState.supply -= inputFraction;
+            newState.supply = AddToSupply(-inputFraction);
             newState.reserves[i] -= adjustedReserveDelta;
         }
     }
@@ -2993,7 +2993,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                 importNotarization.currencyState.supply == checkState.supply &&
                                 checkState.preConvertedOut)
                             {
-                                checkState.supply -= checkState.preConvertedOut;
+                                checkState.supply = checkState.AddToSupply(-checkState.preConvertedOut);
                             }
                         }
 
@@ -3904,6 +3904,19 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
         }
     }
     return false;
+}
+
+CAmount CCurrencyState::AddToSupply(CAmount nValue) const
+{
+    if (nValue > 0 && supply > 0 && (supply + nValue) < 0)
+    {
+        return INT64_MAX;
+    }
+    else if (nValue < 0 && supply < 0 && (supply + nValue) > 0)
+    {
+        return INT64_MIN;
+    }
+    return supply + nValue;
 }
 
 // the source currency indicates the system from which the import comes, but the imports may contain additional
@@ -5454,7 +5467,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
         if (burnedChangePrice > 0)
         {
-            newCurrencyState.supply -= burnedChangePrice;
+            newCurrencyState.supply = newCurrencyState.AddToSupply(-burnedChangePrice);
         }
 
         // if we burned reserves, they go straight into reserves in the currency
@@ -5482,7 +5495,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
         if (burnedChangePrice > 0)
         {
-            scratchCurrencyState.supply -= burnedChangePrice;
+            scratchCurrencyState.supply = scratchCurrencyState.AddToSupply(-burnedChangePrice);
         }
 
         // if we burned reserves, they go straight into reserves in the currency
@@ -5618,7 +5631,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 newCurrencyState.IsLaunchConfirmed() &&
                 !(importCurrencyDef.IsPBaaSChain() && !newCurrencyState.IsLaunchClear()))
             {
-                newCurrencyState.supply += oneVal.second;
+                newCurrencyState.supply = newCurrencyState.AddToSupply(oneVal.second);
             }
         }
     }
@@ -5661,7 +5674,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 newCurrencyState.reserveIn[i] += cIT->second;
             }
         }
-        newCurrencyState.supply += (netPrimaryOut - netPrimaryIn);
+        newCurrencyState.supply = newCurrencyState.AddToSupply(netPrimaryOut - netPrimaryIn);
         if (ConnectedChains.CheckClearConvert(height))
         {
             newCurrencyState.primaryCurrencyOut -= netPrimaryIn;
@@ -5684,7 +5697,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             else
             {
                 CAmount newPrimaryOut = vFracOutConverted[i] - vFracConverted[i];
-                newCurrencyState.supply += newPrimaryOut;
+                newCurrencyState.supply = newCurrencyState.AddToSupply(newPrimaryOut);
                 netPrimaryIn += newPrimaryOut;
                 netPrimaryOut += newPrimaryOut;
             }
@@ -5920,7 +5933,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         }
         else
         {
-            newCurrencyState.supply += importCurrencyState.supply - newCurrencyState.emitted;
+            newCurrencyState.supply = newCurrencyState.AddToSupply(importCurrencyState.supply - newCurrencyState.emitted);
             newCurrencyState.preConvertedOut += importCurrencyState.preConvertedOut;
             newCurrencyState.primaryCurrencyOut += importCurrencyState.primaryCurrencyOut;
         }
@@ -6283,7 +6296,7 @@ CCoinbaseCurrencyState &CCoinbaseCurrencyState::UpdateWithEmission(CAmount toEmi
         else
         {
             emitted = toEmit;
-            supply += toEmit;
+            supply = AddToSupply(toEmit);
         }
         return *this;
     }
@@ -6387,7 +6400,7 @@ CCoinbaseCurrencyState &CCoinbaseCurrencyState::UpdateWithEmission(CAmount toEmi
 
         // update initial supply from what we currently have
         emitted = toEmit;
-        supply += emitted;
+        supply = AddToSupply(emitted);
     }
     return *this;
 }
@@ -6499,7 +6512,7 @@ void CCoinbaseCurrencyState::RevertFees(const std::vector<CAmount> &normalConver
             // importCurrency as liquidity fee will have gotten burned, so add it back to supply
             if (oneLiquidityFee.first == GetID())
             {
-                supply += oneLiquidityFee.second;
+                supply = AddToSupply(oneLiquidityFee.second);
             }
             else
             {
@@ -6716,7 +6729,7 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply(const CCurrencyDefinition &
                     reserves[oneCur.second] += (reserveOut[oneCur.second] - reserveIn[oneCur.second]);
                     if (IsLaunchCompleteMarker() && reversionUpdate < ReversionUpdate::PBAAS_1_0_10)
                     {
-                        supply += primaryCurrencyIn[oneCur.second];
+                        supply = AddToSupply(primaryCurrencyIn[oneCur.second]);
                     }
                 }
             }
@@ -6742,11 +6755,11 @@ void CCoinbaseCurrencyState::RevertReservesAndSupply(const CCurrencyDefinition &
     // from the initial supply, which was more for display. reset to initial supply as a starting point
     if (IsPrelaunch() || (processingPreconverts && !IsFractional() && !IsRefunding()))
     {
-        supply -= primaryCurrencyOut;
+        supply = AddToSupply(-primaryCurrencyOut);
     }
     else
     {
-        supply -= (primaryCurrencyOut - preConvertedOut);
+        supply = AddToSupply(-(primaryCurrencyOut - preConvertedOut));
     }
     weights = priorWeights;
 }

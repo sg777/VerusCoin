@@ -3026,13 +3026,23 @@ namespace Consensus {
                                         tx.GetHash().ToString(), FormatMoney(nValueIn), FormatMoney(tx.GetValueOut()),((double)nValueIn - tx.GetValueOut())/COIN),REJECT_INVALID, "bad-txns-in-belowout");
         }
 
-        //printf("NativeValueIn: %s\nNativeValueOut: %s\n", std::to_string(nValueIn).c_str(), std::to_string(tx.GetValueOut()).c_str());
-        //printf("ReserveValueIn: %s\nGetReserveValueOut: %s\n", ReserveValueIn.ToUniValue().write(1, 2).c_str(), tx.GetReserveValueOut().ToUniValue().write(1, 2).c_str());
-
-        if (ReserveValueIn < tx.GetReserveValueOut())
+        bool outOverflow = false;
+        CCurrencyValueMap reserveValueOut;
+        try
         {
-            fprintf(stderr,"spentheight.%d reservevaluein: %s\nis less than out: %s\n", nSpendHeight,
-                    ReserveValueIn.ToUniValue().write(1, 2).c_str(), tx.GetReserveValueOut().ToUniValue().write(1, 2).c_str());
+            reserveValueOut = tx.GetReserveValueOut();
+            //printf("NativeValueIn: %s\nNativeValueOut: %s\n", std::to_string(nValueIn).c_str(), std::to_string(tx.GetValueOut()).c_str());
+            //printf("ReserveValueIn: %s\nGetReserveValueOut: %s\n", ReserveValueIn.ToUniValue().write(1, 2).c_str(), tx.GetReserveValueOut().ToUniValue().write(1, 2).c_str());
+        }
+        catch(const std::exception& e)
+        {
+            outOverflow = true;
+        }
+        
+        if (outOverflow || ReserveValueIn < reserveValueOut)
+        {
+            fprintf(stderr,"overflow or spentheight.%d reservevaluein: %s\nis less than out: %s\n", nSpendHeight,
+                    ReserveValueIn.ToUniValue().write(1, 2).c_str(), reserveValueOut.ToUniValue().write(1, 2).c_str());
             UniValue jsonTx(UniValue::VOBJ);
             TxToUniv(tx, uint256(), jsonTx);
             fprintf(stderr,"%s\n", jsonTx.write(1,2).c_str());
@@ -4874,13 +4884,24 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         }
     }
 
+    CCurrencyValueMap reserveValueOut;
+    bool outOverflow = false;
+    try
+    {
+        reserveValueOut = block.vtx[0].GetReserveValueOut();
+    }
+    catch(const std::exception& e)
+    {
+        outOverflow = true;
+    }
+
     if (ASSETCHAINS_SYMBOL[0] != 0 && pindex->GetHeight() == 1 && block.vtx[0].GetValueOut() != nativeBlockReward)
     {
         printf("%s: block.vtx[0].GetValueOut(): %ld, nativeBlockReward: %ld\nreservevalueout: %s\nvalidextracoinbaseoutputs: %s\n",
             __func__,
             block.vtx[0].GetValueOut(),
             nativeBlockReward,
-            block.vtx[0].GetReserveValueOut().ToUniValue().write(1,2).c_str(),
+            reserveValueOut.ToUniValue().write(1,2).c_str(),
             validExtraCoinbaseOutputs.ToUniValue().write(1,2).c_str());
         return state.DoS(100, error("ConnectBlock(): coinbase for block 1 pays wrong amount (actual=%d vs correct=%d)", block.vtx[0].GetValueOut(), nativeBlockReward),
                             REJECT_INVALID, "bad-cb-amount");
@@ -4891,7 +4912,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         validExtraCoinbaseOutputs.valueMap[VERUS_CHAINID] += verusFees;
     }
 
-    if ( block.vtx[0].GetValueOut() > nativeBlockReward || (block.vtx[0].GetReserveValueOut() > validExtraCoinbaseOutputs) )
+    if ( block.vtx[0].GetValueOut() > nativeBlockReward || outOverflow || (block.vtx[0].GetReserveValueOut() > validExtraCoinbaseOutputs) )
     {
         printf("%s: block.vtx[0].GetValueOut(): %ld, nativeBlockReward: %ld\nreservevalueout: %s\nvalidextracoinbaseoutputs: %s\n",
             __func__,
@@ -4906,7 +4927,9 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                    block.vtx[0].GetValueOut(), nativeBlockReward),
                              REJECT_INVALID, "bad-cb-amount");
         } else if ( IS_KOMODO_NOTARY != 0 )
+        {
             fprintf(stderr,"allow nHeight.%d coinbase %.8f vs %.8f\n",(int32_t)pindex->GetHeight(),dstr(block.vtx[0].GetValueOut()),dstr(nativeBlockReward));
+        }
     }
 
     if (reserveRewardTaken.valueMap.size() &&

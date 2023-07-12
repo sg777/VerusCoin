@@ -59,7 +59,14 @@ CTxMemPoolEntry::GetPriority(unsigned int currentHeight) const
     AssertLockHeld(cs_main);
     if (hasReserve && (currencyState = ConnectedChains.GetCurrencyState(currentHeight - 1, false)).IsValid())
     {
-        nValueIn += currencyState.ReserveToNative(tx->GetReserveValueOut());
+        try
+        {
+            nValueIn += currencyState.ReserveToNative(tx->GetReserveValueOut());
+        }
+        catch(const std::exception& e)
+        {
+            nValueIn = 0;
+        }
     }
     double deltaPriority = ((double)(currentHeight-nHeight)*nValueIn)/nModSize;
     double dResult = dPriority + deltaPriority;
