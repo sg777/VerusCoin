@@ -3994,7 +3994,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
             {
                 std::map<uint160, std::string> requiredDefinitions = newDefinitions;
 
-                if (!ValidateNewUnivalueCurrencyDefinition(newCurrency.ToUniValue(), height - 1, ASSETCHAINS_CHAINID, requiredDefinitions, false).IsValid())
+                if (!ValidateNewUnivalueCurrencyDefinition(newCurrency.ToUniValue(), height - 1, newCurrency.systemID, requiredDefinitions, false).IsValid())
                 {
                     LogPrint("currencydefinition", "%s: Currency definition in output violates current definition rules.\n%s\n", __func__, newCurrency.ToUniValue().write(1,2).c_str());
                     return state.Error("Currency definition in output violates current definition rules");
@@ -6309,7 +6309,21 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
                                                 CUTXORef(),
                                                 curDefHeight);
         workingNotarization.SetPreLaunch();
-        if (workingNotarization.NextNotarizationInfo(ConnectedChains.ThisChain(),
+        bool getNextNotarization = (curDef.systemID == ASSETCHAINS_CHAINID || transfers.size());
+        if (!getNextNotarization)
+        {
+            CCurrencyDefinition systemDef;
+            int32_t defHeight = 0;
+            // only get next notarization if mined in
+            if (GetCurrencyDefinition(curDef.systemID, systemDef, &defHeight) &&
+                defHeight &&
+                defHeight < height)
+            {
+                getNextNotarization = true;
+            }
+        }
+        if (getNextNotarization && // this check is important, as we need consistency of bridge currency definitions not taking this path
+            workingNotarization.NextNotarizationInfo(ConnectedChains.ThisChain(),
                                                      curDef,
                                                      fromHeight,
                                                      std::min(height, curDef.startBlock - 1),
@@ -9545,7 +9559,7 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
         // when it gets imported back to the chain
         std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
         // if going off-system, reserve deposits accrue to the destination system, if same system, to the currency
-        CReserveDeposit rd = CReserveDeposit(crossSystem ? destSystemID : currencyID, newReserveDeposits);
+        CReserveDeposit rd = CReserveDeposit(crossSystem ? destSystemID : (newNotarization.IsRefunding() && _curDef.systemID != destSystemID ? _curDef.systemID : currencyID), newReserveDeposits);
         exportOutputs.push_back(CTxOut(nativeReserveDeposit, MakeMofNCCScript(CConditionObj<CReserveDeposit>(EVAL_RESERVE_DEPOSIT, dests, 1, &rd))));
     }
 

@@ -11603,7 +11603,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                     CCurrencyDefinition::DEFAULT_OUTPUT_VALUE);
 
                 // get initial currency state at this height
-                CCoinbaseCurrencyState gatewayCurrencyState = ConnectedChains.GetCurrencyState(newGatewayConverter, chainActive.Height() + 1);
+                CCoinbaseCurrencyState gatewayCurrencyState = ConnectedChains.GetCurrencyState(newGatewayConverter, chainActive.Height());
                 int currencyIndex = gatewayCurrencyState.GetReserveMap()[newChainID];
 
                 gatewayCurrencyState.reserveIn[currencyIndex] += newChain.gatewayConverterIssuance;
