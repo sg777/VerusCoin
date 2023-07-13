@@ -6309,19 +6309,19 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
                                                 CUTXORef(),
                                                 curDefHeight);
         workingNotarization.SetPreLaunch();
-        bool getNextNotarization = (curDef.systemID == ASSETCHAINS_CHAINID || transfers.size());
-        if (!getNextNotarization)
+
+        bool getNextNotarization = false;
+        CCurrencyDefinition systemDef;
+        int32_t defHeight = 0;
+
+        // only get next notarization if mined in
+        if (GetCurrencyDefinition(curDef.systemID, systemDef, &defHeight) &&
+            defHeight &&
+            defHeight < height)
         {
-            CCurrencyDefinition systemDef;
-            int32_t defHeight = 0;
-            // only get next notarization if mined in
-            if (GetCurrencyDefinition(curDef.systemID, systemDef, &defHeight) &&
-                defHeight &&
-                defHeight < height)
-            {
-                getNextNotarization = true;
-            }
+            getNextNotarization = true;
         }
+
         if (getNextNotarization && // this check is important, as we need consistency of bridge currency definitions not taking this path
             workingNotarization.NextNotarizationInfo(ConnectedChains.ThisChain(),
                                                      curDef,
