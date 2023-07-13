@@ -745,15 +745,19 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
         if (IsPBaaSChain() || IsGateway() || IsGatewayConverter())
         {
-            try
+            UniValue gatewayIssuanceUni = find_value(obj, "gatewayconverterissuance");
+            if (!gatewayIssuanceUni.isNull())
             {
-                gatewayConverterIssuance = AmountFromValue(find_value(obj, "gatewayconverterissuance"));
-            }
-            catch(const std::exception& e)
-            {
-                LogPrintf("%s: invalid gatewayconverterissuance %s\n", __func__, find_value(obj, "gatewayconverterissuance").write().c_str());
-                nVersion = PBAAS_VERSION_INVALID;
-                return;
+                try
+                {
+                    gatewayConverterIssuance = AmountFromValue(gatewayIssuanceUni);
+                }
+                catch(const std::exception& e)
+                {
+                    LogPrintf("%s: invalid gatewayconverterissuance %s\n", __func__, gatewayIssuanceUni.write().c_str());
+                    nVersion = PBAAS_VERSION_INVALID;
+                    return;
+                }
             }
             
             if (IsGatewayConverter())
@@ -875,15 +879,19 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             {
                 preLaunchDiscount = AmountFromValueNoErr(find_value(obj, "prelaunchdiscount"));
 
-                try
+                UniValue initSupplyUni = find_value(obj, "initialsupply");
+                if (!initSupplyUni.isNull())
                 {
-                    initialFractionalSupply = AmountFromValue(find_value(obj, "initialsupply"));
-                }
-                catch(const std::exception& e)
-                {
-                    LogPrintf("%s: invalid initialFractionalSupply %s\n", __func__, find_value(obj, "initialsupply").write().c_str());
-                    nVersion = PBAAS_VERSION_INVALID;
-                    return;
+                    try
+                    {
+                        initialFractionalSupply = AmountFromValue(initSupplyUni);
+                    }
+                    catch(const std::exception& e)
+                    {
+                        LogPrintf("%s: invalid initialsupply %s\n", __func__, initSupplyUni.write().c_str());
+                        nVersion = PBAAS_VERSION_INVALID;
+                        return;
+                    }
                 }
 
                 if (!initialFractionalSupply)
@@ -1169,15 +1177,19 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
         if (!gatewayID.IsNull())
         {
-            try
+            UniValue gatewayIssuanceUni = find_value(obj, "gatewayconverterissuance");
+            if (!gatewayIssuanceUni.isNull())
             {
-                gatewayConverterIssuance = AmountFromValue(find_value(obj, "gatewayconverterissuance"));
-            }
-            catch(const std::exception& e)
-            {
-                LogPrintf("%s: invalid gatewayconverterissuance %s\n", __func__, find_value(obj, "gatewayconverterissuance").write().c_str());
-                nVersion = PBAAS_VERSION_INVALID;
-                return;
+                try
+                {
+                    gatewayConverterIssuance = AmountFromValue(gatewayIssuanceUni);
+                }
+                catch(const std::exception& e)
+                {
+                    LogPrintf("%s: invalid gatewayconverterissuance %s\n", __func__, gatewayIssuanceUni.write().c_str());
+                    nVersion = PBAAS_VERSION_INVALID;
+                    return;
+                }
             }
         }
 
