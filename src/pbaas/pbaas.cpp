@@ -6311,13 +6311,18 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         workingNotarization.SetPreLaunch();
 
         bool getNextNotarization = false;
-        CCurrencyDefinition systemDef;
+        CCurrencyDefinition checkDef;
         int32_t defHeight = 0;
 
         // only get next notarization if mined in
-        if (GetCurrencyDefinition(curDef.systemID, systemDef, &defHeight) &&
-            defHeight &&
-            defHeight < height)
+        if ((curDef.systemID != ASSETCHAINS_CHAINID &&
+             GetCurrencyDefinition(curDef.systemID, checkDef, &defHeight) &&
+             defHeight &&
+             defHeight < height) ||
+            (curDef.systemID == ASSETCHAINS_CHAINID &&
+             GetCurrencyDefinition(curDef.GetID(), checkDef, &defHeight) &&
+             defHeight &&
+             defHeight < height))
         {
             getNextNotarization = true;
         }
@@ -6443,7 +6448,10 @@ CCoinbaseCurrencyState CConnectedChains::GetCurrencyState(CCurrencyDefinition &c
                 setCache = false;
             }
         }
-        if (currencyState.IsValid() && (curDef.launchSystemID == ASSETCHAINS_CHAINID && curDef.startBlock && notarization.notarizationHeight < (curDef.startBlock - 1)))
+        if (currencyState.IsValid() &&
+            curDef.launchSystemID == ASSETCHAINS_CHAINID &&
+            curDef.startBlock &&
+            (!notarization.IsValid() || notarization.notarizationHeight < (curDef.startBlock - 1)))
         {
             // pre-launch
             currencyState.SetPrelaunch(true);
