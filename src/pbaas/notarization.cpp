@@ -1460,7 +1460,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                            &tempState,
                                                            feeRecipient,
                                                            proposer,
-                                                           weakEntropy);
+                                                           weakEntropy,
+                                                           !destCurrency.IsFractional());
 
         if (retVal)
         {
@@ -1472,8 +1473,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             newNotarization.currencyState.viaConversionPrice = tempState.viaConversionPrice;
             rtxd = CReserveTransactionDescriptor();
 
-            retVal = rtxd.AddReserveTransferImportOutputs(newNotarization.IsRefunding() ? destSystem : sourceSystem,
-                                                          newNotarization.IsRefunding() ? sourceSystem : destSystem,
+            retVal = rtxd.AddReserveTransferImportOutputs((newNotarization.IsRefunding() || tempState.IsRefunding()) ? destSystem : sourceSystem,
+                                                          (newNotarization.IsRefunding() || tempState.IsRefunding()) ? sourceSystem : destSystem,
                                                           destCurrency,
                                                           newNotarization.currencyState,
                                                           exportTransfers,
