@@ -6166,11 +6166,6 @@ bool CConnectedChains::IncludePostLaunchFees(uint32_t height) const
     }
 }
 
-bool CConnectedChains::StartIncludePostLaunchFees(uint32_t height) const
-{
-    return PBAAS_TESTMODE && height >= 87121 && !IncludePostLaunchFees(height);
-}
-
 bool CConnectedChains::CheckClearConvert(uint32_t height) const
 {
     return (PBAAS_TESTMODE && chainActive.Height() >= (height - 1) && chainActive[height - 1]->nTime >= PBAAS_TESTFORK5_TIME) ||

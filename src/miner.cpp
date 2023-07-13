@@ -2397,9 +2397,9 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
         if (isPBaaSBlock1)
         {
             CPBaaSNotarization launchNotarization;
+
             if (!ConnectedChains.readyToStart &&
-                !ConnectedChains.CheckVerusPBaaSAvailable() &&
-                !ConnectedChains.readyToStart)
+                !ConnectedChains.CheckVerusPBaaSAvailable())
             {
                 return NULL;
             }
