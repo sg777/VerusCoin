@@ -640,7 +640,8 @@ public:
                               CCurrencyValueMap &gatewayDepositsUsed,
                               CCurrencyValueMap &spentCurrencyOut,
                               CTransferDestination feeRecipient=CTransferDestination(),
-                              bool lastImportBeforeComplete=false) const;
+                              bool lastImportBeforeComplete=false,
+                              bool coLaunchCheck=true) const;
 
     static int GetBlocksPerCheckpoint(int heightChange);
     static int GetNumCheckpoints(int heightChange);

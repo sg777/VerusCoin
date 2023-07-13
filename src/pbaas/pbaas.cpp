@@ -6303,11 +6303,11 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
         CPBaaSNotarization newNotarization;
         std::vector<CTxOut> importOutputs;
         CCurrencyValueMap importedCurrency, gatewayDepositsUsed, spentCurrencyOut;
-        CPBaaSNotarization workingNotarization = CPBaaSNotarization(currencyState.GetID(),
-                                                                    currencyState,
-                                                                    fromHeight,
-                                                                    CUTXORef(),
-                                                                    curDefHeight);
+        CPBaaSNotarization workingNotarization(currencyState.GetID(),
+                                                currencyState,
+                                                fromHeight,
+                                                CUTXORef(),
+                                                curDefHeight);
         workingNotarization.SetPreLaunch();
         if (workingNotarization.NextNotarizationInfo(ConnectedChains.ThisChain(),
                                                      curDef,
@@ -6319,7 +6319,10 @@ CCoinbaseCurrencyState CConnectedChains::AddPrelaunchConversions(CCurrencyDefini
                                                      importOutputs,
                                                      importedCurrency,
                                                      gatewayDepositsUsed,
-                                                     spentCurrencyOut))
+                                                     spentCurrencyOut,
+                                                     CTransferDestination(),
+                                                     false,
+                                                     false))
         {
             return newNotarization.currencyState;
         }

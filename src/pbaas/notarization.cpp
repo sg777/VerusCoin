@@ -1090,7 +1090,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                               CCurrencyValueMap &gatewayDepositsUsed,
                                               CCurrencyValueMap &spentCurrencyOut,
                                               CTransferDestination feeRecipient,
-                                              bool lastImportBeforeComplete) const
+                                              bool lastImportBeforeComplete,
+                                              bool coLaunchCheck) const
 {
     uint160 sourceSystemID = sourceSystem.GetID();
     uint160 destSystemID = destCurrency.IsGateway() ? destCurrency.gatewayID : destCurrency.systemID;
@@ -1334,13 +1335,13 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 CCurrencyDefinition coLaunchCurrency;
                 CCoinbaseCurrencyState coLaunchState;
                 bool coLaunching = false;
-                if (destCurrency.IsGatewayConverter())
+                if (coLaunchCheck && destCurrency.IsGatewayConverter())
                 {
                     // PBaaS or gateway converters have a parent which is the PBaaS chain or gateway
                     coLaunching = true;
                     coLaunchCurrency = ConnectedChains.GetCachedCurrency(destCurrency.parent);
                 }
-                else if (destCurrency.IsPBaaSChain() && !destCurrency.GatewayConverterID().IsNull())
+                else if (coLaunchCheck && destCurrency.IsPBaaSChain() && !destCurrency.GatewayConverterID().IsNull())
                 {
                     coLaunching = true;
                     coLaunchCurrency = ConnectedChains.GetCachedCurrency(destCurrency.GatewayConverterID());
