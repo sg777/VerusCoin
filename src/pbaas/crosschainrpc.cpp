@@ -745,7 +745,17 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
         if (IsPBaaSChain() || IsGateway() || IsGatewayConverter())
         {
-            gatewayConverterIssuance = AmountFromValueNoErr(find_value(obj, "gatewayconverterissuance"));
+            try
+            {
+                gatewayConverterIssuance = AmountFromValue(find_value(obj, "gatewayconverterissuance"));
+            }
+            catch(const std::exception& e)
+            {
+                LogPrintf("%s: invalid gatewayconverterissuance %s\n", __func__, find_value(obj, "gatewayconverterissuance").write().c_str());
+                nVersion = PBAAS_VERSION_INVALID;
+                return;
+            }
+            
             if (IsGatewayConverter())
             {
                 std::string gatewayNameID = uni_get_str(find_value(obj, "gateway"));
@@ -864,7 +874,17 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             if (IsFractional())
             {
                 preLaunchDiscount = AmountFromValueNoErr(find_value(obj, "prelaunchdiscount"));
-                initialFractionalSupply = AmountFromValueNoErr(find_value(obj, "initialsupply"));
+
+                try
+                {
+                    initialFractionalSupply = AmountFromValue(find_value(obj, "initialsupply"));
+                }
+                catch(const std::exception& e)
+                {
+                    LogPrintf("%s: invalid initialFractionalSupply %s\n", __func__, find_value(obj, "initialsupply").write().c_str());
+                    nVersion = PBAAS_VERSION_INVALID;
+                    return;
+                }
 
                 if (!initialFractionalSupply)
                 {
@@ -1090,7 +1110,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                 CAmount preAllocAmount = AmountFromValueNoErr(preallocationValue[0]);
                 if (preAllocAmount <= 0)
                 {
-                    LogPrintf("%s: preallocation values must be greater than zero\n", __func__);
+                    LogPrintf("%s: invalid preallocation values must be greater than zero and less than 10 billion\n", __func__);
                     nVersion = PBAAS_VERSION_INVALID;
                     break;
                 }
@@ -1149,7 +1169,16 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
         if (!gatewayID.IsNull())
         {
-            gatewayConverterIssuance = AmountFromValueNoErr(find_value(obj, "gatewayconverterissuance"));
+            try
+            {
+                gatewayConverterIssuance = AmountFromValue(find_value(obj, "gatewayconverterissuance"));
+            }
+            catch(const std::exception& e)
+            {
+                LogPrintf("%s: invalid gatewayconverterissuance %s\n", __func__, find_value(obj, "gatewayconverterissuance").write().c_str());
+                nVersion = PBAAS_VERSION_INVALID;
+                return;
+            }
         }
 
         auto vEras = uni_getValues(find_value(obj, "eras"));
@@ -1179,7 +1208,8 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
             catch(const std::exception& e)
             {
                 LogPrintf("%s: Invalid initial target, must be 256 bit hex target\n", __func__);
-                throw e;
+                nVersion = PBAAS_VERSION_INVALID;
+                return;
             }
 
             blockTime = uni_get_int64(find_value(obj, "blocktime"), DEFAULT_BLOCKTIME_TARGET);
@@ -1203,6 +1233,11 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
 
             for (auto era : vEras)
             {
+                CAmount oneReward = uni_get_int64(find_value(era, "reward"));
+                if (oneReward > (100000LL * COIN))
+                {
+                    LogPrintf("%s: block reward out of range %ld - %ld\n", __func__, 0, (100000LL * COIN));
+                }
                 rewards.push_back(uni_get_int64(find_value(era, "reward")));
                 rewardsDecay.push_back(uni_get_int64(find_value(era, "decay")));
                 halving.push_back(uni_get_int64(find_value(era, "halving")));
