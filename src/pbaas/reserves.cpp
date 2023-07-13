@@ -5567,8 +5567,49 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                                     state,
                                                     &crossConversions,
                                                     &newCurrencyState.viaConversionPrice);
-            if (state.IsError())
+            if (state.IsError() || !dummyCurState.IsValid())
             {
+                if (isLaunchComplete)
+                {
+                    // unless all conversions are already refunded, refund them all and try again
+                    std::vector<CReserveTransfer> refundedExports;
+                    for (auto oneTransfer : exportObjects)
+                    {
+                        if (oneTransfer.IsRefund())
+                        {
+                            refundedExports.push_back(oneTransfer);
+                        }
+                        else
+                        {
+                            refundedExports.push_back(oneTransfer.GetRefundTransfer());
+                        }
+                    }
+                    // reset vOutputs to what they were before processing and recurse once
+                    vOutputs = vOldOutputs;
+                    importedCurrency.valueMap.clear();
+                    gatewayDepositsIn.valueMap.clear();
+                    spentCurrencyOut.valueMap.clear();
+
+                    if (updatedPostLaunch)
+                    {
+                        *this = checkPointThis;
+                    }
+                    return AddReserveTransferImportOutputs(systemSource,
+                                                        systemDest,
+                                                        importCurrencyDef,
+                                                        importCurrencyState,
+                                                        refundedExports,
+                                                        height,
+                                                        vOutputs,
+                                                        importedCurrency,
+                                                        gatewayDepositsIn,
+                                                        spentCurrencyOut,
+                                                        pNewCurrencyState,
+                                                        feeRecipient,
+                                                        blockNotarizer,
+                                                        entropy);
+                }
+
                 printf("%s: Invalid currency conversions for import to %s : %s\n", __func__, importCurrencyDef.name.c_str(), EncodeDestination(CIdentityID(importCurrencyDef.GetID())).c_str());
                 LogPrintf("%s: Invalid currency conversions for import to %s : %s\n", __func__, importCurrencyDef.name.c_str(), EncodeDestination(CIdentityID(importCurrencyDef.GetID())).c_str());
                 return false;
