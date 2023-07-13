@@ -4976,16 +4976,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
 
                 newCurrencyConverted = importCurrencyState.ReserveToNativeRaw(valueOut, importCurrencyState.conversionPrice[curIdx]);
 
-                if (newCurrencyConverted == -1)
+                if (newCurrencyConverted < 0)
                 {
                     // if we have an overflow, this isn't going to work, so, return error
                     printf("%s: ERROR - conversion overflow in reserve transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
                     LogPrintf("%s: ERROR - conversion overflow in reserve transfer %s\n", __func__, curTransfer.ToUniValue().write().c_str());
-                    if (updatedPostLaunch)
-                    {
-                        return false;
-                    }
-                    newCurrencyConverted = 0;
+                    newCurrencyConverted = INT64_MAX;
                 }
 
                 if (newCurrencyConverted)
