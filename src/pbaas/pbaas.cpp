@@ -9377,6 +9377,11 @@ bool CConnectedChains::CreateNextExport(const CCurrencyDefinition &_curDef,
     // if we are refunding, redirect the export back to the launch chain
     if (newNotarization.currencyState.IsRefunding())
     {
+        if (destSystemID != _curDef.launchSystemID &&
+            inputStartNum > 1)
+        {
+            inputStartNum--;
+        }
         destSystemID = _curDef.launchSystemID;
         crossSystem = destSystemID != ASSETCHAINS_CHAINID;
         destSystem = ConnectedChains.GetCachedCurrency(destSystemID);
