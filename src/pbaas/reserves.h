@@ -1373,6 +1373,8 @@ public:
     CCurrencyValueMap NativeToReserveRaw(const std::vector<CAmount> &, const std::vector<CAmount> &exchangeRates) const;
     CCurrencyValueMap NativeToReserveRaw(const std::vector<CAmount> &, const std::vector<cpp_dec_float_50> &exchangeRates) const;
 
+    CAmount AddToSupply(CAmount nValue) const;
+
     UniValue ToUniValue() const;
 
     uint160 GetID() const { return currencyID; }

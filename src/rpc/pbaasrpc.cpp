@@ -8669,7 +8669,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
     uint32_t height = chainActive.Height();
 
-    if (sourceDest.which() == COptCCParams::ADDRTYPE_ID && !GetDestinationID(sourceDest).IsNull())
+    bool returnTx = params.size() > 4 ? uni_get_bool(params[4]) : false;
+
+    if (!returnTx && sourceDest.which() == COptCCParams::ADDRTYPE_ID && !GetDestinationID(sourceDest).IsNull())
     {
         std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
         if (!pwalletMain->GetIdentity(GetDestinationID(sourceDest), keyAndIdentity) ||
@@ -8682,8 +8684,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot send currency from a locked identity");
         }
     }
-
-    bool returnTx = params.size() > 4 ? uni_get_bool(params[4]) : false;
 
     const UniValue &uniOutputs = params[1];
 
@@ -11603,7 +11603,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                     CCurrencyDefinition::DEFAULT_OUTPUT_VALUE);
 
                 // get initial currency state at this height
-                CCoinbaseCurrencyState gatewayCurrencyState = ConnectedChains.GetCurrencyState(newGatewayConverter, chainActive.Height() + 1);
+                CCoinbaseCurrencyState gatewayCurrencyState = ConnectedChains.GetCurrencyState(newGatewayConverter, chainActive.Height());
                 int currencyIndex = gatewayCurrencyState.GetReserveMap()[newChainID];
 
                 gatewayCurrencyState.reserveIn[currencyIndex] += newChain.gatewayConverterIssuance;

@@ -1090,7 +1090,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                               CCurrencyValueMap &gatewayDepositsUsed,
                                               CCurrencyValueMap &spentCurrencyOut,
                                               CTransferDestination feeRecipient,
-                                              bool lastImportBeforeComplete) const
+                                              bool lastImportBeforeComplete,
+                                              bool coLaunchCheck) const
 {
     uint160 sourceSystemID = sourceSystem.GetID();
     uint160 destSystemID = destCurrency.IsGateway() ? destCurrency.gatewayID : destCurrency.systemID;
@@ -1334,13 +1335,13 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 CCurrencyDefinition coLaunchCurrency;
                 CCoinbaseCurrencyState coLaunchState;
                 bool coLaunching = false;
-                if (destCurrency.IsGatewayConverter())
+                if (coLaunchCheck && destCurrency.IsGatewayConverter())
                 {
                     // PBaaS or gateway converters have a parent which is the PBaaS chain or gateway
                     coLaunching = true;
                     coLaunchCurrency = ConnectedChains.GetCachedCurrency(destCurrency.parent);
                 }
-                else if (destCurrency.IsPBaaSChain() && !destCurrency.GatewayConverterID().IsNull())
+                else if (coLaunchCheck && destCurrency.IsPBaaSChain() && !destCurrency.GatewayConverterID().IsNull())
                 {
                     coLaunching = true;
                     coLaunchCurrency = ConnectedChains.GetCachedCurrency(destCurrency.GatewayConverterID());
@@ -1459,7 +1460,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                            &tempState,
                                                            feeRecipient,
                                                            proposer,
-                                                           weakEntropy);
+                                                           weakEntropy,
+                                                           !destCurrency.IsFractional());
 
         if (retVal)
         {
@@ -1471,8 +1473,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
             newNotarization.currencyState.viaConversionPrice = tempState.viaConversionPrice;
             rtxd = CReserveTransactionDescriptor();
 
-            retVal = rtxd.AddReserveTransferImportOutputs(newNotarization.IsRefunding() ? destSystem : sourceSystem,
-                                                          newNotarization.IsRefunding() ? sourceSystem : destSystem,
+            retVal = rtxd.AddReserveTransferImportOutputs((newNotarization.IsRefunding() || tempState.IsRefunding()) ? destSystem : sourceSystem,
+                                                          (newNotarization.IsRefunding() || tempState.IsRefunding()) ? sourceSystem : destSystem,
                                                           destCurrency,
                                                           newNotarization.currencyState,
                                                           exportTransfers,
@@ -1493,6 +1495,14 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
         }
 
         //printf("%s: importedCurrency: %s\ngatewaysDepositsUsed: %s\n", __func__, importedCurrency.ToUniValue().write(1,2).c_str(), gatewayDepositsUsed.ToUniValue().write(1,2).c_str());
+        if (tempState.IsRefunding() && !newNotarization.IsRefunding())
+        {
+            tempState.supply = 0;
+            tempState.reserves = std::vector<int64_t>(newNotarization.currencyState.reserves.size(), 0);
+            newNotarization.SetRefunding(true);
+            newNotarization.SetLaunchConfirmed(false);
+            newNotarization.currencyState.SetLaunchConfirmed(false);
+        }
 
         // if we are in the pre-launch phase, all reserves in are cumulative and then calculated together at launch
         // reserves in represent all reserves in, and fees are taken out after launch or refund as well
@@ -1642,7 +1652,8 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                                                                   &newNotarization.currencyState,
                                                                   feeRecipient,
                                                                   proposer,
-                                                                  weakEntropy);
+                                                                  weakEntropy,
+                                                                  !destCurrency.IsFractional());
         if (!newNotarization.currencyState.IsPrelaunch() &&
             isValidExport)
         {

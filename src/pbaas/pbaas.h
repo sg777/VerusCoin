@@ -640,7 +640,8 @@ public:
                               CCurrencyValueMap &gatewayDepositsUsed,
                               CCurrencyValueMap &spentCurrencyOut,
                               CTransferDestination feeRecipient=CTransferDestination(),
-                              bool lastImportBeforeComplete=false) const;
+                              bool lastImportBeforeComplete=false,
+                              bool coLaunchCheck=true) const;
 
     static int GetBlocksPerCheckpoint(int heightChange);
     static int GetNumCheckpoints(int heightChange);
@@ -1207,7 +1208,6 @@ public:
     bool CheckZeroViaOnlyPostLaunch(uint32_t height) const;
     uint32_t IncludePostLaunchFeeHeight(bool getVerusHeight) const;
     bool IncludePostLaunchFees(uint32_t height) const;
-    bool StartIncludePostLaunchFees(uint32_t height) const;
     bool CheckClearConvert(uint32_t height) const;
 
     std::vector<CCurrencyDefinition> GetMergeMinedChains()
