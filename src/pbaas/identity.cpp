@@ -2912,7 +2912,8 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
     bool advancedIdentity = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
 
     int idIndex;
-    CIdentity newIdentity(spendingTx, &idIndex, advancedIdentity ? oldIdentity.GetID() : uint160());
+    uint160 idID = oldIdentity.GetID();
+    CIdentity newIdentity(spendingTx, &idIndex, advancedIdentity ? idID : uint160());
     if (!newIdentity.IsValid())
     {
         return eval->Error("Attempting to define invalid identity");
@@ -2944,6 +2945,31 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
             p.vKeys != q.vKeys)
         {
             return eval->Error("Unauthorized modification of identity primary spend condition");
+        }
+    }
+
+    if (chainActive.LastTip()->nTime >= PBAAS_TESTFORK8_TIME)
+    {
+        CCurrencyDefinition matchingCurDef;
+        for (auto &oneOut : spendingTx.vout)
+        {
+            if ((matchingCurDef = CCurrencyDefinition(oneOut.scriptPubKey)).IsValid() &&
+                matchingCurDef.GetID() == idID)
+            {
+                break;
+            }
+        }
+
+        bool isCurrencyDef = matchingCurDef.IsValid() && matchingCurDef.GetID() == idID;
+
+        if ((oldIdentity.HasActiveCurrency() && !newIdentity.HasActiveCurrency()) ||
+            (oldIdentity.HasTokenizedControl() && !newIdentity.HasTokenizedControl()) ||
+            (!isCurrencyDef &&
+             (oldIdentity.HasActiveCurrency() != oldIdentity.HasActiveCurrency() ||
+              oldIdentity.HasTokenizedControl() != newIdentity.HasTokenizedControl())) ||
+            (isCurrencyDef && !matchingCurDef.IsNFTToken() && newIdentity.HasTokenizedControl()))
+        {
+            return eval->Error("Invalid ID currency state modification on test network");
         }
     }
 

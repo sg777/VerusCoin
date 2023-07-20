@@ -4538,20 +4538,41 @@ bool IsValidExportCurrency(const CCurrencyDefinition &systemDest, const uint160 
     return false;
 }
 
-bool CheckIdentitySpends(const CTransaction &tx, const uint160 idID, CValidationState &state, uint32_t height)
+bool CheckIdentitySpends(const CTransaction &tx, const uint160 idID, CValidationState &state, uint32_t height, bool allAuthorities=false);
+bool CheckIdentitySpends(const CTransaction &tx, const uint160 idID, CValidationState &state, uint32_t height, bool allAuthorities)
 {
     // spent by currency ID
     bool authorizedController = false;
 
     CIdentity signingID = CIdentity::LookupIdentity(idID, height);
+    if (!signingID.IsValid())
+    {
+        return state.Error("Invalid identity or necessary identities not found for approval of ID operation");
+    }
+
+    CIdentity revokeID = (allAuthorities && signingID.revocationAuthority != idID) ? signingID : CIdentity::LookupIdentity(signingID.revocationAuthority, height);
+    CIdentity recoveryID = (allAuthorities && signingID.recoveryAuthority != idID) ? signingID : CIdentity::LookupIdentity(signingID.recoveryAuthority, height);
+    if (!revokeID.IsValid() || !recoveryID.IsValid())
+    {
+        return state.Error("Invalid revoke or recovery identity or necessary identities not found for approval of ID operation");
+    }
+
     std::set<uint160> signingKeys;
     for (auto &oneDest : signingID.primaryAddresses)
     {
         signingKeys.insert(GetDestinationID(oneDest));
     }
-    if (!signingID.IsValid())
+
+    std::set<uint160> revokeKeys;
+    for (auto &oneDest : revokeID.primaryAddresses)
     {
-        return state.Error("Invalid identity or identity not found for currency mint or burn with weight change");
+        revokeKeys.insert(GetDestinationID(oneDest));
+    }
+
+    std::set<uint160> recoverKeys;
+    for (auto &oneDest : recoveryID.primaryAddresses)
+    {
+        recoverKeys.insert(GetDestinationID(oneDest));
     }
 
     for (auto &oneIn : tx.vin)
@@ -4593,6 +4614,8 @@ bool CheckIdentitySpends(const CTransaction &tx, const uint160 idID, CValidation
             }
 
             int numIDSigs = 0;
+            int numRevokeSigs = 0;
+            int numRecoverSigs = 0;
 
             // ensure that the transaction is sent to the ID and signed by a valid ID signature
             for (auto &oneSig : smartSigs.signatures)
@@ -4601,12 +4624,24 @@ bool CheckIdentitySpends(const CTransaction &tx, const uint160 idID, CValidation
                 {
                     numIDSigs++;
                 }
+                if (revokeKeys.count(oneSig.first))
+                {
+                    numRevokeSigs++;
+                }
+                if (recoverKeys.count(oneSig.first))
+                {
+                    numRecoverSigs++;
+                }
             }
 
-            if (numIDSigs < signingID.minSigs)
+            if (numIDSigs < signingID.minSigs ||
+                (!signingID.HasActiveCurrency() &&
+                 (numRevokeSigs < revokeID.minSigs ||
+                  numRecoverSigs < recoveryID.minSigs)))
             {
                 continue;
             }
+
             authorizedController = true;
             break;
         }
@@ -5121,10 +5156,12 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 }
 
                 // only an identity can export itself
-                if (!CheckIdentitySpends(tx, registeredIdentity.GetID(), state, height))
+                bool importPassThrough = false;
+
+                // only an identity can export itself
+                if (!CheckIdentitySpends(tx, registeredIdentity.GetID(), state, height - 1, ConnectedChains.StrictCheckIDExport(height)))
                 {
                     // if this output to export an identity comes from an import, the check will already have happened
-                    bool importPassThrough = false;
                     for (int loop=0; loop < outNum; loop++)
                     {
                         COptCCParams importP;
@@ -5145,7 +5182,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     }
                 }
 
-                if (rt.IsCrossSystem())
+                if (!importPassThrough)
                 {
                     // validate everything relating to name and control
                     if (registeredIdentity.primaryAddresses != idToExport.primaryAddresses ||
@@ -5158,11 +5195,11 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     {
                         return state.Error("Identity being exported in reserve transfer does not match blockchain identity control " + rt.ToUniValue().write(1,2));
                     }
+                }
 
-                    if (!(exportDestination = ConnectedChains.GetCachedCurrency(rt.SystemDestination())).IsValid())
-                    {
-                        return state.Error("Invalid export destination in reserve transfer with identity export " + rt.ToUniValue().write(1,2));
-                    }
+                if (rt.IsCrossSystem() && !(exportDestination = ConnectedChains.GetCachedCurrency(rt.SystemDestination())).IsValid())
+                {
+                    return state.Error("Invalid export destination in reserve transfer with identity export " + rt.ToUniValue().write(1,2));
                 }
                 else
                 {
@@ -5254,7 +5291,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 }
 
                 // ensure that this mint or burnchangeweight is spent by the currency ID
-                if (!CheckIdentitySpends(tx, importCurrencyID, state, height))
+                if (!CheckIdentitySpends(tx, importCurrencyID, state, height - 1))
                 {
                     return state.Error("Minting and/or burning while changing reserve ratios is only allowed by the controller of a centralized currency " + rt.ToUniValue().write(1,2));
                 }
@@ -6163,6 +6200,24 @@ bool CConnectedChains::IncludePostLaunchFees(uint32_t height) const
     else
     {
         return height > IncludePostLaunchFeeHeight(false);
+    }
+}
+
+uint32_t CConnectedChains::StrictCheckIDExportHeight(bool getVerusHeight) const
+{
+    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 124745 : 2634460) : 0;
+}
+
+bool CConnectedChains::StrictCheckIDExport(uint32_t height) const
+{
+    if (PBAAS_TESTMODE && !IsVerusActive())
+    {
+        height = std::min(((uint32_t)chainActive.Height()), height);
+        return height > 0 ? chainActive[height]->nTime >= PBAAS_TESTFORK8_TIME : false;
+    }
+    else
+    {
+        return height >= StrictCheckIDExportHeight(false);
     }
 }
 
