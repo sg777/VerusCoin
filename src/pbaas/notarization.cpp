@@ -10826,7 +10826,9 @@ bool PreCheckFinalizeNotarization(const CTransaction &tx, int32_t outNum, CValid
         return state.Error("Invalid notarization output for finalization");
     }
 
-    if ((!PBAAS_TESTMODE || chainActive[height - 1]->nTime >= PBAAS_TESTFORK4_TIME) &&
+    if ((!PBAAS_TESTMODE ||
+         (haveFullChain &&
+          chainActive[height - 1]->nTime >= PBAAS_TESTFORK4_TIME)) &&
          currentFinalization.IsConfirmed() &&
          height != 1 &&
          !(!txBlockHash.IsNull() &&

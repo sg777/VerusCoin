@@ -57,6 +57,7 @@ uint32_t PBAAS_TESTFORK4_TIME = 1686416400;
 uint32_t PBAAS_TESTFORK5_TIME = 1687042800;
 uint32_t PBAAS_TESTFORK6_TIME = 1687994100;
 uint32_t PBAAS_TESTFORK7_TIME = 1688799600;
+uint32_t PBAAS_TESTFORK8_TIME = 1690304400;
 
 uint32_t PBAAS_MAINDEFI3_HEIGHT = 2553500;
 uint32_t PBAAS_CLEARCONVERT_HEIGHT = 2588590;
@@ -759,7 +760,7 @@ CCurrencyDefinition::CCurrencyDefinition(const UniValue &obj) :
                     return;
                 }
             }
-            
+
             if (IsGatewayConverter())
             {
                 std::string gatewayNameID = uni_get_str(find_value(obj, "gateway"));

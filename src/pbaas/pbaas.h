@@ -1209,6 +1209,8 @@ public:
     uint32_t IncludePostLaunchFeeHeight(bool getVerusHeight) const;
     bool IncludePostLaunchFees(uint32_t height) const;
     bool CheckClearConvert(uint32_t height) const;
+    uint32_t StrictCheckIDExportHeight(bool getVerusHeight) const;
+    bool StrictCheckIDExport(uint32_t height) const;
 
     std::vector<CCurrencyDefinition> GetMergeMinedChains()
     {
