@@ -843,7 +843,7 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
         proposer = CTransferDestination(transferID);
     }
 
-    SetContractUpgrade(proposer.GetAuxDest(0), uni_get_bool(find_value(obj, "launchcomplete")));
+    SetContractUpgrade(proposer.GetAuxDest(0), uni_get_bool(find_value(obj, "contractupgrade")));
 
     notarizationHeight = (uint32_t)uni_get_int64(find_value(obj, "notarizationheight"));
     currencyState = CCoinbaseCurrencyState(find_value(obj, "currencystate"));
