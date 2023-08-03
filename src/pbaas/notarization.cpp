@@ -9254,7 +9254,9 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             {
                 if (!unMirrored.currencyStates.count(oneCurState.first) ||
                     (unMirrored.currencyStates[oneCurState.first].IsPrelaunch() &&
-                     !oneCurState.second.IsPrelaunch()))
+                     !oneCurState.second.IsPrelaunch()) ||
+                    (!unMirrored.currencyStates[oneCurState.first].IsLaunchCompleteMarker() &&
+                     oneCurState.second.IsLaunchCompleteMarker()))
                 {
                     submit = true;
                     break;
@@ -9262,7 +9264,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
                 // if the relative price of the two sided fee currencies has changed more than 15% since last confirmed
                 // notarization, submit
-                if (oneCurState.second.IsFractional())
+                if (oneCurState.second.IsLaunchCompleteMarker() && oneCurState.second.IsFractional())
                 {
                     auto curIdxMap = oneCurState.second.GetReserveMap();
                     uint160 externID = externalSystem.GetID();
