@@ -850,6 +850,11 @@ UniValue CPBaaSNotarization::ToUniValue() const
         obj.push_back(Pair("launchcomplete", true));
     }
 
+    if (IsContractUpgrade())
+    {
+        obj.push_back(Pair("contractupgrade", true));
+    }
+
     if (IsMirror())
     {
         obj.push_back(Pair("ismirror", true));
