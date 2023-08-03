@@ -7026,11 +7026,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         notarization.prevNotarization = cnd.vtx[notaryIdx].first;
         notarization.prevHeight = cnd.vtx[notaryIdx].second.notarizationHeight;
 
-        if (APPROVE_CONTRACT_UPGRADE.IsValid() &&
-            APPROVE_CONTRACT_UPGRADE.TypeNoFlags() == APPROVE_CONTRACT_UPGRADE.DEST_ETH)
-        {
-            notarization.SetContractUpgrade(APPROVE_CONTRACT_UPGRADE);
-        }
+        notarization.SetContractUpgrade(APPROVE_CONTRACT_UPGRADE, APPROVE_CONTRACT_UPGRADE.IsValid() && APPROVE_CONTRACT_UPGRADE.TypeNoFlags() == APPROVE_CONTRACT_UPGRADE.DEST_ETH);
 
         CCcontract_info CC;
         CCcontract_info *cp;
