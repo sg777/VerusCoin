@@ -5182,7 +5182,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     }
                 }
 
-                if (!importPassThrough)
+                if (!importPassThrough && idToExport.IsValid())
                 {
                     // validate everything relating to name and control
                     if (registeredIdentity.primaryAddresses != idToExport.primaryAddresses ||
