@@ -8632,7 +8632,7 @@ bool CPBaaSNotarization::FindFinalizedIndexesByVDXFKey(const uint160 &notarizati
                     fP.vData.size() &&
                     (confirmedFinalization[i] = CObjectFinalization(fP.vData[0])).IsValid()))
             {
-                LogPrint("notarization", "Invalid finalization transaction for index key\n");
+                LogPrint("notarization", "Invalid finalization transaction for index key, smart transaction is %s, eval code: %u\n", fP.IsValid() ? "VALID" : "INVALID", fP.evalCode);
                 continue;
             }
             validOfs.push_back(confirmedFinalization[i]);
