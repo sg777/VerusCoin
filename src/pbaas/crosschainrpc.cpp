@@ -1391,6 +1391,15 @@ int64_t CCurrencyDefinition::CalculateRatioOfValue(int64_t value, int64_t ratio)
     return retVal;
 }
 
+int64_t CCurrencyDefinition::CalculateRatioOfTwoValues(int64_t value1, int64_t value2)
+{
+    arith_uint256 bigAmount(value1);
+    static const arith_uint256 bigSatoshi(SATOSHIDEN);
+
+    int64_t retVal = ((bigAmount * bigSatoshi) /  arith_uint256(value2)).GetLow64();
+    return retVal;
+}
+
 int32_t CCurrencyDefinition::GetTotalCarveOut() const
 {
     return preLaunchCarveOut;

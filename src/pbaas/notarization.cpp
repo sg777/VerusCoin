@@ -9281,10 +9281,10 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                         break;
                     }
 
-                    int64_t firstRatioOfPrice = CCurrencyDefinition::CalculateRatioOfValue(
+                    int64_t firstRatioOfPrice = CCurrencyDefinition::CalculateRatioOfTwoValues(
                                                     unMirrored.currencyStates[oneCurState.first].PriceInReserve(curIdxMap[ASSETCHAINS_CHAINID]),
                                                     unMirrored.currencyStates[oneCurState.first].PriceInReserve(curIdxMap[externID]));
-                    int64_t secondRatioOfPrice = CCurrencyDefinition::CalculateRatioOfValue(
+                    int64_t secondRatioOfPrice = CCurrencyDefinition::CalculateRatioOfTwoValues(
                                                     oneCurState.second.PriceInReserve(curIdxMap[ASSETCHAINS_CHAINID]),
                                                     oneCurState.second.PriceInReserve(curIdxMap[externID]));
 
@@ -9295,7 +9295,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                         break;
                     }
 
-                    int64_t ratioOfPriceChange = CCurrencyDefinition::CalculateRatioOfValue(firstRatioOfPrice, secondRatioOfPrice);
+                    int64_t ratioOfPriceChange = CCurrencyDefinition::CalculateRatioOfTwoValues(firstRatioOfPrice, secondRatioOfPrice);
 
                     // if we go up or down by 10% from the last confirmed notarization, notarize again
                     if (ratioOfPriceChange > (SATOSHIDEN + (SATOSHIDEN / 10)) || ratioOfPriceChange < (SATOSHIDEN - (SATOSHIDEN / 10)))
