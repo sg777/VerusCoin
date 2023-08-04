@@ -5386,14 +5386,31 @@ bool CPBaaSNotarization::CheckEntropyHashMatch(const uint256 &entropyHash,
 
     int checkIndex = 0;
     bool mismatchIndex = false;
+    int consecPoS = 0;
+    static const int MAX_CONSEC_POS = 5;
+
     for (auto &oneRange : commitmentRanges)
     {
         for (uint32_t loop = oneRange.first; loop <= oneRange.second; loop++, checkIndex++)
         {
             if (loop != ((uint32_t)checkCommitments[checkIndex]) >> 1)
             {
+                LogPrintf("%s: Invalid entropy for PBaaS protocol proof - currencyID: %s\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
                 mismatchIndex = true;
                 break;
+            }
+            if ((uint32_t)checkCommitments[checkIndex] & 1)
+            {
+                if (++consecPoS > MAX_CONSEC_POS)
+                {
+                    LogPrintf("%s: Invalid consecutive PoS blocks for PBaaS protocol - currencyID: %s\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
+                    mismatchIndex = true;
+                    break;
+                }
+            }
+            else
+            {
+                consecPoS = 0;
             }
         }
         if (mismatchIndex)
@@ -9302,6 +9319,19 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                     {
                         submit = true;
                         break;
+                    }
+
+                    if (externalSystem.chainDefinition.proofProtocol == CCurrencyDefinition::PROOF_ETHNOTARIZATION &&
+                        unMirrored.proofRoots.count(externID) &&
+                        lastConfirmedNotarization.proofRoots.count(externID))
+                    {
+                        ratioOfPriceChange = CCurrencyDefinition::CalculateRatioOfTwoValues(unMirrored.proofRoots[externID].gasPrice, lastConfirmedNotarization.proofRoots[externID].gasPrice);
+                        // if gas goes up or down by 15% from the last confirmed notarization, notarize again
+                        if (ratioOfPriceChange > (SATOSHIDEN + (SATOSHIDEN / 15)) || ratioOfPriceChange < (SATOSHIDEN - (SATOSHIDEN / 15)))
+                        {
+                            submit = true;
+                            break;
+                        }
                     }
                 }
             }
