@@ -9255,8 +9255,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                    (crosschainCND.vtx[crosschainCND.lastConfirmed].second.IsDefinitionNotarization() &&
                     crosschainCND.vtx[crosschainCND.lastConfirmed].second.IsSameChain())) ||
                   (!GetBoolArg("-allowdelayednotarizations", false) &&
-                   (newConfirmedNotarization.proofRoots[systemID].rootHeight - lastConfirmedNotarization.proofRoots[systemID].rootHeight) >
-                   (blocksBeforeModuloExtension - (blocksBeforeModuloExtension >> 2)));
+                   (newConfirmedNotarization.proofRoots[systemID].rootHeight - crosschainCND.vtx[crosschainCND.lastConfirmed].second.proofRoots[systemID].rootHeight) >
+                    (blocksBeforeModuloExtension - (blocksBeforeModuloExtension >> 2)));
 
     if (!submit)
     {
