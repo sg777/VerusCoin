@@ -4021,7 +4021,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                     {
                         if (!CIdentity::LookupIdentity(oneIdValPair.first).IsValid())
                         {
-                            return state.Error("All IDs must be defined before specified as notary in a currency definition");
+                            return state.Error("All IDs must be defined before specified as preallocation recipient in a currency definition");
                         }
                     }
                 }
