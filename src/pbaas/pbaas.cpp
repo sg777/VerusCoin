@@ -4006,6 +4006,26 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                                          (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH ||
                                           newCurrency.IsNFTToken()));
 
+                if (newCurrency.IsPBaaSChain())
+                {
+                    // all notaries and preallocated IDs must already exist
+                    for (auto &oneIdID : newCurrency.notaries)
+                    {
+                        if (!CIdentity::LookupIdentity(oneIdID).IsValid())
+                        {
+                            return state.Error("All IDs must be defined before specified as notary in a currency definition");
+                        }
+                    }
+                    // all preallocated IDs must already exist
+                    for (auto &oneIdValPair : newCurrency.preAllocation)
+                    {
+                        if (!CIdentity::LookupIdentity(oneIdValPair.first).IsValid())
+                        {
+                            return state.Error("All IDs must be defined before specified as notary in a currency definition");
+                        }
+                    }
+                }
+
                 // now, make sure new currency matches any initial notarization
                 // if this is not the systemID, we must be either a gateway, PBaaS chain, mapped currency, or gateway converter
                 CCurrencyDefinition newSystemCurrency;
