@@ -6750,7 +6750,8 @@ std::string CConnectedChains::GetFriendlyIdentityName(const std::string &name, c
     }
     else
     {
-        return name + '.' + GetFriendlyCurrencyName(parentCurrencyID, addVerus) + '@';
+        std::string parentFriendlyName = GetFriendlyCurrencyName(parentCurrencyID, addVerus);
+        return parentFriendlyName.empty() ? "" : (name + '.' + parentFriendlyName + '@');
     }
 }
 
