@@ -4070,7 +4070,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                                 // is present already, add it as a valid parent
                                 CCurrencyDefinition oneParentCur = ConnectedChains.GetCachedCurrency(oneCurID);
                                 if (!oneParentCur.IsValid() ||
-                                    !validCurrencyParents.count(oneParentCur.parent))
+                                    (!oneParentCur.parent.IsNull() && !validCurrencyParents.count(oneParentCur.parent)))
                                 {
                                     return state.Error("Invalid currency inclusion before parent");
                                 }
