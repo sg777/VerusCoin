@@ -4038,18 +4038,15 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                             // not new, look it up to ensure that its parent is present, and if its parent
                             // is present already, add it as a valid parent
                             CCurrencyDefinition oneParentCur = ConnectedChains.GetCachedCurrency(oneCurID);
-                            if (oneParentCur.parent.IsNull())
-                            {
-                                continue;
-                            }
 
                             if (!oneParentCur.IsValid() ||
-                                !validCurrencyParents.count(oneParentCur.parent))
+                                (!oneParentCur.parent.IsNull() && !validCurrencyParents.count(oneParentCur.parent)))
                             {
                                 return state.Error("Invalid currency inclusion before parent");
                             }
+                            
                             // if this currency is new with a new parent, it can not parent any IDs or currencies
-                            if (newDefinitions.count(oneParentCur.parent))
+                            if (!oneParentCur.parent.IsNull() && newDefinitions.count(oneParentCur.parent))
                             {
                                 continue;
                             }
@@ -4080,13 +4077,13 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                                 }
 
                                 if (!oneParentCur.IsValid() ||
-                                    !validCurrencyParents.count(oneParentCur.parent))
+                                    (!oneParentCur.parent.IsNull() && !validCurrencyParents.count(oneParentCur.parent)))
                                 {
                                     return state.Error("Invalid currency inclusion before parent");
                                 }
                                 // if this currency's parent is new, this currency can not parent any additional IDs or currencies
                                 // if not, it can
-                                if (newDefinitions.count(oneParentCur.parent))
+                                if (!oneParentCur.parent.IsNull() && newDefinitions.count(oneParentCur.parent))
                                 {
                                     continue;
                                 }
