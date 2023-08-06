@@ -4102,14 +4102,17 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                     // all preallocated IDs must already exist
                     for (auto &oneIdValPair : newCurrency.preAllocation)
                     {
-                        CIdentity oneIdentity = CIdentity::LookupIdentity(oneIdValPair.first);
-                        if (!oneIdentity.IsValid())
+                        if (!oneIdValPair.first.IsNull())
                         {
-                            return state.Error("All IDs must be defined before specified as preallocation recipient in a currency definition");
-                        }
-                        if (validIDParents.count(oneIdentity.parent))
-                        {
-                            return state.Error("All pre-allocation IDs must have parent currencies that are included in the reserve or launch participation currencies");
+                            CIdentity oneIdentity = CIdentity::LookupIdentity(oneIdValPair.first);
+                            if (!oneIdentity.IsValid())
+                            {
+                                return state.Error("All IDs must be defined before specified as preallocation recipient in a currency definition");
+                            }
+                            if (validIDParents.count(oneIdentity.parent))
+                            {
+                                return state.Error("All pre-allocation IDs must have parent currencies that are included in the reserve or launch participation currencies");
+                            }
                         }
                     }
                 }
