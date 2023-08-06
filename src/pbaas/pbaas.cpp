@@ -4101,7 +4101,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                         {
                             return state.Error("All IDs must be defined before specified as notary in a currency definition");
                         }
-                        if (validIDParents.count(oneIdentity.parent))
+                        if (!validIDParents.count(oneIdentity.parent))
                         {
                             return state.Error("All notary IDs must have parent currencies that are included in the reserve or launch participation currencies");
                         }
@@ -4116,7 +4116,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                             {
                                 return state.Error("All IDs must be defined before specified as preallocation recipient in a currency definition");
                             }
-                            if (validIDParents.count(oneIdentity.parent))
+                            if (!validIDParents.count(oneIdentity.parent))
                             {
                                 return state.Error("All pre-allocation IDs must have parent currencies that are included in the reserve or launch participation currencies");
                             }
