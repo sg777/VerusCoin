@@ -4572,7 +4572,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 {
                                     gatewayDeposits += originalFees;
                                 }
-                                gatewayDeposits.valueMap[cbCurID] += gatewayDepositsUsed.valueMap[cbCurID] + newNotarization.currencyState.primaryCurrencyOut;
+                                gatewayDeposits.valueMap[cbCurID] += gatewayDepositsUsed.valueMap[cbCurID] + tempLastNotarization.currencyState.primaryCurrencyOut;
 
                                 LogPrint("notarization", "importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n",
                                     importedCurrency.ToUniValue().write(1,2).c_str(),
