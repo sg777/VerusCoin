@@ -3070,7 +3070,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             mapDependers.erase(oneTx.GetHash());
             for (auto &oneRemovedTx : removed)
             {
-                mapDependers.erase(oneTx.GetHash());
+                mapDependers.erase(oneRemovedTx.GetHash());
             }
         }
         txesToRemove.clear();

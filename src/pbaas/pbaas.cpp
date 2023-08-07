@@ -4006,6 +4006,124 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                                          (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH ||
                                           newCurrency.IsNFTToken()));
 
+                if (newCurrency.IsPBaaSChain())
+                {
+                    uint160 converterID = newCurrency.GatewayConverterID();
+                    std::set<uint160> validCurrencyParents({newCurrency.GetID(), newCurrency.launchSystemID});
+                    std::set<uint160> validIDParents({newCurrency.launchSystemID});
+                    CCurrencyDefinition converterCur;
+                    std::map<uint160, int32_t> currencyConverterMap;
+                    if (!converterID.IsNull())
+                    {
+                        CCurrencyDefinition oneNewCur;
+                        for (auto &oneNewCur : currencyDefs)
+                        {
+                            if (oneNewCur.GetID() == converterID)
+                            {
+                                if (!oneNewCur.IsFractional())
+                                {
+                                    return state.Error("Converter currencies must be fractional");
+                                }
+                                converterCur = oneNewCur;
+                                break;
+                            }
+                        }
+                        for (auto &oneCurID : newCurrency.currencies)
+                        {
+                            // if it's new, it can't be a valid ID or currency parent
+                            if (newDefinitions.count(oneCurID))
+                            {
+                                continue;
+                            }
+                            // not new, look it up to ensure that its parent is present, and if its parent
+                            // is present already, add it as a valid parent
+                            CCurrencyDefinition oneParentCur = ConnectedChains.GetCachedCurrency(oneCurID);
+
+                            if (!oneParentCur.IsValid() ||
+                                (!oneParentCur.parent.IsNull() && !validCurrencyParents.count(oneParentCur.parent)))
+                            {
+                                return state.Error("Invalid currency inclusion before parent");
+                            }
+                            
+                            // if this currency is new with a new parent, it can not parent any IDs or currencies
+                            if (!oneParentCur.parent.IsNull() && newDefinitions.count(oneParentCur.parent))
+                            {
+                                continue;
+                            }
+                            validCurrencyParents.insert(oneCurID);
+                            validIDParents.insert(oneCurID);
+                        }
+                        if (converterCur.IsValid())
+                        {
+                            for (auto &oneCurID : converterCur.currencies)
+                            {
+                                // new definitions of currency are ok in the converter, as long as it's not itself,
+                                // which would prevent it from launching
+                                if (oneCurID == converterID)
+                                {
+                                    return state.Error("A fractional currency cannot launch with itself as a reserve");
+                                }
+                                // if it's new, it can't be a valid ID or currency parent
+                                if (newDefinitions.count(oneCurID))
+                                {
+                                    continue;
+                                }
+                                // not new, look it up to ensure that its parent is present, and if its parent
+                                // is present already, add it as a valid parent
+                                CCurrencyDefinition oneParentCur = ConnectedChains.GetCachedCurrency(oneCurID);
+                                if (oneParentCur.parent.IsNull())
+                                {
+                                    continue;
+                                }
+
+                                if (!oneParentCur.IsValid() ||
+                                    (!oneParentCur.parent.IsNull() && !validCurrencyParents.count(oneParentCur.parent)))
+                                {
+                                    return state.Error("Invalid currency inclusion before parent");
+                                }
+                                // if this currency's parent is new, this currency can not parent any additional IDs or currencies
+                                // if not, it can
+                                if (!oneParentCur.parent.IsNull() && newDefinitions.count(oneParentCur.parent))
+                                {
+                                    continue;
+                                }
+                                validCurrencyParents.insert(oneCurID);
+                                validIDParents.insert(oneCurID);
+                            }
+                        }
+                    }
+
+                    // all notaries and preallocated IDs must already exist
+                    for (auto &oneIdID : newCurrency.notaries)
+                    {
+                        CIdentity oneIdentity = CIdentity::LookupIdentity(oneIdID);
+                        if (!oneIdentity.IsValid())
+                        {
+                            return state.Error("All IDs must be defined before specified as notary in a currency definition");
+                        }
+                        if (!validIDParents.count(oneIdentity.parent))
+                        {
+                            return state.Error("All notary IDs must have parent currencies that are included in the reserve or launch participation currencies");
+                        }
+                    }
+                    // all preallocated IDs must already exist
+                    for (auto &oneIdValPair : newCurrency.preAllocation)
+                    {
+                        if (!oneIdValPair.first.IsNull())
+                        {
+                            CIdentity oneIdentity = CIdentity::LookupIdentity(oneIdValPair.first);
+                            if (!oneIdentity.IsValid())
+                            {
+                                return state.Error("All IDs must be defined before specified as preallocation recipient in a currency definition");
+                            }
+                            if (!validIDParents.count(oneIdentity.parent))
+                            {
+                                return state.Error("All pre-allocation IDs must have parent currencies that are included in the reserve or launch participation currencies");
+                            }
+                        }
+                    }
+                }
+
                 // now, make sure new currency matches any initial notarization
                 // if this is not the systemID, we must be either a gateway, PBaaS chain, mapped currency, or gateway converter
                 CCurrencyDefinition newSystemCurrency;
@@ -5182,7 +5300,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     }
                 }
 
-                if (!importPassThrough)
+                if (!importPassThrough && idToExport.IsValid())
                 {
                     // validate everything relating to name and control
                     if (registeredIdentity.primaryAddresses != idToExport.primaryAddresses ||
@@ -6750,7 +6868,8 @@ std::string CConnectedChains::GetFriendlyIdentityName(const std::string &name, c
     }
     else
     {
-        return name + '.' + GetFriendlyCurrencyName(parentCurrencyID, addVerus) + '@';
+        std::string parentFriendlyName = GetFriendlyCurrencyName(parentCurrencyID, addVerus);
+        return parentFriendlyName.empty() ? "" : (name + '.' + parentFriendlyName + '@');
     }
 }
 

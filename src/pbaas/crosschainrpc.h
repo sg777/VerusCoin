@@ -1284,6 +1284,7 @@ public:
     }
 
     static int64_t CalculateRatioOfValue(int64_t value, int64_t ratio);
+    static int64_t CalculateRatioOfTwoValues(int64_t value1, int64_t value2);
     int64_t GetTotalPreallocation() const;
     int32_t GetTotalCarveOut() const;
 };

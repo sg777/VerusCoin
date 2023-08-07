@@ -1,4 +1,4 @@
-# Copyright (c) 2018-2019 The Verus developers
+# Copyright (c) 2018-2023 The Verus developers
 # Copyright (c) 2017-2019 The Komodo developers
 # Copyright (c) 2016-2019 The Zcash developers
 # Copyright (c) 2013-2019 The Bitcoin Core developers

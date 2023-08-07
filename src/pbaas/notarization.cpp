@@ -843,6 +843,8 @@ CPBaaSNotarization::CPBaaSNotarization(const UniValue &obj)
         proposer = CTransferDestination(transferID);
     }
 
+    SetContractUpgrade(proposer.GetAuxDest(0), uni_get_bool(find_value(obj, "contractupgrade")));
+
     notarizationHeight = (uint32_t)uni_get_int64(find_value(obj, "notarizationheight"));
     currencyState = CCoinbaseCurrencyState(find_value(obj, "currencystate"));
     prevNotarization = CUTXORef(uint256S(uni_get_str(find_value(obj, "prevnotarizationtxid"))), (uint32_t)uni_get_int(find_value(obj, "prevnotarizationout")));
@@ -5384,14 +5386,31 @@ bool CPBaaSNotarization::CheckEntropyHashMatch(const uint256 &entropyHash,
 
     int checkIndex = 0;
     bool mismatchIndex = false;
+    int consecPoS = 0;
+    static const int MAX_CONSEC_POS = 5;
+
     for (auto &oneRange : commitmentRanges)
     {
         for (uint32_t loop = oneRange.first; loop <= oneRange.second; loop++, checkIndex++)
         {
             if (loop != ((uint32_t)checkCommitments[checkIndex]) >> 1)
             {
+                LogPrintf("%s: Invalid entropy for PBaaS protocol proof - currencyID: %s\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
                 mismatchIndex = true;
                 break;
+            }
+            if ((uint32_t)checkCommitments[checkIndex] & 1)
+            {
+                if (++consecPoS > MAX_CONSEC_POS)
+                {
+                    LogPrintf("%s: Invalid consecutive PoS blocks for PBaaS protocol - currencyID: %s\n", __func__, EncodeDestination(CIdentityID(currencyID)).c_str());
+                    mismatchIndex = true;
+                    break;
+                }
+            }
+            else
+            {
+                consecPoS = 0;
             }
         }
         if (mismatchIndex)
@@ -7026,11 +7045,7 @@ bool CPBaaSNotarization::CreateEarnedNotarization(const CRPCChainData &externalS
         notarization.prevNotarization = cnd.vtx[notaryIdx].first;
         notarization.prevHeight = cnd.vtx[notaryIdx].second.notarizationHeight;
 
-        if (APPROVE_CONTRACT_UPGRADE.IsValid() &&
-            APPROVE_CONTRACT_UPGRADE.TypeNoFlags() == APPROVE_CONTRACT_UPGRADE.DEST_ETH)
-        {
-            notarization.SetContractUpgrade(APPROVE_CONTRACT_UPGRADE);
-        }
+        notarization.SetContractUpgrade(APPROVE_CONTRACT_UPGRADE, APPROVE_CONTRACT_UPGRADE.IsValid() && APPROVE_CONTRACT_UPGRADE.TypeNoFlags() == APPROVE_CONTRACT_UPGRADE.DEST_ETH);
 
         CCcontract_info CC;
         CCcontract_info *cp;
@@ -8518,7 +8533,7 @@ bool CPBaaSNotarization::FindFinalizedIndexByVDXFKey(const uint160 &notarization
             fP.vData.size() &&
             (confirmedFinalization = CObjectFinalization(fP.vData[0])).IsValid()))
     {
-        LogPrint("notarization", "Invalid finalization transaction for index key\n");
+        LogPrint("notarization", "Invalid finalization transaction for index key, smart transaction is %s, eval code: %u\n", fP.IsValid() ? "VALID" : "INVALID", fP.evalCode);
         return retVal;
     }
 
@@ -8594,7 +8609,6 @@ bool CPBaaSNotarization::FindFinalizedIndexesByVDXFKey(const uint160 &notarizati
             continue;
         }
 
-        CAddressIndexDbEntry finalizationIndex;
         CTransaction finalizationTx;
         uint256 blkHash;
         COptCCParams fP;
@@ -8606,18 +8620,18 @@ bool CPBaaSNotarization::FindFinalizedIndexesByVDXFKey(const uint160 &notarizati
             {
                 continue;
             }
-            if (!myGetTransaction(finalizationIndex.first.txhash, finalizationTx, blkHash) ||
-                finalizationIndex.first.index >= finalizationTx.vout.size() ||
+            if (!myGetTransaction(oneIndexEntry.first.txhash, finalizationTx, blkHash) ||
+                oneIndexEntry.first.index >= finalizationTx.vout.size() ||
                 (!blkHash.IsNull() &&
                  ((blockIt = mapBlockIndex.find(blkHash)) == mapBlockIndex.end() ||
                   !chainActive.Contains(blockIt->second))) ||
-                !(finalizationTx.vout[finalizationIndex.first.index].scriptPubKey.IsPayToCryptoCondition(fP) &&
+                !(finalizationTx.vout[oneIndexEntry.first.index].scriptPubKey.IsPayToCryptoCondition(fP) &&
                     fP.IsValid() &&
                     fP.evalCode == EVAL_FINALIZE_NOTARIZATION &&
                     fP.vData.size() &&
                     (confirmedFinalization[i] = CObjectFinalization(fP.vData[0])).IsValid()))
             {
-                LogPrint("notarization", "Invalid finalization transaction for index key\n");
+                LogPrint("notarization", "Invalid finalization transaction for index key, smart transaction is %s, eval code: %u\n", fP.IsValid() ? "VALID" : "INVALID", fP.evalCode);
                 continue;
             }
             validOfs.push_back(confirmedFinalization[i]);
@@ -9240,8 +9254,8 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                    (crosschainCND.vtx[crosschainCND.lastConfirmed].second.IsDefinitionNotarization() &&
                     crosschainCND.vtx[crosschainCND.lastConfirmed].second.IsSameChain())) ||
                   (!GetBoolArg("-allowdelayednotarizations", false) &&
-                   (newConfirmedNotarization.proofRoots[systemID].rootHeight - lastConfirmedNotarization.proofRoots[systemID].rootHeight) >
-                   (blocksBeforeModuloExtension - (blocksBeforeModuloExtension >> 2)));
+                   (newConfirmedNotarization.proofRoots[systemID].rootHeight - crosschainCND.vtx[crosschainCND.lastConfirmed].second.proofRoots[systemID].rootHeight) >
+                    (blocksBeforeModuloExtension - (blocksBeforeModuloExtension >> 2)));
 
     if (!submit)
     {
@@ -9256,7 +9270,9 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
             {
                 if (!unMirrored.currencyStates.count(oneCurState.first) ||
                     (unMirrored.currencyStates[oneCurState.first].IsPrelaunch() &&
-                     !oneCurState.second.IsPrelaunch()))
+                     !oneCurState.second.IsPrelaunch()) ||
+                    (!unMirrored.currencyStates[oneCurState.first].IsLaunchCompleteMarker() &&
+                     oneCurState.second.IsLaunchCompleteMarker()))
                 {
                     submit = true;
                     break;
@@ -9264,7 +9280,7 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
 
                 // if the relative price of the two sided fee currencies has changed more than 15% since last confirmed
                 // notarization, submit
-                if (oneCurState.second.IsFractional())
+                if (oneCurState.second.IsLaunchCompleteMarker() && oneCurState.second.IsFractional())
                 {
                     auto curIdxMap = oneCurState.second.GetReserveMap();
                     uint160 externID = externalSystem.GetID();
@@ -9281,10 +9297,10 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                         break;
                     }
 
-                    int64_t firstRatioOfPrice = CCurrencyDefinition::CalculateRatioOfValue(
+                    int64_t firstRatioOfPrice = CCurrencyDefinition::CalculateRatioOfTwoValues(
                                                     unMirrored.currencyStates[oneCurState.first].PriceInReserve(curIdxMap[ASSETCHAINS_CHAINID]),
                                                     unMirrored.currencyStates[oneCurState.first].PriceInReserve(curIdxMap[externID]));
-                    int64_t secondRatioOfPrice = CCurrencyDefinition::CalculateRatioOfValue(
+                    int64_t secondRatioOfPrice = CCurrencyDefinition::CalculateRatioOfTwoValues(
                                                     oneCurState.second.PriceInReserve(curIdxMap[ASSETCHAINS_CHAINID]),
                                                     oneCurState.second.PriceInReserve(curIdxMap[externID]));
 
@@ -9295,13 +9311,26 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                         break;
                     }
 
-                    int64_t ratioOfPriceChange = CCurrencyDefinition::CalculateRatioOfValue(firstRatioOfPrice, secondRatioOfPrice);
+                    int64_t ratioOfPriceChange = CCurrencyDefinition::CalculateRatioOfTwoValues(firstRatioOfPrice, secondRatioOfPrice);
 
                     // if we go up or down by 10% from the last confirmed notarization, notarize again
                     if (ratioOfPriceChange > (SATOSHIDEN + (SATOSHIDEN / 10)) || ratioOfPriceChange < (SATOSHIDEN - (SATOSHIDEN / 10)))
                     {
                         submit = true;
                         break;
+                    }
+
+                    if (externalSystem.chainDefinition.proofProtocol == CCurrencyDefinition::PROOF_ETHNOTARIZATION &&
+                        unMirrored.proofRoots.count(externID) &&
+                        lastConfirmedNotarization.proofRoots.count(externID))
+                    {
+                        ratioOfPriceChange = CCurrencyDefinition::CalculateRatioOfTwoValues(unMirrored.proofRoots[externID].gasPrice, lastConfirmedNotarization.proofRoots[externID].gasPrice);
+                        // if gas goes up or down by 15% from the last confirmed notarization, notarize again
+                        if (ratioOfPriceChange > (SATOSHIDEN + (SATOSHIDEN / 15)) || ratioOfPriceChange < (SATOSHIDEN - (SATOSHIDEN / 15)))
+                        {
+                            submit = true;
+                            break;
+                        }
                     }
                 }
             }

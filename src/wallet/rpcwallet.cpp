@@ -1699,6 +1699,10 @@ UniValue signdata(const UniValue& params, bool fHelp)
             ret.push_back(Pair("hashtype", hashTypeStr));
             ret.push_back(Pair("hash", msgHash.GetHex()));
             std::string fullName = ConnectedChains.GetFriendlyIdentityName(identity);
+            if (fullName.empty())
+            {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Cannot get friendly name for or sign with identity that does not have its parent currency defined on signing system ") + EncodeDestination(CIdentityID(identity.GetID())));
+            }
             ret.push_back(Pair("identity", fullName));
             ret.push_back(Pair("canonicalname", boost::to_lower_copy(fullName)));
             ret.push_back(Pair("address", EncodeDestination(identity.GetID())));
