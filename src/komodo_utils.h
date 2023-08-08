@@ -2197,7 +2197,7 @@ void komodo_args(char *argv0)
             // TODO: REMOVE THE SPECIAL CASE FOR ANDROMEDA ON ANY TESTNET RESET
             if (ASSETCHAINS_LASTERA == 0 &&
                 ASSETCHAINS_REWARD[0] == 0 &&
-                (PBAAS_TESTMODE && ConnectedChains.ThisChain().name == "Andromeda"))
+                (PBAAS_TESTMODE && boost::to_lower_copy(std::string(ASSETCHAINS_SYMBOL)) == "andromeda"))
             {
                 COINBASE_MATURITY = 1;
             }
