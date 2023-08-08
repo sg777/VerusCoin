@@ -2194,8 +2194,14 @@ void komodo_args(char *argv0)
                 komodo_userpass(ASSETCHAINS_USERPASS, ASSETCHAINS_SYMBOL);      // make sure we set user and password on first load
             }
 
-            if (ASSETCHAINS_LASTERA == 0 && ASSETCHAINS_REWARD[0] == 0)
+            // TODO: REMOVE THE SPECIAL CASE FOR ANDROMEDA ON ANY TESTNET RESET
+            if (ASSETCHAINS_LASTERA == 0 &&
+                ASSETCHAINS_REWARD[0] == 0 &&
+                (PBAAS_TESTMODE && ConnectedChains.ThisChain().name == "Andromeda"))
+            {
                 COINBASE_MATURITY = 1;
+            }
+
             //fprintf(stderr,"ASSETCHAINS_RPCPORT (%s) %u\n",ASSETCHAINS_SYMBOL,ASSETCHAINS_RPCPORT);
             ASSETCHAINS_RPCHOST = GetArg("-rpchost", "127.0.0.1");
         }
