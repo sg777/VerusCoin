@@ -1080,10 +1080,16 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 additionalFees.ToUniValue().write(1,2).c_str(),
                 originalFees.ToUniValue().write(1,2).c_str()); */
 
+            CAmount totalCurrencyOut = newNotarization.currencyState.primaryCurrencyOut;
+
             // to determine left over reserves for deposit, consider imported and emitted as the same
             if (updatedMinMax)
             {
                 gatewayDeposits = CCurrencyValueMap(lastNotarization.currencyState.currencies, lastNotarization.currencyState.primaryCurrencyIn);
+                if (!newCurrency.IsFractional())
+                {
+                    totalCurrencyOut = lastNotarization.currencyState.primaryCurrencyOut;
+                }
             }
             else
             {
@@ -1094,7 +1100,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 gatewayDeposits += originalFees;
             }
 
-            gatewayDeposits.valueMap[newCurID] += gatewayDepositsUsed.valueMap[newCurID] + (newCurrency.IsFractional() ? newNotarization.currencyState.primaryCurrencyOut : lastNotarization.currencyState.primaryCurrencyOut);
+            gatewayDeposits.valueMap[newCurID] += gatewayDepositsUsed.valueMap[newCurID] + totalCurrencyOut;
 
             printf("importedcurrency %s\nspentcurrencyout %s\ngatewaydeposits %s\n",
                 importedCurrency.ToUniValue().write(1,2).c_str(),
