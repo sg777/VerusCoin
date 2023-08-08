@@ -1086,10 +1086,6 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             if (updatedMinMax)
             {
                 gatewayDeposits = CCurrencyValueMap(lastNotarization.currencyState.currencies, lastNotarization.currencyState.primaryCurrencyIn);
-                if (!newCurrency.IsFractional())
-                {
-                    totalCurrencyOut = lastNotarization.currencyState.primaryCurrencyOut - lastNotarization.currencyState.preConvertedOut;
-                }
             }
             else
             {
@@ -1099,7 +1095,6 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
             {
                 gatewayDeposits += originalFees;
             }
-
             gatewayDeposits.valueMap[newCurID] += gatewayDepositsUsed.valueMap[newCurID] + totalCurrencyOut;
 
             printf("importedcurrency %s\nspentcurrencyout %s\ngatewaydeposits %s\n",

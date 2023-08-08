@@ -4563,10 +4563,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 {
                                     gatewayDeposits = CCurrencyValueMap(tempLastNotarization.currencyState.currencies,
                                                                         tempLastNotarization.currencyState.primaryCurrencyIn);
-                                    if (!newNotarization.currencyState.IsFractional())
-                                    {
-                                        totalCurrencyOut = tempLastNotarization.currencyState.primaryCurrencyOut - tempLastNotarization.currencyState.preConvertedOut;
-                                    }
                                 }
                                 else
                                 {
