@@ -1088,7 +1088,7 @@ bool AddOneCurrencyImport(const CCurrencyDefinition &newCurrency,
                 gatewayDeposits = CCurrencyValueMap(lastNotarization.currencyState.currencies, lastNotarization.currencyState.primaryCurrencyIn);
                 if (!newCurrency.IsFractional())
                 {
-                    totalCurrencyOut = lastNotarization.currencyState.primaryCurrencyOut;
+                    totalCurrencyOut = lastNotarization.currencyState.primaryCurrencyOut - lastNotarization.currencyState.preConvertedOut;
                 }
             }
             else
