@@ -5659,14 +5659,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     }
 
     newCurrencyState.preConvertedOut = 0;
+    bool skipPreSupplyAdd = isFractional || !newCurrencyState.IsLaunchConfirmed() || (importCurrencyDef.IsPBaaSChain() && !newCurrencyState.IsLaunchClear());
+
     if (!newCurrencyState.IsRefunding())
     {
         for (auto &oneVal : preConvertedOutput.valueMap)
         {
             newCurrencyState.preConvertedOut += oneVal.second;
-            if (!isFractional &&
-                newCurrencyState.IsLaunchConfirmed() &&
-                !(importCurrencyDef.IsPBaaSChain() && !newCurrencyState.IsLaunchClear()))
+            if (!skipPreSupplyAdd)
             {
                 newCurrencyState.supply = newCurrencyState.AddToSupply(oneVal.second);
             }
@@ -5734,9 +5734,12 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             else
             {
                 CAmount newPrimaryOut = vFracOutConverted[i] - vFracConverted[i];
-                newCurrencyState.supply = newCurrencyState.AddToSupply(newPrimaryOut);
                 netPrimaryIn += newPrimaryOut;
                 netPrimaryOut += newPrimaryOut;
+                if (skipPreSupplyAdd)
+                {
+                    newCurrencyState.supply = newCurrencyState.AddToSupply(newPrimaryOut);
+                }
             }
         }
     }
@@ -5843,7 +5846,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     {
         if (importCurrencyState.IsPrelaunch())
         {
-            extraPreconverted = newCurrencyState.preConvertedOut;
             // if this is our launch currency issue any necessary pre-converted supply and add it to reserve deposits
             if (importCurrencyID == systemDestID &&
                 importCurrencyState.reserveIn.size())
@@ -5852,15 +5854,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                 {
                     // add new native currency to reserve deposits for imports
                     // total converted in this import should be added to the total from before
-                    CAmount oldReservesIn = importCurrencyState.reserveIn[i] - newCurrencyState.reserveIn[i];
-                    extraPreconverted += newCurrencyState.ReserveToNativeRaw(oldReservesIn, newCurrencyState.conversionPrice[i]);
+                    extraPreconverted += newCurrencyState.ReserveToNativeRaw(importCurrencyState.reserveIn[i], newCurrencyState.conversionPrice[i]);
                 }
-                newCurrencyState.preConvertedOut = extraPreconverted;
             }
+            extraPreconverted += newCurrencyState.preConvertedOut;
         }
         else
         {
-            extraPreconverted = importCurrencyState.preConvertedOut - newCurrencyState.preConvertedOut;
+            extraPreconverted = std::max(int64_t(0), importCurrencyState.preConvertedOut - newCurrencyState.preConvertedOut);
         }
     }
 
@@ -5918,7 +5919,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     if (newCurrencyState.IsLaunchConfirmed())
     {
         netPrimaryOut += newCurrencyState.preConvertedOut;
-        netPrimaryIn += newCurrencyState.preConvertedOut + extraPreconverted;
+        netPrimaryIn += newCurrencyState.IsPrelaunch() ? extraPreconverted : newCurrencyState.preConvertedOut + extraPreconverted;
     }
 
     if (extraPreconverted)
