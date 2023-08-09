@@ -5916,7 +5916,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         netPrimaryIn += (totalMinted + preAllocTotal);
     }
 
-    if (newCurrencyState.IsLaunchConfirmed())
+    if (newCurrencyState.IsLaunchConfirmed() && !preLaunchPostFees)
     {
         netPrimaryOut += newCurrencyState.preConvertedOut;
         netPrimaryIn += newCurrencyState.IsPrelaunch() ? extraPreconverted : newCurrencyState.preConvertedOut + extraPreconverted;
