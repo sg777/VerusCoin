@@ -2955,6 +2955,7 @@ CReserveTransactionDescriptor::CReserveTransactionDescriptor(const CTransaction 
                                         checkState.viaConversionPrice = newState.viaConversionPrice;
                                         validNotarization = true;
                                         checkOutputs.clear();
+                                        importedCurrency = gatewayDeposits = spentCurrencyOut = CCurrencyValueMap();
                                         break;
                                     }
                                 }
@@ -5677,6 +5678,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
     std::vector<CAmount> vResOutConverted;
     std::vector<CAmount> vFracConverted;
     std::vector<CAmount> vFracOutConverted;
+    std::vector<CAmount> vPreOutConverted;
 
     CCurrencyValueMap reserveBalanceInMap;
 
@@ -5689,6 +5691,7 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         vResOutConverted = (ReserveOutConvertedMap(importCurrencyID) + totalCarveOuts).AsCurrencyVector(newCurrencyState.currencies);
         vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
         vFracOutConverted = (NativeOutConvertedMap() - preConvertedOutput).AsCurrencyVector(newCurrencyState.currencies);
+        vPreOutConverted = preConvertedOutput.AsCurrencyVector(newCurrencyState.currencies);
         CAmount totalNewFrac = 0;
         for (int i = 0; i < newCurrencyState.currencies.size(); i++)
         {
@@ -5701,7 +5704,13 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
             {
                 reserveBalanceInMap.valueMap[newCurrencyState.currencies[i]] = newReservesIn;
             }
+
             netPrimaryIn += (newCurrencyState.primaryCurrencyIn[i] = vFracConverted[i]);
+            if (!isFractional)
+            {
+                newCurrencyState.primaryCurrencyIn[i] += vPreOutConverted[i];
+            }
+
             netPrimaryOut += vFracOutConverted[i];
             totalNewFrac += vFracOutConverted[i];
 
