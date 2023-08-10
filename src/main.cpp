@@ -4557,6 +4557,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                                           lastNotarization.proofRoots.find(VERUS_CHAINID)->second.rootHeight >= ConnectedChains.GetZeroViaHeight(PBAAS_TESTMODE)));
 
                                 CCurrencyValueMap gatewayDeposits;
+                                CAmount totalCurrencyOut = newNotarization.currencyState.primaryCurrencyOut;
+
                                 if (improvedMinCheck)
                                 {
                                     gatewayDeposits = CCurrencyValueMap(tempLastNotarization.currencyState.currencies,
@@ -4572,7 +4574,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                 {
                                     gatewayDeposits += originalFees;
                                 }
-                                gatewayDeposits.valueMap[cbCurID] += gatewayDepositsUsed.valueMap[cbCurID] + newNotarization.currencyState.primaryCurrencyOut;
+
+                                gatewayDeposits.valueMap[cbCurID] += gatewayDepositsUsed.valueMap[cbCurID] + totalCurrencyOut;
 
                                 LogPrint("notarization", "importedcurrency %s\nspentcurrencyout %s\nnewgatewaydeposits %s\n",
                                     importedCurrency.ToUniValue().write(1,2).c_str(),

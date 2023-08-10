@@ -3180,7 +3180,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                 CPBaaSNotarization priorNotar;
                 if (priorTx.vout[o].scriptPubKey.IsPayToCryptoCondition(priorP) &&
                     priorP.IsValid() &&
-                    priorP.evalCode == EVAL_ACCEPTEDNOTARIZATION &&
+                    (priorP.evalCode == EVAL_ACCEPTEDNOTARIZATION || priorP.evalCode == EVAL_EARNEDNOTARIZATION) &&
                     (priorNotar = CPBaaSNotarization(priorP.vData[0])).IsValid() &&
                     priorNotar.currencyID == mainImport.importCurrencyID)
                 {
