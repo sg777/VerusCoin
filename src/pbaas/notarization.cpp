@@ -1194,7 +1194,7 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                             CCurrencyValueMap(currencyState.currencies, currencyState.reserves) :
                             CCurrencyValueMap(currencyState.currencies, currencyState.reserveIn)) :
                         CCurrencyValueMap(currencyState.currencies, currencyState.primaryCurrencyIn);
-            if (!currencyState.IsFractional())
+            if (!currencyState.IsFractional() && !(IsPreLaunch() && destCurrency.IsPBaaSChain()))
             {
                 newPreConversionReservesIn =
                     currencyState.NativeToReserveRaw(newPreConversionReservesIn.AsCurrencyVector(currencyState.currencies),
@@ -1525,11 +1525,25 @@ bool CPBaaSNotarization::NextNotarizationInfo(const CCurrencyDefinition &sourceS
                 for (auto &oneCurrencyID : tempState.currencies)
                 {
                     int idx = currencyIdxMap[oneCurrencyID];
-                    tempState.primaryCurrencyIn[idx] = this->currencyState.primaryCurrencyIn[idx];
 
-                    if (rtxd.currencies.count(oneCurrencyID))
+                    if (destCurrency.IsPBaaSChain())
                     {
-                        tempState.primaryCurrencyIn[idx] += (rtxd.currencies[oneCurrencyID].reserveIn - tempState.fees[idx]);
+                        tempState.primaryCurrencyIn[idx] += this->currencyState.primaryCurrencyIn[idx];
+                    }
+                    else
+                    {
+                        tempState.primaryCurrencyIn[idx] = this->currencyState.primaryCurrencyIn[idx];
+                        if (rtxd.currencies.count(oneCurrencyID))
+                        {
+                            if (destCurrency.IsGatewayConverter())
+                            {
+                                tempState.primaryCurrencyIn[idx] += (tempState.reserveIn[idx] - tempState.conversionFees[idx]);
+                            }
+                            else
+                            {
+                                tempState.primaryCurrencyIn[idx] += (rtxd.currencies[oneCurrencyID].reserveIn - tempState.fees[idx]);
+                            }
+                        }
                     }
                 }
             }

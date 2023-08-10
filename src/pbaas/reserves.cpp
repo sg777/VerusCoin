@@ -5733,11 +5733,16 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         vResOutConverted = ReserveOutConvertedMap(importCurrencyID).AsCurrencyVector(newCurrencyState.currencies);
         vFracConverted = fractionalConverted.AsCurrencyVector(newCurrencyState.currencies);
         vFracOutConverted = preConvertedOutput.AsCurrencyVector(newCurrencyState.currencies);
+        std::vector<CAmount> vPreConvertedReserves = preConvertedReserves.AsCurrencyVector(newCurrencyState.currencies);
         for (int i = 0; i < newCurrencyState.currencies.size(); i++)
         {
             if (updatedPostFees && !isFractional)
             {
                 newCurrencyState.reserveIn[i] += vFracOutConverted[i] - vFracConverted[i];
+                if (importCurrencyDef.IsPBaaSChain())
+                {
+                    newCurrencyState.primaryCurrencyIn[i] = vPreConvertedReserves[i];
+                }
             }
             else
             {
