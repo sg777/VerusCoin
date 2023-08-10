@@ -4551,6 +4551,10 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                 {
                                     cumulativeReserveIn = importCurrencyState.reserves[rIdx];
                                 }
+                                else if (importCurrencyDef.IsPBaaSChain())
+                                {
+                                    cumulativeReserveIn = importCurrencyState.reserveIn[rIdx];
+                                }
                                 else
                                 {
                                     cumulativeReserveIn = importCurrencyState.NativeToReserveRaw(importCurrencyState.reserveIn[rIdx],
