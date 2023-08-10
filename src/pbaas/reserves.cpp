@@ -4551,10 +4551,6 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
                                 {
                                     cumulativeReserveIn = importCurrencyState.reserves[rIdx];
                                 }
-                                else if (importCurrencyDef.IsPBaaSChain())
-                                {
-                                    cumulativeReserveIn = importCurrencyState.reserveIn[rIdx];
-                                }
                                 else
                                 {
                                     cumulativeReserveIn = importCurrencyState.NativeToReserveRaw(importCurrencyState.reserveIn[rIdx],
@@ -5739,7 +5735,14 @@ bool CReserveTransactionDescriptor::AddReserveTransferImportOutputs(const CCurre
         vFracOutConverted = preConvertedOutput.AsCurrencyVector(newCurrencyState.currencies);
         for (int i = 0; i < newCurrencyState.currencies.size(); i++)
         {
-            newCurrencyState.reserveIn[i] += (vResConverted[i] + vLiquidityFees[i]);
+            if (updatedPostFees && !isFractional)
+            {
+                newCurrencyState.reserveIn[i] += vFracOutConverted[i] - vFracConverted[i];
+            }
+            else
+            {
+                newCurrencyState.reserveIn[i] += (vResConverted[i] + vLiquidityFees[i]);
+            }
             if (isFractional)
             {
                 newCurrencyState.reserves[i] += (vResConverted[i] - vResOutConverted[i]) + vLiquidityFees[i];
