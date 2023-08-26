@@ -9103,11 +9103,23 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
         }
         else
         {
+            std::string notaryRevokeAddr = GetArg("-autonotaryrevoke", "");
+            uint160 notaryRevokeID;
+            if (!notaryRevokeAddr.empty())
+            {
+                CTxDestination notaryDest = DecodeDestination(notaryRevokeAddr);
+                if (notaryDest.which() == COptCCParams::ADDRTYPE_ID)
+                {
+                    notaryRevokeID = GetDestinationID(notaryDest);
+                }
+            }
             for (int i = 0; i < evidence.size(); i++)
             {
                 // though we should agree with the data, also make sure that if it required proof,
                 // it is proven with a future root we agree with, ensuring that it is not forking off from or trying to front run this chain
                 bool isValid = true;
+                bool isPotentialRevoke = false;
+                std::set<uint160> idSigSet;
                 for (auto &oneEvidenceItem : evidence[i])
                 {
                     // we'll be looking for evidence that is confirmed, which should have come with the
@@ -9116,6 +9128,18 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                     if (std::get<1>(oneEvidenceItem).IsValid() &&
                         std::get<1>(oneEvidenceItem).IsConfirmed())
                     {
+                        if (!notaryRevokeID.IsNull())
+                        {
+                            std::map<uint32_t, std::map<CIdentityID, CIdentitySignature>> confirmedByHeight;
+                            std::vector<CNotarySignature> sigVec = std::get<1>(oneEvidenceItem).GetNotarySignatures(&confirmedByHeight);
+                            for (auto &oneConfirmedMap : confirmedByHeight)
+                            {
+                                if (oneConfirmedMap.second.count(notaryRevokeID))
+                                {
+                                    isPotentialRevoke = true;
+                                }
+                            }
+                        }
                         std::set<int> evidenceTypes;
                         evidenceTypes.insert(CHAINOBJ_PROOF_ROOT);
                         evidenceTypes.insert(CHAINOBJ_TRANSACTION_PROOF);
@@ -9143,6 +9167,10 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 if (!isValid)
                 {
                     invalidCrossChainIndexSet.insert(i);
+                    if (isPotentialRevoke)
+                    {
+                        ConnectedChains.SetRevokeID(notaryRevokeID);
+                    }
                 }
                 else
                 {
