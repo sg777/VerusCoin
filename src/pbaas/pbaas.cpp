@@ -5694,7 +5694,7 @@ CPBaaSMergeMinedChainData *CConnectedChains::GetChainInfo(uint160 chainID)
 
 void CConnectedChains::QueueNewBlockHeader(CBlockHeader &bh)
 {
-    //printf("QueueNewBlockHeader %s\n", bh.GetHash().GetHex().c_str());
+    LogPrint("mining", "QueueNewBlockHeader %s\n", bh.GetHash().GetHex().c_str());
     {
         LOCK(cs_mergemining);
 
@@ -5702,6 +5702,29 @@ void CConnectedChains::QueueNewBlockHeader(CBlockHeader &bh)
 
     }
     sem_submitthread.post();
+}
+
+void CConnectedChains::SetRevokeID(const CIdentityID &idID)
+{
+    LogPrint("notarization", "SetRevokeID %s\n", EncodeDestination(idID).c_str());
+    {
+        LOCK(cs_mergemining);
+
+        idsToRevoke.insert(idID);
+
+    }
+}
+
+CIdentityID CConnectedChains::NextRevokeID()
+{
+    LOCK(cs_mergemining);
+    CIdentityID retVal;
+    if (idsToRevoke.begin() != idsToRevoke.end())
+    {
+        retVal = *idsToRevoke.begin();
+        idsToRevoke.erase(idsToRevoke.begin());
+    }
+    return retVal;
 }
 
 void CConnectedChains::CheckImports()
@@ -10884,6 +10907,133 @@ void CConnectedChains::SubmissionThread()
             // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
             if (isNotaryAvailable)
             {
+                CIdentityID notaryRevokeID;
+                std::vector<CIdentityID> revokeIDs;
+                std::string notaryRevokeAddr;
+                // if we should revoke any IDs, do it here
+                {
+                    LOCK(cs_mergemining);
+                    if (idsToRevoke.size())
+                    {
+                        notaryRevokeAddr = GetArg("-autonotaryrevoke", "");
+                        if (!notaryRevokeAddr.empty())
+                        {
+                            notaryRevokeID = GetDestinationID(DecodeDestination(notaryRevokeAddr));
+                            if (!notaryRevokeID.IsNull() && idsToRevoke.count(notaryRevokeID))
+                            {
+                                idsToRevoke.erase(notaryRevokeID);
+                            }
+                            else
+                            {
+                                notaryRevokeID.SetNull();
+                            }
+                        }
+                    }
+                    // if we have additional IDs to revoke beyond our autonotaryrevoke parameter, we are likely not to have
+                    // revoke authority and should change the primary key instead, both on this chain and on the notary chain
+                    CIdentityID oneToRevoke;
+                    while (!(oneToRevoke = NextRevokeID()).IsNull())
+                    {
+                        revokeIDs.push_back(oneToRevoke);
+                    }
+                }
+                if (!notaryRevokeID.IsNull())
+                {
+                    UniValue revokeidentity(const UniValue& params, bool fHelp);
+                    // revoke on this chain and on the notary, this chain first
+                    UniValue params(UniValue::VARR);
+                    UniValue result(UniValue::VOBJ);
+                    params.push_back(notaryRevokeAddr);
+                    try
+                    {
+                        revokeidentity(params, false);
+                    }
+                    catch(const std::exception& e)
+                    {
+                        LogPrintf("%s: exception (%s) revoking ID %s\n", __func__, e.what(), notaryRevokeAddr.c_str());
+                    }
+                    try
+                    {
+                        result = RPCCallRoot("revokeidentity", params);
+                    }
+                    catch(const std::exception& e)
+                    {
+                        LogPrintf("%s: exception (%s) revoking ID %s\n", __func__, e.what(), notaryRevokeAddr.c_str());
+                    }
+                }
+                // these are going to be our notary IDs, and we need to set new primary keys for them
+                for (auto &oneRevokeID : revokeIDs)
+                {
+                    CIdentity revokeIdentity;
+                    uint32_t heightOfID;
+                    {
+                        LOCK2(cs_main, mempool.cs);
+                        revokeIdentity = CIdentity::LookupIdentity(oneRevokeID, 0, &heightOfID, nullptr, true);
+                    }
+                    if (revokeIdentity.IsValidUnrevoked())
+                    {
+                        // we don't want to update the ID too many times, so if it is in the mempool and 
+                        // updated to a new key that is different from the last, skip the new update
+                        if (!heightOfID)
+                        {
+                            auto oldAddresses = revokeIdentity.primaryAddresses;
+                            revokeIdentity = CIdentity::LookupIdentity(oneRevokeID);
+                            if (revokeIdentity.primaryAddresses != oldAddresses)
+                            {
+                                continue;
+                            }
+                        }
+
+                        UniValue updateidentity(const UniValue& params, bool fHelp);
+                        // revoke on this chain and on the notary, this chain first
+                        UniValue params(UniValue::VARR);
+                        UniValue result(UniValue::VOBJ);
+                        UniValue updateIDUni(UniValue::VOBJ);
+                        UniValue newAddressesUni(UniValue::VARR);
+                        CPubKey newKey;
+                        CKey newPrivKey;
+                        {
+                            LOCK(pwalletMain->cs_wallet);
+                            CReserveKey reservekey(pwalletMain);
+                            reservekey.KeepKey();
+                            reservekey.GetReservedKey(newKey);
+                            if (!newKey.IsValid())
+                            {
+                                continue;
+                            }
+                            newAddressesUni.push_back(EncodeDestination(newKey.GetID()));
+                            pwalletMain->GetKey(newKey.GetID(), newPrivKey);
+                            if (!newPrivKey.IsValid())
+                            {
+                                continue;
+                            }
+                        }
+                        updateIDUni.pushKV("name", revokeIdentity.name);
+                        updateIDUni.pushKV("parent", EncodeDestination(CIdentityID(revokeIdentity.parent)));
+                        updateIDUni.pushKV("primaryaddresses", newAddressesUni);
+                        updateIDUni.pushKV("minimumsignatures", 1);
+                        try
+                        {
+                            updateidentity(params, false);
+                        }
+                        catch(const std::exception& e)
+                        {
+                            LogPrintf("%s: exception (%s) revoking ID %s\n", __func__, e.what(), notaryRevokeAddr.c_str());
+                        }
+                        try
+                        {
+                            UniValue importPrivKeyParams(UniValue::VARR);
+                            importPrivKeyParams.push_back(EncodeSecret(newPrivKey));
+                            importPrivKeyParams.push_back(false);
+                            result = RPCCallRoot("importprivkey", params);
+                            result = RPCCallRoot("updateidentity", params);
+                        }
+                        catch(const std::exception& e)
+                        {
+                            LogPrintf("%s: exception (%s) revoking ID %s\n", __func__, e.what(), notaryRevokeAddr.c_str());
+                        }
+                    }
+                }
                 if (height > ConnectedChains.ThisChain().GetMinBlocksToStartNotarization() &&
                     lastImportTime < (GetAdjustedTime() - 30))
                 {

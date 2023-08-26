@@ -7787,7 +7787,11 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
     // assume the bestchain algorithm does better than we would here. if we don't agree,
     // we may challenge in other places, but we won't be confirming
-    std::vector<int> bestFork = cnd.forks[cnd.bestChain];
+    std::vector<int> allRoots = std::vector<int>(cnd.vtx.size());
+    for (int i = 0; i < cnd.vtx.size(); i++)
+    {
+        allRoots[i] = i;
+    }
 
     bool isFirstConfirmedCND = cnd.vtx[cnd.lastConfirmed].second.IsBlockOneNotarization() ||
                                cnd.vtx[cnd.lastConfirmed].second.IsDefinitionNotarization();
@@ -7806,7 +7810,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     UniValue proofRootsUni(UniValue::VARR);
 
     // get just the indexes in the fork that we could confirm
-    for (auto forkIdxIt = bestFork.begin(); forkIdxIt != bestFork.end(); forkIdxIt++)
+    for (auto forkIdxIt = allRoots.begin(); forkIdxIt != allRoots.end(); forkIdxIt++)
     {
         auto rootIt = cnd.vtx[*forkIdxIt].second.proofRoots.find(SystemID);
         if (rootIt != cnd.vtx[*forkIdxIt].second.proofRoots.end())
@@ -7856,8 +7860,260 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
         return state.Error(result.isNull() ? "no-notary" : "no-matching-notarization-found");
     }
 
+    std::set<CIdentityID> myIDSet;
+    for (auto &oneID : mine)
+    {
+        myIDSet.insert(oneID.first.idID);
+    }
+
     // take the lock again, now that we're back from calling out
     LOCK(cs_main);
+
+    // for us to confirm a notarization, it must be in the best list
+    // if we actually see any pending notarization that is considered invalid or not matching from our
+    // perspective, we sign to reject it
+
+    // now, assuming that our notarization of the other chain is confirmed, get all considered valid
+    UniValue rawProofRootArr = find_value(result, "validindexes");
+    UniValue proofRootArr(UniValue::VARR);
+
+    // if not all of the proof roots we have are valid, enter a rejection signature
+    // if we have ever signed for one that we believe is not valid, we need to revoke
+
+    std::set<int> disagreements;
+    for (auto oneIndex : allRoots)
+    {
+        disagreements.insert(oneIndex);
+    }
+
+    std::vector<int> bestFork = cnd.forks[cnd.bestChain];
+    int bestForkIdx = 0;
+
+    for (int i = 0; i < rawProofRootArr.size() && bestForkIdx < bestFork.size(); i++)
+    {
+        int idx = uni_get_int(rawProofRootArr[i], -1);
+        if (idx >= 0)
+        {
+            disagreements.erase(idx);
+        }
+        if (idx == bestFork[bestForkIdx])
+        {
+            proofRootArr.push_back(bestForkIdx);
+            bestForkIdx++;
+        }
+        // if we skip over one in the best fork, we assume none in the best fork will be valid after that
+        // keep looping to erase valid entries from disagreements
+    }
+
+    // for every disagreement, we need to check to ensure that we haven't signed it already
+    // and also sign to reject. if we have signed it, we need to revoke our ID, if we are configured to do that
+    std::string notaryRevokeAddr = GetArg("-autonotaryrevoke", "");
+    if (disagreements.size()&&
+        (!notaryRevokeAddr.empty() || mine.size()))
+    {
+        CTxDestination notaryRevokeDest = DecodeDestination(notaryRevokeAddr);
+        uint160 notaryToRevoke = notaryRevokeDest.which() == COptCCParams::ADDRTYPE_ID ? GetDestinationID(notaryRevokeDest) : uint160();
+
+        std::vector<std::vector<CNotaryEvidence>> evidenceVec;
+        std::vector<std::vector<CInputDescriptor>> spendsToClose;
+        std::vector<CInputDescriptor> extraSpends;
+
+        // get evidence to determine if we reject or revoke
+        if (!cnd.CorrelatedFinalizationSpends(txes, spendsToClose, extraSpends, &evidenceVec))
+        {
+            return state.Error("invalid-correlated-notarization-outputs");
+        }
+
+        for (auto oneD : disagreements)
+        {
+            CNotaryEvidence mergedEvidence(ASSETCHAINS_CHAINID, cnd.vtx[oneD].first, CNotaryEvidence::STATE_REJECTING);
+            CCcontract_info CC;
+            CCcontract_info *cp;
+            std::vector<CTxDestination> dests;
+
+            COptCCParams p;
+            if (!(txes[oneD].first.vout[mergedEvidence.output.n].scriptPubKey.IsPayToCryptoCondition(p) &&
+                p.IsValid() &&
+                p.evalCode != EVAL_NONE))
+            {
+                return state.Error(errorPrefix + "invalid output for notarization");
+            }
+
+            CNativeHashWriter hw(hashType);
+            uint256 objHash = hw.write((const char *)&(p.vData[0][0]), p.vData[0].size()).GetHash();
+
+            // combine signatures
+            CNotaryEvidence signatureEvidence = mergedEvidence;
+            for (auto &oneEvidenceObj : evidenceVec[oneD])
+            {
+                for (auto &oneSig : oneEvidenceObj.GetNotarySignatures())
+                {
+                    signatureEvidence.evidence << oneSig;
+                }
+            }
+
+            uint32_t decisionHeight;
+            std::map<CIdentityID, CIdentitySignature> notarySetRejects;
+            std::map<CIdentityID, CIdentitySignature> notarySetConfirms;
+            std::map<CIdentityID, CIdentitySignature> newSigMap;
+
+            CNotaryEvidence::EStates confirmationResult = signatureEvidence.CheckSignatureConfirmation(objHash,
+                                                                                                        hashType,
+                                                                                                        notarySet,
+                                                                                                        minimumNotariesConfirm,
+                                                                                                        signingHeight,
+                                                                                                        &decisionHeight,
+                                                                                                        &notarySetRejects,
+                                                                                                        &notarySetConfirms);
+
+            // see if it is signed by either a notary we control or the one
+            // we should revoke on disagreement, whether or not it is rejected
+
+            if ((!notaryToRevoke.IsNull() &&
+                 notarySetConfirms.count(notaryToRevoke)) ||
+                mine.size())
+            {
+                // if necessary, revoke notary on this and the notary chain
+                if (!notaryToRevoke.IsNull() &&
+                    notarySetConfirms.count(notaryToRevoke))
+                {
+                    ConnectedChains.SetRevokeID(notaryToRevoke);
+                }
+
+                // if we have IDs to sign with, reject the notarizations we do not agree with
+                // we will create one rejecting finalization for every disagreement with all signatures we control as evidence
+                if (mine.size())
+                {
+                    LOCK(pWallet->cs_wallet);
+
+                    int newSigCount = 0;
+
+                    for (auto oneOfMine : mine)
+                    {
+                        CIdentityID oneID = oneOfMine.first.idID;
+                        CIdentitySignature::ESignatureVerification signResult = CIdentitySignature::SIGNATURE_EMPTY;
+                        confirmationResult = CNotaryEvidence::EStates::STATE_REJECTING;
+                        {
+                            if (notarySetConfirms.count(oneID))
+                            {
+                                ConnectedChains.SetRevokeID(oneID);
+                            }
+                            if (notarySetRejects.count(oneID))
+                            {
+                                // if we already rejected it, nothing to do
+                                continue;
+                            }
+                            printf("Rejecting notarization (%s:%u) for %s\n", mergedEvidence.output.hash.GetHex().c_str(), mergedEvidence.output.n, EncodeDestination(oneID).c_str());
+                            LogPrint("notarization", "Rejecting notarization (%s:%u) for %s\n", mergedEvidence.output.hash.GetHex().c_str(), mergedEvidence.output.n, EncodeDestination(oneID).c_str());
+
+                            CNotaryEvidence newSigEvidence;
+                            signResult = mergedEvidence.SignRejected(notarySet, minimumNotariesConfirm, *pWallet, txes[oneD].first, oneID, signingHeight, hashType, &newSigEvidence);
+
+                            if (signResult == CIdentitySignature::SIGNATURE_PARTIAL || signResult == CIdentitySignature::SIGNATURE_COMPLETE)
+                            {
+                                if (newSigEvidence.evidence.chainObjects.size())
+                                {
+                                    auto notarySignatures = newSigEvidence.GetNotarySignatures();
+                                    if (notarySignatures.size() &&
+                                        notarySignatures[0].IsRejected() &&
+                                        notarySignatures[0].signatures.size())
+                                    {
+                                        for (auto &oneSig : notarySignatures[0].signatures)
+                                        {
+                                            auto it = newSigMap.find(oneSig.first);
+                                            if (it == newSigMap.end())
+                                            {
+                                                newSigMap.insert(std::make_pair(oneID, oneSig.second));
+                                            }
+                                            else
+                                            {
+                                                for (auto &oneRawSig : it->second.signatures)
+                                                {
+                                                    it->second.AddSignature(oneRawSig);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // if our signatures altogether have provided a complete validation, we can early out
+                                // check to see if this notarization now qualifies with signatures
+                                if (signResult == CIdentitySignature::SIGNATURE_COMPLETE)
+                                {
+                                    newSigCount++;
+                                    if ((notarySetRejects.size() + newSigCount) >= minimumNotariesConfirm)
+                                    {
+                                        for (auto &oneSig : mergedEvidence.GetNotarySignatures())
+                                        {
+                                            signatureEvidence.evidence << oneSig;
+                                        }
+
+                                        // no need to add more
+                                        confirmationResult = CNotaryEvidence::EStates::STATE_REJECTED;
+                                        break;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                return state.Error(errorPrefix + "invalid identity signature");
+                            }
+                        }
+                    }
+
+                    CObjectFinalization rejectOf(CObjectFinalization::FINALIZE_NOTARIZATION,
+                                                SystemID,
+                                                cnd.vtx[oneD].first.hash,
+                                                cnd.vtx[oneD].first.n,
+                                                height);
+
+                    // if we've added any rejections, make an output
+                    if (mergedEvidence.evidence.chainObjects.size())
+                    {
+                        std::vector<CTxOut> evidenceOutputs;
+                        CCcontract_info CC;
+                        CCcontract_info *cp;
+
+                        cp = CCinit(&CC, EVAL_FINALIZE_NOTARIZATION);
+                        std::vector<CTxDestination> dests({CPubKey(ParseHex(CC.CChexstr))});
+
+                        CScript finalizeScript = MakeMofNCCScript(CConditionObj<CObjectFinalization>(EVAL_FINALIZE_NOTARIZATION, dests, 1, &rejectOf));
+                        txBuilder.AddTransparentOutput(finalizeScript, 0);
+
+                        cp = CCinit(&CC, EVAL_NOTARY_EVIDENCE);
+                        dests = std::vector<CTxDestination>({CPubKey(ParseHex(CC.CChexstr))});
+                        CScript evidenceScript = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &mergedEvidence));
+
+                        // the value should be considered for reduction
+                        if (evidenceScript.size() >= CScript::MAX_SCRIPT_ELEMENT_SIZE)
+                        {
+                            CNotaryEvidence emptyEvidence;
+                            int baseOverhead = MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &emptyEvidence)).size() + 128;
+                            auto mergedVec = mergedEvidence.BreakApart(CScript::MAX_SCRIPT_ELEMENT_SIZE - baseOverhead);
+                            if (!mergedVec.size())
+                            {
+                                LogPrintf("%s: failed to package evidence for notarization of system %s\n", __func__, EncodeDestination(CIdentityID(cnd.vtx[0].second.currencyID)).c_str());
+                                return state.Error(errorPrefix + "failed to package evidence for notarization");
+                            }
+                            for (auto &oneProof : mergedVec)
+                            {
+                                evidenceOutputs.push_back(CTxOut(CNotaryEvidence::DEFAULT_OUTPUT_VALUE, MakeMofNCCScript(CConditionObj<CNotaryEvidence>(EVAL_NOTARY_EVIDENCE, dests, 1, &oneProof))));
+                            }
+                        }
+                        else
+                        {
+                            evidenceOutputs.push_back(CTxOut(CNotaryEvidence::DEFAULT_OUTPUT_VALUE, evidenceScript));
+                        }
+
+                        for (auto &oneOut : evidenceOutputs)
+                        {
+                            txBuilder.AddTransparentOutput(oneOut.scriptPubKey, oneOut.nValue);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // if height changed, we need to fail and possibly try again later
     if (height != chainActive.Height())
@@ -7867,9 +8123,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
     // if the most recent valid earned notarization is prior to the eligible height,
     // we cannot finalize until a more recent one is mined
-
-    // now, assuming that our notarization of the other chain is confirmed, sign the latest valid one on this chain
-    UniValue proofRootArr = find_value(result, "validindexes");
 
     if (!proofRootArr.isArray() || !proofRootArr.size())
     {
@@ -7947,7 +8200,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     while (idx > 0)
     {
         // these are deleted, mutated below, and recreated each iteration
-        std::set<CIdentityID> myIDSet;
+        myIDSet = std::set<CIdentityID>();
         for (auto &oneID : mine)
         {
             myIDSet.insert(oneID.first.idID);
@@ -8100,8 +8353,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
         else if (confirmationResult != CNotaryEvidence::EStates::STATE_CONFIRMED &&
                  !attemptAutoConfirm)
         {
-            LOCK(cs_main);
-
             int numConfirms = notarySetConfirms.size();
 
             // if we can still sign, do so and check confirmation
