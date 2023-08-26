@@ -10984,6 +10984,7 @@ void CConnectedChains::SubmissionThread()
                             }
                         }
 
+                        UniValue importprivkey(const UniValue& params, bool fHelp);
                         UniValue updateidentity(const UniValue& params, bool fHelp);
                         // revoke on this chain and on the notary, this chain first
                         UniValue params(UniValue::VARR);
@@ -10992,21 +10993,18 @@ void CConnectedChains::SubmissionThread()
                         UniValue newAddressesUni(UniValue::VARR);
                         CPubKey newKey;
                         CKey newPrivKey;
+                        UniValue importPrivKeyParams(UniValue::VARR);
                         {
                             LOCK(pwalletMain->cs_wallet);
-                            CReserveKey reservekey(pwalletMain);
-                            reservekey.KeepKey();
-                            reservekey.GetReservedKey(newKey);
-                            if (!newKey.IsValid())
+                            newPrivKey.MakeNewKey(true);
+                            newKey = newPrivKey.GetPubKey();
+                            if (!newPrivKey.IsValid() || !newKey.IsValid())
                             {
                                 continue;
                             }
                             newAddressesUni.push_back(EncodeDestination(newKey.GetID()));
-                            pwalletMain->GetKey(newKey.GetID(), newPrivKey);
-                            if (!newPrivKey.IsValid())
-                            {
-                                continue;
-                            }
+                            importPrivKeyParams.push_back(EncodeSecret(newPrivKey));
+                            importPrivKeyParams.push_back(false);
                         }
                         updateIDUni.pushKV("name", revokeIdentity.name);
                         updateIDUni.pushKV("parent", EncodeDestination(CIdentityID(revokeIdentity.parent)));
@@ -11014,6 +11012,7 @@ void CConnectedChains::SubmissionThread()
                         updateIDUni.pushKV("minimumsignatures", 1);
                         try
                         {
+                            importprivkey(importPrivKeyParams, false);
                             updateidentity(params, false);
                         }
                         catch(const std::exception& e)
@@ -11022,10 +11021,7 @@ void CConnectedChains::SubmissionThread()
                         }
                         try
                         {
-                            UniValue importPrivKeyParams(UniValue::VARR);
-                            importPrivKeyParams.push_back(EncodeSecret(newPrivKey));
-                            importPrivKeyParams.push_back(false);
-                            result = RPCCallRoot("importprivkey", params);
+                            result = RPCCallRoot("importprivkey", importPrivKeyParams);
                             result = RPCCallRoot("updateidentity", params);
                         }
                         catch(const std::exception& e)
