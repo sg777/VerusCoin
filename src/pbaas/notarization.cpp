@@ -9120,8 +9120,23 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
                 bool isValid = true;
                 bool isPotentialRevoke = false;
                 std::set<uint160> idSigSet;
+                auto proofIt = crosschainCND.vtx[i].second.proofRoots.find(ASSETCHAINS_CHAINID);
+                if (proofIt != crosschainCND.vtx[i].second.proofRoots.end() &&
+                    proofIt->second != CProofRoot::GetProofRoot(proofIt->second.rootHeight))
+                {
+                    isValid = false;
+                    if (pNotaryCurrency->proofProtocol == CCurrencyDefinition::PROOF_ETHNOTARIZATION)
+                    {
+                        isPotentialRevoke = true;
+                    }
+                }
                 for (auto &oneEvidenceItem : evidence[i])
                 {
+                    // can't get worse than this
+                    if (!isValid && isPotentialRevoke)
+                    {
+                        break;
+                    }
                     // we'll be looking for evidence that is confirmed, which should have come with the
                     // notarization. we need to agree with the future root used, or we will issue a tip challenge
                     // to prevent front running with invalid tips.
