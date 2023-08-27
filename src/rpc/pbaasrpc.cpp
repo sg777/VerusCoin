@@ -10631,6 +10631,12 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         }
     }
 
+    CDataStream tmpDS(SER_NETWORK, PROTOCOL_VERSION);
+    if (GetSerializeSize(tmpDS, newCurrency.nativeCurrencyID) > CCurrencyDefinition:: MAX_NATIVE_IDENTITY_SIZE)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Native currency ID too large");
+    }
+
     // a new currency definition must spend an ID that currently has no active currency, which sets a semaphore that "blocks"
     // that ID from having more than one at once. Before submitting the transaction, it must be properly signed by the primary authority.
     // This also has the effect of piggybacking on the ID protocol's deconfliction between mined blocks to avoid name conflicts,
@@ -10653,10 +10659,6 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH ||
              newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT))
         {
-            if (newCurrency.nativeCurrencyID.AuxDestCount() > 1)
-            {
-                throw JSONRPCError(RPC_INVALID_PARAMETER, "mapped currency may not have more than two objects defining its native currency ID");
-            }
             if (newCurrency.IsPBaaSChain() ||
                 !newCurrency.IsToken() ||
                 newCurrency.IsFractional())

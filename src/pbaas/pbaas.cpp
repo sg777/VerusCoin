@@ -5294,6 +5294,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                             (loop + cci.numOutputs) >= outNum)
                         {
                             importPassThrough = true;
+                            break;
                         }
                     }
                     if (!importPassThrough)
