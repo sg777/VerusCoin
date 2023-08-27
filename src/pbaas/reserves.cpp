@@ -3451,10 +3451,10 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 exportCurDef = ConnectedChains.GetCachedCurrency(FirstCurrency());
                 if (exportCurDef.IsValid() &&
                     nextDest.IsMultiCurrency() &&
-                    destination.gatewayID != ASSETCHAINS_CHAINID &&
-                    CCurrencyDefinition::IsValidDefinitionImport(sourceSystem, destSystem, exportCurDef.parent.IsNull() ? VERUS_CHAINID : exportCurDef.parent, height))
+                    destination.gatewayID != ASSETCHAINS_CHAINID)
                 {
-                    if (!IsValidExportCurrency(nextDest, FirstCurrency(), height))
+                    if (CCurrencyDefinition::IsValidDefinitionImport(sourceSystem, destSystem, exportCurDef.parent.IsNull() ? VERUS_CHAINID : exportCurDef.parent, height) &&
+                        !IsValidExportCurrency(nextDest, FirstCurrency(), height))
                     {
                         lastLegDest.type = lastLegDest.DEST_REGISTERCURRENCY;
                         lastLegDest.destination = ::AsVector(exportCurDef);
@@ -3463,6 +3463,10 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                         {
                             lastLegDest.type |= lastLegDest.FLAG_DEST_AUX;
                         }
+                    }
+                    else
+                    {
+                        makeNormalOutput = true;
                     }
                 }
                 else
@@ -3480,24 +3484,40 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 CIdentity fullID;
                 if (dest.which() != COptCCParams::ADDRTYPE_ID ||
                     !(fullID = CIdentity::LookupIdentity(GetDestinationID(dest))).IsValid() ||
-                    destination.gatewayID == ASSETCHAINS_CHAINID ||
-                    !CCurrencyDefinition::IsValidDefinitionImport(sourceSystem, destSystem, fullID.parent.IsNull() ? VERUS_CHAINID : fullID.parent, height))
+                    destination.gatewayID == ASSETCHAINS_CHAINID)
                 {
                     printf("%s: Invalid export identity or identity not found for %s\n", __func__, EncodeDestination(dest).c_str());
                     LogPrintf("%s: Invalid export identity or identity not found for %s\n", __func__, EncodeDestination(dest).c_str());
                     return false;
                 }
-                fullID.contentMap.clear();
-                fullID.contentMultiMap.clear();
-                lastLegDest.type = lastLegDest.DEST_FULLID;
-                lastLegDest.destination = ::AsVector(fullID);
-                if (setAuxDests && destination.AuxDestCount())
+                if (CCurrencyDefinition::IsValidDefinitionImport(sourceSystem, destSystem, fullID.parent.IsNull() ? VERUS_CHAINID : fullID.parent, height))
                 {
-                    lastLegDest.type |= lastLegDest.FLAG_DEST_AUX;
+                    fullID.contentMap.clear();
+                    fullID.contentMultiMap.clear();
+                    lastLegDest.type = lastLegDest.DEST_FULLID;
+                    newFlags |= IDENTITY_EXPORT;
+                    lastLegDest.destination = ::AsVector(fullID);
+                    if (setAuxDests && destination.AuxDestCount())
+                    {
+                        lastLegDest.type |= lastLegDest.FLAG_DEST_AUX;
+                    }
+                }
+                else
+                {
+                    makeNormalOutput = true;
+                }
+            }
+            else
+            {
+                // check to make sure our source currency can be sent to the destination system
+                // if not, dump out on this chain
+                if (!IsValidExportCurrency(nextDest, FirstCurrency(), height))
+                {
+                    makeNormalOutput = true;
                 }
             }
 
-            if (destination.gatewayID != destSystem.GetID())
+            if (!makeNormalOutput && destination.gatewayID != destSystem.GetID())
             {
                 newFlags |= CReserveTransfer::CROSS_SYSTEM;
                 CCurrencyValueMap newReserves = reserves;
@@ -3517,13 +3537,20 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             }
             else
             {
-                // if our destination is here, add unused fees to native output and drop through to make normal output
-                // TODO: right now, a next leg that is local is a normal output. we should support local next legs
-                // that have function.
-                nativeAmount += destination.fees;
+                // if our destination is here, add unused fees to output if possible and drop through to make normal output
+                if (destination.gatewayID == destSystem.GetID())
+                {
+                    nativeAmount += destination.fees;
+                }
+                else if (destination.fees)
+                {
+                    reserves.valueMap[destination.gatewayID] += destination.fees;
+                }
                 makeNormalOutput = true;
+                dest = GetCompatibleAuxDestination(destination, CCurrencyDefinition::PROOF_PBAASMMR);
             }
         }
+
         if (nextLegTransfer.IsValid())
         {
             // if we don't have enough for a transaction import fee to the next destination,
