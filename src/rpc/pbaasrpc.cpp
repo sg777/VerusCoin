@@ -10632,7 +10632,7 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
     }
 
     CDataStream tmpDS(SER_NETWORK, PROTOCOL_VERSION);
-    if (GetSerializeSize(tmpDS, newCurrency.nativeCurrencyID) > CCurrencyDefinition:: MAX_NATIVE_IDENTITY_SIZE)
+    if (GetSerializeSize(tmpDS, newCurrency.nativeCurrencyID) > CCurrencyDefinition::MAX_NATIVE_IDENTITY_SIZE)
     {
         throw JSONRPCError(RPC_INVALID_PARAMETER, "Native currency ID too large");
     }
