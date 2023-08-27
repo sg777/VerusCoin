@@ -10653,6 +10653,10 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
             (newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETH ||
              newCurrency.nativeCurrencyID.TypeNoFlags() == newCurrency.nativeCurrencyID.DEST_ETHNFT))
         {
+            if (newCurrency.nativeCurrencyID.AuxDestCount() > 1)
+            {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "mapped currency may not have more than two objects defining its native currency ID");
+            }
             if (newCurrency.IsPBaaSChain() ||
                 !newCurrency.IsToken() ||
                 newCurrency.IsFractional())

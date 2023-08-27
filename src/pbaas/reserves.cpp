@@ -3537,8 +3537,10 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             }
             else
             {
-                // if our destination is here, add unused fees to output if possible and drop through to make normal output
-                if (destination.gatewayID == destSystem.GetID())
+                // if our output is premature, add unused fees to output if possible and drop through to make normal output
+                uint160 systemDestID = destSystem.GetID();
+                if ((destCurrency.IsFractional() && destination.gatewayID == systemDestID) ||
+                    (!destCurrency.IsFractional() && feeCurrencyID == systemDestID && nextDest.launchSystemID == systemDestID))
                 {
                     nativeAmount += destination.fees;
                 }

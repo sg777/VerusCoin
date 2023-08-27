@@ -5289,8 +5289,8 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                         if (tx.vout[loop].scriptPubKey.IsPayToCryptoCondition(importP) &&
                             importP.IsValid() &&
                             importP.evalCode == EVAL_CROSSCHAIN_IMPORT &&
-                            p.vData.size() &&
-                            (cci = CCrossChainImport(p.vData[0])).IsValid() &&
+                            importP.vData.size() &&
+                            (cci = CCrossChainImport(importP.vData[0])).IsValid() &&
                             (loop + cci.numOutputs) >= outNum)
                         {
                             importPassThrough = true;
