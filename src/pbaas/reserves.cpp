@@ -3517,6 +3517,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 }
             }
 
+            uint160 systemDestID = destSystem.GetID();
             if (!makeNormalOutput && destination.gatewayID != destSystem.GetID())
             {
                 newFlags |= CReserveTransfer::CROSS_SYSTEM;
@@ -3526,19 +3527,35 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 {
                     newReserves.valueMap[ASSETCHAINS_CHAINID] = nativeAmount;
                 }
-                nextLegTransfer = CReserveTransfer(newFlags,
-                                                   newReserves,
-                                                   destination.gatewayID,
-                                                   destination.fees,
-                                                   destination.gatewayID,
-                                                   lastLegDest,
-                                                   uint160(),
-                                                   destination.gatewayID);
+                uint160 calcFeeCurrency;
+                if (destCurrency.IsFractional())
+                {
+                    calcFeeCurrency = destination.gatewayID;
+                }
+                else if (feeCurrencyID == systemDestID && nextDest.launchSystemID == systemDestID)
+                {
+                    calcFeeCurrency = feeCurrencyID;
+                }
+                else
+                {
+                    makeNormalOutput = true;
+                }
+                if (!makeNormalOutput)
+                {
+                    nextLegTransfer = CReserveTransfer(newFlags,
+                                                    newReserves,
+                                                    calcFeeCurrency,
+                                                    destination.fees,
+                                                    destination.gatewayID,
+                                                    lastLegDest,
+                                                    uint160(),
+                                                    destination.gatewayID);
+                }
             }
-            else
+
+            if (makeNormalOutput)
             {
                 // if our output is premature, add unused fees to output if possible and drop through to make normal output
-                uint160 systemDestID = destSystem.GetID();
                 if ((destCurrency.IsFractional() && destination.gatewayID == systemDestID) ||
                     (!destCurrency.IsFractional() && feeCurrencyID == systemDestID && nextDest.launchSystemID == systemDestID))
                 {
