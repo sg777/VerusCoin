@@ -3556,14 +3556,14 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             if (makeNormalOutput)
             {
                 // if our output is premature, add unused fees to output if possible and drop through to make normal output
-                if ((destCurrency.IsFractional() && destination.gatewayID == systemDestID) ||
-                    (!destCurrency.IsFractional() && feeCurrencyID == systemDestID))
+                uint160 curFeeCurrency = destCurrency.IsFractional() ? destination.gatewayID : feeCurrencyID;
+                if (curFeeCurrency == systemDestID)
                 {
                     nativeAmount += destination.fees;
                 }
                 else if (destination.fees)
                 {
-                    reserves.valueMap[destination.gatewayID] += destination.fees;
+                    reserves.valueMap[curFeeCurrency] += destination.fees;
                 }
                 makeNormalOutput = true;
                 dest = GetCompatibleAuxDestination(destination, CCurrencyDefinition::PROOF_PBAASMMR);
@@ -3640,14 +3640,14 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 }
                 if (HasNextLeg())
                 {
-                    if ((destCurrency.IsFractional() && destination.gatewayID == systemDestID) ||
-                        (!destCurrency.IsFractional() && feeCurrencyID == systemDestID))
+                    uint160 curFeeCurrency = destCurrency.IsFractional() ? destination.gatewayID : feeCurrencyID;
+                    if (curFeeCurrency == systemDestID)
                     {
                         nativeAmount += destination.fees;
                     }
                     else if (destination.fees)
                     {
-                        reserves.valueMap[destination.gatewayID] += destination.fees;
+                        reserves.valueMap[curFeeCurrency] += destination.fees;
                     }
                 }
             }
