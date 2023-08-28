@@ -5194,8 +5194,17 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 {
                     return state.Error("Not enough fee for first step of currency import in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
-                feeConversionPrices = importState.TargetConversionPrices(rt.destination.gatewayID);
-                feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.destination.fees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
+
+                if (importState.IsFractional())
+                {
+                    feeConversionPrices = importState.TargetConversionPrices(rt.destination.gatewayID);
+                    feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.destination.fees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
+                }
+                else if (rt.feeCurrencyID != systemDestID &&
+                         (rt.feeCurrencyID != systemDest.launchSystemID || systemDest.proofProtocol != systemDest.PROOF_PBAASMMR))
+                {
+                    feeEquivalentInNative = 0;
+                }
             }
             else if (!(rt.flags & rt.CROSS_SYSTEM) ||
                      rt.destination.TypeNoFlags() != rt.destination.DEST_REGISTERCURRENCY ||
@@ -5220,6 +5229,12 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 }
                 curToExport = registeredCurrency;
                 exportDestination = systemDest;
+
+                if (rt.feeCurrencyID != systemDestID &&
+                    (rt.feeCurrencyID != systemDest.launchSystemID || systemDest.proofProtocol != systemDest.PROOF_PBAASMMR))
+                {
+                    feeEquivalentInNative = 0;
+                }
             }
 
             adjustedImportFee = CCoinbaseCurrencyState::NativeGasToReserveRaw(
@@ -5326,10 +5341,30 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 {
                     if (feeEquivalentInNative < systemDest.GetTransactionTransferFee())
                     {
-                        return state.Error("Not enough fee for first step of currency import in reserve transfer " + rt.ToUniValue().write(1,2));
+                        return state.Error("Not enough fee for first step of identity import in reserve transfer " + rt.ToUniValue().write(1,2));
                     }
-                    feeConversionPrices = importState.TargetConversionPrices(rt.destination.gatewayID);
-                    feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.destination.fees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
+                    if (importState.IsFractional())
+                    {
+                        feeConversionPrices = importState.TargetConversionPrices(rt.HasNextLeg() ? rt.destination.gatewayID : systemDestID);
+                        feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.destination.fees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
+                    }
+                    else if (rt.feeCurrencyID != systemDestID &&
+                              (rt.feeCurrencyID != systemDest.launchSystemID || systemDest.proofProtocol != systemDest.PROOF_PBAASMMR))
+                    {
+                        feeEquivalentInNative = 0;
+                    }
+                    else if (rt.HasNextLeg())
+                    {
+                        exportDestination = ConnectedChains.GetCachedCurrency(rt.destination.gatewayID);
+                        if (!exportDestination.IsValid() ||
+                            exportDestination.SystemOrGatewayID() != rt.destination.gatewayID ||
+                            exportDestination.SystemOrGatewayID() == ASSETCHAINS_CHAINID ||
+                            (rt.feeCurrencyID != rt.destination.gatewayID &&
+                              (rt.feeCurrencyID != exportDestination.launchSystemID || exportDestination.proofProtocol != exportDestination.PROOF_PBAASMMR)))
+                        {
+                            return state.Error("Invalid identity export for next leg in reserve transfer " + rt.ToUniValue().write(1,2));
+                        }
+                    }
                 }
 
                 adjustedImportFee = CCoinbaseCurrencyState::NativeGasToReserveRaw(systemDest.IDImportFee(), adjustedImportFee);

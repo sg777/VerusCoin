@@ -3399,6 +3399,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                                 const uint256 &existingTxHash) const
 {
     bool makeNormalOutput = true;
+    uint160 systemDestID = destSystem.GetID();
 
     bool setAuxDests = !PBAAS_TESTMODE ||
            (PBAAS_TESTMODE &&
@@ -3517,7 +3518,6 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                 }
             }
 
-            uint160 systemDestID = destSystem.GetID();
             if (!makeNormalOutput && destination.gatewayID != destSystem.GetID())
             {
                 newFlags |= CReserveTransfer::CROSS_SYSTEM;
@@ -3557,7 +3557,7 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
             {
                 // if our output is premature, add unused fees to output if possible and drop through to make normal output
                 if ((destCurrency.IsFractional() && destination.gatewayID == systemDestID) ||
-                    (!destCurrency.IsFractional() && feeCurrencyID == systemDestID && nextDest.launchSystemID == systemDestID))
+                    (!destCurrency.IsFractional() && feeCurrencyID == systemDestID))
                 {
                     nativeAmount += destination.fees;
                 }
@@ -3636,6 +3636,18 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                     if (newDest.which() != COptCCParams::ADDRTYPE_INVALID)
                     {
                         dest = newDest;
+                    }
+                }
+                if (HasNextLeg())
+                {
+                    if ((destCurrency.IsFractional() && destination.gatewayID == systemDestID) ||
+                        (!destCurrency.IsFractional() && feeCurrencyID == systemDestID))
+                    {
+                        nativeAmount += destination.fees;
+                    }
+                    else if (destination.fees)
+                    {
+                        reserves.valueMap[destination.gatewayID] += destination.fees;
                     }
                 }
             }
