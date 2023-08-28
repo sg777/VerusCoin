@@ -3455,7 +3455,8 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                     destination.gatewayID != ASSETCHAINS_CHAINID)
                 {
                     if (CCurrencyDefinition::IsValidDefinitionImport(sourceSystem, destSystem, exportCurDef.parent.IsNull() ? VERUS_CHAINID : exportCurDef.parent, height) &&
-                        !IsValidExportCurrency(nextDest, FirstCurrency(), height))
+                        ((systemDestID != sourceSystem.GetID() && systemDestID != ASSETCHAINS_CHAINID) ||
+                         !IsValidExportCurrency(nextDest, FirstCurrency(), height)))
                     {
                         lastLegDest.type = lastLegDest.DEST_REGISTERCURRENCY;
                         lastLegDest.destination = ::AsVector(exportCurDef);
@@ -3491,7 +3492,9 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                     LogPrintf("%s: Invalid export identity or identity not found for %s\n", __func__, EncodeDestination(dest).c_str());
                     return false;
                 }
-                if (CCurrencyDefinition::IsValidDefinitionImport(sourceSystem, destSystem, fullID.parent.IsNull() ? VERUS_CHAINID : fullID.parent, height))
+                if (CCurrencyDefinition::IsValidDefinitionImport(sourceSystem, destSystem, fullID.parent.IsNull() ? VERUS_CHAINID : fullID.parent, height) &&
+                    ((systemDestID != sourceSystem.GetID() && systemDestID != ASSETCHAINS_CHAINID) ||
+                     CCurrencyDefinition::IsValidDefinitionImport(destSystem, nextDest, fullID.parent.IsNull() ? VERUS_CHAINID : fullID.parent, height)))
                 {
                     fullID.contentMap.clear();
                     fullID.contentMultiMap.clear();
