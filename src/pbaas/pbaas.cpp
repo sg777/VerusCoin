@@ -4572,25 +4572,23 @@ bool IsValidExportCurrency(const CCurrencyDefinition &systemDest, const uint160 
             return true;
         }
 
-        uint160 converterID = systemDest.GatewayConverterID();
-        if (converterID.IsNull())
+        uint160 converterID = ConnectedChains.FirstNotaryChain().GetID() == sysID ? ConnectedChains.ThisChain().GatewayConverterID() : systemDest.GatewayConverterID();
+        if (!converterID.IsNull())
         {
-            return false;
-        }
-
-        CCurrencyDefinition converter = ConnectedChains.GetCachedCurrency(converterID);
-        if (converter.IsValid() && converter.IsFractional())
-        {
-            if (exportCurrencyID == converterID)
+            CCurrencyDefinition converter = ConnectedChains.GetCachedCurrency(converterID);
+            if (converter.IsValid() && converter.IsFractional())
             {
-                return true;
-            }
-
-            for (auto &oneCurID : converter.currencies)
-            {
-                if (exportCurrencyID == oneCurID)
+                if (exportCurrencyID == converterID)
                 {
                     return true;
+                }
+
+                for (auto &oneCurID : converter.currencies)
+                {
+                    if (exportCurrencyID == oneCurID)
+                    {
+                        return true;
+                    }
                 }
             }
         }
