@@ -5246,7 +5246,10 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             }
 
             // ensure that it makes sense for us to export this currency from this system to the other
-            if (!CConnectedChains::IsValidCurrencyDefinitionImport(ConnectedChains.ThisChain(), exportDestination, curToExport, height))
+            if ((rt.HasNextLeg() && systemDest.systemID == ASSETCHAINS_CHAINID &&
+                 !CConnectedChains::IsValidCurrencyDefinitionImport(ConnectedChains.ThisChain(), exportDestination, curToExport, height)) ||
+                 (systemDest.systemID != ASSETCHAINS_CHAINID &&
+                  !CConnectedChains::IsValidCurrencyDefinitionImport(ConnectedChains.ThisChain(), systemDest, curToExport, height)))
             {
                 return state.Error("Invalid to export specified currency to destination system " + rt.ToUniValue().write(1,2));
             }
@@ -5339,6 +5342,16 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 }
                 else
                 {
+                    if (rt.HasNextLeg())
+                    {
+                        exportDestination = ConnectedChains.GetCachedCurrency(rt.destination.gatewayID);
+                        if (!exportDestination.IsValid() ||
+                            exportDestination.SystemOrGatewayID() != rt.destination.gatewayID ||
+                            exportDestination.SystemOrGatewayID() == ASSETCHAINS_CHAINID)
+                        {
+                            return state.Error("Invalid destination for next leg in reserve transfer " + rt.ToUniValue().write(1,2));
+                        }
+                    }
                     if (feeEquivalentInNative < systemDest.GetTransactionTransferFee())
                     {
                         return state.Error("Not enough fee for first step of identity import in reserve transfer " + rt.ToUniValue().write(1,2));
@@ -5355,12 +5368,8 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     }
                     else if (rt.HasNextLeg())
                     {
-                        exportDestination = ConnectedChains.GetCachedCurrency(rt.destination.gatewayID);
-                        if (!exportDestination.IsValid() ||
-                            exportDestination.SystemOrGatewayID() != rt.destination.gatewayID ||
-                            exportDestination.SystemOrGatewayID() == ASSETCHAINS_CHAINID ||
-                            (rt.feeCurrencyID != rt.destination.gatewayID &&
-                              (rt.feeCurrencyID != exportDestination.launchSystemID || exportDestination.proofProtocol != exportDestination.PROOF_PBAASMMR)))
+                        if (rt.feeCurrencyID != rt.destination.gatewayID &&
+                              (rt.feeCurrencyID != exportDestination.launchSystemID || exportDestination.proofProtocol != exportDestination.PROOF_PBAASMMR))
                         {
                             return state.Error("Invalid identity export for next leg in reserve transfer " + rt.ToUniValue().write(1,2));
                         }
@@ -5375,7 +5384,10 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     return state.Error("Not enough fee for identity import in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
 
-                if (!CConnectedChains::IsValidIdentityDefinitionImport(ConnectedChains.ThisChain(), systemDest, registeredIdentity, height))
+                if (!CConnectedChains::IsValidIdentityDefinitionImport(ConnectedChains.ThisChain(), systemDest, registeredIdentity, height) ||
+                    (rt.HasNextLeg() &&
+                     systemDestID == ASSETCHAINS_CHAINID &&
+                     !CConnectedChains::IsValidIdentityDefinitionImport(ConnectedChains.ThisChain(), exportDestination, registeredIdentity, height)))
                 {
                     return state.Error("Invalid to export specified identity to destination system " + rt.ToUniValue().write(1,2));
                 }
