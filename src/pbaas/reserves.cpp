@@ -3455,7 +3455,8 @@ bool CReserveTransfer::GetTxOut(const CCurrencyDefinition &sourceSystem,
                     destination.gatewayID != ASSETCHAINS_CHAINID)
                 {
                     if (CCurrencyDefinition::IsValidDefinitionImport(sourceSystem, destSystem, exportCurDef.parent.IsNull() ? VERUS_CHAINID : exportCurDef.parent, height) &&
-                        ((systemDestID != sourceSystem.GetID() && systemDestID != ASSETCHAINS_CHAINID) ||
+                        (!existingTxHash.IsNull() ||
+                         (systemDestID != sourceSystem.GetID() && systemDestID != ASSETCHAINS_CHAINID && IsValidExportCurrency(nextDest, FirstCurrency(), height)) ||
                          !IsValidExportCurrency(nextDest, FirstCurrency(), height)))
                     {
                         lastLegDest.type = lastLegDest.DEST_REGISTERCURRENCY;
