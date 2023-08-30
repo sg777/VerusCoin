@@ -1670,7 +1670,6 @@ CWallet::TxItems CWallet::OrderedTxItems(std::list<CAccountingEntry>& acentries,
 
 CAmount CWallet::EligibleStakeOutputs(std::vector<COutput> &vecOutputs, std::vector<CWalletTx> &vwtx, bool extendedStake) const
 {
-    std::vector<CWalletTx> vwtx;
     CAmount totalStakingAmount = 0;
     std:vector<std::vector<unsigned char>> vSolutions;
 
