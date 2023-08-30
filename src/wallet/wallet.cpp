@@ -1680,6 +1680,7 @@ CAmount CWallet::EligibleStakeOutputs(std::vector<COutput> &vecOutputs, std::vec
     bool idStakingChain = ConnectedChains.ThisChain().IDStaking();
 
     std::set<uint160> validIDs;
+    bool logFailures = LogAcceptCategory("staking") && LogAcceptCategory("verbose");
 
     for (int i = 0; i < vecOutputs.size(); i++)
     {
@@ -1753,6 +1754,10 @@ CAmount CWallet::EligibleStakeOutputs(std::vector<COutput> &vecOutputs, std::vec
             }
             if (invalidOutput)
             {
+                if (logFailures)
+                {
+                    printf("%s: Ineligible stake output (%s:%d)\n", __func__, txout.tx->GetHash().GetHex().c_str(), txout.i);
+                }
                 continue;
             }
 
@@ -1763,6 +1768,10 @@ CAmount CWallet::EligibleStakeOutputs(std::vector<COutput> &vecOutputs, std::vec
                 vecOutputs[newSize] = txout;
             }
             newSize++;
+        }
+        else if (logFailures)
+        {
+            printf("%s: Ineligible staking output (%s:%d)\n", __func__, txout.tx->GetHash().GetHex().c_str(), txout.i);
         }
     }
 
