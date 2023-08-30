@@ -4515,7 +4515,13 @@ std::set<uint160> ValidExportCurrencies(const CCurrencyDefinition &systemDest, u
                     rt.destSystemID == sysID &&
                     (exportCur = CCurrencyDefinition(rt.destination.destination)).IsValid())
                 {
-                    retVal.insert(exportCur.GetID());
+                    // make sure this reserve transfer is spent, so we know it is rolled up to an export
+                    CSpentIndexKey spentKey(oneIdx.first.txhash, oneIdx.first.index);
+                    CSpentIndexValue spentVal;
+                    if (GetSpentIndex(spentKey, spentVal))
+                    {
+                        retVal.insert(exportCur.GetID());
+                    }
                 }
                 else if (p.IsValid() &&
                             p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
