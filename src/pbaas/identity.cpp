@@ -2894,6 +2894,33 @@ CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn, CTransact
     return oldIdentity;
 }
 
+bool ValidateIdentitySpendMutation(Eval* eval, const CTransaction &spendingTx, const CIdentity &oldIdentity, const CIdentity &newIdentity)
+{
+    uint160 idID = oldIdentity.GetID();
+    CCurrencyDefinition matchingCurDef;
+    for (auto &oneOut : spendingTx.vout)
+    {
+        if ((matchingCurDef = CCurrencyDefinition(oneOut.scriptPubKey)).IsValid() &&
+            matchingCurDef.GetID() == idID)
+        {
+            break;
+        }
+    }
+
+    bool isCurrencyDef = matchingCurDef.IsValid() && matchingCurDef.GetID() == idID;
+
+    if ((oldIdentity.HasActiveCurrency() && !newIdentity.HasActiveCurrency()) ||
+        (oldIdentity.HasTokenizedControl() && !newIdentity.HasTokenizedControl()) ||
+        (!isCurrencyDef &&
+            (oldIdentity.HasActiveCurrency() != oldIdentity.HasActiveCurrency() ||
+            oldIdentity.HasTokenizedControl() != newIdentity.HasTokenizedControl())) ||
+        (isCurrencyDef && !matchingCurDef.IsNFTToken() && newIdentity.HasTokenizedControl()))
+    {
+        return false;
+    }
+    return true;
+}
+
 bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled)
 {
     CTransaction sourceTx;
@@ -2925,6 +2952,11 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
         return eval->Error("Invalid identity modification");
     }
 
+    if (!ValidateIdentitySpendMutation(eval, spendingTx, oldIdentity, newIdentity))
+    {
+        return eval->Error("Invalid ID currency state modification");
+    }
+
     // if not fullfilled and not revoked, we are responsible for rejecting any modification of
     // data under primary authority control
     if (!fulfilled && !oldIdentity.IsRevoked())
@@ -2945,31 +2977,6 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
             p.vKeys != q.vKeys)
         {
             return eval->Error("Unauthorized modification of identity primary spend condition");
-        }
-    }
-
-    if (chainActive.LastTip()->nTime >= PBAAS_TESTFORK8_TIME)
-    {
-        CCurrencyDefinition matchingCurDef;
-        for (auto &oneOut : spendingTx.vout)
-        {
-            if ((matchingCurDef = CCurrencyDefinition(oneOut.scriptPubKey)).IsValid() &&
-                matchingCurDef.GetID() == idID)
-            {
-                break;
-            }
-        }
-
-        bool isCurrencyDef = matchingCurDef.IsValid() && matchingCurDef.GetID() == idID;
-
-        if ((oldIdentity.HasActiveCurrency() && !newIdentity.HasActiveCurrency()) ||
-            (oldIdentity.HasTokenizedControl() && !newIdentity.HasTokenizedControl()) ||
-            (!isCurrencyDef &&
-             (oldIdentity.HasActiveCurrency() != oldIdentity.HasActiveCurrency() ||
-              oldIdentity.HasTokenizedControl() != newIdentity.HasTokenizedControl())) ||
-            (isCurrencyDef && !matchingCurDef.IsNFTToken() && newIdentity.HasTokenizedControl()))
-        {
-            return eval->Error("Invalid ID currency state modification on test network");
         }
     }
 
@@ -3015,6 +3022,11 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
     if (oldIdentity.IsRevocation(newIdentity) && oldIdentity.recoveryAuthority == oldIdentity.GetID() && !oldIdentity.HasTokenizedControl())
     {
         return eval->Error("Cannot revoke an identity with self as the recovery authority");
+    }
+
+    if (!ValidateIdentitySpendMutation(eval, spendingTx, oldIdentity, newIdentity))
+    {
+        return eval->Error("Invalid ID currency state modification");
     }
 
     // make sure that spend conditions are valid and revocation spend conditions are not modified
@@ -3156,6 +3168,11 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
     if (oldIdentity.IsInvalidMutation(newIdentity, height, spendingTx.nExpiryHeight))
     {
         return eval->Error("Invalid identity modification");
+    }
+
+    if (!ValidateIdentitySpendMutation(eval, spendingTx, oldIdentity, newIdentity))
+    {
+        return eval->Error("Invalid ID currency state modification");
     }
 
     // make sure that spend conditions are valid and revocation spend conditions are not modified
