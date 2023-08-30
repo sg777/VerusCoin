@@ -3783,7 +3783,7 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
 
     totalStakingAmount = pwalletMain->EligibleStakeOutputs(vecOutputs, vwtx, extendedStake);
 
-    obj.push_back(Pair("eligible_staking_outputs", vecOutputs.size()));
+    obj.push_back(Pair("eligible_staking_outputs", (int64_t)vecOutputs.size()));
     obj.push_back(Pair("eligible_staking_balance", ValueFromAmount(totalStakingAmount)));
 
     CCurrencyDefinition &chainDef = ConnectedChains.ThisChain();
