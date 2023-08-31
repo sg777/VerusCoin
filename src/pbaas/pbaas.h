@@ -957,6 +957,7 @@ public:
 
     // make earned notarizations for one or more notary chains
     std::map<uint160, CNotarySystemInfo> notarySystems;
+    std::set<uint160> idsToRevoke;
 
     CCurrencyDefinition thisChain;
     bool readyToStart;
@@ -1013,6 +1014,8 @@ public:
     std::vector<std::pair<std::string, UniValue>> SubmitQualifiedBlocks();
 
     void QueueNewBlockHeader(CBlockHeader &bh);
+    void SetRevokeID(const CIdentityID &idID);
+    CIdentityID NextRevokeID();
     void QueueEarnedNotarization(CBlock &blk, int32_t txIndex, int32_t height);
     void CheckImports();
     void SignAndCommitImportTransactions(const CTransaction &lastImportTx, const std::vector<CTransaction> &transactions);

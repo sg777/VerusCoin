@@ -10631,6 +10631,12 @@ CCurrencyDefinition ValidateNewUnivalueCurrencyDefinition(const UniValue &uniObj
         }
     }
 
+    CDataStream tmpDS(SER_NETWORK, PROTOCOL_VERSION);
+    if (GetSerializeSize(tmpDS, newCurrency.nativeCurrencyID) > CCurrencyDefinition::MAX_NATIVE_IDENTITY_SIZE)
+    {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Native currency ID too large");
+    }
+
     // a new currency definition must spend an ID that currently has no active currency, which sets a semaphore that "blocks"
     // that ID from having more than one at once. Before submitting the transaction, it must be properly signed by the primary authority.
     // This also has the effect of piggybacking on the ID protocol's deconfliction between mined blocks to avoid name conflicts,
@@ -13241,7 +13247,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         throw JSONRPCError(RPC_INVALID_PARAMETER, "contentmultimap may only be set in identities when PBaaS is active on the network");
     }
 
-    newID.flags &= newID.FLAG_LOCKED;
+    newID.flags &= newID.FLAG_LOCKED + newID.FLAG_REVOKED;
     newID.flags |= (oldID.flags & (oldID.FLAG_ACTIVECURRENCY + oldID.FLAG_TOKENIZED_CONTROL));
 
     if (!newID.IsValid(true))

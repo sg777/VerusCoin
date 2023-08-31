@@ -3192,6 +3192,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
                     CCoinbaseCurrencyState pricingState;
                     CCurrencyValueMap dummyCurrency, dummyCurrencyUsed, dummyCurrencyOut;
 
+                    rtxd.ptx = &tx;
                     if (rtxd.AddReserveTransferImportOutputs(checkState.IsRefunding() ? destSysDef : sourceSysDef,
                                                              checkState.IsRefunding() ? sourceSysDef : destSysDef,
                                                              destCurDef,
@@ -3250,6 +3251,7 @@ bool ValidateReserveDeposit(struct CCcontract_info *cp, Eval* eval, const CTrans
 
         CCurrencyValueMap importedCurrency, gatewayCurrencyUsed, spentCurrencyOut;
 
+        rtxd.ptx = &tx;
         if (!rtxd.AddReserveTransferImportOutputs(checkState.IsRefunding() ? destSysDef : sourceSysDef,
                                                   checkState.IsRefunding() ? sourceSysDef : destSysDef,
                                                   destCurDef,
@@ -4513,7 +4515,13 @@ std::set<uint160> ValidExportCurrencies(const CCurrencyDefinition &systemDest, u
                     rt.destSystemID == sysID &&
                     (exportCur = CCurrencyDefinition(rt.destination.destination)).IsValid())
                 {
-                    retVal.insert(exportCur.GetID());
+                    // make sure this reserve transfer is spent, so we know it is rolled up to an export
+                    CSpentIndexKey spentKey(oneIdx.first.txhash, oneIdx.first.index);
+                    CSpentIndexValue spentVal;
+                    if (GetSpentIndex(spentKey, spentVal))
+                    {
+                        retVal.insert(exportCur.GetID());
+                    }
                 }
                 else if (p.IsValid() &&
                             p.evalCode == EVAL_CROSSCHAIN_EXPORT &&
@@ -4570,25 +4578,23 @@ bool IsValidExportCurrency(const CCurrencyDefinition &systemDest, const uint160 
             return true;
         }
 
-        uint160 converterID = systemDest.GatewayConverterID();
-        if (converterID.IsNull())
+        uint160 converterID = (!IsVerusActive && ConnectedChains.FirstNotaryChain().GetID() == sysID) ? ConnectedChains.ThisChain().GatewayConverterID() : systemDest.GatewayConverterID();
+        if (!converterID.IsNull())
         {
-            return false;
-        }
-
-        CCurrencyDefinition converter = ConnectedChains.GetCachedCurrency(converterID);
-        if (converter.IsValid() && converter.IsFractional())
-        {
-            if (exportCurrencyID == converterID)
+            CCurrencyDefinition converter = ConnectedChains.GetCachedCurrency(converterID);
+            if (converter.IsValid() && converter.IsFractional())
             {
-                return true;
-            }
-
-            for (auto &oneCurID : converter.currencies)
-            {
-                if (exportCurrencyID == oneCurID)
+                if (exportCurrencyID == converterID)
                 {
                     return true;
+                }
+
+                for (auto &oneCurID : converter.currencies)
+                {
+                    if (exportCurrencyID == oneCurID)
+                    {
+                        return true;
+                    }
                 }
             }
         }
@@ -5192,8 +5198,17 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 {
                     return state.Error("Not enough fee for first step of currency import in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
-                feeConversionPrices = importState.TargetConversionPrices(rt.destination.gatewayID);
-                feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.destination.fees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
+
+                if (importState.IsFractional())
+                {
+                    feeConversionPrices = importState.TargetConversionPrices(rt.destination.gatewayID);
+                    feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.destination.fees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
+                }
+                else if (rt.feeCurrencyID != systemDestID &&
+                         (rt.feeCurrencyID != systemDest.launchSystemID || systemDest.proofProtocol != systemDest.PROOF_PBAASMMR))
+                {
+                    feeEquivalentInNative = 0;
+                }
             }
             else if (!(rt.flags & rt.CROSS_SYSTEM) ||
                      rt.destination.TypeNoFlags() != rt.destination.DEST_REGISTERCURRENCY ||
@@ -5218,6 +5233,12 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 }
                 curToExport = registeredCurrency;
                 exportDestination = systemDest;
+
+                if (rt.feeCurrencyID != systemDestID &&
+                    (rt.feeCurrencyID != systemDest.launchSystemID || systemDest.proofProtocol != systemDest.PROOF_PBAASMMR))
+                {
+                    feeEquivalentInNative = 0;
+                }
             }
 
             adjustedImportFee = CCoinbaseCurrencyState::NativeGasToReserveRaw(
@@ -5229,7 +5250,10 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             }
 
             // ensure that it makes sense for us to export this currency from this system to the other
-            if (!CConnectedChains::IsValidCurrencyDefinitionImport(ConnectedChains.ThisChain(), exportDestination, curToExport, height))
+            if ((rt.HasNextLeg() && systemDest.systemID == ASSETCHAINS_CHAINID &&
+                 !CConnectedChains::IsValidCurrencyDefinitionImport(ConnectedChains.ThisChain(), exportDestination, curToExport, height)) ||
+                 (systemDest.systemID != ASSETCHAINS_CHAINID &&
+                  !CConnectedChains::IsValidCurrencyDefinitionImport(ConnectedChains.ThisChain(), systemDest, curToExport, height)))
             {
                 return state.Error("Invalid to export specified currency to destination system " + rt.ToUniValue().write(1,2));
             }
@@ -5287,11 +5311,12 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                         if (tx.vout[loop].scriptPubKey.IsPayToCryptoCondition(importP) &&
                             importP.IsValid() &&
                             importP.evalCode == EVAL_CROSSCHAIN_IMPORT &&
-                            p.vData.size() &&
-                            (cci = CCrossChainImport(p.vData[0])).IsValid() &&
+                            importP.vData.size() &&
+                            (cci = CCrossChainImport(importP.vData[0])).IsValid() &&
                             (loop + cci.numOutputs) >= outNum)
                         {
                             importPassThrough = true;
+                            break;
                         }
                     }
                     if (!importPassThrough)
@@ -5321,12 +5346,38 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 }
                 else
                 {
+                    if (rt.HasNextLeg())
+                    {
+                        exportDestination = ConnectedChains.GetCachedCurrency(rt.destination.gatewayID);
+                        if (!exportDestination.IsValid() ||
+                            exportDestination.SystemOrGatewayID() != rt.destination.gatewayID ||
+                            exportDestination.SystemOrGatewayID() == ASSETCHAINS_CHAINID)
+                        {
+                            return state.Error("Invalid destination for next leg in reserve transfer " + rt.ToUniValue().write(1,2));
+                        }
+                    }
                     if (feeEquivalentInNative < systemDest.GetTransactionTransferFee())
                     {
-                        return state.Error("Not enough fee for first step of currency import in reserve transfer " + rt.ToUniValue().write(1,2));
+                        return state.Error("Not enough fee for first step of identity import in reserve transfer " + rt.ToUniValue().write(1,2));
                     }
-                    feeConversionPrices = importState.TargetConversionPrices(rt.destination.gatewayID);
-                    feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.destination.fees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
+                    if (importState.IsFractional())
+                    {
+                        feeConversionPrices = importState.TargetConversionPrices(rt.HasNextLeg() ? rt.destination.gatewayID : systemDestID);
+                        feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.destination.fees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
+                    }
+                    else if (rt.feeCurrencyID != systemDestID &&
+                              (rt.feeCurrencyID != systemDest.launchSystemID || systemDest.proofProtocol != systemDest.PROOF_PBAASMMR))
+                    {
+                        feeEquivalentInNative = 0;
+                    }
+                    else if (rt.HasNextLeg())
+                    {
+                        if (rt.feeCurrencyID != rt.destination.gatewayID &&
+                              (rt.feeCurrencyID != exportDestination.launchSystemID || exportDestination.proofProtocol != exportDestination.PROOF_PBAASMMR))
+                        {
+                            return state.Error("Invalid identity export for next leg in reserve transfer " + rt.ToUniValue().write(1,2));
+                        }
+                    }
                 }
 
                 adjustedImportFee = CCoinbaseCurrencyState::NativeGasToReserveRaw(systemDest.IDImportFee(), adjustedImportFee);
@@ -5337,7 +5388,10 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     return state.Error("Not enough fee for identity import in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
 
-                if (!CConnectedChains::IsValidIdentityDefinitionImport(ConnectedChains.ThisChain(), systemDest, registeredIdentity, height))
+                if (!CConnectedChains::IsValidIdentityDefinitionImport(ConnectedChains.ThisChain(), systemDest, registeredIdentity, height) ||
+                    (rt.HasNextLeg() &&
+                     systemDestID == ASSETCHAINS_CHAINID &&
+                     !CConnectedChains::IsValidIdentityDefinitionImport(ConnectedChains.ThisChain(), exportDestination, registeredIdentity, height)))
                 {
                     return state.Error("Invalid to export specified identity to destination system " + rt.ToUniValue().write(1,2));
                 }
@@ -5694,7 +5748,7 @@ CPBaaSMergeMinedChainData *CConnectedChains::GetChainInfo(uint160 chainID)
 
 void CConnectedChains::QueueNewBlockHeader(CBlockHeader &bh)
 {
-    //printf("QueueNewBlockHeader %s\n", bh.GetHash().GetHex().c_str());
+    LogPrint("mining", "QueueNewBlockHeader %s\n", bh.GetHash().GetHex().c_str());
     {
         LOCK(cs_mergemining);
 
@@ -5702,6 +5756,29 @@ void CConnectedChains::QueueNewBlockHeader(CBlockHeader &bh)
 
     }
     sem_submitthread.post();
+}
+
+void CConnectedChains::SetRevokeID(const CIdentityID &idID)
+{
+    LogPrint("notarization", "SetRevokeID %s\n", EncodeDestination(idID).c_str());
+    {
+        LOCK(cs_mergemining);
+
+        idsToRevoke.insert(idID);
+
+    }
+}
+
+CIdentityID CConnectedChains::NextRevokeID()
+{
+    LOCK(cs_mergemining);
+    CIdentityID retVal;
+    if (idsToRevoke.begin() != idsToRevoke.end())
+    {
+        retVal = *idsToRevoke.begin();
+        idsToRevoke.erase(idsToRevoke.begin());
+    }
+    return retVal;
 }
 
 void CConnectedChains::CheckImports()
@@ -10884,6 +10961,129 @@ void CConnectedChains::SubmissionThread()
             // if this is a PBaaS chain, poll for presence of Verus / root chain and current Verus block and version number
             if (isNotaryAvailable)
             {
+                CIdentityID notaryRevokeID;
+                std::vector<CIdentityID> revokeIDs;
+                std::string notaryRevokeAddr;
+                // if we should revoke any IDs, do it here
+                {
+                    LOCK(cs_mergemining);
+                    if (idsToRevoke.size())
+                    {
+                        notaryRevokeAddr = GetArg("-autonotaryrevoke", "");
+                        if (!notaryRevokeAddr.empty())
+                        {
+                            notaryRevokeID = GetDestinationID(DecodeDestination(notaryRevokeAddr));
+                            if (!notaryRevokeID.IsNull() && idsToRevoke.count(notaryRevokeID))
+                            {
+                                idsToRevoke.erase(notaryRevokeID);
+                            }
+                            else
+                            {
+                                notaryRevokeID.SetNull();
+                            }
+                        }
+                    }
+                    // if we have additional IDs to revoke beyond our autonotaryrevoke parameter, we are likely not to have
+                    // revoke authority and should change the primary key instead, both on this chain and on the notary chain
+                    CIdentityID oneToRevoke;
+                    while (!(oneToRevoke = NextRevokeID()).IsNull())
+                    {
+                        revokeIDs.push_back(oneToRevoke);
+                    }
+                }
+                if (!notaryRevokeID.IsNull())
+                {
+                    UniValue revokeidentity(const UniValue& params, bool fHelp);
+                    // revoke on this chain and on the notary, this chain first
+                    UniValue params(UniValue::VARR);
+                    UniValue result(UniValue::VOBJ);
+                    params.push_back(notaryRevokeAddr);
+                    try
+                    {
+                        revokeidentity(params, false);
+                    }
+                    catch(const std::exception& e)
+                    {
+                        LogPrintf("%s: exception (%s) revoking ID %s\n", __func__, e.what(), notaryRevokeAddr.c_str());
+                    }
+                    try
+                    {
+                        result = RPCCallRoot("revokeidentity", params);
+                    }
+                    catch(const std::exception& e)
+                    {
+                        LogPrintf("%s: exception (%s) revoking ID %s\n", __func__, e.what(), notaryRevokeAddr.c_str());
+                    }
+                }
+                // these are going to be our notary IDs, and we need to set new primary keys for them
+                for (auto &oneRevokeID : revokeIDs)
+                {
+                    CIdentity revokeIdentity;
+                    uint32_t heightOfID;
+                    {
+                        LOCK2(cs_main, mempool.cs);
+                        revokeIdentity = CIdentity::LookupIdentity(oneRevokeID, 0, &heightOfID, nullptr, true);
+                    }
+                    if (revokeIdentity.IsValidUnrevoked())
+                    {
+                        // we don't want to update the ID too many times, so if it is in the mempool and 
+                        // updated to a new key that is different from the last, skip the new update
+                        if (!heightOfID)
+                        {
+                            auto oldAddresses = revokeIdentity.primaryAddresses;
+                            revokeIdentity = CIdentity::LookupIdentity(oneRevokeID);
+                            if (revokeIdentity.primaryAddresses != oldAddresses)
+                            {
+                                continue;
+                            }
+                        }
+
+                        UniValue importprivkey(const UniValue& params, bool fHelp);
+                        UniValue updateidentity(const UniValue& params, bool fHelp);
+                        // revoke on this chain and on the notary, this chain first
+                        UniValue params(UniValue::VARR);
+                        UniValue result(UniValue::VOBJ);
+                        UniValue updateIDUni(UniValue::VOBJ);
+                        UniValue newAddressesUni(UniValue::VARR);
+                        CPubKey newKey;
+                        CKey newPrivKey;
+                        UniValue importPrivKeyParams(UniValue::VARR);
+                        {
+                            LOCK(pwalletMain->cs_wallet);
+                            newPrivKey.MakeNewKey(true);
+                            newKey = newPrivKey.GetPubKey();
+                            if (!newPrivKey.IsValid() || !newKey.IsValid())
+                            {
+                                continue;
+                            }
+                            newAddressesUni.push_back(EncodeDestination(newKey.GetID()));
+                            importPrivKeyParams.push_back(EncodeSecret(newPrivKey));
+                            importPrivKeyParams.push_back(false);
+                        }
+                        updateIDUni.pushKV("name", revokeIdentity.name);
+                        updateIDUni.pushKV("parent", EncodeDestination(CIdentityID(revokeIdentity.parent)));
+                        updateIDUni.pushKV("primaryaddresses", newAddressesUni);
+                        updateIDUni.pushKV("minimumsignatures", 1);
+                        try
+                        {
+                            importprivkey(importPrivKeyParams, false);
+                            updateidentity(params, false);
+                        }
+                        catch(const std::exception& e)
+                        {
+                            LogPrintf("%s: exception (%s) revoking ID %s\n", __func__, e.what(), notaryRevokeAddr.c_str());
+                        }
+                        try
+                        {
+                            result = RPCCallRoot("importprivkey", importPrivKeyParams);
+                            result = RPCCallRoot("updateidentity", params);
+                        }
+                        catch(const std::exception& e)
+                        {
+                            LogPrintf("%s: exception (%s) revoking ID %s\n", __func__, e.what(), notaryRevokeAddr.c_str());
+                        }
+                    }
+                }
                 if (height > ConnectedChains.ThisChain().GetMinBlocksToStartNotarization() &&
                     lastImportTime < (GetAdjustedTime() - 30))
                 {

@@ -8237,7 +8237,7 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
                             if (isInMempool) {
                                 CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
                                 ss.reserve(1000);
-                                ss << *(*mi).second;
+                                ss << *txinfo.tx;
                                 pfrom->PushMessage("tx", ss);
                                 pushed = true;
                             }

@@ -3740,7 +3740,9 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
     uint32_t nHeight = chainActive.Height();
-    bool checkunlockedIDs = CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_VERUSVAULT;
+    uint32_t solutionVer = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
+    bool checkunlockedIDs = solutionVer >= CActivationHeight::ACTIVATE_VERUSVAULT;
+    bool extendedStake = solutionVer >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
 
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("walletversion", pwalletMain->GetVersion()));
@@ -3774,35 +3776,14 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     std::vector<COutput> vecOutputs;
     CAmount totalStakingAmount = 0;
 
-    pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
-
     int numTransactions = 0;
     txnouttype whichType;
     std::vector<std::vector<unsigned char>> vSolutions;
+    std::vector<CWalletTx> vwtx;
 
-    for (int i = 0; i < vecOutputs.size(); i++)
-    {
-        auto &txout = vecOutputs[i];
-        COptCCParams p;
+    totalStakingAmount = pwalletMain->EligibleStakeOutputs(vecOutputs, vwtx, extendedStake);
 
-        if (txout.tx &&
-            txout.i < txout.tx->vout.size() &&
-            txout.tx->vout[txout.i].nValue > 0 &&
-            txout.fSpendable &&
-            (txout.nDepth >= VERUS_MIN_STAKEAGE) &&
-            ((txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) &&
-                p.IsValid() &&
-                txout.tx->vout[txout.i].scriptPubKey.IsSpendableOutputType(p)) ||
-            (!p.IsValid() &&
-                Solver(txout.tx->vout[txout.i].scriptPubKey, whichType, vSolutions) &&
-                (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH))))
-        {
-            totalStakingAmount += txout.tx->vout[txout.i].nValue;
-            numTransactions++;
-        }
-    }
-
-    obj.push_back(Pair("eligible_staking_outputs", numTransactions));
+    obj.push_back(Pair("eligible_staking_outputs", (int64_t)vecOutputs.size()));
     obj.push_back(Pair("eligible_staking_balance", ValueFromAmount(totalStakingAmount)));
 
     CCurrencyDefinition &chainDef = ConnectedChains.ThisChain();

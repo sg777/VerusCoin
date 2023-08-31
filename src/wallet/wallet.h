@@ -1480,6 +1480,7 @@ public:
 
     // staking functions
     bool VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, CTransaction &stakeSource, int32_t &voutNum, int32_t nHeight, uint32_t &bnTarget) const;
+    CAmount EligibleStakeOutputs(std::vector<COutput> &vecOutputs, std::vector<CWalletTx> &vwtx, bool extendedStake) const;
 
     int32_t VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNew, uint32_t &bnTarget, arith_uint256 &hashResult, std::vector<unsigned char> &utxosig, CTxDestination &rewardDest) const;
     static bool GetAndValidateSaplingZAddress(const std::string &addressStr, libzcash::PaymentAddress &zaddress);
