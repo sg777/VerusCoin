@@ -9211,9 +9211,9 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
 {
     std::vector<ChainTransferData> txInputs;
 
-    int maxInputs = _curDef.MaxTransferExportCount();
-    int maxIDExports = _curDef.MaxIdentityDefinitionExportCount();
-    int maxCurrencyExports = _curDef.MaxCurrencyDefinitionExportCount();
+    int maxInputs = _curDef.MaxTransferExportCount() << 1;
+    int maxIDExports = _curDef.MaxIdentityDefinitionExportCount() << 1;
+    int maxCurrencyExports = _curDef.MaxCurrencyDefinitionExportCount() << 1;
 
     // .first = gateway, .second = {max, curtotal}
     std::map<uint160, std::pair<int, int>> secondaryTransfers;
@@ -9337,9 +9337,9 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
                 secondaryCur = ConnectedChains.GetCachedCurrency(rt.destination.gatewayID);
                 if (secondaryCur.IsValid() && (secondaryCur.IsPBaaSChain() || secondaryCur.IsGateway()))
                 {
-                    secondaryTransfers[rt.destination.gatewayID] = {secondaryCur.MaxTransferExportCount(), 1};
-                    secondaryIDExports[rt.destination.gatewayID] = {secondaryCur.MaxIdentityDefinitionExportCount(), rt.IsIdentityExport() ? 1 : 0};
-                    secondaryCurrencyExports[rt.destination.gatewayID] = {secondaryCur.MaxCurrencyDefinitionExportCount(), rt.IsCurrencyExport() ? 1 : 0};
+                    secondaryTransfers[rt.destination.gatewayID] = {secondaryCur.MaxTransferExportCount() << 1, 1};
+                    secondaryIDExports[rt.destination.gatewayID] = {secondaryCur.MaxIdentityDefinitionExportCount() << 1, rt.IsIdentityExport() ? 1 : 0};
+                    secondaryCurrencyExports[rt.destination.gatewayID] = {secondaryCur.MaxCurrencyDefinitionExportCount() << 1, rt.IsCurrencyExport() ? 1 : 0};
                 }
             }
         }
