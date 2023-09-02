@@ -9198,6 +9198,19 @@ bool IsHalfMaxed(const std::map<uint160, std::pair<int, int>> &maxTrackerMap)
     return false;
 }
 
+bool IsMaxed(const std::map<uint160, std::pair<int, int>> &maxTrackerMap, const uint160 &checkDest)
+{
+    auto oneCheck = maxTrackerMap.find(checkDest);
+    if (oneCheck != maxTrackerMap.end())
+    {
+        if (oneCheck->second.second >= oneCheck->second.first && (oneCheck->second.second | oneCheck->second.first))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool IsMaxed(const std::map<uint160, std::pair<int, int>> &maxTrackerMap)
 {
     for (auto &oneCheck : maxTrackerMap)
@@ -9299,12 +9312,15 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
             }
         }
 
+        bool isCurExport = std::get<2>(oneInput.second).IsCurrencyExport();
+        bool isIDExport = std::get<2>(oneInput.second).IsIdentityExport();
+        bool hasNextLeg = std::get<2>(oneInput.second).HasNextLeg();
         if (txInputs.size() >= maxInputs ||
-            (curIDExports && curIDExports >= maxIDExports) ||
-            (curCurrencyExports && curCurrencyExports >= maxCurrencyExports) ||
-            IsMaxed(secondaryTransfers) ||
-            (IsMaxed(secondaryCurrencyExports) && std::get<2>(oneInput.second).IsCurrencyExport()) ||
-            (IsMaxed(secondaryIDExports) && std::get<2>(oneInput.second).IsIdentityExport()))
+            (curIDExports && (curIDExports > maxIDExports || (isIDExport && curIDExports == maxIDExports))) ||
+            (curCurrencyExports && (curCurrencyExports > maxCurrencyExports || (isCurExport && curCurrencyExports == maxCurrencyExports))) ||
+            (hasNextLeg && IsMaxed(secondaryTransfers, std::get<2>(oneInput.second).destination.gatewayID)) ||
+            (hasNextLeg && IsMaxed(secondaryCurrencyExports, std::get<2>(oneInput.second).destination.gatewayID) && isCurExport) ||
+            (hasNextLeg && IsMaxed(secondaryIDExports, std::get<2>(oneInput.second).destination.gatewayID) && isIDExport))
         {
             // we exceed the maximum, so we separate from the last and make the
             // export out of one less than we currently have
