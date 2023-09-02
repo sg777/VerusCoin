@@ -7888,16 +7888,21 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     // if we have ever signed for one that we believe is not valid, we need to revoke
 
     std::set<int> disagreements;
+    std::vector<int> bestFork = cnd.forks[cnd.bestChain];
+    int bestForkIdx = 0;
+
     for (auto oneIndex : allRoots)
     {
         if (!forgiveZeroDisagreement || oneIndex)
         {
             disagreements.insert(oneIndex);
         }
+        else
+        {
+            proofRootArr.push_back(oneIndex);
+            bestForkIdx++;
+        }
     }
-
-    std::vector<int> bestFork = cnd.forks[cnd.bestChain];
-    int bestForkIdx = 0;
 
     for (int i = 0; i < rawProofRootArr.size() && bestForkIdx < bestFork.size(); i++)
     {
@@ -7918,7 +7923,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     // for every disagreement, we need to check to ensure that we haven't signed it already
     // and also sign to reject. if we have signed it, we need to revoke our ID, if we are configured to do that
     std::string notaryRevokeAddr = GetArg("-autonotaryrevoke", "");
-    if (disagreements.size()&&
+    if (disagreements.size() &&
         (!notaryRevokeAddr.empty() || mine.size()))
     {
         CTxDestination notaryRevokeDest = DecodeDestination(notaryRevokeAddr);
