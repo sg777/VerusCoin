@@ -9186,6 +9186,18 @@ bool EntropyCoinFlip(const uint160 &conditionID, uint32_t nHeight)
     return UintToArith256(hw.GetHash()).GetLow64() & 1;
 }
 
+bool IsHalfMaxed(const std::map<uint160, std::pair<int, int>> &maxTrackerMap)
+{
+    for (auto &oneCheck : maxTrackerMap)
+    {
+        if (oneCheck.second.second >= (oneCheck.second.first >> 1) && (oneCheck.second.second | oneCheck.second.first))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool IsMaxed(const std::map<uint160, std::pair<int, int>> &maxTrackerMap)
 {
     for (auto &oneCheck : maxTrackerMap)
@@ -9241,7 +9253,6 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
             }
 
             // if we have skipped to the next block, and we have enough to make a clear launch export, we cannot take any more
-            // for now
             if (isPrelaunch &&
                 (txInputs.size() >= CCrossChainExport::MAX_FEE_INPUTS ||
                  (txInputs.size() >= CCrossChainExport::MIN_INPUTS && (oneInput.first - sinceHeight) >= CCrossChainExport::MIN_BLOCKS)))
@@ -9250,18 +9261,18 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
                 break;
             }
 
-            // if we qualify, drop in and find the correct boundary
+            // if we qualify by meeting 1/2 of any category limit, drop in and decide if we append or not
             if (!isClearLaunchExport &&
                 (txInputs.size() >= CCrossChainExport::MIN_INPUTS ||
                  (oneInput.first - sinceHeight) >= CCrossChainExport::MIN_BLOCKS ||
-                 txInputs.size() >= maxInputs ||
-                 curIDExports >= maxIDExports ||
-                 curCurrencyExports >= maxCurrencyExports ||
-                 IsMaxed(secondaryTransfers) ||
-                 IsMaxed(secondaryCurrencyExports) ||
-                 IsMaxed(secondaryIDExports)))
+                 txInputs.size() >= (maxInputs >> 1) ||
+                 (curIDExports && curIDExports >= (maxIDExports >> 1)) ||
+                 (curCurrencyExports && curCurrencyExports >= (maxCurrencyExports >> 1)) ||
+                 IsHalfMaxed(secondaryTransfers) ||
+                 IsHalfMaxed(secondaryCurrencyExports) ||
+                 IsHalfMaxed(secondaryIDExports)))
             {
-                // if we have one or more empty blocks between the next block with transfers, go ahead and process
+                // if we have one or more empty blocks between the next block with transfers, go go with what we have
                 if (txInputs.size() && oneInput.first != (addHeight + 1))
                 {
                     nextHeight = oneInput.first;
@@ -9279,47 +9290,46 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
                 }
 
                 // if we get the coin flip using the entropy of the block after the next block in question,
-                // separate here, otherwise, the next block will be added, either by adding or separating,
-                // depending on how many transfers we already have
+                // separate here, otherwise, the next block will be added
                 if (txInputs.size() && EntropyCoinFlip(_curDef.GetID(), oneInput.first + 1))
                 {
                     nextHeight = oneInput.first;
                     break;
                 }
-
-                if (txInputs.size() > maxInputs ||
-                    curIDExports > maxIDExports ||
-                    curCurrencyExports > maxCurrencyExports ||
-                    IsMaxed(secondaryTransfers) ||
-                    IsMaxed(secondaryCurrencyExports) ||
-                    IsMaxed(secondaryIDExports))
-                {
-                    // we exceed the maximum, so we separate from the last and make the
-                    // export out of one less than we currently have
-
-                    // take addheight off of the last and break, as it has been determined to go with those in front of it
-                    while (std::get<0>(txInputs.back()) == addHeight)
-                    {
-                        txInputs.pop_back();
-                    }
-                    assert(txInputs.size());
-
-                    nextHeight = addHeight;
-                    addHeight = std::get<0>(txInputs.back());
-                    break;
-                }
             }
-            addHeight = oneInput.first;
         }
 
-        if (!isClearLaunchExport && untilHeight <= addHeight + 1)
+        if (txInputs.size() >= maxInputs ||
+            (curIDExports && curIDExports >= maxIDExports) ||
+            (curCurrencyExports && curCurrencyExports >= maxCurrencyExports) ||
+            IsMaxed(secondaryTransfers) ||
+            (IsMaxed(secondaryCurrencyExports) && std::get<2>(oneInput.second).IsCurrencyExport()) ||
+            (IsMaxed(secondaryIDExports) && std::get<2>(oneInput.second).IsIdentityExport()))
+        {
+            // we exceed the maximum, so we separate from the last and make the
+            // export out of one less than we currently have
+
+            // if the one we are trying to add is the same as those behind us, then we are exceeding limits and must remove the block
+            if (oneInput.first == addHeight)
+            {
+                while (std::get<0>(txInputs.back()) == addHeight)
+                {
+                    txInputs.pop_back();
+                }
+                assert(txInputs.size());
+                addHeight = std::get<0>(txInputs.back());
+            }
+            nextHeight = oneInput.first;
+            break;
+        }
+
+        if (!isClearLaunchExport && untilHeight <= oneInput.first + 1)
         {
             // no error, just nothing to do, as we can't decide to include this with the prior block
             // until we have at least one more block
             return std::vector<ChainTransferData>();
         }
 
-        // figure out if this is a cross-chain export of identity or currency
         CReserveTransfer rt(std::get<2>(oneInput.second));
 
         bool checkSecondLeg = rt.HasNextLeg() && rt.destination.gatewayID != ASSETCHAINS_CHAINID;
@@ -9369,6 +9379,7 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
             }
         }
 
+        addHeight = oneInput.first;
         txInputs.push_back(oneInput.second);
     }
 
