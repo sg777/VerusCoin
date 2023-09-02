@@ -7808,6 +7808,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
     // all we really want is the system proof roots for each notarization to make the JSON for the API smaller
     UniValue proofRootsUni(UniValue::VARR);
+    bool forgiveZeroDisagreement = false;
 
     // get just the indexes in the fork that we could confirm
     for (auto forkIdxIt = allRoots.begin(); forkIdxIt != allRoots.end(); forkIdxIt++)
@@ -7819,6 +7820,12 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
         }
         else
         {
+            if (forkIdxIt == allRoots.begin() &&
+                cnd.vtx[cnd.lastConfirmed].second.IsDefinitionNotarization() &&
+                externalSystem.chainDefinition.IsGateway())
+            {
+                forgiveZeroDisagreement = true;
+            }
             proofRootsUni.push_back(CProofRoot().ToUniValue());
         }
     }
@@ -7891,6 +7898,12 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
     for (int i = 0; i < rawProofRootArr.size() && bestForkIdx < bestFork.size(); i++)
     {
+        if (!i && forgiveZeroDisagreement)
+        {
+            disagreements.erase(0);
+            continue;
+        }
+
         int idx = uni_get_int(rawProofRootArr[i], -1);
         if (idx >= 0)
         {
