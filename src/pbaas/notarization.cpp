@@ -7890,7 +7890,10 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     std::set<int> disagreements;
     for (auto oneIndex : allRoots)
     {
-        disagreements.insert(oneIndex);
+        if (!forgiveZeroDisagreement || oneIndex)
+        {
+            disagreements.insert(oneIndex);
+        }
     }
 
     std::vector<int> bestFork = cnd.forks[cnd.bestChain];
@@ -7898,12 +7901,6 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
     for (int i = 0; i < rawProofRootArr.size() && bestForkIdx < bestFork.size(); i++)
     {
-        if (!i && forgiveZeroDisagreement)
-        {
-            disagreements.erase(0);
-            continue;
-        }
-
         int idx = uni_get_int(rawProofRootArr[i], -1);
         if (idx >= 0)
         {
