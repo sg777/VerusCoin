@@ -5338,7 +5338,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 }
 
                 // only an identity can export itself
-                if (!importPassThrough && !CheckIdentitySpends(tx, registeredIdentity.GetID(), state, height - 1, ConnectedChains.StrictCheckIDExport(height)))
+                if (!importPassThrough && ConnectedChains.StrictCheckIDExport(height) && !CheckIdentitySpends(tx, registeredIdentity.GetID(), state, height - 1, true))
                 {
                     return state.Error("Only the controller of " + ConnectedChains.GetFriendlyIdentityName(registeredIdentity) + " may export it to another system");
                 }
