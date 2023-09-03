@@ -5397,7 +5397,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     if (importState.IsFractional())
                     {
                         feeConversionPrices = importState.TargetConversionPrices(rt.HasNextLeg() ? rt.destination.gatewayID : systemDestID);
-                        feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.destination.fees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
+                        feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.HasNextLeg() ? rt.destination.fees : rt.nFees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
                     }
                     else if (rt.feeCurrencyID != systemDestID &&
                               (rt.feeCurrencyID != systemDest.launchSystemID || systemDest.proofProtocol != systemDest.PROOF_PBAASMMR))
