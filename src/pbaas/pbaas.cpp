@@ -6439,7 +6439,7 @@ bool CConnectedChains::IncludePostLaunchFees(uint32_t height) const
 
 uint32_t CConnectedChains::StrictCheckIDExportHeight(bool getVerusHeight) const
 {
-    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 124745 : 2634460) : 0;
+    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 187000 : 2634460) : 0;
 }
 
 bool CConnectedChains::StrictCheckIDExport(uint32_t height) const
