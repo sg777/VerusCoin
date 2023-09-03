@@ -4674,9 +4674,9 @@ bool CheckIdentitySpends(const CTransaction &tx, const uint160 idID, CValidation
         return state.Error("Invalid identity or necessary identities not found for approval of ID operation");
     }
 
-    CIdentity revokeID = (allAuthorities && signingID.revocationAuthority != idID) ? signingID : CIdentity::LookupIdentity(signingID.revocationAuthority, height);
-    CIdentity recoveryID = (allAuthorities && signingID.recoveryAuthority != idID) ? signingID : CIdentity::LookupIdentity(signingID.recoveryAuthority, height);
-    if (!revokeID.IsValid() || !recoveryID.IsValid())
+    CIdentity revokeID = (!allAuthorities || signingID.revocationAuthority == idID) ? signingID : CIdentity::LookupIdentity(signingID.revocationAuthority, height);
+    CIdentity recoveryID = (!allAuthorities || signingID.recoveryAuthority == idID) ? signingID : CIdentity::LookupIdentity(signingID.recoveryAuthority, height);
+     if (!revokeID.IsValid() || !recoveryID.IsValid())
     {
         return state.Error("Invalid revoke or recovery identity or necessary identities not found for approval of ID operation");
     }
