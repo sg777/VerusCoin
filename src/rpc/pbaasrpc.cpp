@@ -9435,6 +9435,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot export currency to single currency system");
                         }
                         dest = CTransferDestination(CTransferDestination::DEST_REGISTERCURRENCY, ::AsVector(sourceCurrencyDef));
+                        flags |= CReserveTransfer::CURRENCY_EXPORT;
                         numHeavyOutputs++;
                     }
 
@@ -9456,6 +9457,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             destIdentity.contentMap.clear();
                             destIdentity.contentMultiMap.clear();
                             dest = CTransferDestination(CTransferDestination::DEST_FULLID, ::AsVector(destIdentity));
+                            flags |= CReserveTransfer::IDENTITY_EXPORT;
                             numHeavyOutputs++;
                         }
                     }

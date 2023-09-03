@@ -395,7 +395,7 @@ public:
 
     bool IsIdentityExport() const
     {
-        return flags & IDENTITY_EXPORT;
+        return flags & IDENTITY_EXPORT || (destination.TypeNoFlags() == destination.DEST_FULLID);
     }
 
     void SetCurrencyExport(bool isExport=true)
@@ -412,7 +412,7 @@ public:
 
     bool IsCurrencyExport() const
     {
-        return flags & CURRENCY_EXPORT;
+        return flags & CURRENCY_EXPORT || (destination.TypeNoFlags() == destination.DEST_REGISTERCURRENCY);
     }
 
     void SetArbitrageOnly(bool isArbitrage=true)
