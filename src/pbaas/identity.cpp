@@ -148,6 +148,8 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
     return false;
 }
 
+LRUCache<std::pair<uint256, CIdentityID>, std::tuple<CIdentity, uint32_t, CTxIn>> CIdentity::IdentityLookupCache;
+
 CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, uint32_t *pHeightOut, CTxIn *pIdTxIn, bool checkMempool)
 {
     LOCK(mempool.cs);
@@ -203,6 +205,17 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
             }
         }
         unspentInputs.clear();
+    }
+    else if (height)
+    {
+        std::tuple<CIdentity, uint32_t, CTxIn> cachedIdentity;
+        if (std::get<0>(cachedIdentity = IdentityLookupCache.Get({chainActive[height > chainActive.Height() ? chainActive.Height() : height]->GetBlockHash(), nameID})).IsValid())
+        {
+            *pHeightOut = std::get<1>(cachedIdentity);
+            idTxIn = std::get<2>(cachedIdentity);
+            ret = std::get<0>(cachedIdentity);
+            return ret;
+        }
     }
 
     if (unspentOutputs.size() || GetAddressUnspent(keyID, CScript::P2IDX, unspentNewIDX) && GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
@@ -293,6 +306,10 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
                 idTxIn = CTxIn();
             }
         }
+    }
+    if (height && !(height > chainActive.Height() && checkMempool))
+    {
+        IdentityLookupCache.Put({chainActive[height > chainActive.Height() ? chainActive.Height() : height]->GetBlockHash(), nameID}, {ret, *pHeightOut, idTxIn});
     }
     return ret;
 }

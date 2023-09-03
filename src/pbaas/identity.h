@@ -32,6 +32,7 @@
 #include "primitives/transaction.h"
 #include "arith_uint256.h"
 #include "addressindex.h"
+#include "lrucache.h"
 
 std::string CleanName(const std::string &Name, uint160 &Parent, bool displayapproved=false, bool addVerus=true);
 
@@ -390,6 +391,7 @@ public:
     };
 
     static const int MAX_NAME_LEN = 64;
+    static LRUCache<std::pair<uint256, CIdentityID>, std::tuple<CIdentity, uint32_t, CTxIn>> IdentityLookupCache;
 
     uint160 parent;                         // parent in the sense of name. this could be a currency or chain.
     uint160 systemID;                       // system that this ID is homed to, enabling separate parent and system
