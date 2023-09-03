@@ -3328,7 +3328,13 @@ bool GetUnspentChainTransfers(std::multimap<uint160, ChainTransferData> &inputDe
     }
     else
     {
-        CCoinsViewCache view(pcoinsTip);
+        CCoins coins;
+        CCoinsView dummy;
+        CCoinsViewCache view(&dummy);
+
+        LOCK2(smartTransactionCS, mempool.cs);
+        CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
+        view.SetBackend(viewMemPool);
 
         for (auto it = unspentOutputs.begin(); it != unspentOutputs.end(); it++)
         {

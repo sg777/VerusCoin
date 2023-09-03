@@ -1573,8 +1573,8 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
 
         if (LogAcceptCategory("crosschainexports"))
         {
-            printf("%s: checking %ld transfers for inclusion between blocks %u - %u, inclusive at height %d\nHeights:", __func__, _txInputs.size(), ccx.sourceHeightStart, addHeight, chainActive.Height());
-            LogPrintf("%s: checking %ld transfers for inclusion between blocks %u - %u, inclusive at height %d\nHeights:", __func__, _txInputs.size(), ccx.sourceHeightStart, addHeight, chainActive.Height());
+            printf("%s: checking %ld transfers for inclusion between blocks %u - %u, inclusive at height %d\n", __func__, _txInputs.size(), ccx.sourceHeightStart, addHeight, chainActive.Height());
+            LogPrintf("%s: checking %ld transfers for inclusion between blocks %u - %u, inclusive at height %d\n", __func__, _txInputs.size(), ccx.sourceHeightStart, addHeight, chainActive.Height());
             uint32_t curBlockNum = 0;
             int transferCount = 0;
             for (auto &oneTransfer : _txInputs)
@@ -9247,7 +9247,8 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
 
     bool isPrelaunch = (isClearLaunchExport || (_curDef.launchSystemID == ASSETCHAINS_CHAINID && sinceHeight + 1 < _curDef.startBlock));
 
-    for (auto it = _txInputs.begin(); it != _txInputs.end(); it++)
+    std::multimap<uint32_t, ChainTransferData>::const_iterator it;
+    for (it = _txInputs.begin(); it != _txInputs.end(); it++)
     {
         auto &oneInput = *it;
 
@@ -9397,6 +9398,11 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
 
         addHeight = oneInput.first;
         txInputs.push_back(oneInput.second);
+    }
+
+    if (it == _txInputs.end())
+    {
+        nextHeight = untilHeight + 1;
     }
 
     // if we have too many exports to clear launch yet, this is no longer clear launch
@@ -10406,6 +10412,11 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                                 uint256 hash = tx.GetHash();
                                 thisExport.second.txIn.prevout.hash = hash;
                                 lastExport = thisExport;
+                                if (sysExOutNum >= 0)
+                                {
+                                    lastSysExport.first = thisExport.first;
+                                    lastSysExport.second = allExportOutputs.back();
+                                }
                                 CAmount nativeExportFees = ccx.totalFees.valueMap[ASSETCHAINS_CHAINID] ? ccx.totalFees.valueMap[ASSETCHAINS_CHAINID] : 10000;
                                 mempool.PrioritiseTransaction(hash, hash.GetHex(), (double)(nativeExportFees << 1), nativeExportFees);
                             }
@@ -10413,10 +10424,11 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                             {
                                 UniValue uni(UniValue::VOBJ);
                                 TxToUniv(tx, uint256(), uni);
-                                //printf("%s: created invalid transaction:\n%s\n", __func__, uni.write(1,2).c_str());
+                                printf("%s: created invalid transaction:\n%s\n", __func__, uni.write(1,2).c_str());
                                 LogPrintf("%s: error (%s) created invalid transaction:\n%s\n", __func__, memPoolState.GetRejectReason().c_str(), uni.write(1,2).c_str());
                                 break;
                             }
+
                             UpdateCoins(tx, view, nHeight + 1);
                         }
                         else
