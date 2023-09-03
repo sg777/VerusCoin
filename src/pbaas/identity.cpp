@@ -206,7 +206,8 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
         }
         unspentInputs.clear();
     }
-    else if (height)
+    // TODO: NEXTRELEASE - uncomment cache code
+    /* else if (height)
     {
         std::tuple<CIdentity, uint32_t, CTxIn> cachedIdentity;
         if (std::get<0>(cachedIdentity = IdentityLookupCache.Get({chainActive[height > chainActive.Height() ? chainActive.Height() : height]->GetBlockHash(), nameID})).IsValid())
@@ -216,7 +217,7 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
             ret = std::get<0>(cachedIdentity);
             return ret;
         }
-    }
+    } */
 
     if (unspentOutputs.size() || GetAddressUnspent(keyID, CScript::P2IDX, unspentNewIDX) && GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
     {
@@ -307,10 +308,13 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
             }
         }
     }
-    if (height && !(height > chainActive.Height() && checkMempool))
+
+    // TODO: NEXTRELEASE - uncomment cache code
+    /* if (height && !(height > chainActive.Height() && checkMempool))
     {
         IdentityLookupCache.Put({chainActive[height > chainActive.Height() ? chainActive.Height() : height]->GetBlockHash(), nameID}, {ret, *pHeightOut, idTxIn});
-    }
+    } */
+
     return ret;
 }
 
