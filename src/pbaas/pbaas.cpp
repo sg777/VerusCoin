@@ -9358,9 +9358,10 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
         if (txInputs.size() >= maxInputs ||
             (curIDExports && (curIDExports > maxIDExports || (isIDExport && curIDExports == maxIDExports))) ||
             (curCurrencyExports && (curCurrencyExports > maxCurrencyExports || (isCurExport && curCurrencyExports == maxCurrencyExports))) ||
-            (hasNextLeg && IsMaxed(secondaryTransfers, std::get<2>(oneInput.second).destination.gatewayID)) ||
-            (hasNextLeg && IsMaxed(secondaryCurrencyExports, std::get<2>(oneInput.second).destination.gatewayID) && isCurExport) ||
-            (hasNextLeg && IsMaxed(secondaryIDExports, std::get<2>(oneInput.second).destination.gatewayID) && isIDExport))
+            (hasNextLeg &&
+             (IsMaxed(secondaryTransfers, std::get<2>(oneInput.second).destination.gatewayID)) ||
+             (IsMaxed(secondaryCurrencyExports, std::get<2>(oneInput.second).destination.gatewayID) && isCurExport) ||
+             (IsMaxed(secondaryIDExports, std::get<2>(oneInput.second).destination.gatewayID) && isIDExport)))
         {
             // we exceed the maximum, so we separate from the last and make the
             // export out of one less than we currently have
@@ -9379,7 +9380,7 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
             break;
         }
 
-        if (!isClearLaunchExport && untilHeight <= oneInput.first + 1)
+        if (!isClearLaunchExport && untilHeight <= oneInput.first)
         {
             // no error, just nothing to do, as we can't decide to include this with the prior block
             // until we have at least one more block
@@ -9441,7 +9442,7 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
 
     if (it == _txInputs.end())
     {
-        nextHeight = untilHeight + 1;
+        nextHeight = untilHeight;
     }
 
     // if we have too many exports to clear launch yet, this is no longer clear launch
