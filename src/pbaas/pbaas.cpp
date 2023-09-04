@@ -1600,8 +1600,8 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                                                   ccx.sourceHeightStart ? ccx.sourceHeightStart - 1 : 0,
                                                   addHeight,
                                                   nextHeight,
-                                                  std::min(height, ccx.sourceHeightEnd + 2),
-                                                  std::min(height, ccx.sourceHeightEnd + 2),
+                                                  height,
+                                                  height - 1,
                                                   curIDExports,
                                                   curCurrencyExports,
                                                   _txInputs);
@@ -9380,7 +9380,7 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
             break;
         }
 
-        if (!isClearLaunchExport && untilHeight <= oneInput.first)
+        if (!isClearLaunchExport && untilHeight <= oneInput.first + 1)
         {
             // no error, just nothing to do, as we can't decide to include this with the prior block
             // until we have at least one more block
