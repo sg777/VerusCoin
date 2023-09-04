@@ -184,7 +184,10 @@ public:
     {
         DESTINATION_BYTE_DIVISOR = 128,     // destination vector is divided by this and result is multiplied by normal fee and added to transfer fee
         SUCCESS_FEE = 25000,
-        MIN_SUCCESS_FEE = 20000
+        MIN_SUCCESS_FEE = 20000,
+        MAX_NORMAL_TRANSFER_SIZE = 256,
+        MAX_CURRENCYEXPORT_SIZE = 2048,
+        MAX_IDENTITYEXPORT_SIZE = 1024,
     };
 
     static const CAmount DEFAULT_PER_STEP_FEE = 10000; // default fee for each step of each transfer (initial mining, transfer, mining on new chain)
@@ -395,7 +398,7 @@ public:
 
     bool IsIdentityExport() const
     {
-        return flags & IDENTITY_EXPORT;
+        return flags & IDENTITY_EXPORT || (destination.TypeNoFlags() == destination.DEST_FULLID);
     }
 
     void SetCurrencyExport(bool isExport=true)
@@ -412,7 +415,7 @@ public:
 
     bool IsCurrencyExport() const
     {
-        return flags & CURRENCY_EXPORT;
+        return flags & CURRENCY_EXPORT || (destination.TypeNoFlags() == destination.DEST_REGISTERCURRENCY);
     }
 
     void SetArbitrageOnly(bool isArbitrage=true)

@@ -4259,7 +4259,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                                         else if (rt.IsIdentityExport())
                                         {
                                             std::pair<uint160, uint160> checkKey({destCurrency.SystemOrGatewayID(), GetDestinationID(TransferDestinationToDestination(rt.destination))});
-                                            if (!rtxd.IsImport() && idDestAndExport.count(checkKey))
+                                            if (ConnectedChains.StrictCheckIDExport(nHeight) && !rtxd.IsImport() && idDestAndExport.count(checkKey))
                                             {
                                                 return state.DoS(10, error("%s: attempt to transfer identity definition more than once to same network", __func__), REJECT_INVALID, "bad-txns-dup-currency-export");
                                             }

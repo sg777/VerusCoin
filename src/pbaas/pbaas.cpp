@@ -1573,8 +1573,8 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
 
         if (LogAcceptCategory("crosschainexports"))
         {
-            printf("%s: checking %ld transfers for inclusion between blocks %u - %u, inclusive at height %d\nHeights:", __func__, _txInputs.size(), ccx.sourceHeightStart, addHeight, chainActive.Height());
-            LogPrintf("%s: checking %ld transfers for inclusion between blocks %u - %u, inclusive at height %d\nHeights:", __func__, _txInputs.size(), ccx.sourceHeightStart, addHeight, chainActive.Height());
+            printf("%s: checking %ld transfers for inclusion between blocks %u - %u, inclusive at height %d\n", __func__, _txInputs.size(), ccx.sourceHeightStart, addHeight, chainActive.Height());
+            LogPrintf("%s: checking %ld transfers for inclusion between blocks %u - %u, inclusive at height %d\n", __func__, _txInputs.size(), ccx.sourceHeightStart, addHeight, chainActive.Height());
             uint32_t curBlockNum = 0;
             int transferCount = 0;
             for (auto &oneTransfer : _txInputs)
@@ -1600,8 +1600,8 @@ bool PrecheckCrossChainExport(const CTransaction &tx, int32_t outNum, CValidatio
                                                   ccx.sourceHeightStart ? ccx.sourceHeightStart - 1 : 0,
                                                   addHeight,
                                                   nextHeight,
-                                                  std::min(height, ccx.sourceHeightEnd + 2),
-                                                  std::min(height, ccx.sourceHeightEnd + 2),
+                                                  height,
+                                                  height - 1,
                                                   curIDExports,
                                                   curCurrencyExports,
                                                   _txInputs);
@@ -4674,9 +4674,9 @@ bool CheckIdentitySpends(const CTransaction &tx, const uint160 idID, CValidation
         return state.Error("Invalid identity or necessary identities not found for approval of ID operation");
     }
 
-    CIdentity revokeID = (allAuthorities && signingID.revocationAuthority != idID) ? signingID : CIdentity::LookupIdentity(signingID.revocationAuthority, height);
-    CIdentity recoveryID = (allAuthorities && signingID.recoveryAuthority != idID) ? signingID : CIdentity::LookupIdentity(signingID.recoveryAuthority, height);
-    if (!revokeID.IsValid() || !recoveryID.IsValid())
+    CIdentity revokeID = (!allAuthorities || signingID.revocationAuthority == idID) ? signingID : CIdentity::LookupIdentity(signingID.revocationAuthority, height);
+    CIdentity recoveryID = (!allAuthorities || signingID.recoveryAuthority == idID) ? signingID : CIdentity::LookupIdentity(signingID.recoveryAuthority, height);
+     if (!revokeID.IsValid() || !recoveryID.IsValid())
     {
         return state.Error("Invalid revoke or recovery identity or necessary identities not found for approval of ID operation");
     }
@@ -5161,6 +5161,28 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             }
         }
 
+        CDataStream ds(SER_DISK, PROTOCOL_VERSION);
+
+        // only an identity can export itself
+        bool importPassThrough = false;
+
+        // if this output to export an identity comes from an import, the check will already have happened
+        for (int loop=0; loop < outNum; loop++)
+        {
+            COptCCParams importP;
+            CCrossChainImport cci;
+            if (tx.vout[loop].scriptPubKey.IsPayToCryptoCondition(importP) &&
+                importP.IsValid() &&
+                importP.evalCode == EVAL_CROSSCHAIN_IMPORT &&
+                importP.vData.size() &&
+                (cci = CCrossChainImport(importP.vData[0])).IsValid() &&
+                (loop + cci.numOutputs) >= outNum)
+            {
+                importPassThrough = true;
+                break;
+            }
+        }
+
         if (rt.IsCurrencyExport())
         {
             CCurrencyDefinition curToExport, exportDestination;
@@ -5172,11 +5194,25 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             // if this is a cross chain export, the first currency must be valid and equal the exported currency
             // otherwise, we only need to ensure that the exported currency can be sent to the target destination
             // its definition will be added next round
+            CCurrencyDefinition registeredCurrency = ConnectedChains.GetCachedCurrency(rt.FirstCurrency());
 
             if (importCurrencyDef.systemID == ASSETCHAINS_CHAINID &&
                 rt.HasNextLeg() &&
                 rt.destination.gatewayID != ASSETCHAINS_CHAINID)
             {
+                {
+                    CReserveTransfer dummyTransfer = rt;
+                    dummyTransfer.destination = CTransferDestination(CTransferDestination::DEST_REGISTERCURRENCY, ::AsVector(registeredCurrency), rt.destination.gatewayID, rt.destination.gatewayCode, rt.DEFAULT_PER_STEP_FEE);
+                    for (int i = 0; i < rt.destination.AuxDestCount(); i++)
+                    {
+                        dummyTransfer.destination.SetAuxDest(rt.destination.GetAuxDest(i), i);
+                    }
+                    if (GetSerializeSize(ds, dummyTransfer) > rt.MAX_CURRENCYEXPORT_SIZE)
+                    {
+                        return state.Error("Reserve transfer exporting currency definition exceeds size limits " + rt.ToUniValue().write(1,2));
+                    }
+                }
+
                 exportDestination = ConnectedChains.GetCachedCurrency(rt.destination.gatewayID);
                 if (!(curToExport = ConnectedChains.GetCachedCurrency(rt.FirstCurrency())).IsValid())
                 {
@@ -5219,18 +5255,22 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
             }
             else
             {
-                CCurrencyDefinition registeredCurrency = ConnectedChains.GetCachedCurrency(rt.FirstCurrency());
-
                 if (::AsVector(registeredCurrency) != rt.destination.destination)
                 {
                     return state.Error("Mismatched export and currency registration in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
 
-                if (!systemDest.IsMultiCurrency() || IsValidExportCurrency(systemDest, rt.FirstCurrency(), height))
+                if (!importPassThrough && (!systemDest.IsMultiCurrency() || IsValidExportCurrency(systemDest, rt.FirstCurrency(), height)))
                 {
                     // if destination system is not multicurrency or currency is already a valid export currency, invalid
                     return state.Error("Unnecessary currency definition export in reserve transfer " + rt.ToUniValue().write(1,2));
                 }
+
+                if (GetSerializeSize(ds, rt) > rt.MAX_CURRENCYEXPORT_SIZE)
+                {
+                    return state.Error("Reserve transfer exporting currency definition exceeds size limits " + rt.ToUniValue().write(1,2));
+                }
+
                 curToExport = registeredCurrency;
                 exportDestination = systemDest;
 
@@ -5298,31 +5338,9 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 }
 
                 // only an identity can export itself
-                bool importPassThrough = false;
-
-                // only an identity can export itself
-                if (!CheckIdentitySpends(tx, registeredIdentity.GetID(), state, height - 1, ConnectedChains.StrictCheckIDExport(height)))
+                if (!importPassThrough && ConnectedChains.StrictCheckIDExport(height) && !CheckIdentitySpends(tx, registeredIdentity.GetID(), state, height - 1, true))
                 {
-                    // if this output to export an identity comes from an import, the check will already have happened
-                    for (int loop=0; loop < outNum; loop++)
-                    {
-                        COptCCParams importP;
-                        CCrossChainImport cci;
-                        if (tx.vout[loop].scriptPubKey.IsPayToCryptoCondition(importP) &&
-                            importP.IsValid() &&
-                            importP.evalCode == EVAL_CROSSCHAIN_IMPORT &&
-                            importP.vData.size() &&
-                            (cci = CCrossChainImport(importP.vData[0])).IsValid() &&
-                            (loop + cci.numOutputs) >= outNum)
-                        {
-                            importPassThrough = true;
-                            break;
-                        }
-                    }
-                    if (!importPassThrough)
-                    {
-                        return state.Error("Only the controller of " + ConnectedChains.GetFriendlyIdentityName(registeredIdentity) + " may export it to another system");
-                    }
+                    return state.Error("Only the controller of " + ConnectedChains.GetFriendlyIdentityName(registeredIdentity) + " may export it to another system");
                 }
 
                 if (!importPassThrough && idToExport.IsValid())
@@ -5337,6 +5355,22 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                         boost::to_lower_copy(registeredIdentity.name) != boost::to_lower_copy(idToExport.name))
                     {
                         return state.Error("Identity being exported in reserve transfer does not match blockchain identity control " + rt.ToUniValue().write(1,2));
+                    }
+                }
+
+                {
+                    CReserveTransfer dummyTransfer = rt;
+                    if (rt.destination.TypeNoFlags() != CTransferDestination::DEST_FULLID)
+                    {
+                        dummyTransfer.destination = CTransferDestination(CTransferDestination::DEST_REGISTERCURRENCY, ::AsVector(registeredIdentity), rt.destination.gatewayID, rt.destination.gatewayCode, rt.DEFAULT_PER_STEP_FEE);
+                        for (int i = 0; i < rt.destination.AuxDestCount(); i++)
+                        {
+                            dummyTransfer.destination.SetAuxDest(rt.destination.GetAuxDest(i), i);
+                        }
+                    }
+                    if (GetSerializeSize(ds, dummyTransfer) > rt.MAX_IDENTITYEXPORT_SIZE)
+                    {
+                        return state.Error("Reserve transfer exporting identity definition exceeds size limits " + rt.ToUniValue().write(1,2));
                     }
                 }
 
@@ -5363,7 +5397,7 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                     if (importState.IsFractional())
                     {
                         feeConversionPrices = importState.TargetConversionPrices(rt.HasNextLeg() ? rt.destination.gatewayID : systemDestID);
-                        feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.destination.fees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
+                        feeEquivalentInNative = CCurrencyState::ReserveToNativeRaw(rt.HasNextLeg() ? rt.destination.fees : rt.nFees, feeConversionPrices.valueMap[rt.feeCurrencyID]);
                     }
                     else if (rt.feeCurrencyID != systemDestID &&
                               (rt.feeCurrencyID != systemDest.launchSystemID || systemDest.proofProtocol != systemDest.PROOF_PBAASMMR))
@@ -5445,6 +5479,11 @@ bool PrecheckReserveTransfer(const CTransaction &tx, int32_t outNum, CValidation
                 else if (feeEquivalentInNative < systemDest.GetTransactionTransferFee())
                 {
                     return state.Error("Not enough fee for same chain currency operation in reserve transfer " + rt.ToUniValue().write(1,2));
+                }
+
+                if (GetSerializeSize(ds, rt) > rt.MAX_NORMAL_TRANSFER_SIZE)
+                {
+                    return state.Error("Reserve transfer exceeds size limits " + rt.ToUniValue().write(1,2));
                 }
             }
 
@@ -6400,7 +6439,7 @@ bool CConnectedChains::IncludePostLaunchFees(uint32_t height) const
 
 uint32_t CConnectedChains::StrictCheckIDExportHeight(bool getVerusHeight) const
 {
-    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 124745 : 2634460) : 0;
+    return (getVerusHeight || IsVerusActive()) ? (PBAAS_TESTMODE ? 187000 : 2634460) : 0;
 }
 
 bool CConnectedChains::StrictCheckIDExport(uint32_t height) const
@@ -9186,6 +9225,31 @@ bool EntropyCoinFlip(const uint160 &conditionID, uint32_t nHeight)
     return UintToArith256(hw.GetHash()).GetLow64() & 1;
 }
 
+bool IsHalfMaxed(const std::map<uint160, std::pair<int, int>> &maxTrackerMap)
+{
+    for (auto &oneCheck : maxTrackerMap)
+    {
+        if (oneCheck.second.second >= (oneCheck.second.first >> 1) && (oneCheck.second.second | oneCheck.second.first))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool IsMaxed(const std::map<uint160, std::pair<int, int>> &maxTrackerMap, const uint160 &checkDest)
+{
+    auto oneCheck = maxTrackerMap.find(checkDest);
+    if (oneCheck != maxTrackerMap.end())
+    {
+        if (oneCheck->second.second >= oneCheck->second.first && (oneCheck->second.second | oneCheck->second.first))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool IsMaxed(const std::map<uint160, std::pair<int, int>> &maxTrackerMap)
 {
     for (auto &oneCheck : maxTrackerMap)
@@ -9211,9 +9275,9 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
 {
     std::vector<ChainTransferData> txInputs;
 
-    int maxInputs = _curDef.MaxTransferExportCount();
-    int maxIDExports = _curDef.MaxIdentityDefinitionExportCount();
-    int maxCurrencyExports = _curDef.MaxCurrencyDefinitionExportCount();
+    int maxInputs = _curDef.MaxTransferExportCount() << 1;
+    int maxIDExports = _curDef.MaxIdentityDefinitionExportCount() << 1;
+    int maxCurrencyExports = _curDef.MaxCurrencyDefinitionExportCount() << 1;
 
     // .first = gateway, .second = {max, curtotal}
     std::map<uint160, std::pair<int, int>> secondaryTransfers;
@@ -9222,7 +9286,8 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
 
     bool isPrelaunch = (isClearLaunchExport || (_curDef.launchSystemID == ASSETCHAINS_CHAINID && sinceHeight + 1 < _curDef.startBlock));
 
-    for (auto it = _txInputs.begin(); it != _txInputs.end(); it++)
+    std::multimap<uint32_t, ChainTransferData>::const_iterator it;
+    for (it = _txInputs.begin(); it != _txInputs.end(); it++)
     {
         auto &oneInput = *it;
 
@@ -9241,7 +9306,6 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
             }
 
             // if we have skipped to the next block, and we have enough to make a clear launch export, we cannot take any more
-            // for now
             if (isPrelaunch &&
                 (txInputs.size() >= CCrossChainExport::MAX_FEE_INPUTS ||
                  (txInputs.size() >= CCrossChainExport::MIN_INPUTS && (oneInput.first - sinceHeight) >= CCrossChainExport::MIN_BLOCKS)))
@@ -9250,18 +9314,18 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
                 break;
             }
 
-            // if we qualify, drop in and find the correct boundary
+            // if we qualify by meeting 1/2 of any category limit, drop in and decide if we append or not
             if (!isClearLaunchExport &&
                 (txInputs.size() >= CCrossChainExport::MIN_INPUTS ||
                  (oneInput.first - sinceHeight) >= CCrossChainExport::MIN_BLOCKS ||
-                 txInputs.size() >= maxInputs ||
-                 curIDExports >= maxIDExports ||
-                 curCurrencyExports >= maxCurrencyExports ||
-                 IsMaxed(secondaryTransfers) ||
-                 IsMaxed(secondaryCurrencyExports) ||
-                 IsMaxed(secondaryIDExports)))
+                 txInputs.size() >= (maxInputs >> 1) ||
+                 (curIDExports && curIDExports >= (maxIDExports >> 1)) ||
+                 (curCurrencyExports && curCurrencyExports >= (maxCurrencyExports >> 1)) ||
+                 IsHalfMaxed(secondaryTransfers) ||
+                 IsHalfMaxed(secondaryCurrencyExports) ||
+                 IsHalfMaxed(secondaryIDExports)))
             {
-                // if we have one or more empty blocks between the next block with transfers, go ahead and process
+                // if we have one or more empty blocks between the next block with transfers, go go with what we have
                 if (txInputs.size() && oneInput.first != (addHeight + 1))
                 {
                     nextHeight = oneInput.first;
@@ -9279,47 +9343,50 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
                 }
 
                 // if we get the coin flip using the entropy of the block after the next block in question,
-                // separate here, otherwise, the next block will be added, either by adding or separating,
-                // depending on how many transfers we already have
+                // separate here, otherwise, the next block will be added
                 if (txInputs.size() && EntropyCoinFlip(_curDef.GetID(), oneInput.first + 1))
                 {
                     nextHeight = oneInput.first;
                     break;
                 }
-
-                if (txInputs.size() > maxInputs ||
-                    curIDExports > maxIDExports ||
-                    curCurrencyExports > maxCurrencyExports ||
-                    IsMaxed(secondaryTransfers) ||
-                    IsMaxed(secondaryCurrencyExports) ||
-                    IsMaxed(secondaryIDExports))
-                {
-                    // we exceed the maximum, so we separate from the last and make the
-                    // export out of one less than we currently have
-
-                    // take addheight off of the last and break, as it has been determined to go with those in front of it
-                    while (std::get<0>(txInputs.back()) == addHeight)
-                    {
-                        txInputs.pop_back();
-                    }
-                    assert(txInputs.size());
-
-                    nextHeight = addHeight;
-                    addHeight = std::get<0>(txInputs.back());
-                    break;
-                }
             }
-            addHeight = oneInput.first;
         }
 
-        if (!isClearLaunchExport && untilHeight <= addHeight + 1)
+        bool isCurExport = std::get<2>(oneInput.second).IsCurrencyExport();
+        bool isIDExport = std::get<2>(oneInput.second).IsIdentityExport();
+        bool hasNextLeg = std::get<2>(oneInput.second).HasNextLeg();
+        if (txInputs.size() >= maxInputs ||
+            (curIDExports && (curIDExports > maxIDExports || (isIDExport && curIDExports == maxIDExports))) ||
+            (curCurrencyExports && (curCurrencyExports > maxCurrencyExports || (isCurExport && curCurrencyExports == maxCurrencyExports))) ||
+            (hasNextLeg &&
+             (IsMaxed(secondaryTransfers, std::get<2>(oneInput.second).destination.gatewayID)) ||
+             (IsMaxed(secondaryCurrencyExports, std::get<2>(oneInput.second).destination.gatewayID) && isCurExport) ||
+             (IsMaxed(secondaryIDExports, std::get<2>(oneInput.second).destination.gatewayID) && isIDExport)))
+        {
+            // we exceed the maximum, so we separate from the last and make the
+            // export out of one less than we currently have
+
+            // if the one we are trying to add is the same as those behind us, then we are exceeding limits and must remove the block
+            if (oneInput.first == addHeight)
+            {
+                while (std::get<0>(txInputs.back()) == addHeight)
+                {
+                    txInputs.pop_back();
+                }
+                assert(txInputs.size());
+                addHeight = std::get<0>(txInputs.back());
+            }
+            nextHeight = oneInput.first;
+            break;
+        }
+
+        if (!isClearLaunchExport && untilHeight <= oneInput.first + 1)
         {
             // no error, just nothing to do, as we can't decide to include this with the prior block
             // until we have at least one more block
             return std::vector<ChainTransferData>();
         }
 
-        // figure out if this is a cross-chain export of identity or currency
         CReserveTransfer rt(std::get<2>(oneInput.second));
 
         bool checkSecondLeg = rt.HasNextLeg() && rt.destination.gatewayID != ASSETCHAINS_CHAINID;
@@ -9337,9 +9404,9 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
                 secondaryCur = ConnectedChains.GetCachedCurrency(rt.destination.gatewayID);
                 if (secondaryCur.IsValid() && (secondaryCur.IsPBaaSChain() || secondaryCur.IsGateway()))
                 {
-                    secondaryTransfers[rt.destination.gatewayID] = {secondaryCur.MaxTransferExportCount(), 1};
-                    secondaryIDExports[rt.destination.gatewayID] = {secondaryCur.MaxIdentityDefinitionExportCount(), rt.IsIdentityExport() ? 1 : 0};
-                    secondaryCurrencyExports[rt.destination.gatewayID] = {secondaryCur.MaxCurrencyDefinitionExportCount(), rt.IsCurrencyExport() ? 1 : 0};
+                    secondaryTransfers[rt.destination.gatewayID] = {secondaryCur.MaxTransferExportCount() << 1, 1};
+                    secondaryIDExports[rt.destination.gatewayID] = {secondaryCur.MaxIdentityDefinitionExportCount() << 1, rt.IsIdentityExport() ? 1 : 0};
+                    secondaryCurrencyExports[rt.destination.gatewayID] = {secondaryCur.MaxCurrencyDefinitionExportCount() << 1, rt.IsCurrencyExport() ? 1 : 0};
                 }
             }
         }
@@ -9369,7 +9436,13 @@ std::vector<ChainTransferData> CConnectedChains::CalcTxInputs(const CCurrencyDef
             }
         }
 
+        addHeight = oneInput.first;
         txInputs.push_back(oneInput.second);
+    }
+
+    if (it == _txInputs.end())
+    {
+        nextHeight = untilHeight;
     }
 
     // if we have too many exports to clear launch yet, this is no longer clear launch
@@ -10379,6 +10452,11 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                                 uint256 hash = tx.GetHash();
                                 thisExport.second.txIn.prevout.hash = hash;
                                 lastExport = thisExport;
+                                if (sysExOutNum >= 0)
+                                {
+                                    lastSysExport.first = thisExport.first;
+                                    lastSysExport.second = allExportOutputs.back();
+                                }
                                 CAmount nativeExportFees = ccx.totalFees.valueMap[ASSETCHAINS_CHAINID] ? ccx.totalFees.valueMap[ASSETCHAINS_CHAINID] : 10000;
                                 mempool.PrioritiseTransaction(hash, hash.GetHex(), (double)(nativeExportFees << 1), nativeExportFees);
                             }
@@ -10386,10 +10464,11 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                             {
                                 UniValue uni(UniValue::VOBJ);
                                 TxToUniv(tx, uint256(), uni);
-                                //printf("%s: created invalid transaction:\n%s\n", __func__, uni.write(1,2).c_str());
+                                printf("%s: created invalid transaction:\n%s\n", __func__, uni.write(1,2).c_str());
                                 LogPrintf("%s: error (%s) created invalid transaction:\n%s\n", __func__, memPoolState.GetRejectReason().c_str(), uni.write(1,2).c_str());
                                 break;
                             }
+
                             UpdateCoins(tx, view, nHeight + 1);
                         }
                         else

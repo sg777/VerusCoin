@@ -7808,6 +7808,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
 
     // all we really want is the system proof roots for each notarization to make the JSON for the API smaller
     UniValue proofRootsUni(UniValue::VARR);
+    bool forgiveZeroDisagreement = false;
 
     // get just the indexes in the fork that we could confirm
     for (auto forkIdxIt = allRoots.begin(); forkIdxIt != allRoots.end(); forkIdxIt++)
@@ -7819,6 +7820,12 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
         }
         else
         {
+            if (forkIdxIt == allRoots.begin() &&
+                cnd.vtx[cnd.lastConfirmed].second.IsDefinitionNotarization() &&
+                externalSystem.chainDefinition.IsGateway())
+            {
+                forgiveZeroDisagreement = true;
+            }
             proofRootsUni.push_back(CProofRoot().ToUniValue());
         }
     }
@@ -7881,13 +7888,21 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     // if we have ever signed for one that we believe is not valid, we need to revoke
 
     std::set<int> disagreements;
-    for (auto oneIndex : allRoots)
-    {
-        disagreements.insert(oneIndex);
-    }
-
     std::vector<int> bestFork = cnd.forks[cnd.bestChain];
     int bestForkIdx = 0;
+
+    for (auto oneIndex : allRoots)
+    {
+        if (!forgiveZeroDisagreement || oneIndex)
+        {
+            disagreements.insert(oneIndex);
+        }
+        else
+        {
+            proofRootArr.push_back(oneIndex);
+            bestForkIdx++;
+        }
+    }
 
     for (int i = 0; i < rawProofRootArr.size() && bestForkIdx < bestFork.size(); i++)
     {
@@ -7908,7 +7923,7 @@ bool CPBaaSNotarization::ConfirmOrRejectNotarizations(CWallet *pWallet,
     // for every disagreement, we need to check to ensure that we haven't signed it already
     // and also sign to reject. if we have signed it, we need to revoke our ID, if we are configured to do that
     std::string notaryRevokeAddr = GetArg("-autonotaryrevoke", "");
-    if (disagreements.size()&&
+    if (disagreements.size() &&
         (!notaryRevokeAddr.empty() || mine.size()))
     {
         CTxDestination notaryRevokeDest = DecodeDestination(notaryRevokeAddr);

@@ -203,9 +203,11 @@ public:
         DEST_ETHNFT = 10,                   // used when defining a mapped NFT to gateway that uses an ETH compatible model
         DEST_RAW = 11,
         LAST_VALID_TYPE_NO_FLAGS = DEST_RAW,
+        FLAG_RESERVED1 = 16,
+        FLAG_RESERVED2 = 32,
         FLAG_DEST_AUX = 64,
         FLAG_DEST_GATEWAY = 128,
-        FLAG_MASK = FLAG_DEST_AUX + FLAG_DEST_GATEWAY
+        FLAG_MASK = FLAG_DEST_AUX + FLAG_DEST_GATEWAY + FLAG_RESERVED1 + FLAG_RESERVED2
     };
     uint8_t type;
     std::vector<unsigned char> destination;

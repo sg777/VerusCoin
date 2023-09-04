@@ -3328,7 +3328,13 @@ bool GetUnspentChainTransfers(std::multimap<uint160, ChainTransferData> &inputDe
     }
     else
     {
-        CCoinsViewCache view(pcoinsTip);
+        CCoins coins;
+        CCoinsView dummy;
+        CCoinsViewCache view(&dummy);
+
+        LOCK2(smartTransactionCS, mempool.cs);
+        CCoinsViewMemPool viewMemPool(pcoinsTip, mempool);
+        view.SetBackend(viewMemPool);
 
         for (auto it = unspentOutputs.begin(); it != unspentOutputs.end(); it++)
         {
@@ -9429,6 +9435,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot export currency to single currency system");
                         }
                         dest = CTransferDestination(CTransferDestination::DEST_REGISTERCURRENCY, ::AsVector(sourceCurrencyDef));
+                        flags |= CReserveTransfer::CURRENCY_EXPORT;
                         numHeavyOutputs++;
                     }
 
@@ -9450,6 +9457,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             destIdentity.contentMap.clear();
                             destIdentity.contentMultiMap.clear();
                             dest = CTransferDestination(CTransferDestination::DEST_FULLID, ::AsVector(destIdentity));
+                            flags |= CReserveTransfer::IDENTITY_EXPORT;
                             numHeavyOutputs++;
                         }
                     }
