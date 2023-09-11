@@ -9102,15 +9102,20 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     if (!preConvert)
                     {
                         validFeeCurrencies.valueMap[destSystemID] = 1;
-                        if (feeCurrencyID != destSystemID && convertToCurrencyID.IsNull())
+                        if (feeCurrencyID != destSystemID && (convertToCurrencyID.IsNull() || convertBeforeOffChain))
                         {
                             tmpConverterDef =
-                                exportToCurrencyDef.IsFractional() ?
-                                exportToCurrencyDef :
-                                (exportToCurrencyDef.GatewayConverterID().IsNull() &&
-                                exportToCurrencyID == thisChain.launchSystemID && !thisChain.GatewayConverterID().IsNull() ?
-                                    ConnectedChains.GetCachedCurrency(thisChain.GatewayConverterID()) :
-                                    CCurrencyDefinition());
+                                fromFractional ?
+                                    sourceCurrencyDef :
+                                    (convertBeforeOffChain ?
+                                        convertToCurrencyDef :
+                                        (exportToCurrencyDef.IsFractional() ?
+                                            exportToCurrencyDef :
+                                            (exportToCurrencyDef.GatewayConverterID().IsNull() &&
+                                            exportToCurrencyID == thisChain.launchSystemID &&
+                                            !thisChain.GatewayConverterID().IsNull() ?
+                                                ConnectedChains.GetCachedCurrency(thisChain.GatewayConverterID()) :
+                                                CCurrencyDefinition())));
                         }
                         else
                         {
