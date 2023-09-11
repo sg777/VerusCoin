@@ -11953,7 +11953,7 @@ UniValue registernamecommitment(const UniValue& params, bool fHelp)
         }
         parentID = ValidateCurrencyName(uni_get_str(params[3]), true, &parentCurrency);
 
-        if (!parentCurrency.IsValid())
+        if (!parentCurrency.IsValid() || parentID.IsNull())
         {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parent currency");
         }
