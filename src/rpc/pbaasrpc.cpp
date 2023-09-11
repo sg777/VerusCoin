@@ -9838,7 +9838,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         }
 
                         // converting from reserve to a fractional of that reserve
-                        auto fees = requiredFees + CCurrencyState::ReserveToNativeRaw(CReserveTransfer::CalculateTransferFee(dest, flags), reversePriceInFeeCur);
+                        auto fees = CCurrencyState::ReserveToNativeRaw(CReserveTransfer::CalculateTransferFee(dest, flags), reversePriceInFeeCur);
+                        auto add20Pct = CCurrencyDefinition::CalculateRatioOfValue(fees, SATOSHIDEN / 5);
+                        fees += (add20Pct ? add20Pct : 1) + requiredFees;
+
                         CReserveTransfer rt = CReserveTransfer(flags,
                                                                sourceCurrencyID,
                                                                sourceAmount,
