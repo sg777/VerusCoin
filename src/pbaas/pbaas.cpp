@@ -4046,7 +4046,7 @@ bool PrecheckCurrencyDefinition(const CTransaction &tx, int32_t outNum, CValidat
                             {
                                 return state.Error("Invalid currency inclusion before parent");
                             }
-                            
+
                             // if this currency is new with a new parent, it can not parent any IDs or currencies
                             if (!oneParentCur.parent.IsNull() && newDefinitions.count(oneParentCur.parent))
                             {
@@ -10221,14 +10221,17 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                         !cnd.vtx.size() ||
                         notarizationTxes.size() != cnd.vtx.size())
                     {
-                        printf("%s: missing or invalid notarization for %s\n", __func__, EncodeDestination(CIdentityID(destID)).c_str());
-                        LogPrintf("%s: missing or invalid notarization for %s\n", __func__, EncodeDestination(CIdentityID(destID)).c_str());
-                        if (notarizationTxes.size() != cnd.vtx.size())
+                        if (LogAcceptCategory("crosschainexports"))
                         {
-                            printf("NOTE: notarization and transaction vectors are not the same size - cnd.vtx.size(): %ld, notarizationTxes.size(): %ld\n", cnd.vtx.size(), notarizationTxes.size());
-                            LogPrintf("NOTE: notarization and transaction vectors are not the same size\n");
+                            printf("%s: missing or invalid notarization for %s\n", __func__, EncodeDestination(CIdentityID(destID)).c_str());
+                            LogPrintf("%s: missing or invalid notarization for %s\n", __func__, EncodeDestination(CIdentityID(destID)).c_str());
+                            if (notarizationTxes.size() != cnd.vtx.size())
+                            {
+                                printf("NOTE: notarization and transaction vectors are not the same size - cnd.vtx.size(): %ld, notarizationTxes.size(): %ld\n", cnd.vtx.size(), notarizationTxes.size());
+                                LogPrintf("NOTE: notarization and transaction vectors are not the same size\n");
+                            }
                         }
-                        break;
+                        continue;
                     }
 
                     CPBaaSNotarization lastNotarization = cnd.vtx[cnd.lastConfirmed].second;
@@ -11105,7 +11108,7 @@ void CConnectedChains::SubmissionThread()
                     }
                     if (revokeIdentity.IsValidUnrevoked())
                     {
-                        // we don't want to update the ID too many times, so if it is in the mempool and 
+                        // we don't want to update the ID too many times, so if it is in the mempool and
                         // updated to a new key that is different from the last, skip the new update
                         if (!heightOfID)
                         {
