@@ -1108,7 +1108,14 @@ std::set<CIndexID> COptCCParams::GetIndexKeys() const
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCurrencyDefinition::ExternalCurrencyKey())));
                 }
-                if (definition.launchSystemID == ASSETCHAINS_CHAINID)
+                if (definition.launchSystemID == ASSETCHAINS_CHAINID &&
+                    !(definition.IsToken() &&
+                      !definition.IsFractional() &&
+                      definition.nativeCurrencyID.IsValid() &&
+                      definition.GetTotalPreallocation() == 0 &&
+                      (definition.nativeCurrencyID.TypeNoFlags() == CTransferDestination::DEST_ETH ||
+                       definition.nativeCurrencyID.TypeNoFlags() == CTransferDestination::DEST_ETHNFT) &&
+                      definition.systemID != ASSETCHAINS_CHAINID))
                 {
                     destinations.insert(CIndexID(CCrossChainRPCData::GetConditionID(ASSETCHAINS_CHAINID, CCurrencyDefinition::CurrencyLaunchKey())));
                 }

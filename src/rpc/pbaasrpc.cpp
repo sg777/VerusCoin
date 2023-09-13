@@ -9102,15 +9102,20 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     if (!preConvert)
                     {
                         validFeeCurrencies.valueMap[destSystemID] = 1;
-                        if (feeCurrencyID != destSystemID && convertToCurrencyID.IsNull())
+                        if (feeCurrencyID != destSystemID && (convertToCurrencyID.IsNull() || convertBeforeOffChain))
                         {
                             tmpConverterDef =
-                                exportToCurrencyDef.IsFractional() ?
-                                exportToCurrencyDef :
-                                (exportToCurrencyDef.GatewayConverterID().IsNull() &&
-                                exportToCurrencyID == thisChain.launchSystemID && !thisChain.GatewayConverterID().IsNull() ?
-                                    ConnectedChains.GetCachedCurrency(thisChain.GatewayConverterID()) :
-                                    CCurrencyDefinition());
+                                fromFractional ?
+                                    sourceCurrencyDef :
+                                    (convertBeforeOffChain ?
+                                        convertToCurrencyDef :
+                                        (exportToCurrencyDef.IsFractional() ?
+                                            exportToCurrencyDef :
+                                            (exportToCurrencyDef.GatewayConverterID().IsNull() &&
+                                            exportToCurrencyID == thisChain.launchSystemID &&
+                                            !thisChain.GatewayConverterID().IsNull() ?
+                                                ConnectedChains.GetCachedCurrency(thisChain.GatewayConverterID()) :
+                                                CCurrencyDefinition())));
                         }
                         else
                         {
@@ -9176,11 +9181,21 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 }
 
                 if (isConversion &&
-                    !((convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID &&
-                       convertToCurrencyID != exportToCurrencyID &&
-                       (exportToCurrencyDef.IsGateway() || exportToCurrencyDef.IsPBaaSChain()) &&
-                       convertToCurrencyDef.IsFractional() &&
-                       convertToCurrencyDef.GetCurrenciesMap().count(exportToCurrencyDef.systemID)) ||
+                    !(((exportToCurrencyDef.IsGateway() || exportToCurrencyDef.IsPBaaSChain()) &&
+                       ((toFractional &&
+                         convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID &&
+                         convertToCurrencyID != exportToCurrencyID &&
+                         convertToCurrencyDef.IsFractional() &&
+                         convertToCurrencyDef.GetCurrenciesMap().count(exportToCurrencyDef.systemID) &&
+                         convertToCurrencyDef.GetCurrenciesMap().count(feeCurrencyID) &&
+                         convertToCurrencyDef.GetCurrenciesMap().count(sourceCurrencyID)) ||
+                        (fromFractional &&
+                         sourceCurrencyDef.systemID == ASSETCHAINS_CHAINID &&
+                         sourceCurrencyID != exportToCurrencyID &&
+                         sourceCurrencyDef.IsFractional() &&
+                         sourceCurrencyDef.GetCurrenciesMap().count(exportToCurrencyDef.systemID) &&
+                         sourceCurrencyDef.GetCurrenciesMap().count(feeCurrencyID) &&
+                         sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID)))) ||
                       (convertToCurrencyID == exportToCurrencyID &&
                        exportToCurrencyDef.systemID == destSystemID)))
                 {
@@ -9823,7 +9838,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         }
 
                         // converting from reserve to a fractional of that reserve
-                        auto fees = requiredFees + CCurrencyState::ReserveToNativeRaw(CReserveTransfer::CalculateTransferFee(dest, flags), reversePriceInFeeCur);
+                        auto fees = CCurrencyState::ReserveToNativeRaw(CReserveTransfer::CalculateTransferFee(dest, flags), reversePriceInFeeCur);
+                        auto add20Pct = CCurrencyDefinition::CalculateRatioOfValue(fees, SATOSHIDEN / 5);
+                        fees += (add20Pct ? add20Pct : 1) + requiredFees;
+
                         CReserveTransfer rt = CReserveTransfer(flags,
                                                                sourceCurrencyID,
                                                                sourceAmount,
