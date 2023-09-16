@@ -1,6 +1,7 @@
 
 #include "params.h"
 #include "ui_interface.h"
+#include <fstream>
 
 std::map<std::string, ParamFile> mapParams;
 JsonDownload downloadedJSON;

@@ -28,6 +28,7 @@
 
 #include "zcash/Address.hpp"
 #include "pbaas/pbaas.h"
+#include <fstream>
 #include <ostream>
 #include <algorithm>
 
