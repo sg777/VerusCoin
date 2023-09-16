@@ -728,10 +728,7 @@ uint256 HashFile(const std::string &filepath, CNativeHashWriter &ss)
 
         return ss.GetHash();
     }
-    else
-    {
-        return uint256();
-    }
+    return uint256();
 }
 
 uint256 HashFile(const std::string &filepath)
