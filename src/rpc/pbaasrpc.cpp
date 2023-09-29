@@ -11724,7 +11724,7 @@ UniValue definecurrency(const UniValue& params, bool fHelp)
                                                                 ASSETCHAINS_CHAINID,
                                                                 fee,
                                                                 gatewayCurrencyID,
-                                                                DestinationToTransferDestination(CIdentityID(gatewayCurrencyID)));
+                                                                DestinationToTransferDestination(CIdentityID(newChainID)));
 
                             cp = CCinit(&CC, EVAL_RESERVE_TRANSFER);
                             CPubKey pk(ParseHex(CC.CChexstr));
