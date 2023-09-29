@@ -8956,6 +8956,8 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                              !toFractional &&
                              sourceCurrencyDef.IsFractional() && !convertToCurrencyID.IsNull() && sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID);
 
+            CCurrencyDefinition converterCurrency = fromFractional ? sourceCurrencyDef : (toFractional ? convertToCurrencyDef : CCurrencyDefinition());
+
             if (addConversionFees && isConversion)
             {
                 CAmount additionalFee = CReserveTransactionDescriptor::CalculateAdditionalConversionFeeNoMin(sourceAmount);
@@ -9024,13 +9026,13 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 }
                 // if we have a converter currency on the same chain as the explicit export, the converter is
                 // our actual export currency
-                bool hasConverter = convertToCurrencyDef.IsValid();
-                if (hasConverter && convertToCurrencyDef.systemID == exportToCurrencyDef.SystemOrGatewayID())
+                bool hasConverter = converterCurrency.IsValid();
+                if (hasConverter && converterCurrency.systemID == exportToCurrencyDef.SystemOrGatewayID())
                 {
-                    exportToCurrencyDef = convertToCurrencyDef;
-                    exportToCurrencyID = convertToCurrencyID;
+                    exportToCurrencyDef = converterCurrency;
+                    exportToCurrencyID = converterCurrency.GetID();
                 }
-                else if (hasConverter && convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID)
+                else if (hasConverter && converterCurrency.systemID != ASSETCHAINS_CHAINID)
                 {
                     // if the converter is neither on this chain nor the explicit export chain, fail
                     throw JSONRPCError(RPC_INVALID_PARAMETER, "Export system and converter currency destinations do not match");
@@ -9050,7 +9052,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot implicitly convert with a cross-chain send without explicitly specifying the \"exportto\" parameter");
             }
-
             if (!exportToCurrencyID.IsNull())
             {
                 if (exportToCurrencyID == exportToCurrencyDef.systemID ||
@@ -9073,7 +9074,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             // if we have no explicit destination system and non-null export, make export
             // our destination system
             if (destSystemID == ASSETCHAINS_CHAINID &&
-                !(convertToCurrencyDef.IsValid() && convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID) &&
+                !(converterCurrency.IsValid() && converterCurrency.systemID == ASSETCHAINS_CHAINID) &&
                 !exportToCurrencyID.IsNull())
             {
                 destSystemID = exportSystemDef.GetID();
@@ -9153,9 +9154,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
             // we may also have an "exportafter" command, which enables funding a second leg to up to one more system
 
             if ((burnWeight &&
-                 (!convertToCurrencyDef.IsValid() ||
-                  (convertToCurrencyDef.endBlock > 0 &&
-                   convertToCurrencyDef.endBlock <= height))) ||
+                 (!converterCurrency.IsValid() ||
+                  (converterCurrency.endBlock > 0 &&
+                   converterCurrency.endBlock <= height))) ||
                 (mintNew &&
                  (!sourceCurrencyDef.IsValid() ||
                   (sourceCurrencyDef.endBlock > 0 &&
@@ -9182,20 +9183,12 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                 if (isConversion &&
                     !(((exportToCurrencyDef.IsGateway() || exportToCurrencyDef.IsPBaaSChain()) &&
-                       ((toFractional &&
-                         convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID &&
-                         convertToCurrencyID != exportToCurrencyID &&
-                         convertToCurrencyDef.IsFractional() &&
-                         convertToCurrencyDef.GetCurrenciesMap().count(exportToCurrencyDef.systemID) &&
-                         convertToCurrencyDef.GetCurrenciesMap().count(feeCurrencyID) &&
-                         convertToCurrencyDef.GetCurrenciesMap().count(sourceCurrencyID)) ||
-                        (fromFractional &&
-                         sourceCurrencyDef.systemID == ASSETCHAINS_CHAINID &&
-                         sourceCurrencyID != exportToCurrencyID &&
-                         sourceCurrencyDef.IsFractional() &&
-                         sourceCurrencyDef.GetCurrenciesMap().count(exportToCurrencyDef.systemID) &&
-                         sourceCurrencyDef.GetCurrenciesMap().count(feeCurrencyID) &&
-                         sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID)))) ||
+                       (converterCurrency.systemID == ASSETCHAINS_CHAINID &&
+                        converterCurrency.GetID() != exportToCurrencyID &&
+                        converterCurrency.IsFractional() &&
+                        converterCurrency.GetCurrenciesMap().count(exportToCurrencyDef.systemID) &&
+                        converterCurrency.GetCurrenciesMap().count(feeCurrencyID) &&
+                        converterCurrency.GetCurrenciesMap().count(toFractional ? sourceCurrencyID : convertToCurrencyID))) ||
                       (convertToCurrencyID == exportToCurrencyID &&
                        exportToCurrencyDef.systemID == destSystemID)))
                 {
@@ -9208,11 +9201,14 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                 {
                     // if we also have an explicit conversion, we must verify that we can either do that on this chain
                     // first and then pass through or pass to the converter currency on the other system
-                    if (!convertToCurrencyID.IsNull())
+                    if (converterCurrency.IsValid())
                     {
-                        if (convertToCurrencyDef.systemID != destSystemID &&
-                            (convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID ||
-                             !convertToCurrencyDef.IsFractional()))
+                        if (converterCurrency.systemID != destSystemID &&
+                            (converterCurrency.systemID != ASSETCHAINS_CHAINID ||
+                             !converterCurrency.IsFractional()) ||
+                             (exportSystemDef.IsValid() &&
+                              feeCurrencyID != exportSystemDef.GetID() &&
+                              !converterCurrency.GetCurrenciesMap().count(exportSystemDef.GetID())))
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " +
                                                                     EncodeDestination(CIdentityID(convertToCurrencyID)) +
@@ -9540,14 +9536,15 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             }
                         }
                     }
-                    else if (!validCurrencies.count(sourceCurrencyID))
+                    else if ((!convertBeforeOffChain &&
+                              (!validCurrencies.count(sourceCurrencyID) ||
+                               !converterCurrency.IsValid() ||
+                               converterCurrency.systemID != exportToCurrencyID ||
+                               !validCurrencies.count(convertToCurrencyID) ||
+                               (!secondCurrencyID.IsNull() && !validCurrencies.count(secondCurrencyID)))) ||
+                             (convertBeforeOffChain && !validCurrencies.count(secondCurrencyID.IsNull() ? convertToCurrencyID : secondCurrencyID)))
                     {
                         throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + sourceCurrencyDef.name + " (" + EncodeDestination(CIdentityID(sourceCurrencyID)) + ") cannot be sent to specified system");
-                    }
-
-                    if (!convertToCurrencyID.IsNull() && !validCurrencies.count(convertToCurrencyID) && convertToCurrencyDef.systemID != ASSETCHAINS_CHAINID)
-                    {
-                        throw JSONRPCError(RPC_INVALID_PARAMETER, "Currency " + sourceCurrencyDef.name + " (" + EncodeDestination(CIdentityID(sourceCurrencyID)) + ") cannot be currency destination on specified system");
                     }
 
                     std::set<uint160> validFeeCurrencies;
@@ -9584,7 +9581,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                         if (refundValid)
                         {
-                            dest.SetAuxDest(DestinationToTransferDestination(refundDestination), dest.AuxDestCount());
+                            dest.SetAuxDest(DestinationToTransferDestination(refundDestination), 0);
                             std::vector<CTxDestination>({pk.GetID(), refundDestination});
                         }
 
@@ -9610,16 +9607,17 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         CCurrencyValueMap feeConversionPrices;
                         CCoinbaseCurrencyState feePriceState;
 
-                        bool sameChainConversion = convertToCurrencyDef.systemID == ASSETCHAINS_CHAINID;
+                        bool sameChainConversion = converterCurrency.systemID == ASSETCHAINS_CHAINID;
 
-                        uint160 converterID = convertToCurrencyID;
-                        CCurrencyDefinition converterDef = convertToCurrencyDef;
+                        uint160 converterID = converterCurrency.GetID();
 
-                        if (!isVia && sourceCurrencyDef.IsFractional() && sourceCurrencyDef.GetCurrenciesMap().count(convertToCurrencyID))
+                        if (fromFractional)
                         {
+                            if (!converterCurrency.GetCurrenciesMap().count(convertToCurrencyID))
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid currency conversion.");
+                            }
                             flags |= CReserveTransfer::IMPORT_TO_SOURCE;
-                            converterID = sourceCurrencyID;
-                            converterDef = sourceCurrencyDef;
                         }
 
                         if (sameChainConversion)
@@ -9817,7 +9815,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                 {
                                     throw JSONRPCError(RPC_INVALID_PARAMETER, "Must provide refund address, have valid \"-defaultid\" set, or have a non-wildcard transparent source when sending via a converter cross chain");
                                 }
-                                dest.SetAuxDest(DestinationToTransferDestination(refundDestination), dest.AuxDestCount());
+                                dest.SetAuxDest(DestinationToTransferDestination(refundDestination), 0);
                             }
                         }
                         else
@@ -9825,16 +9823,16 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             flags |= CReserveTransfer::CROSS_SYSTEM;
                         }
 
-                        auto reserveMap = converterDef.GetCurrenciesMap();
+                        auto reserveMap = converterCurrency.GetCurrenciesMap();
                         if (feeCurrencyID != destSystemID &&
-                            !(converterDef.IsFractional() && (feeCurrencyID == converterID || reserveMap.count(feeCurrencyID))))
+                            !(converterCurrency.IsFractional() && (feeCurrencyID == converterID || reserveMap.count(feeCurrencyID))))
                         {
                             throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot convert fees " + EncodeDestination(CIdentityID(feeCurrencyID)) + " to " + destSystemDef.name + ". 3");
                         }
 
                         if (refundValid)
                         {
-                            dest.SetAuxDest(DestinationToTransferDestination(refundDestination), dest.AuxDestCount());
+                            dest.SetAuxDest(DestinationToTransferDestination(refundDestination), 0);
                         }
 
                         // converting from reserve to a fractional of that reserve
@@ -9913,7 +9911,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
 
                         if (refundValid)
                         {
-                            dest.SetAuxDest(DestinationToTransferDestination(refundDestination), dest.AuxDestCount());
+                            dest.SetAuxDest(DestinationToTransferDestination(refundDestination), 0);
                             std::vector<CTxDestination>({pk.GetID(), refundDestination});
                         }
 
@@ -9965,7 +9963,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         auto dest = DestinationToTransferDestination(destination);
                         if (refundValid)
                         {
-                            dest.SetAuxDest(DestinationToTransferDestination(refundDestination), dest.AuxDestCount());
+                            dest.SetAuxDest(DestinationToTransferDestination(refundDestination), 0);
                             std::vector<CTxDestination>({pk.GetID(), refundDestination});
                         }
 
@@ -10097,7 +10095,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             auto dest = DestinationToTransferDestination(destination);
                             if (refundValid)
                             {
-                                dest.SetAuxDest(DestinationToTransferDestination(refundDestination), dest.AuxDestCount());
+                                dest.SetAuxDest(DestinationToTransferDestination(refundDestination), 0);
                                 std::vector<CTxDestination>({pk.GetID(), refundDestination});
                             }
 

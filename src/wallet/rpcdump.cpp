@@ -772,17 +772,36 @@ UniValue z_importkey(const UniValue& params, bool fHelp)
     string strSecret = params[0].get_str();
     auto spendingkey = DecodeSpendingKey(strSecret);
     if (!IsValidSpendingKey(spendingkey)) {
-        libzcash::SaplingExtendedSpendingKey extSk;
         bool success = false;
         if (IsHex(strSecret))
         {
-            ::FromVector(ParseHex(strSecret), extSk, &success);
-        }
-        if (success)
-        {
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Hex key detected. Spending key cannot be verified. If it is valid, the correct spending key would be:\n" +
-                                                           EncodeSpendingKey(extSk) +
-                                                           "\n* DO NOT USE UNLESS YOU ARE CERTAIN THIS IS A VALID KEY!");
+            std::vector<unsigned char> data = ParseHex(strSecret);
+            std::vector<unsigned char, secure_allocator<unsigned char>> vch(data.begin(), data.end());
+            memory_cleanse(data.data(), data.size());
+            if (vch.size() != 32)
+            {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid hex spending key");
+            }
+
+            HDSeed seed(vch);
+
+            // Derive the address for Sapling account 0
+            auto m = libzcash::SaplingExtendedSpendingKey::Master(seed);
+            uint32_t bip44CoinType = Params().BIP44CoinType();
+
+            // We use a fixed keypath scheme of m/32'/coin_type'/account'
+            // Derive m/32'
+            auto m_32h = m.Derive(32 | ZIP32_HARDENED_KEY_LIMIT);
+
+            // Derive m/32'/coin_type'
+            auto m_32h_cth = m_32h.Derive(bip44CoinType | ZIP32_HARDENED_KEY_LIMIT);
+
+            // Derive m/32'/coin_type'/0'
+            libzcash::SaplingExtendedSpendingKey xsk = m_32h_cth.Derive(0 | ZIP32_HARDENED_KEY_LIMIT);
+
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Hex key detected. Spending key cannot be verified. If it is valid, the correct spending key to import would be:\n" +
+                                                        EncodeSpendingKey(xsk) +
+                                                        "\n* DO NOT USE UNLESS YOU ARE CERTAIN THIS IS A VALID KEY!");
         }
         else
         {
