@@ -9607,6 +9607,11 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         CCurrencyValueMap feeConversionPrices;
                         CCoinbaseCurrencyState feePriceState;
 
+                        if (!converterCurrency.IsValid() && (exportToCurrencyDef.IsFractional() || convertToCurrencyDef.IsFractional()))
+                        {
+                            converterCurrency = exportToCurrencyDef.IsFractional() ? exportToCurrencyDef : convertToCurrencyDef;
+                        }
+
                         bool sameChainConversion = converterCurrency.systemID == ASSETCHAINS_CHAINID;
 
                         uint160 converterID = converterCurrency.GetID();
