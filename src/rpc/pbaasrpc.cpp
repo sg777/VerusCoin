@@ -9509,6 +9509,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     }
 
                     validCurrencies = ValidExportCurrencies(offChainDef, height + 1);
+                    if (!converterCurrency.IsValid() && (exportToCurrencyDef.IsFractional() || convertToCurrencyDef.IsFractional()))
+                    {
+                        converterCurrency = exportToCurrencyDef.IsFractional() ? exportToCurrencyDef : convertToCurrencyDef;
+                    }
 
                     if (exportCurrency)
                     {
@@ -9540,7 +9544,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                               !preConvert &&
                               (!validCurrencies.count(sourceCurrencyID) ||
                                !converterCurrency.IsValid() ||
-                               converterCurrency.systemID != exportToCurrencyID ||
+                               converterCurrency.systemID != exportToCurrencyDef.systemID ||
                                !validCurrencies.count(convertToCurrencyID) ||
                                (!secondCurrencyID.IsNull() && !validCurrencies.count(secondCurrencyID)))) ||
                              (convertBeforeOffChain && !validCurrencies.count(secondCurrencyID.IsNull() ? convertToCurrencyID : secondCurrencyID)))
@@ -9607,11 +9611,6 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         CPBaaSNotarization lastConfirmedNotarization = cnd.vtx[cnd.lastConfirmed].second;
                         CCurrencyValueMap feeConversionPrices;
                         CCoinbaseCurrencyState feePriceState;
-
-                        if (!converterCurrency.IsValid() && (exportToCurrencyDef.IsFractional() || convertToCurrencyDef.IsFractional()))
-                        {
-                            converterCurrency = exportToCurrencyDef.IsFractional() ? exportToCurrencyDef : convertToCurrencyDef;
-                        }
 
                         bool sameChainConversion = converterCurrency.systemID == ASSETCHAINS_CHAINID;
 
