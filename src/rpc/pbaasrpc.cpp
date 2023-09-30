@@ -9537,6 +9537,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         }
                     }
                     else if ((!convertBeforeOffChain &&
+                              !preConvert &&
                               (!validCurrencies.count(sourceCurrencyID) ||
                                !converterCurrency.IsValid() ||
                                converterCurrency.systemID != exportToCurrencyID ||
