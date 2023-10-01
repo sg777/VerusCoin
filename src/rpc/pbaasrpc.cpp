@@ -9542,9 +9542,10 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                     }
                     else if ((!convertBeforeOffChain &&
                               !preConvert &&
+                              !convertToCurrencyID.IsNull() &&
                               (!validCurrencies.count(sourceCurrencyID) ||
-                               !converterCurrency.IsValid() ||
-                               converterCurrency.systemID != exportToCurrencyDef.systemID ||
+                               (converterCurrency.IsValid() &&
+                                converterCurrency.systemID != exportToCurrencyDef.systemID) ||
                                !validCurrencies.count(convertToCurrencyID) ||
                                (!secondCurrencyID.IsNull() && !validCurrencies.count(secondCurrencyID)))) ||
                              (convertBeforeOffChain && !validCurrencies.count(secondCurrencyID.IsNull() ? convertToCurrencyID : secondCurrencyID)))
