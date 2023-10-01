@@ -9794,13 +9794,14 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot get notarization/pricing information for " + exportToCurrencyDef.name);
                             }
                             auto currencyMap = cnd.vtx[cnd.lastConfirmed].second.currencyState.GetReserveMap();
-                            if (feeCurrencyID != destSystemID &&
-                                cnd.vtx[cnd.lastConfirmed].second.currencyState.IsPrelaunch() &&
-                                (!exportToCurrencyDef.IsPBaaSChain() || exportToCurrencyDef.launchSystemID != ASSETCHAINS_CHAINID || feeCurrencyID != ASSETCHAINS_CHAINID))
+                            if ((isConversion && !preConvert) ||
+                                (feeCurrencyID != dest.gatewayID &&
+                                 cnd.vtx[cnd.lastConfirmed].second.currencyState.IsPrelaunch() &&
+                                 (!exportToCurrencyDef.IsPBaaSChain() || exportToCurrencyDef.launchSystemID != ASSETCHAINS_CHAINID || feeCurrencyID != ASSETCHAINS_CHAINID)))
                             {
-                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency specified during pre-launch of converter.");
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency or conversion specified during pre-launch of converter.");
                             }
-                            if (!currencyMap.count(destSystemID) ||
+                            if (!currencyMap.count(dest.gatewayID) ||
                                 !currencyMap.count(ASSETCHAINS_CHAINID) ||
                                 (!currencyMap.count(feeCurrencyID) && feeCurrencyID != convertToCurrencyID))
                             {
