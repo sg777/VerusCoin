@@ -9794,9 +9794,17 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot get notarization/pricing information for " + exportToCurrencyDef.name);
                             }
                             auto currencyMap = cnd.vtx[cnd.lastConfirmed].second.currencyState.GetReserveMap();
-                            if (!currencyMap.count(destSystemID) || !currencyMap.count(ASSETCHAINS_CHAINID) || (!currencyMap.count(feeCurrencyID) && feeCurrencyID != convertToCurrencyID))
+                            if (feeCurrencyID != destSystemID &&
+                                cnd.vtx[cnd.lastConfirmed].second.currencyState.IsPrelaunch() &&
+                                (!exportToCurrencyDef.IsPBaaSChain() || exportToCurrencyDef.launchSystemID != ASSETCHAINS_CHAINID || feeCurrencyID != ASSETCHAINS_CHAINID))
                             {
-                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Local converter convert " + feeCurrencyDef.name + " to " + destSystemDef.name + ".");
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency specified during pre-launch of converter.");
+                            }
+                            if (!currencyMap.count(destSystemID) ||
+                                !currencyMap.count(ASSETCHAINS_CHAINID) ||
+                                (!currencyMap.count(feeCurrencyID) && feeCurrencyID != convertToCurrencyID))
+                            {
+                                throw JSONRPCError(RPC_INVALID_PARAMETER, "Local converter cannot convert " + feeCurrencyDef.name + " to " + destSystemDef.name + ".");
                             }
 
                             dest.fees = requiredFees;
