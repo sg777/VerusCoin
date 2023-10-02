@@ -9794,9 +9794,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Cannot get notarization/pricing information for " + exportToCurrencyDef.name);
                             }
                             auto currencyMap = cnd.vtx[cnd.lastConfirmed].second.currencyState.GetReserveMap();
-                            if ((isConversion && !preConvert) ||
+                            if (cnd.vtx[cnd.lastConfirmed].second.currencyState.IsPrelaunch() &&
+                                (isConversion && !preConvert) ||
                                 (feeCurrencyID != dest.gatewayID &&
-                                 cnd.vtx[cnd.lastConfirmed].second.currencyState.IsPrelaunch() &&
                                  (!exportToCurrencyDef.IsPBaaSChain() || exportToCurrencyDef.launchSystemID != ASSETCHAINS_CHAINID || feeCurrencyID != ASSETCHAINS_CHAINID)))
                             {
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency or conversion specified during pre-launch of converter.");
