@@ -9795,9 +9795,9 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                             }
                             auto currencyMap = cnd.vtx[cnd.lastConfirmed].second.currencyState.GetReserveMap();
                             if (cnd.vtx[cnd.lastConfirmed].second.currencyState.IsPrelaunch() &&
-                                (isConversion && !preConvert) ||
-                                (feeCurrencyID != dest.gatewayID &&
-                                 (!exportToCurrencyDef.IsPBaaSChain() || exportToCurrencyDef.launchSystemID != ASSETCHAINS_CHAINID || feeCurrencyID != ASSETCHAINS_CHAINID)))
+                                ((isConversion && !preConvert) ||
+                                 (feeCurrencyID != dest.gatewayID &&
+                                  (!exportToCurrencyDef.IsPBaaSChain() || exportToCurrencyDef.launchSystemID != ASSETCHAINS_CHAINID || feeCurrencyID != ASSETCHAINS_CHAINID))))
                             {
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid fee currency or conversion specified during pre-launch of converter.");
                             }
