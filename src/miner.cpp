@@ -2734,7 +2734,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             // if we should make an earned notarization, do so
             if (nHeight != 1 && !(VERUS_NOTARYID.IsNull() && VERUS_DEFAULTID.IsNull() && VERUS_NODEID.IsNull()))
             {
-                CIdentityID proposer = VERUS_NOTARYID.IsNull() ? (VERUS_DEFAULTID.IsNull() ? VERUS_NODEID : VERUS_DEFAULTID) : VERUS_NOTARYID;
+                CIdentityID proposer = VERUS_DEFAULTID.IsNull() ? (VERUS_NODEID.IsNull() ? VERUS_NOTARYID : VERUS_NODEID) : VERUS_DEFAULTID;
 
                 // if we have access to our notary daemon
                 // create a notarization if we would qualify to do so. add it to the mempool and next block
