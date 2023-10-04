@@ -2737,7 +2737,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                 CTransferDestination proposer;
                 if (firstDestination.which() == COptCCParams::ADDRTYPE_INVALID)
                 {
-                    proposer = DestinationToTransferDestination(VERUS_DEFAULTID.IsNull() ? (VERUS_NODEID.IsNull() ? VERUS_NOTARYID : VERUS_NODEID) : VERUS_DEFAULTID);
+                    proposer = DestinationToTransferDestination(CIdentityID(VERUS_DEFAULTID.IsNull() ? (VERUS_NODEID.IsNull() ? VERUS_NOTARYID : VERUS_NODEID) : VERUS_DEFAULTID));
                 }
                 else
                 {
