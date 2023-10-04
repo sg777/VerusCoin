@@ -20,6 +20,7 @@
 
 #include <timedata.h>
 #include <assert.h>
+#include <random>
 
 using namespace std;
 
@@ -9697,6 +9698,24 @@ std::vector<uint256> CPBaaSNotarization::SubmitFinalizedNotarizations(const CRPC
     {
         LogPrint("notarization", "skipping submission due to no pending exports or currency transitions\n");
         return retVal;
+    }
+
+    // if this is an ETH protocol, we could get reverted and still have to pay, so if we are a notary,
+    // to prevent funds loss, sort notaries and make sure we are in the top 2 before we try to submit
+    if (externalSystem.chainDefinition.proofProtocol == CCurrencyDefinition::PROOF_ETHNOTARIZATION &&
+        notarySet.count(VERUS_NOTARYID))
+    {
+        CNativeHashWriter hw;
+        hw << nHeight;
+        uint256 prHash = hw.GetHash();
+        std::vector<uint160> notaryVec = externalSystem.chainDefinition.notaries;
+        auto prandom = std::minstd_rand0(UintToArith256(prHash).GetLow64());
+        shuffle(notaryVec.begin(), notaryVec.end(), prandom);
+        if (notaryVec[0] != VERUS_NOTARYID && notaryVec[1] != VERUS_NOTARYID)
+        {
+            LogPrint("notarization", "skipping notarization submission - was not selected for submission lottery\n");
+            return retVal;
+        }
     }
 
     // now, we should have enough evidence to prove
