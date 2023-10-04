@@ -2735,6 +2735,10 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             if (nHeight != 1 && !(VERUS_NOTARYID.IsNull() && VERUS_DEFAULTID.IsNull() && VERUS_NODEID.IsNull()))
             {
                 CIdentityID proposer = VERUS_DEFAULTID.IsNull() ? (VERUS_NODEID.IsNull() ? VERUS_NOTARYID : VERUS_NODEID) : VERUS_DEFAULTID;
+                if (firstDestination.which() == COptCCParams::ADDRTYPE_ID && GetDestinationID(firstDestination) == GetDestinationID(VERUS_NOTARYID))
+                {
+                    proposer = VERUS_NOTARYID;
+                }
 
                 // if we have access to our notary daemon
                 // create a notarization if we would qualify to do so. add it to the mempool and next block
