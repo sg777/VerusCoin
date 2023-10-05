@@ -8574,6 +8574,71 @@ UniValue listopenoffers(const UniValue& params, bool fHelp)
 
 bool IsValidExportCurrency(const CCurrencyDefinition &systemDest, const uint160 &exportCurrencyID, uint32_t height);
 
+CAmount GetMinRelayFeeForBuilder(const TransactionBuilder &tb, CAmount identityFeeFactor, bool isIdentity)
+{
+    // Require that free transactions have sufficient priority to be mined in the next block.
+    CAmount minFee = identityFeeFactor * DEFAULT_TRANSACTION_FEE;
+
+    // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
+    // we make allowance for 1 z-output or t-output, 1 native z-change, one token change, and 1 blacklisted change
+    int idExtraLimit = 0;
+    if (isIdentity)
+    {
+        for (auto &oneOut : tb.mtx.vout)
+        {
+            COptCCParams idP;
+            if (oneOut.scriptPubKey.IsPayToCryptoCondition(idP) &&
+                idP.evalCode == EVAL_IDENTITY_RESERVATION)
+            {
+                idExtraLimit = ConnectedChains.ThisChain().IDReferralLevels() + 2;
+            }
+            else if (idP.IsValid() &&
+                        idP.evalCode == EVAL_IDENTITY_ADVANCEDRESERVATION)
+            {
+                CAdvancedNameReservation advNewName;
+                if (!(idP.vData.size() && (advNewName = CAdvancedNameReservation(idP.vData[0])).IsValid()))
+                {
+                    throw JSONRPCError(RPC_INTERNAL_ERROR, "Created invalid transaction.");
+                }
+                CCurrencyDefinition parentCurrency = advNewName.parent.IsNull() ? ConnectedChains.ThisChain() : ConnectedChains.GetCachedCurrency(advNewName.parent);
+                idExtraLimit = parentCurrency.IDReferralLevels() + 2;
+            }
+        }
+    }
+
+    if (!minFee)
+    {
+        minFee = DEFAULT_TRANSACTION_FEE;
+    }
+
+    if (tb.mtx.vout.size() > (1 + idExtraLimit))
+    {
+        minFee += (std::max((int64_t)(tb.SpendCount() - 1), (int64_t)0) + std::max((int64_t)(tb.mtx.vout.size() - (1 + idExtraLimit)), (int64_t)0)) * DEFAULT_TRANSACTION_FEE;
+    }
+    else if (tb.mtx.vout.size() > idExtraLimit)
+    {
+        minFee += std::max((int64_t)(tb.SpendCount() - 1), (int64_t)0) * DEFAULT_TRANSACTION_FEE;
+    }
+    else
+    {
+        minFee += std::max((int64_t)(tb.SpendCount() - 2), (int64_t)0) * DEFAULT_TRANSACTION_FEE;
+    }
+
+    if (!(identityFeeFactor && tb.mtx.vout.size() <= (1 + idExtraLimit)))
+    {
+        int64_t extraOutputCostThreshold = CScript::MAX_SCRIPT_ELEMENT_SIZE / 3;
+        for (auto &oneOut : tb.mtx.vout)
+        {
+            int64_t extraSize = std::max((int64_t)oneOut.scriptPubKey.size() - extraOutputCostThreshold, (int64_t)0);
+            if (extraSize)
+            {
+                minFee += DEFAULT_TRANSACTION_FEE + ((extraSize - extraOutputCostThreshold) > 0 ? DEFAULT_TRANSACTION_FEE : 0);
+            }
+        }
+    }
+    return minFee;
+}
+
 UniValue sendcurrency(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() < 2 || params.size() > 5)
@@ -9745,7 +9810,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         }
                         else
                         {
-                            CAmount adjustedFees = CCurrencyState::NativeGasToReserveRaw(offChainDef.GetTransactionImportFee() << 1, feeConversionRate);
+                            CAmount adjustedFees = CCurrencyState::NativeGasToReserveRaw(offChainDef.GetTransactionImportFee() << (offChainDef.proofProtocol == offChainDef.PROOF_ETHNOTARIZATION ? 0 : 1), feeConversionRate);
                             if (adjustedFees < 0)
                             {
                                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Fee calculation overflow 5");
@@ -9761,7 +9826,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         {
                             // if same chain first, we need to ensure that we have enough fees on the other side or it will get
                             // refunded and fall short. add 20% buffer.
-                            requiredFees += CCurrencyDefinition::CalculateRatioOfValue(requiredFees, SATOSHIDEN / 5);
+                            requiredFees += CCurrencyDefinition::CalculateRatioOfValue(requiredFees, SATOSHIDEN / (offChainDef.proofProtocol == offChainDef.PROOF_ETHNOTARIZATION ? 2 : 5));
 
                             // if we're converting and then sending, we don't need an initial fee, so all
                             // fees go into the final destination
@@ -9920,8 +9985,13 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
                         }
                         else
                         {
-                            CAmount adjustedFees = CCurrencyState::NativeGasToReserveRaw(offChainDef.GetTransactionImportFee() << 1, feeConversionRate);
+                            CAmount adjustedFees = CCurrencyState::NativeGasToReserveRaw(offChainDef.GetTransactionImportFee() << (offChainDef.proofProtocol == offChainDef.PROOF_ETHNOTARIZATION ? 0 : 1), feeConversionRate);
                             requiredFees = CCurrencyState::ReserveToNativeRaw(adjustedFees, reversePriceInFeeCur);
+                        }
+
+                        if (offChainDef.proofProtocol == offChainDef.PROOF_ETHNOTARIZATION)
+                        {
+                            requiredFees += CCurrencyDefinition::CalculateRatioOfValue(requiredFees, SATOSHIDEN / 10);
                         }
 
                         if (refundValid)
@@ -10177,22 +10247,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     // if fee offer was not specified, calculate
     if (!feeAmount)
     {
-        // calculate total fee required to update based on content in content maps
-        // as of PBaaS, standard contentMaps cost an extra standard fee per entry
-        // contentMultiMaps cost an extra standard fee for each 128 bytes in size
-        feeAmount = DEFAULT_TRANSACTION_FEE;
-
-        int zSize = zOutputs.size();
-        if (hasZSource || (VERUS_PRIVATECHANGE && !VERUS_DEFAULT_ZADDR.empty()))
-        {
-            zSize++;
-        }
-
-        // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
-        if ((zSize > 1 && tOutputs.size() > 3) || (zSize > 2 && tOutputs.size() > 2) || zSize > 3)
-        {
-            feeAmount += ((tOutputs.size() > 3 ? (zSize - 1) : (tOutputs.size() > 2) ? zSize - 2 : zSize - 3) * DEFAULT_TRANSACTION_FEE);
-        }
+        feeAmount = GetMinRelayFeeForBuilder(tb, 0, false);
     }
 
     if (returnTx)
@@ -13489,7 +13544,7 @@ UniValue updateidentity(const UniValue& params, bool fHelp)
         identityFeeFactor += newID.primaryAddresses.size() > 1 ? newID.primaryAddresses.size() - 1 : 0;
         identityFeeFactor += newID.privateAddresses.size() > 1 ? newID.privateAddresses.size() - 1 : 0;
 
-        feeOffer = DEFAULT_TRANSACTION_FEE + (identityFeeFactor * DEFAULT_TRANSACTION_FEE);
+        feeOffer = GetMinRelayFeeForBuilder(tb, identityFeeFactor, true);
     }
 
     CAmount totalFound = 0;
