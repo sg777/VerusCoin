@@ -2191,13 +2191,16 @@ int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNe
     //    << CStakeParams(pSrcIndex->GetHeight(), tipindex->GetHeight() + 1, pSrcIndex->GetBlockHash(), pk).AsVector();
     // !! DOWN TO HERE
 
-    if (USE_EXTERNAL_PUBKEY)
+    if (VERUS_NOTARYID.IsNull() || GetDestinationID(rewardDest) != GetDestinationID(VERUS_NOTARYID))
     {
-        rewardDest = CPubKey(ParseHex(NOTARY_PUBKEY));
-    }
-    else if (!VERUS_DEFAULTID.IsNull())
-    {
-        rewardDest = VERUS_DEFAULTID;
+        if (USE_EXTERNAL_PUBKEY)
+        {
+            rewardDest = CPubKey(ParseHex(NOTARY_PUBKEY));
+        }
+        else if (!VERUS_DEFAULTID.IsNull())
+        {
+            rewardDest = VERUS_DEFAULTID;
+        }
     }
 
     if (rewardDest.which() == COptCCParams::ADDRTYPE_INVALID)

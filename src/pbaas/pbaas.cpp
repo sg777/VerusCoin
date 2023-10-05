@@ -18,6 +18,7 @@
 #include "deprecation.h"
 #include "cc/StakeGuard.h"
 #include <map>
+#include <random>
 
 CConnectedChains ConnectedChains;
 extern uint32_t KOMODO_STOPAT;
@@ -8354,11 +8355,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         if (reserveChange > CCurrencyValueMap())
         {
             CTxDestination changeDest;
-            if (!VERUS_NOTARYID.IsNull())
-            {
-                changeDest = VERUS_NOTARYID;
-            }
-            else if (!VERUS_DEFAULTID.IsNull())
+            if (!VERUS_DEFAULTID.IsNull())
             {
                 changeDest = VERUS_DEFAULTID;
             }
@@ -11181,60 +11178,95 @@ void CConnectedChains::SubmissionThread()
                                                 ConnectedChains.FirstNotaryChain().chainDefinition,
                                                 lastConfirmed,
                                                 lastConfirmedUTXO);
+
                     if (exports.size())
                     {
-                        bool success = true;
-                        UniValue exportParamObj(UniValue::VOBJ);
-
-                        exportParamObj.pushKV("sourcesystemid", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)));
-                        exportParamObj.pushKV("notarizationtxid", lastConfirmedUTXO.hash.GetHex());
-                        exportParamObj.pushKV("notarizationtxoutnum", (int)lastConfirmedUTXO.n);
-
-                        UniValue exportArr(UniValue::VARR);
-                        for (auto &oneExport : exports)
+                        bool submitImports = true;
+                        const CCurrencyDefinition &notaryCurrency = ConnectedChains.FirstNotaryChain().chainDefinition;
+                        // if this is an ETH protocol, we could get reverted and still have to pay, so if we are a notary,
+                        // to prevent funds loss, sort notaries and make sure we are in the top 2 before we try to submit
+                        if (notaryCurrency.proofProtocol == CCurrencyDefinition::PROOF_ETHNOTARIZATION)
                         {
-                            if (!oneExport.first.second.IsValid())
+                            bool amNotary = false;
+                            for (auto &oneNotary : notaryCurrency.notaries)
                             {
-                                success = false;
-                                break;
-                            }
-                            UniValue oneExportUni(UniValue::VOBJ);
-                            oneExportUni.pushKV("txid", oneExport.first.first.txIn.prevout.hash.GetHex());
-                            oneExportUni.pushKV("txoutnum", (int)oneExport.first.first.txIn.prevout.n);
-                            oneExportUni.pushKV("partialtransactionproof", oneExport.first.second.ToUniValue());
-                            UniValue rtArr(UniValue::VARR);
-
-                            if (LogAcceptCategory("crosschainexports") && IsVerusActive())
-                            {
-                                CDataStream ds = CDataStream(SER_GETHASH, PROTOCOL_VERSION);
-                                for (auto &oneTransfer : oneExport.second)
+                                if (oneNotary == VERUS_NOTARYID)
                                 {
-                                    ds << oneTransfer;
+                                    amNotary = true;
+                                    break;
                                 }
-                                std::vector<unsigned char> streamVec(ds.begin(), ds.end());
-                                printf("%s: transfers as hex: %s\n", __func__, HexBytes(&(streamVec[0]), streamVec.size()).c_str());
-                                LogPrint("bridge", "%s: transfers as hex: %s\n", __func__, HexBytes(&(streamVec[0]), streamVec.size()).c_str());
                             }
-
-                            for (auto &oneTransfer : oneExport.second)
+                            if (amNotary)
                             {
-                                rtArr.push_back(oneTransfer.ToUniValue());
+                                CNativeHashWriter hw;
+                                hw << height;
+                                uint256 prHash = hw.GetHash();
+                                std::vector<uint160> notaryVec = notaryCurrency.notaries;
+                                auto prandom = std::minstd_rand0(UintToArith256(prHash).GetLow64());
+                                shuffle(notaryVec.begin(), notaryVec.end(), prandom);
+                                if (notaryVec[0] != VERUS_NOTARYID && notaryVec[1] != VERUS_NOTARYID)
+                                {
+                                    LogPrint("notarization", "skipping import submission - was not selected for submission lottery\n");
+                                    submitImports = false;
+                                }
                             }
-                            oneExportUni.pushKV("transfers", rtArr);
-                            exportArr.push_back(oneExportUni);
                         }
 
-                        exportParamObj.pushKV("exports", exportArr);
+                        if (submitImports)
+                        {
+                            bool success = true;
+                            UniValue exportParamObj(UniValue::VOBJ);
 
-                        UniValue params(UniValue::VARR);
-                        params.push_back(exportParamObj);
-                        UniValue result = NullUniValue;
-                        try
-                        {
-                            result = find_value(RPCCallRoot("submitimports", params), "result");
-                        } catch (exception e)
-                        {
-                            LogPrintf("%s: Error submitting imports to notary chain %s\n", uni_get_str(params[0]).c_str());
+                            exportParamObj.pushKV("sourcesystemid", EncodeDestination(CIdentityID(ASSETCHAINS_CHAINID)));
+                            exportParamObj.pushKV("notarizationtxid", lastConfirmedUTXO.hash.GetHex());
+                            exportParamObj.pushKV("notarizationtxoutnum", (int)lastConfirmedUTXO.n);
+
+                            UniValue exportArr(UniValue::VARR);
+                            for (auto &oneExport : exports)
+                            {
+                                if (!oneExport.first.second.IsValid())
+                                {
+                                    success = false;
+                                    break;
+                                }
+                                UniValue oneExportUni(UniValue::VOBJ);
+                                oneExportUni.pushKV("txid", oneExport.first.first.txIn.prevout.hash.GetHex());
+                                oneExportUni.pushKV("txoutnum", (int)oneExport.first.first.txIn.prevout.n);
+                                oneExportUni.pushKV("partialtransactionproof", oneExport.first.second.ToUniValue());
+                                UniValue rtArr(UniValue::VARR);
+
+                                if (LogAcceptCategory("crosschainexports") && IsVerusActive())
+                                {
+                                    CDataStream ds = CDataStream(SER_GETHASH, PROTOCOL_VERSION);
+                                    for (auto &oneTransfer : oneExport.second)
+                                    {
+                                        ds << oneTransfer;
+                                    }
+                                    std::vector<unsigned char> streamVec(ds.begin(), ds.end());
+                                    printf("%s: transfers as hex: %s\n", __func__, HexBytes(&(streamVec[0]), streamVec.size()).c_str());
+                                    LogPrint("bridge", "%s: transfers as hex: %s\n", __func__, HexBytes(&(streamVec[0]), streamVec.size()).c_str());
+                                }
+
+                                for (auto &oneTransfer : oneExport.second)
+                                {
+                                    rtArr.push_back(oneTransfer.ToUniValue());
+                                }
+                                oneExportUni.pushKV("transfers", rtArr);
+                                exportArr.push_back(oneExportUni);
+                            }
+
+                            exportParamObj.pushKV("exports", exportArr);
+
+                            UniValue params(UniValue::VARR);
+                            params.push_back(exportParamObj);
+                            UniValue result = NullUniValue;
+                            try
+                            {
+                                result = find_value(RPCCallRoot("submitimports", params), "result");
+                            } catch (exception e)
+                            {
+                                LogPrintf("%s: Error submitting imports to notary chain %s\n", uni_get_str(params[0]).c_str());
+                            }
                         }
                     }
                 }
