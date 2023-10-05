@@ -2741,7 +2741,7 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
                 }
                 else
                 {
-                    DestinationToTransferDestination(firstDestination.which() == COptCCParams::ADDRTYPE_PK ? CKeyID(GetDestinationID(firstDestination)) : firstDestination);
+                    proposer = DestinationToTransferDestination(firstDestination.which() == COptCCParams::ADDRTYPE_PK ? CKeyID(GetDestinationID(firstDestination)) : firstDestination);
                 }
 
                 // if we have access to our notary daemon
