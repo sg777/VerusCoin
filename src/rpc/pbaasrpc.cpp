@@ -659,7 +659,8 @@ void CurrencyNotarizationTypeQuery(CCurrencyDefinition::EQueryOptions launchStat
                 }
                 if (!currenciesFound.count(curDefUTXO) &&
                     (!endBlock || currencyHeight < endBlock) &&
-                    (!startBlock || curDef.startBlock >= startBlock))
+                    (!startBlock || curDef.startBlock >= startBlock) &&
+                    !(launchStateQuery == CCurrencyDefinition::QUERY_LAUNCHSTATE_PRELAUNCH && curDef.startBlock >= chainActive.Height()))
                 {
                     currenciesFound[curDefUTXO] = curDefVec.size();
                     curDefVec.push_back(std::make_pair(std::make_pair(curDefUTXO, goodNodes), curDef));
