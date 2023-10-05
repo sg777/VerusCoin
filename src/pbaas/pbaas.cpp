@@ -8355,11 +8355,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         if (reserveChange > CCurrencyValueMap())
         {
             CTxDestination changeDest;
-            if (!VERUS_NOTARYID.IsNull())
-            {
-                changeDest = VERUS_NOTARYID;
-            }
-            else if (!VERUS_DEFAULTID.IsNull())
+            if (!VERUS_DEFAULTID.IsNull())
             {
                 changeDest = VERUS_DEFAULTID;
             }
