@@ -106,11 +106,12 @@ UniValue convertpassphrase(const UniValue& params, bool fHelp)
         uint256 sha256;
         CSHA256().Write((const unsigned char *)strAgamaPassphrase.c_str(), strAgamaPassphrase.length()).Finalize(sha256.begin());
         std::vector<unsigned char> privkey(sha256.begin(), sha256.begin() + sha256.size());
+
         privkey.front() &= 0xf8;
         privkey.back()  &= 0x7f;
         privkey.back()  |= 0x40;
         CKey key;
-        key.Set(privkey.begin(),privkey.end(), fCompressed);
+        key.Set(privkey.begin(), privkey.end(), fCompressed);
         CPubKey pubkey = key.GetPubKey();
         assert(key.VerifyPubKey(pubkey));
         CKeyID vchAddress = pubkey.GetID();
@@ -778,7 +779,7 @@ UniValue z_importkey(const UniValue& params, bool fHelp)
             std::vector<unsigned char> data = ParseHex(strSecret);
             std::vector<unsigned char, secure_allocator<unsigned char>> vch(data.begin(), data.end());
             memory_cleanse(data.data(), data.size());
-            if (vch.size() != 32)
+            if (vch.size() != 32 && vch.size() != 64)
             {
                 throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid hex spending key");
             }
@@ -798,10 +799,7 @@ UniValue z_importkey(const UniValue& params, bool fHelp)
 
             // Derive m/32'/coin_type'/0'
             libzcash::SaplingExtendedSpendingKey xsk = m_32h_cth.Derive(0 | ZIP32_HARDENED_KEY_LIMIT);
-
-            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Hex key detected. Spending key cannot be verified. If it is valid, the correct spending key to import would be:\n" +
-                                                        EncodeSpendingKey(xsk) +
-                                                        "\n* DO NOT USE UNLESS YOU ARE CERTAIN THIS IS A VALID KEY!");
+            spendingkey = xsk;
         }
         else
         {

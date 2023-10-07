@@ -1756,6 +1756,71 @@ bool CheckTransactionWithoutProofVerification(const CTransaction& tx, CValidatio
     return true;
 }
 
+CAmount GetMinRelayFeeByOutputs(const CReserveTransactionDescriptor &txDesc, const CTransaction &tx, CValidationState &state, CAmount identityFeeFactor)
+{
+    // Require that free transactions have sufficient priority to be mined in the next block.
+    CAmount minFee = identityFeeFactor * DEFAULT_TRANSACTION_FEE;
+
+    // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
+    // we make allowance for 1 z-output or t-output, 1 native z-change, one token change, and 1 blacklisted change
+    int idExtraLimit = 0;
+    if (txDesc.IsIdentityDefinition())
+    {
+        for (auto &oneOut : tx.vout)
+        {
+            COptCCParams idP;
+            if (oneOut.scriptPubKey.IsPayToCryptoCondition(idP) &&
+                idP.evalCode == EVAL_IDENTITY_RESERVATION)
+            {
+                idExtraLimit = ConnectedChains.ThisChain().IDReferralLevels() + 2;
+            }
+            else if (idP.IsValid() &&
+                        idP.evalCode == EVAL_IDENTITY_ADVANCEDRESERVATION)
+            {
+                CAdvancedNameReservation advNewName;
+                if (!(idP.vData.size() && (advNewName = CAdvancedNameReservation(idP.vData[0])).IsValid()))
+                {
+                    return state.DoS(0, error("Invalid identity reservation"));
+                }
+                CCurrencyDefinition parentCurrency = advNewName.parent.IsNull() ? ConnectedChains.ThisChain() : ConnectedChains.GetCachedCurrency(advNewName.parent);
+                idExtraLimit = parentCurrency.IDReferralLevels() + 2;
+            }
+        }
+    }
+
+    if (!minFee)
+    {
+        minFee = DEFAULT_TRANSACTION_FEE;
+    }
+
+    if (tx.vout.size() > (3 + idExtraLimit))
+    {
+        minFee += (std::max((int64_t)(tx.vShieldedOutput.size() - 1), (int64_t)0) + std::max((int64_t)(tx.vout.size() - (3 + idExtraLimit)), (int64_t)0)) * DEFAULT_TRANSACTION_FEE;
+    }
+    else if (tx.vout.size() > (2 + idExtraLimit))
+    {
+        minFee += std::max((int64_t)(tx.vShieldedOutput.size() - 2), (int64_t)0) * DEFAULT_TRANSACTION_FEE;
+    }
+    else
+    {
+        minFee += std::max((int64_t)(tx.vShieldedOutput.size() - 3), (int64_t)0) * DEFAULT_TRANSACTION_FEE;
+    }
+
+    if (!(identityFeeFactor && tx.vout.size() <= (3 + idExtraLimit)) && !txDesc.IsImport() && !txDesc.IsNotaryPrioritized())
+    {
+        int64_t extraOutputCostThreshold = CScript::MAX_SCRIPT_ELEMENT_SIZE / 3;
+        for (auto &oneOut : tx.vout)
+        {
+            int64_t extraSize = std::max((int64_t)oneOut.scriptPubKey.size() - extraOutputCostThreshold, (int64_t)0);
+            if (extraSize)
+            {
+                minFee += DEFAULT_TRANSACTION_FEE + ((extraSize - extraOutputCostThreshold) > 0 ? DEFAULT_TRANSACTION_FEE : 0);
+            }
+        }
+    }
+    return minFee;
+}
+
 CAmount GetMinRelayFee(const CTransaction& tx, unsigned int nBytes, bool fAllowFree)
 {
     extern int32_t KOMODO_ON_DEMAND;
@@ -2147,35 +2212,22 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         int64_t maxFreeSizeLimit = GetArg("-limitfreerelay", 15)*1000;
         int64_t defaultLimitRate = maxFreeSizeLimit*10;
 
-        // Don't accept it if it can't get into a block
-        CAmount txMinFee = GetMinRelayFee(tx, nSize, defaultLimitRate != 0);
-        if (fLimitFree && nFees < txMinFee)
+        CAmount minFee = GetMinRelayFeeByOutputs(txDesc, tx, state, identityFeeFactor);
+        if (state.IsError())
+        {
+            return false;
+        }
+
+        if (!identityFeeFactor)
+        {
+            minFee = std::min(minFee, GetMinRelayFee(tx, nSize, defaultLimitRate != 0));
+        }
+
+        // Don't accept it if it doesn't meet minimum fees
+        if (fLimitFree && nFees < minFee)
         {
             //fprintf(stderr,"accept failure.5\n");
-            return state.DoS(0, error("AcceptToMemoryPool: not enough fees %s, %d < %d",hash.ToString(), nFees, txMinFee),REJECT_INSUFFICIENTFEE, "insufficient fee");
-        }
-
-        // Require that free transactions have sufficient priority to be mined in the next block.
-        CAmount minFee = identityFeeFactor * DEFAULT_TRANSACTION_FEE;
-
-        // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
-        // we make allowance for 1 z-output or t-output, 1 native z-change, one token change, and 1 blacklisted change
-        int idExtraLimit = txDesc.IsIdentityDefinition() ? ConnectedChains.ThisChain().idReferralLevels + 2 : 0;
-        if ((tx.vShieldedOutput.size() > 1 && tx.vout.size() > (3 + idExtraLimit)) || (tx.vShieldedOutput.size() > 2 && tx.vout.size() > 2) || tx.vShieldedOutput.size() > 3)
-        {
-            minFee += ((tx.vout.size() > 3 ? (tx.vShieldedOutput.size() - 1) :
-                                                (tx.vout.size() > 2 ? tx.vShieldedOutput.size() - 2 :
-                                                                        tx.vShieldedOutput.size() - 3)) *
-                            DEFAULT_TRANSACTION_FEE);
-        }
-
-        if (minFee)
-        {
-            minFee += DEFAULT_TRANSACTION_FEE;
-        }
-        else
-        {
-            minFee = ::minRelayTxFee.GetFee(nSize);
+            return state.DoS(0, error("AcceptToMemoryPool: not enough fees %s, %d < %d",hash.ToString(), nFees, minFee),REJECT_INSUFFICIENTFEE, "insufficient fee");
         }
 
         if (GetBoolArg("-relaypriority", false) && nFees < minFee && !AllowFree(view.GetPriority(tx, chainActive.Height() + 1))) {

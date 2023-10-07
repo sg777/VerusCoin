@@ -120,6 +120,20 @@ public:
         return reserveFee;
     }
 
+    int SpendCount() const
+    {
+        return spends.size();
+    }
+
+    CScript GetOpRet() const
+    {
+        if (opReturn)
+        {
+            return opReturn.get();
+        }
+        return CScript();
+    }
+
     // Throws if the anchor does not match the anchor used by
     // previously-added Sapling spends.
     void AddSaplingSpend(
