@@ -2218,16 +2218,9 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             return false;
         }
 
-        // Don't accept it if it doesn't meet minimum fees
-        if (fLimitFree && nFees < minFee)
-        {
-            //fprintf(stderr,"accept failure.5\n");
-            return state.DoS(0, error("AcceptToMemoryPool: not enough fees %s, %d < %d",hash.ToString(), nFees, minFee),REJECT_INSUFFICIENTFEE, "insufficient fee");
-        }
-
         if (GetBoolArg("-relaypriority", false) && nFees < minFee && !AllowFree(view.GetPriority(tx, chainActive.Height() + 1))) {
             fprintf(stderr,"accept failure.6\n");
-            return state.DoS(0, false, REJECT_INSUFFICIENTFEE, "insufficient priority");
+            return state.DoS(0, false, REJECT_INSUFFICIENTFEE, "insufficient priority for fee");
         }
 
         // Continuously rate-limit free (really, very-low-fee) transactions
