@@ -2210,7 +2210,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         unsigned int nSize = entry.GetTxSize();
 
         int64_t maxFreeSizeLimit = GetArg("-limitfreerelay", 15)*1000;
-        int64_t defaultLimitRate = maxFreeSizeLimit*10;
+        int64_t defaultLimitRate = maxFreeSizeLimit * 10;
 
         CAmount minFee = GetMinRelayFeeByOutputs(txDesc, tx, state, identityFeeFactor);
         if (state.IsError())
@@ -2218,21 +2218,9 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             return false;
         }
 
-        if (!identityFeeFactor)
-        {
-            minFee = std::min(minFee, GetMinRelayFee(tx, nSize, defaultLimitRate != 0));
-        }
-
-        // Don't accept it if it doesn't meet minimum fees
-        if (fLimitFree && nFees < minFee)
-        {
-            //fprintf(stderr,"accept failure.5\n");
-            return state.DoS(0, error("AcceptToMemoryPool: not enough fees %s, %d < %d",hash.ToString(), nFees, minFee),REJECT_INSUFFICIENTFEE, "insufficient fee");
-        }
-
         if (GetBoolArg("-relaypriority", false) && nFees < minFee && !AllowFree(view.GetPriority(tx, chainActive.Height() + 1))) {
             fprintf(stderr,"accept failure.6\n");
-            return state.DoS(0, false, REJECT_INSUFFICIENTFEE, "insufficient priority");
+            return state.DoS(0, false, REJECT_INSUFFICIENTFEE, "insufficient priority for fee");
         }
 
         // Continuously rate-limit free (really, very-low-fee) transactions
@@ -2246,7 +2234,8 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
         // recognize those imports, exempt block 1, or consider using fees from the initial
         // currency definition. Exports pay delayed fees back, imports allow fees to keep flowing.
         if (!(txDesc.IsValid() && (txDesc.IsImport() || txDesc.IsExport() || txDesc.IsNotaryPrioritized())) &&
-            fLimitFree && nFees < minFee)
+            fLimitFree &&
+            nFees < minFee)
         {
             static CCriticalSection csFreeLimiter;
             static double dFreeCount;
@@ -2266,12 +2255,16 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
                 fprintf(stderr,"AcceptToMemoryPool failure.7\n");
                 return state.DoS(0, error("AcceptToMemoryPool: free transaction rejected by rate limiter"), REJECT_INSUFFICIENTFEE, "rate limited free transaction");
             }
-            LogPrint("mempool", "Rate limit dFreeCount: %g => %g\n", dFreeCount, dFreeCount+nSize);
+            LogPrint("mempool", "Rate limit dFreeCount: %g => %g\n", dFreeCount, dFreeCount + nSize);
             dFreeCount += nSize;
         }
 
         // make sure this will check any normal error case and not fail with exchanges, exports/imports, identities, etc.
-        if ((!txDesc.IsValid() || !txDesc.IsHighFee()) && fRejectAbsurdFee && nFees > minFee * 10000 && nFees > nValueOut/19)
+        if ((!txDesc.IsValid() || !txDesc.IsHighFee()) &&
+            fRejectAbsurdFee &&
+            nFees > minFee * 10000 &&
+            nFees > (GetMinRelayFee(tx, nSize, defaultLimitRate != 0) * 10000) &&
+            nFees > nValueOut/19)
         {
             string errmsg = strprintf("absurdly high fees %s, %d > %d",
                                       hash.ToString(),
