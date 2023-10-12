@@ -2223,7 +2223,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             return state.DoS(0, false, REJECT_INSUFFICIENTFEE, "insufficient priority for fee");
         }
 
-        // Continuously rate-limit free (really, very-low-fee) transactions
+        // Continuously rate-limit free or very-low-fee transactions
         // This mitigates 'penny-flooding' -- sending thousands of free transactions just to
         // be annoying or make others' transactions take longer to confirm.
         //

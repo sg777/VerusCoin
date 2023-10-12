@@ -252,7 +252,7 @@ UniValue RPCCallRoot(const string& strMethod, const UniValue& params, int timeou
         {
             PBAAS_USERPASS = userIt->second[0] + ":" + passIt->second[0];
             PBAAS_PORT = atoi(portIt->second[0]);
-            PBAAS_HOST = hostIt == settingsmulti.end() ? hostIt->second[0] : "127.0.0.1";
+            PBAAS_HOST = hostIt != settingsmulti.end() ? hostIt->second[0] : "127.0.0.1";
             if (!PBAAS_HOST.size())
             {
                 PBAAS_HOST = "127.0.0.1";
