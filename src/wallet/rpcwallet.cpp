@@ -3895,6 +3895,7 @@ UniValue resendwallettransactions(const UniValue& params, bool fHelp)
     return result;
 }
 
+void CurrencyValuesAndNames(UniValue &output, bool spending, const CTransaction &tx, int index, CAmount satoshis, bool friendlyNames=false);
 UniValue listunspent(const UniValue& params, bool fHelp)
 {
     if (!EnsureWalletIsAvailable(fHelp))
@@ -4003,6 +4004,13 @@ UniValue listunspent(const UniValue& params, bool fHelp)
         }
         CAmount nValue = out.tx->vout[out.i].nValue;
         entry.push_back(Pair("amount", ValueFromAmount(out.tx->vout[out.i].nValue)));
+
+        COptCCParams p;
+        if (out.tx->vout[out.i].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid())
+        {
+            CurrencyValuesAndNames(entry, false, *(CTransaction *)out.tx, out.i, out.tx->vout[out.i].nValue, false);
+        }
 
         CCurrencyValueMap reserveOut;
         if (ConnectedChains.ThisChain().IsFractional() && (reserveOut = out.tx->vout[out.i].scriptPubKey.ReserveOutValue()).valueMap.size())
