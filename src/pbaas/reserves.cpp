@@ -233,7 +233,8 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
                   (rtExport = CCrossChainExport(p.vData[0])).IsValid() &&
                   rtExport.IsSupplemental()))
             {
-                if (p.IsValid() &&
+                if ((!IsVerusMainnetActive() || chainActive.Height() > PBAAS_LARGE_ETH_PROOF_ACTIVATION) && 
+                    p.IsValid() &&
                     p.evalCode == EVAL_NOTARY_EVIDENCE)
                 {
                     // if we have too large evidence for one output,
