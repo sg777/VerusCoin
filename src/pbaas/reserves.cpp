@@ -233,6 +233,15 @@ bool CCrossChainExport::GetExportInfo(const CTransaction &exportTx,
                   (rtExport = CCrossChainExport(p.vData[0])).IsValid() &&
                   rtExport.IsSupplemental()))
             {
+                if (p.IsValid() &&
+                    p.evalCode == EVAL_NOTARY_EVIDENCE)
+                {
+                    // if we have too large evidence for one output,
+                    // we will have counted any reserve transfers in the current export, and will increment numOutput above
+                    // so clear reserve transfers
+                    rtExport.reserveTransfers.clear();
+                    continue;
+                }
                 numOutput--;
                 rtExport = CCrossChainExport();
             }
