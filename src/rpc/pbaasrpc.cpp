@@ -8640,6 +8640,71 @@ CAmount GetMinRelayFeeForBuilder(const TransactionBuilder &tb, CAmount identityF
     return minFee;
 }
 
+CAmount GetMinRelayFeeForOutputs(const std::vector<SendManyRecipient> &tOutputs, const std::vector<SendManyRecipient> &zOutputs, CAmount identityFeeFactor, bool isIdentity)
+{
+    // Require that free transactions have sufficient priority to be mined in the next block.
+    CAmount minFee = identityFeeFactor * DEFAULT_TRANSACTION_FEE;
+
+    // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
+    // we make allowance for 1 z-output or t-output, 1 native z-change, one token change, and 1 blacklisted change
+    int idExtraLimit = 0;
+    if (isIdentity)
+    {
+        for (auto &oneOut : tOutputs)
+        {
+            COptCCParams idP;
+            if (std::get<3>(oneOut).IsPayToCryptoCondition(idP) &&
+                idP.evalCode == EVAL_IDENTITY_RESERVATION)
+            {
+                idExtraLimit = ConnectedChains.ThisChain().IDReferralLevels() + 2;
+            }
+            else if (idP.IsValid() &&
+                        idP.evalCode == EVAL_IDENTITY_ADVANCEDRESERVATION)
+            {
+                CAdvancedNameReservation advNewName;
+                if (!(idP.vData.size() && (advNewName = CAdvancedNameReservation(idP.vData[0])).IsValid()))
+                {
+                    throw JSONRPCError(RPC_INTERNAL_ERROR, "Created invalid transaction.");
+                }
+                CCurrencyDefinition parentCurrency = advNewName.parent.IsNull() ? ConnectedChains.ThisChain() : ConnectedChains.GetCachedCurrency(advNewName.parent);
+                idExtraLimit = parentCurrency.IDReferralLevels() + 2;
+            }
+        }
+    }
+
+    if (!minFee)
+    {
+        minFee = DEFAULT_TRANSACTION_FEE;
+    }
+
+    if (tOutputs.size() > (1 + idExtraLimit))
+    {
+        minFee += (std::max((int64_t)(zOutputs.size() - 1), (int64_t)0) + std::max((int64_t)(tOutputs.size() - (1 + idExtraLimit)), (int64_t)0)) * DEFAULT_TRANSACTION_FEE;
+    }
+    else if (tOutputs.size() > idExtraLimit)
+    {
+        minFee += std::max((int64_t)(zOutputs.size() - 1), (int64_t)0) * DEFAULT_TRANSACTION_FEE;
+    }
+    else
+    {
+        minFee += std::max((int64_t)(zOutputs.size() - 2), (int64_t)0) * DEFAULT_TRANSACTION_FEE;
+    }
+
+    if (!(identityFeeFactor && tOutputs.size() <= (1 + idExtraLimit)))
+    {
+        int64_t extraOutputCostThreshold = CScript::MAX_SCRIPT_ELEMENT_SIZE / 3;
+        for (auto &oneOut : tOutputs)
+        {
+            int64_t extraSize = std::max((int64_t)std::get<3>(oneOut).size() - extraOutputCostThreshold, (int64_t)0);
+            if (extraSize)
+            {
+                minFee += DEFAULT_TRANSACTION_FEE + ((extraSize - extraOutputCostThreshold) > 0 ? DEFAULT_TRANSACTION_FEE : 0);
+            }
+        }
+    }
+    return minFee;
+}
+
 UniValue sendcurrency(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() < 2 || params.size() > 5)
@@ -10248,7 +10313,7 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
     // if fee offer was not specified, calculate
     if (!feeAmount)
     {
-        feeAmount = GetMinRelayFeeForBuilder(tb, 0, false);
+        feeAmount = GetMinRelayFeeForOutputs(tOutputs, zOutputs, 0, false);
     }
 
     if (returnTx)
@@ -10266,7 +10331,14 @@ UniValue sendcurrency(const UniValue& params, bool fHelp)
         }
         returnTxUni.pushKV("outputtotals", totalOutput.ToUniValue());
         returnTxUni.pushKV("feeamount", ValueFromAmount(feeAmount));
-        returnTxUni.pushKV("hextx", EncodeHexTx(tb.mtx));
+        if (zOutputs.size())
+        {
+            returnTxUni.pushKV("hextxwithoutz", EncodeHexTx(tb.mtx));
+        }
+        else
+        {
+            returnTxUni.pushKV("hextx", EncodeHexTx(tb.mtx));
+        }
         return returnTxUni;
     }
 
