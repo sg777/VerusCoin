@@ -7401,7 +7401,7 @@ bool CConnectedChains::CreateLatestImports(const CCurrencyDefinition &sourceSyst
         }
 
         if (PBAAS_TESTMODE &&
-            ccx.destCurrencyID == GetDestinationID(DecodeDestination("iCjfiYoGhakHSkkqiAWHJDkQoeXVeEvfhj")) &&
+            ccx.destCurrencyID == GetDestinationID(DecodeDestination("iCjfiYoGhakHSkkqiAWHJDkQoeXVeEvfhj")) && // TODO: POST TESTNET testnet exception, remove on testnet reset
             ConnectedChains.IncludePostLaunchFees(nHeight))
         {
             failedCurrencyDest = ccx.destCurrencyID;
@@ -11204,7 +11204,7 @@ void CConnectedChains::SubmissionThread()
                                 std::vector<uint160> notaryVec = notaryCurrency.notaries;
                                 auto prandom = std::minstd_rand0(UintToArith256(prHash).GetLow64());
                                 shuffle(notaryVec.begin(), notaryVec.end(), prandom);
-                                if (notaryVec[0] != VERUS_NOTARYID && notaryVec[1] != VERUS_NOTARYID)
+                                if (notaryVec[0] != VERUS_NOTARYID)
                                 {
                                     LogPrint("notarization", "skipping import submission - was not selected for submission lottery\n");
                                     submitImports = false;
