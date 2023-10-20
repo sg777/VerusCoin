@@ -28,6 +28,7 @@
 #include "coins.h"
 #include "wallet/asyncrpcoperation_saplingconsolidation.h"
 #include "wallet/asyncrpcoperation_sweeptoaddress.h"
+#include "wallet/asyncrpcoperation_sendmany.h"
 #include <zcash/address/zip32.h>
 #include "cc/StakeGuard.h"
 #include "pbaas/identity.h"
@@ -6478,10 +6479,21 @@ bool CWallet::FundTransaction(CMutableTransaction& tx, CAmount &nFeeRet, int& nC
     return true;
 }
 
+CAmount GetMinRelayFeeForOutputs(const std::vector<SendManyRecipient> &tOutputs, const std::vector<SendManyRecipient> &zOutputs, CAmount identityFeeFactor, bool isIdentity);
 bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wtxNew, CReserveKey& reservekey, CAmount& nFeeRet,
                                 int& nChangePosRet, std::string& strFailReason, const CCoinControl* coinControl, bool sign)
 {
-    uint64_t interest2 = 0; CAmount nValue = 0; unsigned int nSubtractFeeFromAmount = 0;
+    uint64_t interest2 = 0;
+    CAmount nValue = 0;
+    unsigned int nSubtractFeeFromAmount = 0;
+
+    std::vector<SendManyRecipient> tOutputs;
+    const std::vector<SendManyRecipient> zOutputs;
+    for (auto &oneSend : vecSend)
+    {
+        tOutputs.push_back({"", oneSend.nAmount, "", oneSend.scriptPubKey});
+    }
+
     BOOST_FOREACH (const CRecipient& recipient, vecSend)
     {
         if (nValue < 0 || recipient.nAmount < 0)
@@ -6545,7 +6557,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
     {
         LOCK2(cs_main, cs_wallet);
         {
-            nFeeRet = 0;
+            nFeeRet = GetMinRelayFeeForOutputs(tOutputs, zOutputs, 0, false);
             while (true)
             {
                 //interest = 0;
@@ -6840,17 +6852,17 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                         break;
                 }
 
-                CAmount nFeeNeeded = GetMinimumFee(nBytes, nTxConfirmTarget, mempool);
-                if ( nFeeNeeded < 5000 )
-                    nFeeNeeded = 5000;
-
-                // If we made it here and we aren't even able to meet the relay fee on the next pass, give up
-                // because we must be at the maximum allowed fee.
-                if (nFeeNeeded < ::minRelayTxFee.GetFee(nBytes))
+                tOutputs.clear();
+                for (auto &oneSend : txNew.vout)
                 {
-                    strFailReason = _("Transaction too large for fee policy");
-                    return false;
+                    tOutputs.push_back({"", oneSend.nValue, "", oneSend.scriptPubKey});
                 }
+                // remove two possible change addresses
+                if (tOutputs.size())
+                {
+                    tOutputs.resize(txNew.vout.size() - (txNew.vout.size() > 1 ? 2 : 1));
+                }
+                CAmount nFeeNeeded = GetMinRelayFeeForOutputs(tOutputs, zOutputs, 0, false);
 
                 if (nFeeRet >= nFeeNeeded)
                     break; // Done, enough fee included.
