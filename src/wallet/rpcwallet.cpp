@@ -46,6 +46,8 @@ using namespace std;
 
 using namespace libzcash;
 
+CAmount GetMinRelayFeeForOutputs(const std::vector<SendManyRecipient> &tOutputs, const std::vector<SendManyRecipient> &zOutputs, CAmount identityFeeFactor, bool isIdentity);
+
 extern char ASSETCHAINS_SYMBOL[KOMODO_ASSETCHAIN_MAXLEN];
 extern int32_t VERUS_MIN_STAKEAGE;
 const std::string ADDR_TYPE_SPROUT = "sprout";
@@ -6152,21 +6154,7 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
     // if fee offer was not specified, calculate
     if (!nFee)
     {
-        // calculate total fee required to update based on content in content maps
-        // as of PBaaS, standard contentMaps cost an extra standard fee per entry
-        // contentMultiMaps cost an extra standard fee for each 128 bytes in size
-        nFee = nDefaultFee;
-        int zSize = zaddrRecipients.size();
-        if (!fromTaddr || (VERUS_PRIVATECHANGE && !VERUS_DEFAULT_ZADDR.empty()))
-        {
-            zSize++;
-        }
-
-        // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
-        if ((zSize > 1 && taddrRecipients.size() > 3) || (zSize > 2 && taddrRecipients.size() > 2) || zSize > 3)
-        {
-            nFee += ((taddrRecipients.size() > 3 ? (zSize - 1) : (taddrRecipients.size() > 2) ? zSize - 2 : zSize - 3) * DEFAULT_TRANSACTION_FEE);
-        }
+        nFee = GetMinRelayFeeForOutputs(taddrRecipients, zaddrRecipients, 0, false);
     }
 
     // Use input parameters as the optional context info to be returned by z_getoperationstatus and z_getoperationresult.
