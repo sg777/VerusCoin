@@ -561,7 +561,7 @@ bool AsyncRPCOperation_sendmany::main_impl() {
 
             CTxDestination changeAddr;
 
-            if (fromtaddr_.which() == COptCCParams::ADDRTYPE_ID &&
+            if ((fromtaddr_.which() == COptCCParams::ADDRTYPE_ID || fromtaddr_.which() == COptCCParams::ADDRTYPE_PKH) &&
                 !GetDestinationID(fromtaddr_).IsNull())
             {
                 changeAddr = fromtaddr_;
