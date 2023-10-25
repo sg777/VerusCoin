@@ -2280,8 +2280,6 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             }
         }
 
-        ConnectedChains.AggregateChainTransfers(DestinationToTransferDestination(firstDestination), nHeight);
-
         // Now the coinbase -
         // A PBaaS coinbase must have some additional outputs to enable certain chain state and functions to be properly
         // validated. All but currency state and the first chain definition are either optional or not valid on non-fractional reserve PBaaS blockchains
@@ -2728,6 +2726,8 @@ CBlockTemplate* CreateNewBlock(const CChainParams& chainparams, const std::vecto
             // of the reward + fees
             coinbaseTx.vout.insert(coinbaseTx.vout.end(), minerOutputs.begin(), minerOutputs.end());
         }
+
+        ConnectedChains.AggregateChainTransfers(DestinationToTransferDestination(firstDestination), nHeight);
 
         if (notaryConnected)
         {
