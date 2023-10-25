@@ -554,14 +554,14 @@ bool AsyncRPCOperation_sendmany::main_impl() {
         // use fromtaddr_ if this is coming from a specified identity
         // otherwise, generate a change address
         CReserveKey keyChange(pwalletMain);
-        if (isfromtaddr_) {
+        if (isfromtaddr_ && builder_.TransparentChangeAddress().which() == COptCCParams::ADDRTYPE_INVALID) {
             LOCK2(cs_main, pwalletMain->cs_wallet);
 
             EnsureWalletIsUnlocked();
 
             CTxDestination changeAddr;
 
-            if (fromtaddr_.which() == COptCCParams::ADDRTYPE_ID &&
+            if ((fromtaddr_.which() == COptCCParams::ADDRTYPE_ID || fromtaddr_.which() == COptCCParams::ADDRTYPE_PKH) &&
                 !GetDestinationID(fromtaddr_).IsNull())
             {
                 changeAddr = fromtaddr_;

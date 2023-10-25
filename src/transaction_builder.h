@@ -134,6 +134,15 @@ public:
         return CScript();
     }
 
+    CTxDestination TransparentChangeAddress()
+    {
+        if (tChangeAddr)
+        {
+            return tChangeAddr.get();
+        }
+        return CTxDestination();
+    }
+
     // Throws if the anchor does not match the anchor used by
     // previously-added Sapling spends.
     void AddSaplingSpend(
