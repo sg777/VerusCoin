@@ -7220,7 +7220,7 @@ bool CConnectedChains::GetReserveDeposits(const uint160 &currencyID, const CCoin
     return true;
 }
 
-bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<std::pair<CInputDescriptor, uint32_t>> &unspentOutptus)
+bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<std::pair<CInputDescriptor, uint32_t>> &unspentOutputs)
 {
     std::vector<CAddressUnspentDbEntry> confirmedUTXOs;
     std::vector<std::pair<CMempoolAddressDeltaKey, CMempoolAddressDelta>> unconfirmedUTXOs;
@@ -7252,7 +7252,7 @@ bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<std
         if (!mempool.mapNextTx.count(COutPoint(oneConfirmed.first.txhash, oneConfirmed.first.index)) &&
             oneConfirmed.second.script.IsPayToCryptoCondition(p) && p.IsValid())
         {
-            unspentOutptus.push_back(std::make_pair(CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis,
+            unspentOutputs.push_back(std::make_pair(CInputDescriptor(oneConfirmed.second.script, oneConfirmed.second.satoshis,
                                                         CTxIn(oneConfirmed.first.txhash, oneConfirmed.first.index)),
                                                     (uint32_t)oneConfirmed.second.blockHeight));
         }
@@ -7262,7 +7262,7 @@ bool CConnectedChains::GetUnspentByIndex(const uint160 &indexID, std::vector<std
     for (auto &oneUnconfirmed : memPoolOuts)
     {
         const CTransaction oneTx = mempool.mapTx.find(oneUnconfirmed.first.txhash)->GetTx();
-        unspentOutptus.push_back(std::make_pair(CInputDescriptor(oneTx.vout[oneUnconfirmed.first.index].scriptPubKey, oneUnconfirmed.second.amount,
+        unspentOutputs.push_back(std::make_pair(CInputDescriptor(oneTx.vout[oneUnconfirmed.first.index].scriptPubKey, oneUnconfirmed.second.amount,
                                                     CTxIn(oneUnconfirmed.first.txhash, oneUnconfirmed.first.index)),
                                                 0));
     }
