@@ -481,6 +481,10 @@ UniValue getmininginfo(const UniValue& params, bool fHelp)
         {
             totalChainStake = ((totalChainStake * arith_uint256(posCount)) / arith_uint256(blockCount * blockCount));
         }
+        else
+        {
+            totalChainStake = 0;
+        }
 
         if (totalChainStake > arith_uint256(INT64_MAX))
         {
@@ -519,7 +523,7 @@ UniValue getmininginfo(const UniValue& params, bool fHelp)
     }
     obj.push_back(Pair("networkhashps",    getnetworksolps(params, false)));
     obj.push_back(Pair("pooledtx",         (uint64_t)mempool.size()));
-    obj.push_back(Pair("testnet",          Params().TestnetToBeDeprecatedFieldRPC()));
+    obj.push_back(Pair("testnet",          PBAAS_TESTMODE));
     obj.push_back(Pair("chain",            Params().NetworkIDString()));
 #ifdef ENABLE_MINING
     bool mining = GetBoolArg("-gen", false);

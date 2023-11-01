@@ -519,7 +519,7 @@ CAmount CCurrencyState::ReserveToNativeRaw(CAmount reserveAmount, const cpp_dec_
     {
         return retVal;
     }
-    return 0;
+    return -1;
 }
 
 CAmount CCurrencyState::ReserveToNativeRaw(CAmount reserveAmount, CAmount exchangeRate)
@@ -604,7 +604,7 @@ CAmount CCurrencyState::NativeToReserveRaw(CAmount nativeAmount, const cpp_dec_f
     {
         return retVal;
     }
-    return 0;
+    return -1;
 }
 
 CAmount CCurrencyState::NativeToReserveRaw(CAmount nativeAmount, CAmount exchangeRate)
@@ -848,6 +848,11 @@ UniValue CPBaaSNotarization::ToUniValue() const
     if (IsLaunchComplete())
     {
         obj.push_back(Pair("launchcomplete", true));
+    }
+
+    if (IsContractUpgrade())
+    {
+        obj.push_back(Pair("contractupgrade", true));
     }
 
     if (IsMirror())

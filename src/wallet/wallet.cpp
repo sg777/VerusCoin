@@ -28,6 +28,7 @@
 #include "coins.h"
 #include "wallet/asyncrpcoperation_saplingconsolidation.h"
 #include "wallet/asyncrpcoperation_sweeptoaddress.h"
+#include "wallet/asyncrpcoperation_sendmany.h"
 #include <zcash/address/zip32.h>
 #include "cc/StakeGuard.h"
 #include "pbaas/identity.h"
@@ -112,7 +113,7 @@ public:
             CCurrencyValueMap leftover1 = m1.SubtractToZero(totalTargetValues);
             CCurrencyValueMap leftover2 = m2.SubtractToZero(totalTargetValues);
 
-            if (leftover1 < leftover2 && leftover2 < leftover1)
+            if (LegacyLT(leftover1, leftover2) && LegacyLT(leftover2, leftover1))
             {
                 if (leftover1.valueMap.size() < leftover2.valueMap.size())
                 {
@@ -123,9 +124,9 @@ public:
                     return false;
                 }
             }
-            return leftover1 < leftover2;
+            return LegacyLT(leftover1, leftover2);
         }
-        else if (m1 < m2 && m2 < m1)
+        else if (LegacyLT(m1, m2) && LegacyLT(m2, m1))
         {
             // this is used for sorting
             // what we care about most in this case is that we always give the same answer,
@@ -134,12 +135,12 @@ public:
             CCurrencyValueMap checkMap1 = m1.IntersectingValues(m2);
             CCurrencyValueMap checkMap2;
             // where they intersect, they are empty, no way to know which is less for sorting
-            if (!(checkMap2 < checkMap1))
+            if (!LegacyLT(checkMap2, checkMap1))
             {
                 return false;
             }
             checkMap2 = checkMap1 - m2.IntersectingValues(m1);
-            if (!(checkMap2 < checkMap1))
+            if (!LegacyLT(checkMap2, checkMap1))
             {
                 return false;
             }
@@ -148,7 +149,7 @@ public:
                 return true;
             }
         }
-        return m1 < m2;
+        return LegacyLT(m1, m2);
     }
 };
 
@@ -1668,6 +1669,127 @@ CWallet::TxItems CWallet::OrderedTxItems(std::list<CAccountingEntry>& acentries,
     return txOrdered;
 }
 
+CAmount CWallet::EligibleStakeOutputs(std::vector<COutput> &vecOutputs, std::vector<CWalletTx> &vwtx, bool extendedStake) const
+{
+    CAmount totalStakingAmount = 0;
+    std:vector<std::vector<unsigned char>> vSolutions;
+
+    LOCK2(cs_main, cs_wallet);
+    pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
+
+    int newSize = 0;
+    bool idStakingChain = ConnectedChains.ThisChain().IDStaking();
+
+    std::set<uint160> validIDs;
+    bool logFailures = LogAcceptCategory("staking") && LogAcceptCategory("verbose");
+
+    for (int i = 0; i < vecOutputs.size(); i++)
+    {
+        auto &txout = vecOutputs[i];
+        COptCCParams p;
+        txnouttype whichType = txnouttype::TX_NONSTANDARD;
+
+        if (txout.tx &&
+            txout.i < txout.tx->vout.size() &&
+            txout.tx->vout[txout.i].nValue > 0 &&
+            txout.fSpendable &&
+            (txout.nDepth >= VERUS_MIN_STAKEAGE) &&
+            ((txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) &&
+                extendedStake &&
+                p.IsValid() &&
+                txout.tx->vout[txout.i].scriptPubKey.IsSpendableOutputType(p)) ||
+                (!idStakingChain &&
+                !p.IsValid() &&
+                Solver(txout.tx->vout[txout.i].scriptPubKey, whichType, vSolutions) &&
+                (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH))))
+        {
+            // if this is a staking chain, don't try with anything that isn't valid
+            bool invalidOutput = false;
+            if (idStakingChain)
+            {
+                txnouttype txType;
+                std::vector<CTxDestination> addressesRet;
+                int nRequiredRet;
+                bool canSpend;
+                if (ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey,
+                                        txType,
+                                        addressesRet,
+                                        nRequiredRet,
+                                        this,
+                                        nullptr,
+                                        &canSpend) &&
+                    canSpend)
+                {
+                    for (auto &oneAddr : addressesRet)
+                    {
+                        uint160 idID = GetDestinationID(oneAddr);
+                        if (oneAddr.which() == COptCCParams::ADDRTYPE_ID)
+                        {
+                            if (validIDs.count(idID))
+                            {
+                                continue;
+                            }
+                            std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
+                            if (!GetIdentity(idID, keyAndIdentity) ||
+                                keyAndIdentity.second.parent != ASSETCHAINS_CHAINID)
+                            {
+                                invalidOutput = true;
+                                break;
+                            }
+                            validIDs.insert(idID);
+                        }
+                        else if (oneAddr.which() == COptCCParams::ADDRTYPE_PK ||
+                                oneAddr.which() == COptCCParams::ADDRTYPE_PKH)
+                        {
+                            CCcontract_info CC;
+                            CCcontract_info *cp;
+                            cp = CCinit(&CC, p.evalCode);
+                            if (GetDestinationID(oneAddr) != GetDestinationID(DecodeDestination(CC.unspendableCCaddr)))
+                            {
+                                invalidOutput = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if (invalidOutput)
+            {
+                if (logFailures)
+                {
+                    printf("%s: Ineligible stake output (%s:%d)\n", __func__, txout.tx->GetHash().GetHex().c_str(), txout.i);
+                }
+                continue;
+            }
+
+            totalStakingAmount += txout.tx->vout[txout.i].nValue;
+            // if all are valid, no change, else compress
+            if (newSize != i)
+            {
+                vecOutputs[newSize] = txout;
+            }
+            newSize++;
+        }
+        else if (logFailures)
+        {
+            printf("%s: Ineligible staking output (%s:%d)\n", __func__, txout.tx->GetHash().GetHex().c_str(), txout.i);
+        }
+    }
+
+    if (newSize)
+    {
+        // no reallocations to move objects. do all at once, so we can release the wallet lock
+        vecOutputs.resize(newSize);
+        vwtx.resize(newSize);
+        for (int i = 0; i < vecOutputs.size(); i++)
+        {
+            vwtx[i] = *vecOutputs[i].tx;
+            vecOutputs[i].tx = &vwtx[i];
+        }
+    }
+    return totalStakingAmount;
+}
+
 // looks through all wallet UTXOs and checks to see if any qualify to stake the block at the current height. it always returns the qualified
 // UTXO with the smallest coin age if there is more than one, as larger coin age will win more often and is worth saving
 // each attempt consists of taking a VerusHash of the following values:
@@ -1696,111 +1818,7 @@ bool CWallet::VerusSelectStakeOutput(CBlock *pBlock, arith_uint256 &hashResult, 
     bool isPBaaS = solutionVersion >= CActivationHeight::ACTIVATE_PBAAS;
     bool extendedStake = solutionVersion >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
 
-    {
-        LOCK2(cs_main, cs_wallet);
-        pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
-
-        int newSize = 0;
-        bool idStakingChain = ConnectedChains.ThisChain().IDStaking();
-
-        std::set<uint160> validIDs;
-
-        for (int i = 0; i < vecOutputs.size(); i++)
-        {
-            auto &txout = vecOutputs[i];
-            COptCCParams p;
-
-            if (txout.tx &&
-                txout.i < txout.tx->vout.size() &&
-                txout.tx->vout[txout.i].nValue > 0 &&
-                txout.fSpendable &&
-                (txout.nDepth >= VERUS_MIN_STAKEAGE) &&
-                ((txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) &&
-                  extendedStake &&
-                  p.IsValid() &&
-                  txout.tx->vout[txout.i].scriptPubKey.IsSpendableOutputType(p)) ||
-                 (!idStakingChain &&
-                  !p.IsValid() &&
-                  Solver(txout.tx->vout[txout.i].scriptPubKey, whichType, vSolutions) &&
-                  (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH))))
-            {
-                // if this is a staking chain, don't try with anything that isn't valid
-                bool invalidOutput = false;
-                if (idStakingChain)
-                {
-                    txnouttype txType;
-                    std::vector<CTxDestination> addressesRet;
-                    int nRequiredRet;
-                    bool canSpend;
-                    if (ExtractDestinations(txout.tx->vout[txout.i].scriptPubKey,
-                                            txType,
-                                            addressesRet,
-                                            nRequiredRet,
-                                            this,
-                                            nullptr,
-                                            &canSpend) &&
-                        canSpend)
-                    {
-                        for (auto &oneAddr : addressesRet)
-                        {
-                            uint160 idID = GetDestinationID(oneAddr);
-                            if (oneAddr.which() == COptCCParams::ADDRTYPE_ID)
-                            {
-                                if (validIDs.count(idID))
-                                {
-                                    continue;
-                                }
-                                std::pair<CIdentityMapKey, CIdentityMapValue> keyAndIdentity;
-                                if (!GetIdentity(idID, keyAndIdentity) ||
-                                    keyAndIdentity.second.parent != ASSETCHAINS_CHAINID)
-                                {
-                                    invalidOutput = true;
-                                    break;
-                                }
-                                validIDs.insert(idID);
-                            }
-                            else if (oneAddr.which() == COptCCParams::ADDRTYPE_PK ||
-                                    oneAddr.which() == COptCCParams::ADDRTYPE_PKH)
-                            {
-                                CCcontract_info CC;
-                                CCcontract_info *cp;
-                                cp = CCinit(&CC, p.evalCode);
-                                if (GetDestinationID(oneAddr) != GetDestinationID(DecodeDestination(CC.unspendableCCaddr)))
-                                {
-                                    invalidOutput = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-                if (invalidOutput)
-                {
-                    continue;
-                }
-
-                totalStakingAmount += txout.tx->vout[txout.i].nValue;
-                // if all are valid, no change, else compress
-                if (newSize != i)
-                {
-                    vecOutputs[newSize] = txout;
-                }
-                newSize++;
-            }
-        }
-
-        if (newSize)
-        {
-            // no reallocations to move objects. do all at once, so we can release the wallet lock
-            vecOutputs.resize(newSize);
-            vwtx.resize(newSize);
-            for (int i = 0; i < vecOutputs.size(); i++)
-            {
-                vwtx[i] = *vecOutputs[i].tx;
-                vecOutputs[i].tx = &vwtx[i];
-            }
-        }
-    }
+    totalStakingAmount = EligibleStakeOutputs(vecOutputs, vwtx, extendedStake);
 
     if (totalStakingAmount)
     {
@@ -2174,13 +2192,16 @@ int32_t CWallet::VerusStakeTransaction(CBlock *pBlock, CMutableTransaction &txNe
     //    << CStakeParams(pSrcIndex->GetHeight(), tipindex->GetHeight() + 1, pSrcIndex->GetBlockHash(), pk).AsVector();
     // !! DOWN TO HERE
 
-    if (USE_EXTERNAL_PUBKEY)
+    if (VERUS_NOTARYID.IsNull() || GetDestinationID(rewardDest) != GetDestinationID(VERUS_NOTARYID))
     {
-        rewardDest = CPubKey(ParseHex(NOTARY_PUBKEY));
-    }
-    else if (!VERUS_DEFAULTID.IsNull())
-    {
-        rewardDest = VERUS_DEFAULTID;
+        if (USE_EXTERNAL_PUBKEY)
+        {
+            rewardDest = CPubKey(ParseHex(NOTARY_PUBKEY));
+        }
+        else if (!VERUS_DEFAULTID.IsNull())
+        {
+            rewardDest = VERUS_DEFAULTID;
+        }
     }
 
     if (rewardDest.which() == COptCCParams::ADDRTYPE_INVALID)
@@ -5463,7 +5484,7 @@ bool CloserToTarget(const CCurrencyValueMap &target, const CCurrencyValueMap &cu
 {
     CCurrencyValueMap workingTarget = target.SubtractToZero(current);
     CCurrencyValueMap candidateTarget = workingTarget.SubtractToZero(candidate);
-    if (candidateTarget < workingTarget)
+    if (LegacyLT(candidateTarget, workingTarget))
     {
         return true;
     }
@@ -5923,7 +5944,7 @@ bool CWallet::SelectReserveUTXOs(const CCurrencyValueMap& targetValues,
         if (nTotal == nTotalTarget)
         {
             mapCoinsRet.insert(output);
-            valueRet = output.second;
+            valueRet = nAll;
             nativeValueRet = nativeN;
             return true;
         }
@@ -6458,10 +6479,21 @@ bool CWallet::FundTransaction(CMutableTransaction& tx, CAmount &nFeeRet, int& nC
     return true;
 }
 
+CAmount GetMinRelayFeeForOutputs(const std::vector<SendManyRecipient> &tOutputs, const std::vector<SendManyRecipient> &zOutputs, CAmount identityFeeFactor, bool isIdentity);
 bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wtxNew, CReserveKey& reservekey, CAmount& nFeeRet,
                                 int& nChangePosRet, std::string& strFailReason, const CCoinControl* coinControl, bool sign)
 {
-    uint64_t interest2 = 0; CAmount nValue = 0; unsigned int nSubtractFeeFromAmount = 0;
+    uint64_t interest2 = 0;
+    CAmount nValue = 0;
+    unsigned int nSubtractFeeFromAmount = 0;
+
+    std::vector<SendManyRecipient> tOutputs;
+    const std::vector<SendManyRecipient> zOutputs;
+    for (auto &oneSend : vecSend)
+    {
+        tOutputs.push_back({"", oneSend.nAmount, "", oneSend.scriptPubKey});
+    }
+
     BOOST_FOREACH (const CRecipient& recipient, vecSend)
     {
         if (nValue < 0 || recipient.nAmount < 0)
@@ -6525,7 +6557,7 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
     {
         LOCK2(cs_main, cs_wallet);
         {
-            nFeeRet = 0;
+            nFeeRet = GetMinRelayFeeForOutputs(tOutputs, zOutputs, 0, false);
             while (true)
             {
                 //interest = 0;
@@ -6820,17 +6852,17 @@ bool CWallet::CreateTransaction(const vector<CRecipient>& vecSend, CWalletTx& wt
                         break;
                 }
 
-                CAmount nFeeNeeded = GetMinimumFee(nBytes, nTxConfirmTarget, mempool);
-                if ( nFeeNeeded < 5000 )
-                    nFeeNeeded = 5000;
-
-                // If we made it here and we aren't even able to meet the relay fee on the next pass, give up
-                // because we must be at the maximum allowed fee.
-                if (nFeeNeeded < ::minRelayTxFee.GetFee(nBytes))
+                tOutputs.clear();
+                for (auto &oneSend : txNew.vout)
                 {
-                    strFailReason = _("Transaction too large for fee policy");
-                    return false;
+                    tOutputs.push_back({"", oneSend.nValue, "", oneSend.scriptPubKey});
                 }
+                // remove two possible change addresses
+                if (tOutputs.size())
+                {
+                    tOutputs.resize(txNew.vout.size() - (txNew.vout.size() > 1 ? 2 : 1));
+                }
+                CAmount nFeeNeeded = GetMinRelayFeeForOutputs(tOutputs, zOutputs, 0, false);
 
                 if (nFeeRet >= nFeeNeeded)
                     break; // Done, enough fee included.

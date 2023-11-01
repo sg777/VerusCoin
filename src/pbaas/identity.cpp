@@ -148,6 +148,8 @@ bool CIdentity::IsInvalidMutation(const CIdentity &newIdentity, uint32_t height,
     return false;
 }
 
+LRUCache<std::pair<uint256, CIdentityID>, std::tuple<CIdentity, uint32_t, CTxIn>> CIdentity::IdentityLookupCache(2000);
+
 CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, uint32_t *pHeightOut, CTxIn *pIdTxIn, bool checkMempool)
 {
     LOCK(mempool.cs);
@@ -204,6 +206,18 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
         }
         unspentInputs.clear();
     }
+    // TODO: NEXTRELEASE - uncomment cache code
+    /* else if (height)
+    {
+        std::tuple<CIdentity, uint32_t, CTxIn> cachedIdentity;
+        if (std::get<0>(cachedIdentity = IdentityLookupCache.Get({chainActive[height > chainActive.Height() ? chainActive.Height() : height]->GetBlockHash(), nameID})).IsValid())
+        {
+            *pHeightOut = std::get<1>(cachedIdentity);
+            idTxIn = std::get<2>(cachedIdentity);
+            ret = std::get<0>(cachedIdentity);
+            return ret;
+        }
+    } */
 
     if (unspentOutputs.size() || GetAddressUnspent(keyID, CScript::P2IDX, unspentNewIDX) && GetAddressUnspent(keyID, CScript::P2PKH, unspentOutputs))
     {
@@ -294,6 +308,13 @@ CIdentity CIdentity::LookupIdentity(const CIdentityID &nameID, uint32_t height, 
             }
         }
     }
+
+    // TODO: NEXTRELEASE - uncomment cache code
+    /* if (height && !(height > chainActive.Height() && checkMempool))
+    {
+        IdentityLookupCache.Put({chainActive[height > chainActive.Height() ? chainActive.Height() : height]->GetBlockHash(), nameID}, {ret, *pHeightOut, idTxIn});
+    } */
+
     return ret;
 }
 
@@ -1315,9 +1336,11 @@ bool ValidateSpendingIdentityReservation(const CTransaction &tx, int32_t outNum,
             {
                 if (isPBaaS)
                 {
+                    bool testModePreUpdate = PBAAS_TESTMODE && !ConnectedChains.IncludePostLaunchFees(height);
                     if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
                         (issuingCurrency.endBlock == 0 ||
-                         issuingCurrency.endBlock <= height))
+                         ((testModePreUpdate && issuingCurrency.endBlock <= height) ||
+                          (!testModePreUpdate && height <= issuingCurrency.endBlock))))
                     {
                         // if this is a purchase from centralized/DAO-based currency, ensure we have a valid output
                         // of the correct amount to the issuer ID before any of the referrals
@@ -1877,9 +1900,9 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
                 }
                 if (!(issuingCurrency.GetID() == ASSETCHAINS_CHAINID ||
                       issuingCurrency.IsFractional() ||
-                      issuingCurrency.NoIDs() ||
                       (issuingCurrency.IsToken() &&
                        !issuingCurrency.IsNFTToken())) ||
+                    issuingCurrency.NoIDs() ||
                     issuingCurrency.systemID != ASSETCHAINS_CHAINID)
                 {
                     return state.Error("Invalid parent in identity reservation");
@@ -1980,9 +2003,11 @@ bool PrecheckIdentityReservation(const CTransaction &tx, int32_t outNum, CValida
             {
                 if (isPBaaS)
                 {
+                    bool testModePreUpdate = PBAAS_TESTMODE && !ConnectedChains.IncludePostLaunchFees(height);
                     if (issuingCurrency.proofProtocol == issuingCurrency.PROOF_CHAINID &&
                         (issuingCurrency.endBlock == 0 ||
-                         issuingCurrency.endBlock <= height))
+                         ((testModePreUpdate && issuingCurrency.endBlock <= height) ||
+                          (!testModePreUpdate && height <= issuingCurrency.endBlock))))
                     {
                         // if this is a purchase from centralized/DAO-based currency, ensure we have a valid output
                         // of the correct amount to the issuer ID before any of the referrals
@@ -2825,8 +2850,15 @@ bool PrecheckIdentityPrimary(const CTransaction &tx, int32_t outNum, CValidation
                 }
                 if (i == outNum)
                 {
-                    return ConnectedChains.FirstNotaryChain().IsValid() &&
-                           IsValidBlockOneCoinbase(tx.vout, ConnectedChains.FirstNotaryChain(), ConnectedChains.ThisChain(), state);
+                    if (ConnectedChains.FirstNotaryChain().IsValid() &&
+                        IsValidBlockOneCoinbase(tx.vout, ConnectedChains.FirstNotaryChain(), ConnectedChains.ThisChain(), state))
+                    {
+                        return true;
+                    }
+                    else
+                    {
+                        return state.Error("Invalid block 1 coinbase");
+                    }
                 }
                 else
                 {
@@ -2883,6 +2915,33 @@ CIdentity GetOldIdentity(const CTransaction &spendingTx, uint32_t nIn, CTransact
     return oldIdentity;
 }
 
+bool ValidateIdentitySpendMutation(Eval* eval, const CTransaction &spendingTx, const CIdentity &oldIdentity, const CIdentity &newIdentity)
+{
+    uint160 idID = oldIdentity.GetID();
+    CCurrencyDefinition matchingCurDef;
+    for (auto &oneOut : spendingTx.vout)
+    {
+        if ((matchingCurDef = CCurrencyDefinition(oneOut.scriptPubKey)).IsValid() &&
+            matchingCurDef.GetID() == idID)
+        {
+            break;
+        }
+    }
+
+    bool isCurrencyDef = matchingCurDef.IsValid() && matchingCurDef.GetID() == idID;
+
+    if ((oldIdentity.HasActiveCurrency() && !newIdentity.HasActiveCurrency()) ||
+        (oldIdentity.HasTokenizedControl() && !newIdentity.HasTokenizedControl()) ||
+        (!isCurrencyDef &&
+            (oldIdentity.HasActiveCurrency() != oldIdentity.HasActiveCurrency() ||
+            oldIdentity.HasTokenizedControl() != newIdentity.HasTokenizedControl())) ||
+        (isCurrencyDef && !matchingCurDef.IsNFTToken() && newIdentity.HasTokenizedControl()))
+    {
+        return false;
+    }
+    return true;
+}
+
 bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTransaction &spendingTx, uint32_t nIn, bool fulfilled)
 {
     CTransaction sourceTx;
@@ -2901,7 +2960,8 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
     bool advancedIdentity = CVerusSolutionVector::GetVersionByHeight(height) >= CActivationHeight::ACTIVATE_VERUSVAULT;
 
     int idIndex;
-    CIdentity newIdentity(spendingTx, &idIndex, advancedIdentity ? oldIdentity.GetID() : uint160());
+    uint160 idID = oldIdentity.GetID();
+    CIdentity newIdentity(spendingTx, &idIndex, advancedIdentity ? idID : uint160());
     if (!newIdentity.IsValid())
     {
         return eval->Error("Attempting to define invalid identity");
@@ -2911,6 +2971,11 @@ bool ValidateIdentityPrimary(struct CCcontract_info *cp, Eval* eval, const CTran
     {
         LogPrintf("Invalid identity modification %s\n", spendingTx.GetHash().GetHex().c_str());
         return eval->Error("Invalid identity modification");
+    }
+
+    if (!ValidateIdentitySpendMutation(eval, spendingTx, oldIdentity, newIdentity))
+    {
+        return eval->Error("Invalid ID currency state modification");
     }
 
     // if not fullfilled and not revoked, we are responsible for rejecting any modification of
@@ -2978,6 +3043,11 @@ bool ValidateIdentityRevoke(struct CCcontract_info *cp, Eval* eval, const CTrans
     if (oldIdentity.IsRevocation(newIdentity) && oldIdentity.recoveryAuthority == oldIdentity.GetID() && !oldIdentity.HasTokenizedControl())
     {
         return eval->Error("Cannot revoke an identity with self as the recovery authority");
+    }
+
+    if (!ValidateIdentitySpendMutation(eval, spendingTx, oldIdentity, newIdentity))
+    {
+        return eval->Error("Invalid ID currency state modification");
     }
 
     // make sure that spend conditions are valid and revocation spend conditions are not modified
@@ -3119,6 +3189,11 @@ bool ValidateIdentityRecover(struct CCcontract_info *cp, Eval* eval, const CTran
     if (oldIdentity.IsInvalidMutation(newIdentity, height, spendingTx.nExpiryHeight))
     {
         return eval->Error("Invalid identity modification");
+    }
+
+    if (!ValidateIdentitySpendMutation(eval, spendingTx, oldIdentity, newIdentity))
+    {
+        return eval->Error("Invalid ID currency state modification");
     }
 
     // make sure that spend conditions are valid and revocation spend conditions are not modified

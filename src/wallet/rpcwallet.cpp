@@ -46,6 +46,8 @@ using namespace std;
 
 using namespace libzcash;
 
+CAmount GetMinRelayFeeForOutputs(const std::vector<SendManyRecipient> &tOutputs, const std::vector<SendManyRecipient> &zOutputs, CAmount identityFeeFactor, bool isIdentity);
+
 extern char ASSETCHAINS_SYMBOL[KOMODO_ASSETCHAIN_MAXLEN];
 extern int32_t VERUS_MIN_STAKEAGE;
 const std::string ADDR_TYPE_SPROUT = "sprout";
@@ -1699,6 +1701,10 @@ UniValue signdata(const UniValue& params, bool fHelp)
             ret.push_back(Pair("hashtype", hashTypeStr));
             ret.push_back(Pair("hash", msgHash.GetHex()));
             std::string fullName = ConnectedChains.GetFriendlyIdentityName(identity);
+            if (fullName.empty())
+            {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Cannot get friendly name for or sign with identity that does not have its parent currency defined on signing system ") + EncodeDestination(CIdentityID(identity.GetID())));
+            }
             ret.push_back(Pair("identity", fullName));
             ret.push_back(Pair("canonicalname", boost::to_lower_copy(fullName)));
             ret.push_back(Pair("address", EncodeDestination(identity.GetID())));
@@ -3736,7 +3742,9 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     LOCK2(cs_main, pwalletMain->cs_wallet);
 
     uint32_t nHeight = chainActive.Height();
-    bool checkunlockedIDs = CConstVerusSolutionVector::GetVersionByHeight(nHeight) >= CActivationHeight::ACTIVATE_VERUSVAULT;
+    uint32_t solutionVer = CConstVerusSolutionVector::GetVersionByHeight(nHeight);
+    bool checkunlockedIDs = solutionVer >= CActivationHeight::ACTIVATE_VERUSVAULT;
+    bool extendedStake = solutionVer >= CActivationHeight::ACTIVATE_EXTENDEDSTAKE;
 
     UniValue obj(UniValue::VOBJ);
     obj.push_back(Pair("walletversion", pwalletMain->GetVersion()));
@@ -3770,35 +3778,14 @@ UniValue getwalletinfo(const UniValue& params, bool fHelp)
     std::vector<COutput> vecOutputs;
     CAmount totalStakingAmount = 0;
 
-    pwalletMain->AvailableCoins(vecOutputs, true, NULL, false, true, false);
-
     int numTransactions = 0;
     txnouttype whichType;
     std::vector<std::vector<unsigned char>> vSolutions;
+    std::vector<CWalletTx> vwtx;
 
-    for (int i = 0; i < vecOutputs.size(); i++)
-    {
-        auto &txout = vecOutputs[i];
-        COptCCParams p;
+    totalStakingAmount = pwalletMain->EligibleStakeOutputs(vecOutputs, vwtx, extendedStake);
 
-        if (txout.tx &&
-            txout.i < txout.tx->vout.size() &&
-            txout.tx->vout[txout.i].nValue > 0 &&
-            txout.fSpendable &&
-            (txout.nDepth >= VERUS_MIN_STAKEAGE) &&
-            ((txout.tx->vout[txout.i].scriptPubKey.IsPayToCryptoCondition(p) &&
-                p.IsValid() &&
-                txout.tx->vout[txout.i].scriptPubKey.IsSpendableOutputType(p)) ||
-            (!p.IsValid() &&
-                Solver(txout.tx->vout[txout.i].scriptPubKey, whichType, vSolutions) &&
-                (whichType == TX_PUBKEY || whichType == TX_PUBKEYHASH))))
-        {
-            totalStakingAmount += txout.tx->vout[txout.i].nValue;
-            numTransactions++;
-        }
-    }
-
-    obj.push_back(Pair("eligible_staking_outputs", numTransactions));
+    obj.push_back(Pair("eligible_staking_outputs", (int64_t)vecOutputs.size()));
     obj.push_back(Pair("eligible_staking_balance", ValueFromAmount(totalStakingAmount)));
 
     CCurrencyDefinition &chainDef = ConnectedChains.ThisChain();
@@ -3910,6 +3897,7 @@ UniValue resendwallettransactions(const UniValue& params, bool fHelp)
     return result;
 }
 
+void CurrencyValuesAndNames(UniValue &output, bool spending, const CTransaction &tx, int index, CAmount satoshis, bool friendlyNames=false);
 UniValue listunspent(const UniValue& params, bool fHelp)
 {
     if (!EnsureWalletIsAvailable(fHelp))
@@ -4018,6 +4006,13 @@ UniValue listunspent(const UniValue& params, bool fHelp)
         }
         CAmount nValue = out.tx->vout[out.i].nValue;
         entry.push_back(Pair("amount", ValueFromAmount(out.tx->vout[out.i].nValue)));
+
+        COptCCParams p;
+        if (out.tx->vout[out.i].scriptPubKey.IsPayToCryptoCondition(p) &&
+            p.IsValid())
+        {
+            CurrencyValuesAndNames(entry, false, *(CTransaction *)out.tx, out.i, out.tx->vout[out.i].nValue, false);
+        }
 
         CCurrencyValueMap reserveOut;
         if (ConnectedChains.ThisChain().IsFractional() && (reserveOut = out.tx->vout[out.i].scriptPubKey.ReserveOutValue()).valueMap.size())
@@ -4316,6 +4311,7 @@ UniValue fundrawtransaction(const UniValue& params, bool fHelp)
             }
             const CCoins *coins = view.AccessCoins(oneRef.hash);
             if (!coins ||
+                (coins->fCoinBase && coins->nHeight != 1 && (coins->nHeight < COINBASE_MATURITY)) ||
                 coins->vout.size() <= oneRef.n ||
                 !(coins->vout[oneRef.n].nValue > 0 ||
                   (coins->vout[oneRef.n].scriptPubKey.size() &&
@@ -4369,6 +4365,8 @@ UniValue fundrawtransaction(const UniValue& params, bool fHelp)
         fundWithAmount.valueMap.erase(ASSETCHAINS_CHAINID);
 
         CCurrencyValueMap reserveChange = (valueRet - fundWithAmount).CanonicalMap();
+        reserveChange.valueMap.erase(ASSETCHAINS_CHAINID);
+
         CAmount nativeChange = nativeRet - nativeTarget;
         if (reserveChange.HasNegative() || nativeChange < 0)
         {
@@ -6156,21 +6154,7 @@ UniValue z_sendmany(const UniValue& params, bool fHelp)
     // if fee offer was not specified, calculate
     if (!nFee)
     {
-        // calculate total fee required to update based on content in content maps
-        // as of PBaaS, standard contentMaps cost an extra standard fee per entry
-        // contentMultiMaps cost an extra standard fee for each 128 bytes in size
-        nFee = nDefaultFee;
-        int zSize = zaddrRecipients.size();
-        if (!fromTaddr || (VERUS_PRIVATECHANGE && !VERUS_DEFAULT_ZADDR.empty()))
-        {
-            zSize++;
-        }
-
-        // if we have more z-outputs + t-outputs than are needed for 1 z-output and change, increase fee
-        if ((zSize > 1 && taddrRecipients.size() > 3) || (zSize > 2 && taddrRecipients.size() > 2) || zSize > 3)
-        {
-            nFee += ((taddrRecipients.size() > 3 ? (zSize - 1) : (taddrRecipients.size() > 2) ? zSize - 2 : zSize - 3) * DEFAULT_TRANSACTION_FEE);
-        }
+        nFee = GetMinRelayFeeForOutputs(taddrRecipients, zaddrRecipients, 0, false);
     }
 
     // Use input parameters as the optional context info to be returned by z_getoperationstatus and z_getoperationresult.

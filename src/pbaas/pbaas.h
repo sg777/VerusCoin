@@ -640,7 +640,8 @@ public:
                               CCurrencyValueMap &gatewayDepositsUsed,
                               CCurrencyValueMap &spentCurrencyOut,
                               CTransferDestination feeRecipient=CTransferDestination(),
-                              bool lastImportBeforeComplete=false) const;
+                              bool lastImportBeforeComplete=false,
+                              bool coLaunchCheck=true) const;
 
     static int GetBlocksPerCheckpoint(int heightChange);
     static int GetNumCheckpoints(int heightChange);
@@ -956,6 +957,7 @@ public:
 
     // make earned notarizations for one or more notary chains
     std::map<uint160, CNotarySystemInfo> notarySystems;
+    std::set<uint160> idsToRevoke;
 
     CCurrencyDefinition thisChain;
     bool readyToStart;
@@ -1012,6 +1014,8 @@ public:
     std::vector<std::pair<std::string, UniValue>> SubmitQualifiedBlocks();
 
     void QueueNewBlockHeader(CBlockHeader &bh);
+    void SetRevokeID(const CIdentityID &idID);
+    CIdentityID NextRevokeID();
     void QueueEarnedNotarization(CBlock &blk, int32_t txIndex, int32_t height);
     void CheckImports();
     void SignAndCommitImportTransactions(const CTransaction &lastImportTx, const std::vector<CTransaction> &transactions);
@@ -1031,9 +1035,9 @@ public:
     bool SetLatestMiningOutputs(const std::vector<CTxOut> &minerOutputs);
     void AggregateChainTransfers(const CTransferDestination &feeRecipient, uint32_t nHeight);
     CCurrencyDefinition GetCachedCurrency(const uint160 &currencyID);
-    std::string GetFriendlyCurrencyName(const uint160 &currencyID);
-    std::string GetFriendlyIdentityName(const CIdentity &identity);
-    std::string GetFriendlyIdentityName(const std::string &name, const uint160 &parentCurrencyID);
+    std::string GetFriendlyCurrencyName(const uint160 &currencyID, bool addVerus=false);
+    std::string GetFriendlyIdentityName(const CIdentity &identity, bool addVerus=false);
+    std::string GetFriendlyIdentityName(const std::string &name, const uint160 &parentCurrencyID, bool addVerus=false);
     CCurrencyDefinition UpdateCachedCurrency(const CCurrencyDefinition &currentCurrency, uint32_t height);
 
     bool GetLastImport(const uint160 &currencyID,
@@ -1205,7 +1209,11 @@ public:
     bool IsUpgradeActive(const uint160 &upgradeID, uint32_t blockHeight=UINT32_MAX, uint32_t blockTime=UINT32_MAX) const;
     uint32_t GetZeroViaHeight(bool getVerusHeight) const;
     bool CheckZeroViaOnlyPostLaunch(uint32_t height) const;
+    uint32_t IncludePostLaunchFeeHeight(bool getVerusHeight) const;
+    bool IncludePostLaunchFees(uint32_t height) const;
     bool CheckClearConvert(uint32_t height) const;
+    uint32_t StrictCheckIDExportHeight(bool getVerusHeight) const;
+    bool StrictCheckIDExport(uint32_t height) const;
 
     std::vector<CCurrencyDefinition> GetMergeMinedChains()
     {

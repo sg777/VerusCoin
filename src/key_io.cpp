@@ -1123,7 +1123,7 @@ CIdentity::CIdentity(const UniValue &uni) : CPrincipal(uni)
 
     if (nVersion >= VERSION_VAULT)
     {
-        systemID = uint160(GetDestinationID(DecodeDestination(uni_get_str(find_value(uni, "systemid")))));
+        systemID = DecodeCurrencyName(uni_get_str(find_value(uni, "systemid")));
         if (systemID.IsNull())
         {
             systemID = parent.IsNull() ? GetID() : parent;

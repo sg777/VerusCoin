@@ -54,7 +54,7 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/split.hpp>
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/function.hpp>
 #include <boost/interprocess/sync/file_lock.hpp>
@@ -388,7 +388,6 @@ std::string HelpMessage(HelpMessageMode mode)
     if (showDebug)  
         strUsage += HelpMessageOpt("-txindex", strprintf(_("Maintain a full transaction index, used by the getrawtransaction rpc call (default: %u)"), 0));
     strUsage += HelpMessageOpt("-spentindex", strprintf(_("Maintain a full spent index, used to query the spending txid and input index for an outpoint (default: %u)"), DEFAULT_SPENTINDEX));
-
     strUsage += HelpMessageGroup(_("Connection options:"));
     strUsage += HelpMessageOpt("-addnode=<ip>", _("Add a node to connect to and attempt to keep the connection open"));
     strUsage += HelpMessageOpt("-banscore=<n>", strprintf(_("Threshold for disconnecting misbehaving peers (default: %u)"), 100));
@@ -1329,7 +1328,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
 
     auto notaryIDDest = DecodeDestination(GetArg("-notaryid", ""));
     VERUS_NOTARYID = notaryIDDest.which() == COptCCParams::ADDRTYPE_ID ? CIdentityID(GetDestinationID(notaryIDDest)) : CIdentityID();
-    auto defaultIDDest = DecodeDestination(GetArg("-defaultid", VERUS_NOTARYID.IsNull() ? "" : EncodeDestination(notaryIDDest)));
+    auto defaultIDDest = DecodeDestination(GetArg("-defaultid", ""));
     VERUS_DEFAULTID = defaultIDDest.which() == COptCCParams::ADDRTYPE_ID ? CIdentityID(GetDestinationID(defaultIDDest)) : CIdentityID();
     auto nodeIDDest = DecodeDestination(GetArg("-nodeid", ""));
     VERUS_NODEID = nodeIDDest.which() == COptCCParams::ADDRTYPE_ID ? GetDestinationID(nodeIDDest) : uint160();
@@ -2165,6 +2164,17 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
 #else // ENABLE_WALLET
     LogPrintf("No wallet support compiled in!\n");
 #endif // !ENABLE_WALLET
+
+    if (IsVerusActive())
+    {
+        LogPrintf("Initialized chain: %s, ID %s\n", ConnectedChains.ThisChain().name.c_str(), EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID())).c_str());
+        printf("Initialized chain: %s, ID %s\n", ConnectedChains.ThisChain().name.c_str(), EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID())).c_str());
+    }
+    else
+    {
+        LogPrintf("Initialized chain: %s, hex: %s, ID %s\n", ConnectedChains.ThisChain().name.c_str(), ConnectedChains.ThisChain().GetID().GetHex().c_str(), EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID())).c_str());
+        printf("Initialized chain: %s, hex: %s, ID %s\n", ConnectedChains.ThisChain().name.c_str(), ConnectedChains.ThisChain().GetID().GetHex().c_str(), EncodeDestination(CIdentityID(ConnectedChains.ThisChain().GetID())).c_str());
+    }
 
 #ifdef ENABLE_MINING
  #ifndef ENABLE_WALLET

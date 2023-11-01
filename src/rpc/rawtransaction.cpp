@@ -1360,8 +1360,17 @@ UniValue sendrawtransaction(const UniValue& params, bool fHelp)
     }
 
     bool fOverrideFees = false;
+    for (auto &oneOut : tx.vout)
+    {
+        if (CCurrencyDefinition(oneOut.scriptPubKey).IsValid())
+        {
+            fOverrideFees = true;
+        }
+    }
     if (params.size() > 1)
+    {
         fOverrideFees = params[1].get_bool();
+    }
 
     CCoinsViewCache &view = *pcoinsTip;
     const CCoins* existingCoins = view.AccessCoins(hashTx);
