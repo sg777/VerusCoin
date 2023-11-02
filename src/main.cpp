@@ -2101,7 +2101,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             }
         }
 
-        // if this is an identity, determine the identtyFeeFactor
+        // if this is an identity, determine the identityFeeFactor
         CAmount identityFeeFactor = 0;
         if (fLimitFree && txDesc.IsValid())
         {
