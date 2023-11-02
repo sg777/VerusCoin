@@ -2081,7 +2081,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             }
         }
 
-        if (fLimitFree && txDesc.IsReserveTransfer() && !txDesc.IsImport())
+        if (txDesc.IsReserveTransfer() && !txDesc.IsImport())
         {
             // don't enter reserve transfers that we can reject (fLimitFree is true && not import, so not checking a block) that export to a destination of this chain
             for (auto &oneOut : tx.vout)
@@ -2096,7 +2096,7 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
                     rt.GetImportCurrency() == ASSETCHAINS_CHAINID)
                 {
                     LogPrintf("AcceptToMemoryPool: invalid reserve transfer transaction, cannot export to current chain :\n%s\n", txDesc.ToUniValue().write(1,2).c_str());
-                    return state.DoS(1, error("AcceptToMemoryPool: invalid reserve transfer transaction, cannot export to current chain %s", hash.ToString()), REJECT_NONSTANDARD, "bad-txns-invalid-reservetransfer");
+                    return state.DoS(0, error("AcceptToMemoryPool: invalid reserve transfer transaction, cannot export to current chain %s", hash.ToString()), REJECT_NONSTANDARD, "bad-txns-invalid-reservetransfer");
                 }
             }
         }
@@ -4097,7 +4097,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                    nHeight < 1800000)))
             {
                 LogPrintf("%s: ERROR: %s\nBlock %s rejected\n", __func__, state.GetRejectReason().c_str(), block.GetHash().GetHex().c_str());
-                InvalidBlockFound(pindex, state, Params());
+                if (state.GetRejectReason() != "bad-txns-invalid-reservetransfer")
+                {
+                    InvalidBlockFound(pindex, state, Params());
+                }
                 return false; // Failure reason has been set in validation state object
             }
             state = CValidationState();
