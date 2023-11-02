@@ -10212,6 +10212,17 @@ void CConnectedChains::AggregateChainTransfers(const CTransferDestination &feeRe
                     CChainNotarizationData cnd;
                     std::vector<std::pair<CTransaction, uint256>> notarizationTxes;
 
+                    // attempt to export from current chain to current chain
+                    // skip this
+                    if (lastChain == ASSETCHAINS_CHAINID)
+                    {
+                        if (LogAcceptCategory("crosschainexports"))
+                        {
+                            LogPrintf("%s: Attempt to export from current chain to current chain on %s\n", ConnectedChains.GetFriendlyCurrencyName(ASSETCHAINS_CHAINID).c_str());
+                        }
+                        continue;
+                    }
+
                     // get notarization for the actual currency destination
                     if (!GetNotarizationData(lastChain, cnd, &notarizationTxes) ||
                         cnd.lastConfirmed == -1 ||
