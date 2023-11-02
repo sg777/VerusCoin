@@ -2081,7 +2081,27 @@ bool AcceptToMemoryPoolInt(CTxMemPool& pool, CValidationState &state, const CTra
             }
         }
 
-        // if this is an identity, determine the identtyFeeFactor
+        if (txDesc.IsReserveTransfer() && !txDesc.IsImport())
+        {
+            // don't enter reserve transfers that we can reject (fLimitFree is true && not import, so not checking a block) that export to a destination of this chain
+            for (auto &oneOut : tx.vout)
+            {
+                COptCCParams p;
+                CReserveTransfer rt;
+                if (oneOut.scriptPubKey.IsPayToCryptoCondition(p) &&
+                    p.IsValid() &&
+                    p.evalCode == EVAL_RESERVE_TRANSFER &&
+                    p.vData.size() &&
+                    (rt = CReserveTransfer(p.vData[0])).IsValid() &&
+                    rt.GetImportCurrency() == ASSETCHAINS_CHAINID)
+                {
+                    LogPrintf("AcceptToMemoryPool: invalid reserve transfer transaction, cannot export to current chain :\n%s\n", txDesc.ToUniValue().write(1,2).c_str());
+                    return state.DoS(0, error("AcceptToMemoryPool: invalid reserve transfer transaction, cannot export to current chain %s", hash.ToString()), REJECT_NONSTANDARD, "bad-txns-invalid-reservetransfer");
+                }
+            }
+        }
+
+        // if this is an identity, determine the identityFeeFactor
         CAmount identityFeeFactor = 0;
         if (fLimitFree && txDesc.IsValid())
         {
@@ -4077,7 +4097,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                    nHeight < 1800000)))
             {
                 LogPrintf("%s: ERROR: %s\nBlock %s rejected\n", __func__, state.GetRejectReason().c_str(), block.GetHash().GetHex().c_str());
-                InvalidBlockFound(pindex, state, Params());
+                if (state.GetRejectReason() != "bad-txns-invalid-reservetransfer")
+                {
+                    InvalidBlockFound(pindex, state, Params());
+                }
                 return false; // Failure reason has been set in validation state object
             }
             state = CValidationState();
